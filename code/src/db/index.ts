@@ -1,9 +1,9 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import * as schema from './schema'
+import { profiles } from './schema/profile'
 
 const client = postgres(process.env.DATABASE_URL!, {
   prepare: false, // Required for Supabase transaction pooler
 })
 
-export const db = drizzle(client, { schema })
+export const db = drizzle(client, { schema: { profiles } })
