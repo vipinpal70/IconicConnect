@@ -7,18 +7,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     await db.insert(profiles).values({
-      id:         body.id,
-      email:      body.email,
-      userType:   'lab_portal',   // ← hardcoded
-      role:       'client',       // ← hardcoded
-      fullName:   body.fullName   || null,
-      title:      body.title      || null,
-      phone:      body.phone      || null,
-      labName:    body.labName    || null,
+      id: body.id,
+      email: body.email,
+      userType: 'lab_portal',   // ← hardcoded
+      role: 'client',       // ← hardcoded
+      status: 'pending',
+      fullName: body.fullName || null,
+      title: body.title || null,
+      phone: body.phone || null,
+      labName: body.labName || null,
       postalCode: body.postalCode || null,
-      city:       body.city       || null,
-      state:      body.state      || null,
-      country:    body.country    || null,
+      city: body.city || null,
+      state: body.state || null,
+      country: body.country || null,
     })
 
     return NextResponse.json({ success: true }, { status: 201 })
@@ -27,3 +28,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save profile' }, { status: 500 })
   }
 }
+

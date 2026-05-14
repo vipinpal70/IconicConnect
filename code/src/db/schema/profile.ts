@@ -4,6 +4,7 @@ import {
   varchar,
   timestamp,
   pgEnum,
+  index,
 } from 'drizzle-orm/pg-core'
 
 export const userTypeEnum = pgEnum('user_type', [
@@ -22,34 +23,63 @@ export const userRoleEnum = pgEnum('user_role', [
   'designer',
 ])
 
+export const userStatusEnum = pgEnum('user_status', [
+  'pending',
+  'active',
+  'inactive',
+])
+
+export const planEnum = pgEnum('plan_status', [
+  'Trial',
+  'Onboarded',
+])
+
 export const profiles = pgTable('profiles', {
-  id:         uuid('id').primaryKey(),        // = auth.users.id
+  id: uuid('id').primaryKey(),        // = auth.users.id
 
   // Type & Role
-  userType:   userTypeEnum('user_type').notNull(),
-  role:       userRoleEnum('user_role').notNull(),
+  userType: userTypeEnum('user_type').notNull(),
+  role: userRoleEnum('user_role').notNull(),
+  status: userStatusEnum('user_status').default('pending').notNull(),
+  plan: planEnum('plan_status').default('Trial'), // Only for client/subuser
 
   // Personal
-  fullName:   varchar('full_name',   { length: 100 }),
-  title:      varchar('title',       { length: 50  }),
-  email:      varchar('email',       { length: 255 }).notNull().unique(),
-  phone:      varchar('phone',       { length: 20  }),
+  fullName: varchar('full_name', { length: 100 }),
+  title: varchar('title', { length: 50 }),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  phone: varchar('phone', { length: 20 }),
 
   // Lab
-  labName:    varchar('lab_name',    { length: 150 }),
+  labName: varchar('lab_name', { length: 150 }),
 
   // Location
-  postalCode: varchar('postal_code', { length: 20  }),
-  city:       varchar('city',        { length: 100 }),
-  state:      varchar('state',       { length: 100 }),
-  country:    varchar('country',     { length: 100 }),
+  postalCode: varchar('postal_code', { length: 20 }),
+  city: varchar('city', { length: 100 }),
+  state: varchar('state', { length: 100 }),
+  country: varchar('country', { length: 100 }),
 
   // Subuser / team member: who created them
-  createdBy:  uuid('created_by'),               // parent user's id
+  createdBy: uuid('created_by'),               // parent user's id
 
-  createdAt:  timestamp('created_at').defaultNow().notNull(),
-  updatedAt:  timestamp('updated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  onBoardedAt: timestamp('onboarded_at'),
+}, (table) => {
+  return {
+    roleIdx: index('role_idx').on(table.role),
+    emailIdx: index('email_idx').on(table.email),
+  }
 })
 
-export type Profile    = typeof profiles.$inferSelect
+export const subUsers = pgTable('sub_users', {
+  id: uuid('id').primaryKey(),        // = auth.users.id
+  profileId: uuid('profile_id').references(() => profiles.id).notNull(),
+  clientId: uuid('client_id').references(() => profiles.id).notNull(), // Parent client
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export type Profile = typeof profiles.$inferSelect
 export type NewProfile = typeof profiles.$inferInsert
+export type SubUser = typeof subUsers.$inferSelect
+export type NewSubUser = typeof subUsers.$inferInsert

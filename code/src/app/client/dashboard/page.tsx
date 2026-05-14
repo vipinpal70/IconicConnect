@@ -1,0 +1,174 @@
+"use client";
+
+import { ClientLayout } from "@/src/components/ClientLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
+import { StatusBadge } from "@/src/components/StatusBadge";
+import { cases, activityFeed } from "@/src/data/demoData";
+import { FolderOpen, CheckCircle2, ClipboardCheck, Timer, TrendingUp, Inbox } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line
+} from "recharts";
+import { Button } from "@/src/components/ui/button";
+
+const activeStatuses = ["Submitted", "In Validation", "In Design", "Internal QC"] as const;
+
+const counts = {
+  active: cases.filter((c) => activeStatuses.includes(c.status as any)).length,
+  delivered: cases.filter((c) => c.status === "Completed").length,
+  pending: cases.filter((c) => c.status === "Pending Client Approval" || c.status === "Feedback").length,
+};
+
+const kpis = [
+  { label: "Active Designs", value: counts.active, icon: Inbox, color: "text-blue-500", bg: "bg-blue-500/10" },
+  { label: "Delivered (Mo)", value: counts.delivered, icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+  { label: "Awaiting Action", value: counts.pending, icon: ClipboardCheck, color: "text-amber-500", bg: "bg-amber-500/10" },
+  { label: "Avg. Turnaround", value: "4.3d", icon: Timer, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+];
+
+const breakdownData = [
+  { name: "Crown & Bridge", value: 65, color: "hsl(var(--primary))" },
+  { name: "Implants", value: 20, color: "hsl(var(--secondary))" },
+  { name: "Removables", value: 15, color: "hsl(var(--accent))" },
+];
+
+const volumeData = [
+  { month: "Jan", cases: 28 },
+  { month: "Feb", cases: 31 },
+  { month: "Mar", cases: 35 },
+  { month: "Apr", cases: 42 },
+  { month: "May", cases: 18 },
+];
+
+export default function ClientDashboard() {
+  const router = useRouter();
+  const recentCases = [...cases].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(0, 5);
+
+  return (
+    <ClientLayout>
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">Welcome back, PrecisionDent Lab</h1>
+            <p className="text-sm text-muted-foreground mt-1">Operational performance for your design pipeline</p>
+          </div>
+          <Button onClick={() => router.push("/client/cases")} className="gradient-primary border-none shadow-glow">
+            Submit New Case
+          </Button>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {kpis.map((k) => (
+            <Card key={k.label} className="shadow-card hover:shadow-glow transition-all border-border/50">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{k.label}</p>
+                    <p className="text-3xl font-bold text-foreground mt-1">{k.value}</p>
+                  </div>
+                  <div className={`p-2.5 rounded-xl ${k.bg} ${k.color} shadow-sm`}><k.icon className="h-4 w-4" /></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Analytics Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 shadow-card border-border/50">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-base font-semibold">Case Volume Trends</CardTitle>
+              <div className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                <TrendingUp className="h-3 w-3" /> +12% vs last month
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[280px] w-full pt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={volumeData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip cursor={{ fill: 'hsl(var(--muted)/0.4)' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="cases" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} barSize={32} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Design Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center">
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={breakdownData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} dataKey="value" paddingAngle={4} stroke="none">
+                      {breakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-1 gap-2 w-full mt-4">
+                {breakdownData.map((d) => (
+                  <div key={d.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
+                      <span className="text-muted-foreground">{d.name}</span>
+                    </div>
+                    <span className="font-bold text-foreground">{d.value}%</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Bottom Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="shadow-card border-border/50">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-base font-semibold">Active Design Queue</CardTitle>
+              <Button variant="ghost" size="sm" className="text-xs text-primary" onClick={() => router.push("/client/cases")}>View All</Button>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              {recentCases.map((c) => (
+                <div key={c.id} className="flex items-center justify-between py-3 border-b border-border/50 last:border-0 cursor-pointer hover:bg-muted/30 -mx-2 px-3 rounded-lg transition-colors" onClick={() => router.push(`/client/cases/${c.id}`)}>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{c.id} · {c.restoration}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{c.caseType} · Patient {c.patientRef}</p>
+                  </div>
+                  <StatusBadge status={c.status} />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">Activity Timeline</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-2">
+              {activityFeed.slice(0, 4).map((a) => (
+                <div key={a.id} className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                    <TrendingUp className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-foreground">{a.message}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{a.time}</p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </ClientLayout>
+  );
+}

@@ -1,0 +1,162 @@
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
+
+// Simple in-memory rate limiter (Fixed window)
+// Note: This is instance-specific. For distributed rate limiting, use Redis.
+const rateLimitMap = new Map<string, { count: number; lastReset: number }>()
+const RATE_LIMIT = 100
+const WINDOW_SIZE = 60 * 1000 // 1 minute
+
+function isRateLimited(key: string): boolean {
+  const now = Date.now()
+  const record = rateLimitMap.get(key) || { count: 0, lastReset: now }
+
+  if (now - record.lastReset > WINDOW_SIZE) {
+    record.count = 1
+    record.lastReset = now
+  } else {
+    record.count++
+  }
+
+  rateLimitMap.set(key, record)
+  return record.count > RATE_LIMIT
+}
+
+export default async function proxy(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
+          supabaseResponse = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // Inside middleware function
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Construct a unique key: use UserID if logged in, otherwise fallback to IP
+  const ip = request.ip || request.headers.get('x-forwarded-for')?.split(',')[0] || 'anonymous'
+  const rateLimitKey = user ? `u:${user.id}` : `ip:${ip}`
+
+  if (isRateLimited(rateLimitKey)) {
+    return new NextResponse('Too Many Requests', {
+      status: 429,
+      headers: { 'Retry-After': '60' }
+    })
+  }
+
+
+  const pathname = request.nextUrl.pathname
+  const isAuthPage = pathname.startsWith('/auth')
+  const isSignUpPage = pathname.startsWith('/admin/sign-up')
+  const isPublicApi =
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/sign-in') ||
+    pathname.startsWith('/api/sign-up') ||
+    pathname === '/api/admin/user'
+
+  // 1. Handle unauthorized access
+  if (!user && !isAuthPage && !isSignUpPage && !isPublicApi) {
+    if (pathname.startsWith('/api')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    return NextResponse.redirect(new URL('/auth/sign-in', request.url))
+  }
+
+  if (user && !isPublicApi) {
+    // Fetch profile to get role and parent client ID
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('user_role, created_by')
+      .eq('id', user.id)
+      .single()
+
+    const role = profile?.user_role
+    const createdBy = profile?.created_by
+
+    // 2. Redirect to dashboard if logged in and trying to access auth pages, root, or base role paths
+    if (isAuthPage || pathname === '/' || pathname === '/admin' || pathname === '/client') {
+      return NextResponse.redirect(new URL(getHomeRoute(role, createdBy), request.url))
+    }
+
+    // 3. Role-based path protection
+    if (!isAllowedPath(role, pathname, createdBy)) {
+      if (pathname.startsWith('/api')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      // Redirect to their own dashboard if they try to access restricted area
+      return NextResponse.redirect(new URL(getHomeRoute(role, createdBy), request.url))
+    }
+  }
+
+  return supabaseResponse
+}
+
+
+function getHomeRoute(role: string | undefined, createdBy: string | null | undefined): string {
+  switch (role) {
+    case 'admin':
+      return '/admin/dashboard'
+    case 'client':
+      return '/client/dashboard'
+    case 'subuser':
+      return `/client/${createdBy}/subuser`
+    case 'qc':
+    case 'designer':
+    case 'account_manager':
+      return '/dashboard'
+    default:
+      return '/dashboard'
+  }
+}
+
+function isAllowedPath(role: string | undefined, pathname: string, createdBy: string | null | undefined): boolean {
+  if (!role) return false
+
+  // Publicly accessible paths for logged in users
+  if (
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/api/user') ||
+    pathname.startsWith('/admin/sign-up')
+  )
+    return true
+
+  switch (role) {
+    case 'admin':
+      return pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
+    case 'client':
+      return pathname.startsWith('/client') || pathname.startsWith('/api/client')
+    case 'subuser':
+      return pathname.startsWith(`/client/${createdBy}/subuser`) || pathname.startsWith(`/api/client/${createdBy}/subuser`)
+    case 'qc':
+    case 'designer':
+    case 'account_manager':
+      return (
+        pathname.startsWith('/dashboard') ||
+        pathname.startsWith('/cases') ||
+        pathname.startsWith('/case') ||
+        pathname.startsWith('/analytics')
+      )
+    default:
+      return false
+  }
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}

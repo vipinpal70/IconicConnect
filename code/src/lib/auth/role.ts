@@ -1,6 +1,6 @@
 export const ROLE_MAP = {
-  dental_lab:         ['client', 'subuser'],
-  dental_lab_service: ['admin', 'qc', 'account_manager', 'designer'],
+  lab_portal: ['client', 'subuser'],
+  admin_portal: ['admin', 'qc', 'account_manager', 'designer'],
 } as const
 
 export type UserType = keyof typeof ROLE_MAP

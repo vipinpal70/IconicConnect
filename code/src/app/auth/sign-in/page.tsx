@@ -1,17 +1,53 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/src/lib/supabase/client'
+import { useMutation } from '@tanstack/react-query'
+import { toast } from "sonner";
 
 export default function SignInPage() {
   const router = useRouter()
-  const supabase = createClient()
+  // const supabase = createClient() // We'll use the API instead
 
   const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+
+  const signinMutation = useMutation({
+    mutationFn: async (credentials: typeof form) => {
+      const response = await fetch('/api/sign-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to sign in')
+      }
+
+      return response.json()
+    },
+    onSuccess: (data) => {
+      if (data.isBlocked) {
+        toast.error(data.message, {
+          duration: 6000,
+        })
+        return;
+      }
+
+      if (data.session) {
+        // Set manual auth-token cookie
+        document.cookie = `auth-token=${data.session.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+
+        router.push(data.redirectUrl || '/dashboard')
+        router.refresh()
+      }
+    },
+    onError: (error: Error) => {
+      setError(error.message)
+    }
+  })
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
@@ -20,21 +56,7 @@ export default function SignInPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setLoading(true)
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: form.email,
-      password: form.password,
-    })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-      return
-    }
-
-    router.push('/dashboard')
-    router.refresh()
+    signinMutation.mutate(form)
   }
 
   return (
@@ -85,10 +107,10 @@ export default function SignInPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={signinMutation.isPending}
             className="w-full py-2.5 bg-[#00786f] text-white text-sm font-medium rounded-lg hover:bg-[#005a52]/80 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
           >
-            {loading ? 'Signing in...' : 'Sign in'}
+            {signinMutation.isPending ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
