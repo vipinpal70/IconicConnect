@@ -10,7 +10,7 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 4000,
         DISABLE_WORKER: 'true', // Next.js won't start the worker in this process
       },
     },
