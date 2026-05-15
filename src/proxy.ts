@@ -50,7 +50,7 @@ export default async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   // Construct a unique key: use UserID if logged in, otherwise fallback to IP
-  const ip = request.ip || request.headers.get('x-forwarded-for')?.split(',')[0] || 'anonymous'
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 'anonymous'
   const rateLimitKey = user ? `u:${user.id}` : `ip:${ip}`
 
   if (isRateLimited(rateLimitKey)) {
