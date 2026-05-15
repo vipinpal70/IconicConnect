@@ -1,0 +1,30 @@
+module.exports = {
+  apps: [
+    {
+      name: 'iconic-connect-web',
+      script: 'npm',
+      args: 'run start',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3000,
+        DISABLE_WORKER: 'true', // Next.js won't start the worker in this process
+      },
+    },
+    {
+      name: 'iconic-connect-worker',
+      script: 'npx',
+      args: 'tsx src/lib/queue/worker.ts',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
+  ],
+};

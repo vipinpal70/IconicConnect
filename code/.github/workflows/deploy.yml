@@ -1,0 +1,47 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          script: |
+            # Navigate to the project directory (Change this path to your actual project path on VPS)
+            cd /var/www/iconicconnect
+
+            # Pull latest changes
+            git pull origin main
+
+            # Remove existing build and modules
+            rm -rf node_modules .next
+
+            # Install dependencies
+            npm install
+            
+            # Ensure tsx is installed for the standalone worker
+            npm install -g tsx pm2
+
+            # Build the Next.js application
+            npm run build
+
+            # Start or restart services using PM2 ecosystem config
+            pm2 start ecosystem.config.js || pm2 restart ecosystem.config.js
+            
+            # Save PM2 state to restart on server reboot
+            pm2 save
