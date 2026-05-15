@@ -73,17 +73,15 @@ jobs:
             # Build the Next.js application
             echo "Building application..."
             npm run build
-
-            # Start or restart services using PM2 ecosystem config
-            echo "Starting/Restarting PM2 processes..."
-            pm2 start ecosystem.config.js || pm2 restart ecosystem.config.js
-            
-            # Save PM2 state
-            pm2 save
             
             # --- Infrastructure Setup ---
-            echo "Setting up Nginx and SSL..."
+            echo "Setting up Firewall, Nginx and SSL..."
             
+            # Configure Firewall
+            sudo ufw allow 'Nginx Full' || (sudo ufw allow 80/tcp && sudo ufw allow 443/tcp)
+            sudo ufw allow 4000/tcp
+            
+
             # Install Nginx and Certbot if they don't exist
             sudo apt-get update -y || true
             sudo apt-get install -y nginx certbot python3-certbot-nginx
@@ -104,3 +102,10 @@ jobs:
             # Issue SSL Certificate (non-interactive)
             # This will automatically modify the Nginx config to add HTTPS
             sudo certbot --nginx -d connect.fynback.com --non-interactive --agree-tos -m admin@fynback.com --redirect || echo "Certbot already configured or failed."
+
+            # Start or restart services using PM2 ecosystem config
+            echo "Starting/Restarting PM2 processes..."
+            pm2 start ecosystem.config.js || pm2 restart ecosystem.config.js
+            
+            # Save PM2 state
+            pm2 save
