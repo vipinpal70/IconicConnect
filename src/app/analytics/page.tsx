@@ -122,8 +122,8 @@ export default function AnalyticsPage() {
                   <BarChart data={monthlyBilling}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(150,18%,90%)" />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(158,12%,42%)" />
-                    <YAxis tick={{ fontSize: 12 }} stroke="hsl(158,12%,42%)" tickFormatter={(v) => `$${v}`} />
-                    <Tooltip formatter={(v: number) => `$${v.toLocaleString()}`} />
+                    <YAxis tick={{ fontSize: 12 }} stroke="hsl(158,12%,42%)" tickFormatter={(v: any) => `$${v}`} />
+                    <Tooltip formatter={(v: any) => `$${v?.toLocaleString()}`} />
                     <Bar dataKey="amount" fill="hsl(152,60%,45%)" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
