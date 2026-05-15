@@ -7,10 +7,13 @@ import {
   Building2,
   ArrowLeftRight,
   LogOut,
+  Users,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/src/components/ui/button";
 import {
   Sidebar,
@@ -26,18 +29,36 @@ import {
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
 
-const navItems = [
-  { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
-  { title: "Cases", url: "/admin/cases", icon: ClipboardList },
-  { title: "Offers", url: "/admin/offers", icon: Tag },
-  { title: "Clients", url: "/admin/clients", icon: Building2 },
-];
-
 export function AdminSidebar() {
+  const navItems = [
+    { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
+    { title: "Cases", url: "/admin/cases", icon: ClipboardList },
+    { title: "Offers", url: "/admin/offers", icon: Tag },
+    { title: "Clients", url: "/admin/clients", icon: Building2 },
+    { title: "Team", url: "/admin/team", icon: Users },
+    { title: "Notifications", url: "/admin/notifications", icon: Bell },
+  ];
+
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
   const router = useRouter();
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/me')
+      if (!res.ok) return null
+      return res.json()
+    }
+  })
+
+  const isNotAdmin = currentUser && currentUser.role !== 'admin';
+
+  const filteredNavItems = navItems.filter(item => {
+    if (item.title === "Team" && isNotAdmin) return false;
+    return true;
+  });
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -77,7 +98,7 @@ export function AdminSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {filteredNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <Link

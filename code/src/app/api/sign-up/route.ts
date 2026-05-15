@@ -22,6 +22,24 @@ export async function POST(req: NextRequest) {
       country: body.country || null,
     })
 
+    // Queue welcome email
+    try {
+      const { queueEmail } = await import('@/src/lib/queue/jobs');
+      await queueEmail({
+        to: body.email,
+        subject: 'Welcome to IconicConnect!',
+        type: 'welcome',
+        html: `
+          <h1>Welcome, ${body.fullName || body.email}!</h1>
+          <p>Thank you for signing up with IconicConnect. Your account is currently <strong>pending approval</strong>.</p>
+          <p>We will notify you as soon as your account is activated.</p>
+        `
+      });
+    } catch (queueError) {
+      console.error('Failed to queue welcome email:', queueError);
+      // Don't fail the sign-up if email queuing fails
+    }
+
     return NextResponse.json({ success: true }, { status: 201 })
   } catch (err) {
     console.error('[profiles/POST]', err)
