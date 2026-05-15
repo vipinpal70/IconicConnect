@@ -23,7 +23,7 @@ jobs:
           port: ${{ secrets.VPS_PORT || '22' }}
           script: |
             # Navigate to the project directory (Change this path to your actual project path on VPS)
-            cd /var/www/iconicconnect
+            cd /home/ubuntu/iconicconnect
 
             # Pull latest changes
             git pull origin main
