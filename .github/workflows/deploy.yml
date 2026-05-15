@@ -21,6 +21,7 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || '22' }}
+          envs: GITHUB_REF_NAME
           script: |
             # Exit on error
             set -e
@@ -46,11 +47,12 @@ jobs:
             
             # Check if directory is a git repository
             if [ ! -d ".git" ]; then
-              echo "Initializing repository..."
-              git clone https://github.com/${{ github.repository }}.git .
+              echo "Initializing repository from branch $GITHUB_REF_NAME..."
+              git clone -b $GITHUB_REF_NAME https://github.com/${{ github.repository }}.git .
             else
-              echo "Pulling latest changes..."
-              git pull origin main
+              echo "Updating from branch $GITHUB_REF_NAME..."
+              git fetch origin $GITHUB_REF_NAME
+              git reset --hard origin/$GITHUB_REF_NAME
             fi
 
             # Remove existing build and modules
