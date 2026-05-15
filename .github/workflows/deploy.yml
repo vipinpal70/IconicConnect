@@ -22,26 +22,59 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || '22' }}
           script: |
-            # Navigate to the project directory (Change this path to your actual project path on VPS)
-            cd /home/ubuntu/iconicconnect
+            # Exit on error
+            set -e
 
-            # Pull latest changes
-            git pull origin main
+            # Load NVM and Node
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            
+            # Ensure we have a node version loaded
+            if ! command -v node &> /dev/null; then
+              # Try to use default alias if nvm is present
+              nvm use default || nvm use node || echo "Node not found via NVM"
+            fi
+
+            # Navigate to the project directory
+            TARGET_DIR="/home/ubuntu/iconicconnect"
+            if [ ! -d "$TARGET_DIR" ]; then
+              echo "Creating target directory..."
+              mkdir -p "$TARGET_DIR"
+            fi
+            
+            cd "$TARGET_DIR"
+            
+            # Check if directory is a git repository
+            if [ ! -d ".git" ]; then
+              echo "Initializing repository..."
+              git clone https://github.com/${{ github.repository }}.git .
+            else
+              echo "Pulling latest changes..."
+              git pull origin main
+            fi
 
             # Remove existing build and modules
+            echo "Cleaning old build and modules..."
             rm -rf node_modules .next
-
+            
             # Install dependencies
+            echo "Installing dependencies..."
             npm install
             
-            # Ensure tsx is installed for the standalone worker
+            # Ensure tsx and pm2 are installed
+            echo "Installing global dependencies..."
             npm install -g tsx pm2
+            
+            # Add npm global bin to PATH
+            export PATH=$PATH:$(npm config get prefix)/bin
 
             # Build the Next.js application
+            echo "Building application..."
             npm run build
 
             # Start or restart services using PM2 ecosystem config
+            echo "Starting/Restarting PM2 processes..."
             pm2 start ecosystem.config.js || pm2 restart ecosystem.config.js
             
-            # Save PM2 state to restart on server reboot
+            # Save PM2 state
             pm2 save
