@@ -10,8 +10,9 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { CaseChat } from "@/src/components/CaseChat";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
+import { Badge } from "@/src/components/ui/badge";
 import { cases as initial, caseTypes, type CaseStatus } from "@/src/data/demoData";
-import { Search, ShieldCheck, UserPlus, ClipboardCheck, ArrowRight, MessageSquare, FileText, Filter } from "lucide-react";
+import { Search, ShieldCheck, UserPlus, ClipboardCheck, ArrowRight, MessageSquare, FileText, Filter, Building2, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 const statuses: (CaseStatus | "All")[] = [
@@ -261,5 +262,3 @@ function AllocateMenu({ onPick }: { onPick: (name: string) => void }) {
     </Select>
   );
 }
-
-import { Building2, Clock } from "lucide-react";
