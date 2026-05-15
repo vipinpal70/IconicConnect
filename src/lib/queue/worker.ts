@@ -48,7 +48,17 @@ function createWorker() {
         throw err;
       }
     },
-    { connection }
+    {
+      connection,
+      removeOnComplete: {
+        age: 24 * 3600,
+        count: 1000,
+      },
+      removeOnFail: {
+        age: 24 * 3600,
+        count: 5000,
+      },
+    }
   );
 
   newWorker.on('completed', (job) => console.log(`[Worker] Job ${job.id} done`));
