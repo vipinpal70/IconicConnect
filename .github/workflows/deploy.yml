@@ -80,3 +80,27 @@ jobs:
             
             # Save PM2 state
             pm2 save
+            
+            # --- Infrastructure Setup ---
+            echo "Setting up Nginx and SSL..."
+            
+            # Install Nginx and Certbot if they don't exist
+            sudo apt-get update -y || true
+            sudo apt-get install -y nginx certbot python3-certbot-nginx
+            
+            # Copy Nginx config from repo
+            sudo cp "$TARGET_DIR/nginx/connect.fynback.com" /etc/nginx/sites-available/connect.fynback.com
+            
+            # Enable the site
+            sudo ln -sf /etc/nginx/sites-available/connect.fynback.com /etc/nginx/sites-enabled/
+            
+            # Remove default site if it exists to prevent conflicts
+            sudo rm -f /etc/nginx/sites-enabled/default
+            
+            # Test Nginx config and reload
+            sudo nginx -t
+            sudo systemctl reload nginx
+            
+            # Issue SSL Certificate (non-interactive)
+            # This will automatically modify the Nginx config to add HTTPS
+            sudo certbot --nginx -d connect.fynback.com --non-interactive --agree-tos -m admin@fynback.com --redirect || echo "Certbot already configured or failed."
