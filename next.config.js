@@ -1,6 +1,5 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals.push({
@@ -13,5 +12,4 @@ const nextConfig: NextConfig = {
   turbopack: {}
 };
 
-
-export default nextConfig;
+module.exports = nextConfig;

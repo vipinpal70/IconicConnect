@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { Eye, EyeOff } from "lucide-react";
 
 type FormData = {
 	name: string;
@@ -297,20 +298,39 @@ function Field({
 	type?: string;
 	required?: boolean;
 }) {
+	const [showPassword, setShowPassword] = useState(false);
+	const isPasswordType = type === "password";
+	const inputType = isPasswordType ? (showPassword ? "text" : "password") : type;
+
 	return (
 		<div>
 			<label className="block text-xs font-medium text-gray-500 mb-1.5">
 				{label}
 			</label>
-			<input
-				type={type}
-				name={name}
-				value={value}
-				onChange={onChange}
-				placeholder={placeholder}
-				required={required}
-				className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
-			/>
+			<div className="relative">
+				<input
+					type={inputType}
+					name={name}
+					value={value}
+					onChange={onChange}
+					placeholder={placeholder}
+					required={required}
+					className={`w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition ${isPasswordType ? 'pr-10' : ''}`}
+				/>
+				{isPasswordType && (
+					<button
+						type="button"
+						onClick={() => setShowPassword(!showPassword)}
+						className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none"
+					>
+						{showPassword ? (
+							<EyeOff className="h-4 w-4" aria-hidden="true" />
+						) : (
+							<Eye className="h-4 w-4" aria-hidden="true" />
+						)}
+					</button>
+				)}
+			</div>
 		</div>
 	);
 }

@@ -2,18 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq } from 'drizzle-orm';
+import { eq, ilike } from 'drizzle-orm';
 
 export async function POST(req: NextRequest) {
   try {
-    const { email } = await req.json();
+    const body = await req.json();
+    const email = body.email?.trim().toLowerCase();
 
     if (!email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
     // 1. Check if email exists in profiles table
-    const results = await db.select().from(profiles).where(eq(profiles.email, email)).limit(1);
+    const results = await db.select().from(profiles).where(ilike(profiles.email, email)).limit(1);
     const profile = results[0];
 
     if (!profile) {
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     await queueEmail({
       to: email,
       subject: 'Reset your IconicConnect Password',
-      type: 'approval', // using existing queue type
+      type: 'reset-password', // using specific queue type
       html: `
         <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto;">
           <h2>Reset Password</h2>

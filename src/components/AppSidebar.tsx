@@ -41,6 +41,7 @@ const navItems = [
   { title: "Profile", url: "/profile", icon: UserCircle },
 ];
 
+
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
@@ -118,7 +119,7 @@ export function AppSidebar() {
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">PrecisionDent Lab</p>
+              <p className="text-sm font-medium text-foreground truncate"></p>
               <p className="text-xs text-muted-foreground">Daniel Ortega</p>
             </div>
           )}

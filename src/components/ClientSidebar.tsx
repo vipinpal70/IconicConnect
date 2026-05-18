@@ -28,6 +28,7 @@ import {
   useSidebar,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
+import { useEffect, useState } from "react";
 
 const navItems = [
   { title: "Dashboard", url: "/client/dashboard", icon: LayoutDashboard },
@@ -40,11 +41,35 @@ const navItems = [
   { title: "Profile", url: "/client/profile", icon: UserCircle },
 ];
 
+type Profile = {
+  full_name: string;
+  lab_name: string;
+}
+
+async function getProfileData(): Promise<{ user: Profile | null; loading: boolean }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { user: null, loading: false };
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+  return { user: profile, loading: false };
+}
+
 export function ClientSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
   const router = useRouter();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const { user, loading } = await getProfileData();
+      setProfile(user);
+      setLoading(loading);
+    };
+    fetchData();
+  }, []);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -111,8 +136,8 @@ export function ClientSidebar() {
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">PrecisionDent Lab</p>
-              <p className="text-xs text-muted-foreground">Daniel Ortega</p>
+              <p className="text-sm font-medium text-foreground truncate">{profile?.lab_name}</p>
+              <p className="text-xs text-muted-foreground">{profile?.full_name}</p>
             </div>
           )}
         </div>

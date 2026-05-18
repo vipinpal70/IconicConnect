@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@/src/lib/supabase/client";
 import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
@@ -12,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { caseTypes } from "@/src/data/demoData";
 import {
-  CURRENT_LAB,
   getPreferences, savePreferences, type PreferenceForm,
   getUsers, saveUsers, type LabUser,
 } from "@/src/lib/labStore";
@@ -21,35 +21,69 @@ import {
   Settings2, Users, KeyRound, Trash2,
 } from "lucide-react";
 
-// Mock lab data for UI
-const mockLab = {
-  id: "LAB-001",
-  company: "PrecisionDent Lab",
-  status: "Active",
-  onboardedAt: "2024-01-15",
-  location: "Miami, FL, USA",
-  email: "admin@precisiondent.com",
-  phone: "+1 (555) 123-4567",
-  poc: "Daniel Ortega",
-  monthlyVolume: 120,
-  preferences: "Prefer digital impressions via iTero.",
-  priceList: [
-    { caseType: "Crown & Bridge", price: 35 },
-    { caseType: "Implants", price: 65 },
-    { caseType: "Removables", price: 45 },
-    { caseType: "Orthodontics", price: 120 },
-  ]
-};
+interface Profile {
+  id: string;
+  fullName?: string;
+  name?: string;
+  title: string;
+  email: string;
+  phone: string;
+  labName: string;
+  postalCode: string;
+  city: string;
+  state: string;
+  country: string;
+  password?: string;
+  confirmPassword?: string;
+  userType?: string;
+  role?: string;
+  status?: string;
+  onBoardedAt?: string;
+}
 
 export default function ProfilePage() {
-  const lab = mockLab;
+  const labId = "LAB-001";
 
   // Preferences
-  const [prefs, setPrefs] = useState<PreferenceForm[]>(() => getPreferences(lab.id));
+  const [prefs, setPrefs] = useState<PreferenceForm[]>(() => getPreferences(labId));
   const [prefOpen, setPrefOpen] = useState(false);
   const [draft, setDraft] = useState<{ title: string; category: string; body: string }>({
     title: "", category: "Crown & Bridge", body: "",
   });
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  // fetch profile data from the api route and set it to the profile state
+  useEffect(() => {
+    const getProfile = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const res = await fetch("/api/profile");
+        if (!res.ok) {
+          throw new Error("Failed to fetch profile");
+        }
+        const data: Profile = await res.json();
+        setProfile(data);
+      } catch (err) {
+        console.error("Error fetching profile:", err);
+      }
+    };
+    getProfile();
+  }, []);
+
+  const displayProfile = {
+    company: profile?.labName || profile?.fullName || "",
+    status: profile?.status || "",
+    onboardedAt: profile?.onBoardedAt ? new Date(profile.onBoardedAt).toLocaleDateString() : "",
+    id: profile?.id || "",
+    location: [profile?.city, profile?.state, profile?.country].filter(Boolean).join(', ') || "",
+    email: profile?.email || "",
+    phone: profile?.phone || "",
+    poc: profile?.fullName || profile?.name || "",
+    title: profile?.title || (profile?.role === 'admin' ? 'Administrator' : profile?.role) || '—',
+  };
 
   const addPref = () => {
     if (!draft.title.trim() || !draft.body.trim()) {
@@ -60,18 +94,18 @@ export default function ProfilePage() {
       ...prefs,
     ];
     setPrefs(next);
-    savePreferences(lab.id, next);
+    savePreferences(profile?.id || labId, next);
     setDraft({ title: "", category: "Crown & Bridge", body: "" });
   };
 
   const removePref = (id: string) => {
     const next = prefs.filter((p) => p.id !== id);
     setPrefs(next);
-    savePreferences(lab.id, next);
+    savePreferences(profile?.id || labId, next);
   };
 
   // Users
-  const [users, setUsers] = useState<LabUser[]>(() => getUsers(lab.id));
+  const [users, setUsers] = useState<LabUser[]>(() => getUsers(labId));
   const [showPwd, setShowPwd] = useState<Record<string, boolean>>({});
   const [userOpen, setUserOpen] = useState(false);
   const [userDraft, setUserDraft] = useState<Partial<LabUser>>({ role: "Coordinator" });
@@ -90,7 +124,7 @@ export default function ProfilePage() {
     };
     const next = [...users, u];
     setUsers(next);
-    saveUsers(lab.id, next);
+    saveUsers(profile?.id || labId, next);
     setUserDraft({ role: "Coordinator" });
     setUserOpen(false);
   };
@@ -98,7 +132,7 @@ export default function ProfilePage() {
   const removeUser = (id: string) => {
     const next = users.filter((u) => u.id !== id);
     setUsers(next);
-    saveUsers(lab.id, next);
+    saveUsers(profile?.id || labId, next);
   };
 
   return (
@@ -115,10 +149,10 @@ export default function ProfilePage() {
                 </div>
                 <div className="pb-2">
                   <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-semibold text-foreground">{lab.company}</h1>
-                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none">{lab.status}</Badge>
+                    <h1 className="text-2xl font-semibold text-foreground">{displayProfile.company}</h1>
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none">{displayProfile.status}</Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">Onboarded {lab.onboardedAt} · ID {lab.id}</p>
+                  <p className="text-sm text-muted-foreground">Onboarded {displayProfile.onboardedAt} · ID {displayProfile.id}</p>
                 </div>
               </div>
               <Dialog open={prefOpen} onOpenChange={setPrefOpen}>
@@ -193,12 +227,14 @@ export default function ProfilePage() {
           <Card className="shadow-card lg:col-span-1">
             <CardHeader className="pb-4"><CardTitle className="text-base font-medium">Company Details</CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
-              <Detail icon={<Building2 className="h-4 w-4" />} label="Company" value={lab.company} />
-              <Detail icon={<MapPin className="h-4 w-4" />} label="Location" value={lab.location} />
-              <Detail icon={<Mail className="h-4 w-4" />} label="POC email" value={lab.email} />
-              <Detail icon={<Phone className="h-4 w-4" />} label="POC phone" value={lab.phone} />
-              <Detail label="Primary POC" value={lab.poc} />
-              <Detail label="Monthly volume" value={`~${lab.monthlyVolume} cases / month`} />
+              <Detail icon={<Building2 className="h-4 w-4" />} label="Company" value={displayProfile.company} />
+              <Detail icon={<MapPin className="h-4 w-4" />} label="Location" value={displayProfile.location} />
+              <Detail icon={<Mail className="h-4 w-4" />} label="POC email" value={displayProfile.email} />
+              <Detail icon={<Phone className="h-4 w-4" />} label="POC phone" value={displayProfile.phone} />
+              <Detail label="Primary POC" value={displayProfile.poc} />
+              {/* {profile?.userType !== 'admin_portal' && (
+                <Detail label="Monthly volume" value={`~${displayProfile.monthlyVolume} cases / month`} />
+              )} */}
             </CardContent>
           </Card>
 
@@ -218,12 +254,12 @@ export default function ProfilePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {lab.priceList.map((p) => (
+                    {/* {profile?.priceList.map((p) => (
                       <tr key={p.caseType}>
                         <td className="px-4 py-3 text-foreground">{p.caseType}</td>
                         <td className="px-4 py-3 text-right font-medium text-foreground">${p.price}</td>
                       </tr>
-                    ))}
+                    ))} */}
                   </tbody>
                 </table>
               </div>

@@ -131,6 +131,7 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
   // Publicly accessible paths for logged in users
   if (
     pathname.startsWith('/profile') ||
+    pathname.startsWith('/api/profile') ||
     pathname.startsWith('/api/user') ||
     pathname.startsWith('/admin/sign-up')
   )
