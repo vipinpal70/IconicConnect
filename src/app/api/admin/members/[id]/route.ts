@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/src/lib/supabase/admin';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
+import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone';
 
 type MemberUpdateData = {
   fullName?: string
@@ -90,6 +91,12 @@ export async function PATCH(
   try {
     const body = await req.json();
     const { fullName, role, status, phone, title, userType } = body;
+    const parsedPhone = parseStoredPhone(phone)
+    const phoneError = validateNationalPhone(parsedPhone.countryCode, parsedPhone.nationalNumber)
+
+    if (phoneError) {
+      return NextResponse.json({ error: phoneError }, { status: 400 })
+    }
 
     const updateData: MemberUpdateData = {
       fullName,
@@ -209,6 +216,10 @@ export async function DELETE(
 
   if (actorProfile?.role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
+  if (user.id === id) {
+    return NextResponse.json({ error: 'Admins cannot delete their own account' }, { status: 403 });
   }
 
   try {

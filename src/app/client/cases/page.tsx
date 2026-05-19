@@ -110,6 +110,25 @@ const statusFilters: (CaseStatus | "All")[] = [
   "Pending Client Approval", "Feedback", "On Hold", "Completed", "Cancelled",
 ];
 
+const hasAllRequiredCaseFields = (
+  category: string,
+  subTypeData: Record<string, string>,
+  notes: string,
+  teeth: number[],
+  uploadedFile: unknown
+) => {
+  const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
+  const allDynamicFieldsSelected = fields.every((field) => Boolean(subTypeData[field.name]))
+
+  return Boolean(
+    category &&
+    uploadedFile &&
+    allDynamicFieldsSelected &&
+    notes.trim() &&
+    teeth.length > 0
+  )
+}
+
 const CASE_HIERARCHY = {
   "Crown & Bridges": {
     fields: [
@@ -291,7 +310,10 @@ export default function CasesPage() {
   }, [cases, search, statusFilter, typeFilter, from, to]);
 
   const handleSubmit = async () => {
-    if (!category) return;
+    if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile)) {
+      toast.error("Please complete all fields, select teeth, add notes, and upload a file.");
+      return;
+    }
 
     const formData = new FormData();
     const caseData = {
@@ -398,6 +420,12 @@ export default function CasesPage() {
 
   const handleBulkSubmit = async () => {
     if (bulkRows.length === 0) return;
+
+    const hasInvalidRow = bulkRows.some((row) => !hasAllRequiredCaseFields(row.category, row.subTypeData, row.notes, row.teeth, row.uploadedFile))
+    if (hasInvalidRow) {
+      toast.error("Complete all fields, teeth selection, notes, and file upload for every case.");
+      return;
+    }
 
     const formData = new FormData();
 
@@ -687,6 +715,18 @@ export default function CasesPage() {
               </Select>
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-44" />
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-44" />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearch("")
+                  setTypeFilter("All")
+                  setStatusFilter("All")
+                  setFrom("")
+                  setTo("")
+                }}
+              >
+                Clear
+              </Button>
             </div>
             <div className="flex gap-1.5 flex-wrap">
               {statusFilters.map((s) => (
@@ -740,7 +780,7 @@ export default function CasesPage() {
                         <tr
                           key={c.id}
                           className="hover:bg-muted/10 cursor-pointer transition-colors"
-                          onClick={() => router.push(`/cases/${c.id}`)}
+                          onClick={() => router.push(`/client/cases/${c.id}`)}
                         >
                           <td className="px-6 py-4 text-sm font-medium text-primary">{c.caseNumber || c.id}</td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>

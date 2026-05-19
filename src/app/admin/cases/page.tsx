@@ -1,104 +1,114 @@
-"use client";
+"use client"
 
-import { useMemo, useState } from "react";
-import { AdminLayout } from "@/src/components/AdminLayout";
-import { Card, CardContent } from "@/src/components/ui/card";
-import { Button } from "@/src/components/ui/button";
-import { Input } from "@/src/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
-import { StatusBadge } from "@/src/components/StatusBadge";
-import { CaseChat } from "@/src/components/CaseChat";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
-import { Badge } from "@/src/components/ui/badge";
-import { cases as initial, caseTypes, type CaseStatus } from "@/src/data/demoData";
-import { Search, ShieldCheck, UserPlus, ClipboardCheck, ArrowRight, MessageSquare, FileText, Filter, Building2, Clock } from "lucide-react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
+import { AdminLayout } from "@/src/components/AdminLayout"
+import { Card, CardContent } from "@/src/components/ui/card"
+import { Input } from "@/src/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
+import { StatusBadge } from "@/src/components/StatusBadge"
+import { Search } from "lucide-react"
 
-const statuses: (CaseStatus | "All")[] = [
-  "All", "Submitted", "In Validation", "In Design", "Internal QC",
-  "Pending Client Approval", "Feedback", "On Hold", "Completed", "Cancelled",
-];
+type CaseRecord = {
+  id: string
+  caseNumber: string | null
+  category: string | null
+  subTypeData: Record<string, unknown> | null
+  status: string
+  createdAt: string
+}
 
-const designers = [
-  { id: "d1", name: "Alex Chen", load: 8 },
-  { id: "d2", name: "Michael R.", load: 5 },
-  { id: "d3", name: "Emma L.", load: 12 },
-];
+const statusFilters = [
+  "All",
+  "scan_received",
+  "allocated_to_designer",
+  "scan_verified",
+  "scan_not_verified",
+  "in_progress",
+  "internal_qc",
+  "submitted_to_client",
+  "on_hold",
+  "client_feedback",
+  "approved",
+  "delivered",
+]
 
-export default function AdminCases() {
-  const [data, setData] = useState(initial);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<CaseStatus | "All">("All");
-  const [client, setClient] = useState<string>("All");
-  const [openCase, setOpenCase] = useState<typeof initial[0] | null>(null);
+function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
+  if (!subTypeData) return "—"
 
-  const clients = useMemo(() => Array.from(new Set(initial.map((c) => "PrecisionDent"))), []); // Simplified for now
+  const values = Object.entries(subTypeData)
+    .filter(([key, value]) => key !== "teeth" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value)
+    .map(([, value]) => value as string)
 
-  const list = useMemo(() => {
-    return data.filter((c) => {
-      const s = search.toLowerCase();
-      const matchSearch = !s || c.id.toLowerCase().includes(s) || c.restoration.toLowerCase().includes(s);
-      const matchStatus = statusFilter === "All" || c.status === statusFilter;
-      return matchSearch && matchStatus;
-    });
-  }, [data, search, statusFilter]);
+  return values.length ? values.join(" - ") : "—"
+}
 
-  const update = (id: string, patch: Partial<typeof initial[0]>) => {
-    setData((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-  };
+export default function AdminCasesPage() {
+  const router = useRouter()
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("All")
 
-  const validate = (id: string) => {
-    update(id, { status: "In Design" });
-    toast.success(`${id} validated · ready for designer allocation`);
-  };
+  const { data, isLoading, error } = useQuery<{ data: CaseRecord[] }>({
+    queryKey: ["admin-cases"],
+    queryFn: async () => {
+      const res = await fetch("/api/cases")
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to load cases")
+      }
+      return res.json()
+    },
+  })
 
-  const allocate = (id: string, designer: string) => {
-    update(id, { designer, status: "In Design" });
-    toast.success(`${id} allocated to ${designer}`);
-  };
+  const filtered = useMemo(() => {
+    const cases = data?.data || []
+    const term = search.toLowerCase()
 
-  const submitInternalQc = (id: string) => {
-    update(id, { status: "Internal QC" });
-    toast.success(`${id} submitted to Internal QC`);
-  };
+    return cases.filter((caseItem) => {
+      const restoration = renderSubTypeSummary(caseItem.subTypeData).toLowerCase()
+      const matchesSearch =
+        !term ||
+        (caseItem.caseNumber || caseItem.id).toLowerCase().includes(term) ||
+        (caseItem.category || "").toLowerCase().includes(term) ||
+        restoration.includes(term)
 
-  const sendToClient = (id: string) => {
-    update(id, { status: "Pending Client Approval" });
-    toast.success(`${id} sent to client for approval`);
-  };
+      const matchesStatus = statusFilter === "All" || caseItem.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+  }, [data, search, statusFilter])
 
   return (
     <AdminLayout>
       <div className="space-y-6 animate-fade-in">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground">Cases — Review & Allocation</h1>
-            <p className="text-sm text-muted-foreground mt-1">Triage incoming cases, allocate to designers and route through QC</p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Cases</h1>
+          <p className="text-sm text-muted-foreground mt-1">Click any row to view case details.</p>
         </div>
 
         <Card className="shadow-card border-border/50">
           <CardContent className="p-4 flex flex-col lg:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Search by case ID, client or restoration…" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input
+                className="pl-9"
+                placeholder="Search by case number, category or subtype..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
-            <div className="flex gap-2">
-              <Select value={client} onValueChange={setClient}>
-                <SelectTrigger className="w-full lg:w-48"><SelectValue placeholder="Client" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Clients</SelectItem>
-                  {clients.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
-                <SelectTrigger className="w-full lg:w-48"><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  {statuses.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full lg:w-60">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusFilters.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {status === "All" ? "All Statuses" : status}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
@@ -108,157 +118,59 @@ export default function AdminCases() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["Case ID", "Lab / Patient", "Type / Restoration", "Status", "Designer", "Due", "Actions"].map((h) => (
-                      <th key={h} className="text-left px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{h}</th>
+                    {["Case ID", "Category", "Case Sub Type", "Status", "Created"].map((heading) => (
+                      <th key={heading} className="text-left px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        {heading}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {list.map((c) => (
-                    <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-primary">{c.id}</td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-foreground">PrecisionDent</div>
-                        <div className="text-xs text-muted-foreground">{c.patientRef}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-foreground font-medium">{c.restoration}</p>
-                        <p className="text-[10px] text-muted-foreground">{c.caseType} · {c.toothNumbers.length ? `#${c.toothNumbers.join(", #")}` : "—"}</p>
-                      </td>
-                      <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
-                      <td className="px-6 py-4 text-xs font-medium text-muted-foreground">{c.designer ?? <span className="italic opacity-50">unallocated</span>}</td>
-                      <td className="px-6 py-4 text-xs text-muted-foreground whitespace-nowrap">{c.dueDate}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-2 flex-wrap items-center">
-                          {c.status === "Submitted" && (
-                            <>
-                              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => validate(c.id)}><ShieldCheck className="h-3.5 w-3.5" />Validate</Button>
-                              <AllocateMenu onPick={(d) => allocate(c.id, d)} />
-                            </>
-                          )}
-                          {c.status === "In Design" && !c.designer && (
-                            <AllocateMenu onPick={(d) => allocate(c.id, d)} />
-                          )}
-                          {c.status === "In Design" && c.designer && (
-                            <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => submitInternalQc(c.id)}>
-                              <ClipboardCheck className="h-3.5 w-3.5" /> Send to QC
-                            </Button>
-                          )}
-                          {c.status === "Internal QC" && (
-                            <Button size="sm" className="h-8 text-xs gap-1.5" onClick={() => sendToClient(c.id)}>
-                              Approve <ArrowRight className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setOpenCase(c)}>
-                            <MessageSquare className="h-4 w-4" />
-                          </Button>
-                        </div>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <tr key={index} className="animate-pulse">
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24" /></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24" /></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-40" /></td>
+                        <td className="px-6 py-4"><div className="h-6 bg-muted rounded-full w-28" /></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20" /></td>
+                      </tr>
+                    ))
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center text-sm text-red-500">
+                        {(error as Error).message}
                       </td>
                     </tr>
-                  ))}
+                  ) : filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                        No cases found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((caseItem) => (
+                      <tr
+                        key={caseItem.id}
+                        className="hover:bg-muted/20 transition-colors cursor-pointer"
+                        onClick={() => router.push(`/admin/cases/${caseItem.id}`)}
+                      >
+                        <td className="px-6 py-4 font-semibold text-primary">{caseItem.caseNumber || caseItem.id}</td>
+                        <td className="px-6 py-4 text-foreground">{caseItem.category || "—"}</td>
+                        <td className="px-6 py-4 text-muted-foreground">{renderSubTypeSummary(caseItem.subTypeData)}</td>
+                        <td className="px-6 py-4"><StatusBadge status={caseItem.status} /></td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {new Date(caseItem.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </CardContent>
         </Card>
       </div>
-
-      <Dialog open={!!openCase} onOpenChange={(o) => !o && setOpenCase(null)}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-none bg-background shadow-2xl">
-          {openCase && (
-            <div className="flex flex-col h-full">
-              <div className="p-6 border-b border-border bg-card/50">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-bold text-foreground">{openCase.id}</h2>
-                    <StatusBadge status={openCase.status} />
-                  </div>
-                </div>
-                <div className="flex gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" /> PrecisionDent</span>
-                  <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" /> {openCase.caseType}</span>
-                  <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Due {openCase.dueDate}</span>
-                </div>
-              </div>
-
-              <Tabs defaultValue="chat" className="flex-1 flex flex-col">
-                <div className="px-6 bg-card/30">
-                  <TabsList className="bg-transparent border-b border-transparent w-full justify-start h-12 gap-6 p-0">
-                    <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 h-full text-xs font-semibold">Chat</TabsTrigger>
-                    <TabsTrigger value="details" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 h-full text-xs font-semibold">Details & Notes</TabsTrigger>
-                    <TabsTrigger value="preferences" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 h-full text-xs font-semibold">Lab Preferences</TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <div className="p-6 flex-1">
-                  <TabsContent value="chat" className="mt-0 h-full">
-                    <CaseChat caseId={openCase.id} side="admin" author="Iconic Connect Team" heightClass="h-[400px]" />
-                  </TabsContent>
-
-                  <TabsContent value="details" className="mt-0 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <Row k="Patient Ref" v={openCase.patientRef} />
-                      <Row k="Restoration" v={openCase.restoration} />
-                      <Row k="Designer" v={openCase.designer ?? "Not allocated"} />
-                      <Row k="Teeth" v={openCase.toothNumbers.length ? `#${openCase.toothNumbers.join(", #")}` : "—"} />
-                      <Row k="Model required" v={openCase.modelRequired ? "Yes" : "No"} />
-                      <Row k="Submitted" v={openCase.createdAt} />
-                    </div>
-                    <div className="pt-4 border-t border-border">
-                      <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-2">Instructions</p>
-                      <div className="p-4 rounded-xl bg-muted/30 text-sm text-foreground italic border border-border/50">
-                        "{openCase.notes || "No special instructions provided for this case."}"
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="preferences" className="mt-0 space-y-4">
-                    <div className="p-6 text-center space-y-3">
-                      <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary">
-                        <FileText className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-foreground">Standard Lab Preferences</h4>
-                        <p className="text-xs text-muted-foreground mt-1 max-w-[280px] mx-auto">This lab uses standard Iconic Connect quality benchmarks. No custom preference overrides found.</p>
-                      </div>
-                      <Button variant="outline" size="sm" className="text-xs">Request Preference Form</Button>
-                    </div>
-                  </TabsContent>
-                </div>
-              </Tabs>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </AdminLayout>
-  );
-}
-
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex flex-col gap-1 p-3 rounded-lg bg-muted/20 border border-border/30">
-      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">{k}</span>
-      <span className="text-sm text-foreground font-semibold">{v}</span>
-    </div>
-  );
-}
-
-function AllocateMenu({ onPick }: { onPick: (name: string) => void }) {
-  return (
-    <Select onValueChange={onPick}>
-      <SelectTrigger className="h-8 text-xs w-[140px] bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 transition-colors">
-        <span className="flex items-center"><UserPlus className="h-3.5 w-3.5 mr-1.5" /> Allocate</span>
-      </SelectTrigger>
-      <SelectContent>
-        {designers.map((d) => (
-          <SelectItem key={d.id} value={d.name}>
-            <div className="flex items-center justify-between w-full gap-4">
-              <span>{d.name}</span>
-              <Badge variant="secondary" className="text-[10px] h-4 px-1">{d.load} active</Badge>
-            </div>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
+  )
 }

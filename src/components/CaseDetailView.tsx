@@ -1,0 +1,219 @@
+"use client"
+
+import { useQuery } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, FileText, MessageSquare, Paperclip } from "lucide-react"
+import { Button } from "@/src/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
+import { StatusBadge } from "@/src/components/StatusBadge"
+import { CaseChat } from "@/src/components/CaseChat"
+
+type CaseRecord = {
+  id: string
+  caseNumber: string | null
+  category: string | null
+  subTypeData: Record<string, unknown> | null
+  status: string
+  designerId: string | null
+  qcId: string | null
+  accountManagerId: string | null
+  dueDate: string | null
+  createdAt: string
+}
+
+type CaseFile = {
+  id: string
+  fileName: string
+  fileUrl: string
+  fileType: string | null
+  fileSize: number | null
+  createdAt: string
+}
+
+function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
+  if (!subTypeData) return "—"
+
+  const values = Object.entries(subTypeData)
+    .filter(([key, value]) => key !== "teeth" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value)
+    .map(([, value]) => value as string)
+
+  return values.length ? values.join(" - ") : "—"
+}
+
+function formatFileSize(size: number | null) {
+  if (!size) return "—"
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 border-b border-border/40 py-3 last:border-b-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium text-foreground text-right">{value}</span>
+    </div>
+  )
+}
+
+export function CaseDetailView({
+  caseId,
+  backHref,
+  shell,
+  chatSide,
+}: {
+  caseId: string
+  backHref: string
+  shell: (children: React.ReactNode) => React.ReactNode
+  chatSide: "lab" | "admin"
+}) {
+  const router = useRouter()
+
+  const { data: caseResponse, isLoading, error } = useQuery<{ data: CaseRecord }>({
+    queryKey: ["case", caseId],
+    queryFn: async () => {
+      const res = await fetch(`/api/cases/${caseId}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to fetch case")
+      }
+      return res.json()
+    },
+  })
+
+  const { data: filesResponse } = useQuery<{ data: CaseFile[] }>({
+    queryKey: ["case-files", caseId],
+    queryFn: async () => {
+      const res = await fetch(`/api/cases/${caseId}/files`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to fetch case files")
+      }
+      return res.json()
+    },
+    retry: false,
+  })
+
+  const caseRecord = caseResponse?.data
+  const files = filesResponse?.data || []
+
+  if (isLoading) {
+    return shell(<div className="p-10 text-center text-muted-foreground">Loading case details...</div>)
+  }
+
+  if (error || !caseRecord) {
+    return shell(
+      <div className="p-10 text-center text-muted-foreground">
+        {(error as Error | undefined)?.message || "Case not found"}
+      </div>
+    )
+  }
+
+  const subTypeData = caseRecord.subTypeData || {}
+  const teeth = Array.isArray(subTypeData.teeth) ? (subTypeData.teeth as number[]) : []
+  const notes = typeof subTypeData.notes === "string" ? subTypeData.notes : "—"
+  const modelRequired = typeof subTypeData.modelRequired === "string" ? subTypeData.modelRequired : "—"
+
+  return shell(
+    <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button variant="ghost" size="icon" onClick={() => router.push(backHref)}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">
+            {caseRecord.caseNumber || caseRecord.id}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {caseRecord.category || "—"} · {renderSubTypeSummary(caseRecord.subTypeData)}
+          </p>
+        </div>
+        <div className="ml-auto">
+          <StatusBadge status={caseRecord.status} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="shadow-card lg:col-span-1">
+          <CardHeader className="pb-4 border-b border-border/50">
+            <CardTitle className="text-base font-medium">Case Details</CardTitle>
+          </CardHeader>
+          <CardContent className="mt-4">
+            <DetailRow label="Case Number" value={caseRecord.caseNumber || caseRecord.id} />
+            <DetailRow label="Category" value={caseRecord.category || "—"} />
+            <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
+            <DetailRow label="Model Required" value={modelRequired} />
+            <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")}` : "—"} />
+            <DetailRow label="Designer" value={caseRecord.designerId || "—"} />
+            <DetailRow label="QC" value={caseRecord.qcId || "—"} />
+            <DetailRow label="Account Manager" value={caseRecord.accountManagerId || "—"} />
+            <DetailRow
+              label="Submitted"
+              value={new Date(caseRecord.createdAt).toLocaleDateString()}
+            />
+            <DetailRow
+              label="Due Date"
+              value={caseRecord.dueDate ? new Date(caseRecord.dueDate).toLocaleDateString() : "—"}
+            />
+            <div className="pt-4 border-t border-border/50 mt-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Notes</p>
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{notes}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="shadow-card">
+            <CardHeader className="pb-4 border-b border-border/50">
+              <CardTitle className="text-base font-medium flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-primary" />
+                Attachments
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="mt-4 space-y-3">
+              {files.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No files attached to this case.</p>
+              ) : (
+                files.map((file) => (
+                  <a
+                    key={file.id}
+                    href={file.fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between rounded-lg border border-border/50 p-3 hover:bg-muted/20 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{file.fileName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {file.fileType || "Unknown type"} · {formatFileSize(file.fileSize)}
+                      </p>
+                    </div>
+                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </a>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card overflow-hidden">
+            <CardHeader className="pb-4 border-b border-border/50 bg-muted/10">
+              <CardTitle className="text-base font-medium flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-primary" />
+                Case Chat
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <CaseChat
+                caseId={caseRecord.id}
+                side={chatSide}
+                author={chatSide === "admin" ? "Iconic Connect Team" : "Lab User"}
+                className="border-none rounded-none"
+                heightClass="h-[500px]"
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}

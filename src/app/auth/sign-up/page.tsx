@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { COUNTRY_CODES, formatPhoneForStorage, validateNationalPhone } from "@/src/lib/phone";
 import { Eye, EyeOff } from "lucide-react";
 
 type FormData = {
@@ -39,12 +40,16 @@ export default function SignUpPage() {
 	const supabase = createClient();
 
 	const [form, setForm] = useState<FormData>(initial);
+	const [countryCode, setCountryCode] = useState("+91");
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
-	const [success, setSuccess] = useState(false);
 
 	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+		const { name, value } = e.target;
+		setForm((prev) => ({
+			...prev,
+			[name]: name === "phone" ? value.replace(/\D/g, "") : value,
+		}));
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -59,13 +64,19 @@ export default function SignUpPage() {
 			setError("Password must be at least 8 characters.");
 			return;
 		}
+		const phoneError = validateNationalPhone(countryCode, form.phone);
+		if (phoneError) {
+			setError(phoneError);
+			return;
+		}
 
 		setLoading(true);
+		const fullPhone = formatPhoneForStorage(countryCode, form.phone);
 
 		const { data, error: signUpError } = await supabase.auth.signUp({
 			email: form.email,
 			password: form.password,
-			phone: form.phone
+			phone: fullPhone
 		});
 
 		if (signUpError) {
@@ -84,7 +95,7 @@ export default function SignUpPage() {
 					email: form.email,
 					fullName: form.name,
 					title: form.title,
-					phone: form.phone,
+					phone: fullPhone,
 					labName: form.labName,
 					postalCode: form.postalCode,
 					city: form.city,
@@ -141,12 +152,7 @@ export default function SignUpPage() {
 								onChange={handleChange}
 								required
 							/>
-							<Field
-								label="Title"
-								name="title"
-								value={form.title}
-								onChange={handleChange}
-							/>
+							<Field label="Job Title" name="title" value={form.title} onChange={handleChange} />
 							<Field
 								label="Email"
 								name="email"
@@ -160,17 +166,31 @@ export default function SignUpPage() {
 									Phone
 								</label>
 								<div className="flex gap-2">
-									<span className="flex items-center gap-1.5 px-3 border border-gray-200 rounded-lg text-sm text-gray-500 bg-gray-50 whitespace-nowrap">
-										🇮🇳 <span className="text-xs">+91</span>
-									</span>
+									<select
+										value={countryCode}
+										onChange={(e) => setCountryCode(e.target.value)}
+										className="px-3 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 max-w-[180px]"
+									>
+										{COUNTRY_CODES.map((entry) => (
+											<option key={`${entry.code}-${entry.label}`} value={entry.code}>
+												{entry.code} {entry.label}
+											</option>
+										))}
+									</select>
 									<input
 										type="tel"
 										name="phone"
 										value={form.phone}
 										onChange={handleChange}
+										inputMode="numeric"
+										maxLength={countryCode === "+91" ? 10 : 15}
+										placeholder={countryCode === "+91" ? "10 digit mobile number" : "Phone number"}
 										className="flex-1 px-3 py-2.5 text-gray-900 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
 									/>
 								</div>
+								<p className="mt-1 text-xs text-gray-400">
+									{countryCode === "+91" ? "Enter exactly 10 digits." : "Digits only."}
+								</p>
 							</div>
 						</div>
 					</div>

@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema'
+import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const parsedPhone = parseStoredPhone(body.phone)
+    const phoneError = validateNationalPhone(parsedPhone.countryCode, parsedPhone.nationalNumber)
+
+    if (phoneError) {
+      return NextResponse.json({ error: phoneError }, { status: 400 })
+    }
 
     await db.insert(profiles).values({
       id: body.id,
@@ -46,4 +53,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to save profile' }, { status: 500 })
   }
 }
-

@@ -4,12 +4,12 @@ import * as React from "react"
 import { useState, useMemo, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { AdminLayout } from "@/src/components/AdminLayout"
-import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
 import { Input } from "@/src/components/ui/input"
 import {
-  Users, UserPlus, Search, Filter, Mail, Shield,
+  Users, UserPlus, Search, Mail, Shield,
   MoreHorizontal, KeyRound, Edit2, Trash2, Calendar
 } from "lucide-react"
 import { AddMemberModal } from "./_components/AddMemberModal"
@@ -320,15 +320,16 @@ export default function TeamPage() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              className="flex items-center gap-2 text-red-500 hover:text-red-600 focus:text-red-600 focus:bg-red-50"
+                              disabled={member.id === currentUser.id}
+                              className="flex items-center gap-2 text-red-500 hover:text-red-600 focus:text-red-600 focus:bg-red-50 disabled:text-muted-foreground disabled:hover:text-muted-foreground disabled:focus:text-muted-foreground disabled:focus:bg-transparent"
                               onClick={() => {
-                                if (confirm(`Permanently delete ${member.fullName || member.email}?`)) {
+                                if (member.id !== currentUser.id && confirm(`Permanently delete ${member.fullName || member.email}?`)) {
                                   deleteMutation.mutate(member.id)
                                 }
                               }}
                             >
                               <Trash2 className="w-4 h-4" />
-                              Delete Member
+                              {member.id === currentUser.id ? 'Delete Disabled For You' : 'Delete Member'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
