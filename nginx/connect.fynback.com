@@ -2,6 +2,9 @@ server {
     listen 80;
     server_name connect.fynback.com;
 
+    # Allow up to 2GB file uploads
+    client_max_body_size 2048M;
+
     location / {
         proxy_pass http://localhost:4000;
         proxy_http_version 1.1;
