@@ -136,9 +136,7 @@ function getHomeRoute(role: string | undefined, createdBy: string | null | undef
 }
 
 function isAllowedPath(role: string | undefined, pathname: string, createdBy: string | null | undefined): boolean {
-  if (!role) return false
-
-  // Publicly accessible paths for logged in users
+  // Publicly accessible paths for logged in users (must be checked before role check)
   if (
     pathname === '/auth/verify' ||
     pathname === '/auth/reset-password' ||
@@ -150,6 +148,8 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     pathname.startsWith('/api/cases')
   )
     return true
+
+  if (!role) return false
 
   switch (role) {
     case 'admin':

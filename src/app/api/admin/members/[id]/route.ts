@@ -8,11 +8,11 @@ import { logActivity } from '@/src/lib/activity-log';
 
 type MemberUpdateData = {
   fullName?: string
-  role?: string
-  status?: string
+  role?: 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | 'designer'
+  status?: 'pending' | 'active' | 'inactive'
   phone?: string
   title?: string
-  userType?: string
+  userType?: 'lab_portal' | 'admin_portal'
   updatedAt: Date
 }
 
