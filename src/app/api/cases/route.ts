@@ -83,7 +83,6 @@ export async function POST(req: NextRequest) {
       const newCase = {
         clientId,
         subuserId,
-        patientName: caseData.patientName,
         caseNumber,
         dueDate: caseData.dueDate ? new Date(caseData.dueDate) : null,
         category: caseData.category,
@@ -136,7 +135,6 @@ export async function POST(req: NextRequest) {
         caseId: insertedCase.id,
         details: {
           caseNumber: insertedCase.caseNumber,
-          patientName: insertedCase.patientName,
           category: insertedCase.category,
           clientId: insertedCase.clientId,
           subuserId: insertedCase.subuserId,

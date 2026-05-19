@@ -19,12 +19,21 @@ export async function logActivity({
   caseId,
   details = null,
 }: LogActivityInput) {
-  await db.insert(activityLogs).values({
-    caseId: caseId ?? null,
-    userId: actor.id,
-    userType: actor.userType,
-    userRole: actor.role,
-    action,
-    details,
-  })
+  try {
+    await db.insert(activityLogs).values({
+      caseId: caseId ?? null,
+      userId: actor.id,
+      userType: actor.userType,
+      userRole: actor.role,
+      action,
+      details,
+    })
+  } catch (error) {
+    console.error('Activity log insert failed:', {
+      action,
+      caseId: caseId ?? null,
+      userId: actor.id,
+      error,
+    })
+  }
 }

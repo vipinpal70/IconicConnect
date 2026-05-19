@@ -249,7 +249,6 @@ export default function CasesPage() {
     return cases.filter((c) => {
       const s = search.toLowerCase();
       const friendlyId = (c.caseNumber || c.id || "").toLowerCase();
-      const friendlyPatient = (c.patientName || "").toLowerCase();
       const friendlyRestoration = (
         c.subTypeData
           ? Object.entries(c.subTypeData)
@@ -262,7 +261,6 @@ export default function CasesPage() {
       const matchesSearch =
         !s ||
         friendlyId.includes(s) ||
-        friendlyPatient.includes(s) ||
         friendlyRestoration.includes(s);
 
       // Map UI filters to database enums
@@ -297,7 +295,6 @@ export default function CasesPage() {
 
     const formData = new FormData();
     const caseData = {
-      patientName: "Single Patient",
       category,
       subTypeData: {
         ...subTypeData,
@@ -405,7 +402,6 @@ export default function CasesPage() {
     const formData = new FormData();
 
     const casesData = bulkRows.map(row => ({
-      patientName: `Bulk Patient (${row.fileName})`,
       category: row.category,
       subTypeData: {
         ...row.subTypeData,

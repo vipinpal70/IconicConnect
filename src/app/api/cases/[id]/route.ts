@@ -8,7 +8,6 @@ import { isValidRoleForType } from '@/src/lib/auth/role';
 import { logActivity } from '@/src/lib/activity-log';
 
 type CaseUpdateData = {
-  patientName?: string
   caseNumber?: string
   dueDate?: Date
   category?: string
@@ -117,7 +116,6 @@ export async function PUT(
     const body = await req.json();
     
     const updateData: CaseUpdateData = {};
-    if (body.patientName) updateData.patientName = body.patientName;
     if (body.caseNumber) updateData.caseNumber = body.caseNumber;
     if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
     if (body.category) updateData.category = body.category;
@@ -140,7 +138,6 @@ export async function PUT(
       details: {
         caseNumber: caseRecord.caseNumber,
         before: {
-          patientName: caseRecord.patientName,
           caseNumber: caseRecord.caseNumber,
           dueDate: caseRecord.dueDate?.toISOString() ?? null,
           category: caseRecord.category,
@@ -151,7 +148,6 @@ export async function PUT(
           accountManagerId: caseRecord.accountManagerId,
         },
         changes: {
-          patientName: updateData.patientName,
           caseNumber: updateData.caseNumber,
           dueDate: updateData.dueDate?.toISOString?.() ?? null,
           category: updateData.category,
@@ -217,7 +213,6 @@ export async function DELETE(
       caseId: id,
       details: {
         caseNumber: caseRecord.caseNumber,
-        patientName: caseRecord.patientName,
         category: caseRecord.category,
         clientId: caseRecord.clientId,
         subuserId: caseRecord.subuserId,

@@ -240,7 +240,6 @@ export default function CasesPage() {
 
     const formData = new FormData();
     const caseData = {
-      patientName: "Single Patient",
       category,
       subTypeData,
       caseNumber: generatedCaseId,
@@ -341,7 +340,6 @@ export default function CasesPage() {
     const formData = new FormData();
 
     const casesData = bulkRows.map(row => ({
-      patientName: `Bulk Patient (${row.fileName})`,
       category: row.category,
       subTypeData: row.subTypeData,
       caseNumber: row.caseId,

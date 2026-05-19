@@ -43,8 +43,6 @@ export const cases = pgTable('cases', {
   clientId: uuid('client_id').references(() => profiles.id).notNull(),
   subuserId: uuid('subuser_id').references(() => profiles.id),
 
-  // Patient Info
-  patientName: varchar('patient_name', { length: 255 }).notNull(),
   caseNumber: varchar('case_number', { length: 50 }).unique(),
 
   // Dynamic Type
