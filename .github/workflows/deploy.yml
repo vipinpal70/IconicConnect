@@ -20,7 +20,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || '22' }}
+          port: ${{ secrets.VPS_PORT }}
           envs: GITHUB_REF_NAME
           script: |
             # Exit on error
@@ -68,9 +68,9 @@ jobs:
             echo "Installing dependencies..."
             npm install
 
-            # Apply database schema changes on the server
-            echo "Pushing database schema..."
-            npm run db:push
+            # Apply committed Drizzle migrations on the server
+            echo "Running database migrations..."
+            npm run db:migrate
             
             # Ensure tsx and pm2 are installed
             echo "Installing global dependencies..."
