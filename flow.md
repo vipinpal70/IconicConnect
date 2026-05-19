@@ -145,3 +145,20 @@ it redirect to the localhost:4000
 
 check for the codebase 
 and correct it
+
+
+
+
+
+Request URL
+https://connect.fynback.com/api/cases
+Request Method
+POST
+Status Code
+500 Internal Server Error
+Remote Address
+82.25.108.94:443
+Referrer Policy
+strict-origin-when-cross-origin
+
+{"category":"Crown & Bridges","subTypeData":{"caseType":"Bridge","modelRequired":"yes","teeth":[1,16],"notes":"special instructions"},"caseNumber":"CAB-6187914911","uploadedFile":{"success":true,"fileUrl":"/api/cases/files?labName=Dandy%20Dental&fileName=notification_triggers_sys3537c7188d0880d1a%20(1).pdf","fileName":"notification_triggers_sys3537c7188d0880d1a (1).pdf","fileSize":104711,"fileType":"application/pdf","storagePath":"Dandy Dental/notification_triggers_sys3537c7188d0880d1a (1).pdf"}}

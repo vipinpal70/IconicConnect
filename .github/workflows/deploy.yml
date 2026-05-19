@@ -67,6 +67,10 @@ jobs:
             # Install dependencies
             echo "Installing dependencies..."
             npm install
+
+            # Apply database schema changes on the server
+            echo "Pushing database schema..."
+            npm run db:push
             
             # Ensure tsx and pm2 are installed
             echo "Installing global dependencies..."
