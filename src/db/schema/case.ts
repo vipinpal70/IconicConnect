@@ -5,40 +5,60 @@ import {
   timestamp,
   pgEnum,
   text,
+  integer,
+  jsonb,
 } from 'drizzle-orm/pg-core'
 import { profiles } from './profile'
 
 export const caseStatusEnum = pgEnum('case_status', [
-  'pending',
-  'submitted',
-  'in_design',
-  'in_qc',
-  'approved',
-  'on_hold',
-  'rejected',
-  'completed',
-  'shipped',
+  'scan_received',           // 1. Scan received
+  'allocated_to_designer',   // 2. Allocated to designer
+  'scan_verified',           // 3. Scan verified
+  'scan_not_verified',       // 4. Scan not verified
+  'in_progress',             // 5. In progress (work started)
+  'internal_qc',             // 6. Internal QC
+  'submitted_to_client',     // 7. Submitted to the client
+  'on_hold',                 // 8. Hold / failed
+  'client_feedback',         // 9. Client feedback / rejected
+  'approved',                // 10. Approved
+  'delivered',               // 11. Delivered
 ])
+
+/**
+ * Cases are editable (by client/subuser) only BEFORE work starts.
+ * Once a case reaches 'in_progress' or beyond, only admins can modify it.
+ */
+export const EDITABLE_STATUSES: Array<typeof caseStatusEnum.enumValues[number]> = [
+  'scan_received',
+  'allocated_to_designer',
+  'scan_verified',
+  'scan_not_verified',
+]
+
 
 export const cases = pgTable('cases', {
   id: uuid('id').primaryKey().defaultRandom(),
-  
+
   // Ownership
   clientId: uuid('client_id').references(() => profiles.id).notNull(),
   subuserId: uuid('subuser_id').references(() => profiles.id),
-  
+
   // Patient Info
   patientName: varchar('patient_name', { length: 255 }).notNull(),
   caseNumber: varchar('case_number', { length: 50 }).unique(),
-  
+
+  // Dynamic Type
+  category: varchar('category', { length: 100 }),
+  subTypeData: jsonb('sub_type_data'),
+
   // Status
-  status: caseStatusEnum('status').default('pending').notNull(),
-  
+  status: caseStatusEnum('status').default('scan_received').notNull(),
+
   // Assignments (Operational Roles)
   designerId: uuid('designer_id').references(() => profiles.id),
   qcId: uuid('qc_id').references(() => profiles.id),
   accountManagerId: uuid('account_manager_id').references(() => profiles.id),
-  
+
   // Dates
   dueDate: timestamp('due_date'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -53,7 +73,20 @@ export const caseMessages = pgTable('case_messages', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+export const caseFiles = pgTable('case_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  caseId: uuid('case_id').references(() => cases.id).notNull(),
+  uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
+  fileName: varchar('file_name', { length: 255 }).notNull(),
+  fileUrl: text('file_url').notNull(),
+  fileType: varchar('file_type', { length: 100 }),
+  fileSize: integer('file_size'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 export type Case = typeof cases.$inferSelect
 export type NewCase = typeof cases.$inferInsert
 export type CaseMessage = typeof caseMessages.$inferSelect
 export type NewCaseMessage = typeof caseMessages.$inferInsert
+export type CaseFile = typeof caseFiles.$inferSelect
+export type NewCaseFile = typeof caseFiles.$inferInsert

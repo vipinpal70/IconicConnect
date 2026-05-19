@@ -1,6 +1,8 @@
 "use client"
 
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
+import { createClient } from "@/src/lib/supabase/client";
+import { generateCaseId } from "@/src/lib/case-utils";
 import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
@@ -16,20 +18,129 @@ import { Label } from "@/src/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { Textarea } from "@/src/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
+import { toast } from "sonner";
 
 interface BulkRow {
   fileName: string;
-  caseType: string;
+  file: File;
+  category: string;
+  subTypeData: Record<string, string>;
   modelRequired: "yes" | "no";
   teeth: number[];
   notes: string;
-  extras: number;
+  uploadProgress: number;
+  uploadedUrl: string | null;
+  isUploading: boolean;
+  caseId: string;
+  uploadedFile?: {
+    fileUrl: string;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+  };
 }
+
+const uploadFileWithXHR = async (
+  file: File,
+  labName: string,
+  onProgress: (progress: number) => void,
+  onSuccess: (res: { fileUrl: string; fileName: string; fileSize: number; fileType: string }) => void,
+  onError: (err: string) => void
+) => {
+  try {
+    const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`;
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentage = Math.round((event.loaded / event.total) * 100);
+        onProgress(percentage);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          onSuccess(res);
+        } catch (e) {
+          onError('Failed to parse response');
+        }
+      } else {
+        onError('Upload failed with status ' + xhr.status);
+      }
+    };
+
+    xhr.onerror = () => onError('Upload failed');
+
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.send(file);
+  } catch (err: any) {
+    onError(err.message || 'Initialization failed');
+  }
+};
+
+const validateFile = (file: File): { isValid: boolean; error?: string } => {
+  const maxLimit = 2 * 1024 * 1024 * 1024; // 2GB
+  if (file.size > maxLimit) {
+    return { isValid: false, error: `File size exceeds the 2GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` };
+  }
+
+  const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+  const allowedExtensions = [
+    '.png', '.jpg', '.jpeg',
+    '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.flv', '.3gp', '.mpeg', '.mpg',
+    '.pdf',
+    '.zip',
+    '.doc', '.docx',
+    '.txt'
+  ];
+
+  if (!allowedExtensions.includes(ext)) {
+    return { isValid: false, error: `File type "${ext}" is not supported. Allowed formats: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DOC, DOCX, TXT` };
+  }
+
+  return { isValid: true };
+};
 
 const statusFilters: (CaseStatus | "All")[] = [
   "All", "Submitted", "In Validation", "In Design", "Internal QC",
   "Pending Client Approval", "Feedback", "On Hold", "Completed", "Cancelled",
 ];
+
+const CASE_HIERARCHY = {
+  "Crown & Bridges": {
+    fields: [
+      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] }
+    ]
+  },
+  "Denture": {
+    fields: [
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
+      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Full Arches"] }
+    ]
+  },
+  "Cosmetics": {
+    fields: [
+      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"] }
+    ]
+  },
+  "Appliances": {
+    fields: [
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"] },
+      { name: "occlusion", label: "Occlusion", type: "select", options: ["even occlusion", "custom"] },
+      { name: "arch", label: "Arch", type: "select", options: ["Lower", "Upper"] }
+    ]
+  },
+  "Implant": {
+    fields: [
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
+      { name: "caseType2", label: "Case Type 2", type: "select", options: ["crown", "bridge", "coping", "screw retained", "in-lay", "on-lay"] }
+    ]
+  }
+};
 
 export default function CasesPage() {
   const router = useRouter();
@@ -41,11 +152,70 @@ export default function CasesPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
 
   // Add Case form
-  const [newType, setNewType] = useState<string>("Crown & Bridge");
+  const [category, setCategory] = useState<string>("Crown & Bridges");
+  const [subTypeData, setSubTypeData] = useState<Record<string, string>>({});
   const [modelRequired, setModelRequired] = useState("no");
   const [teeth, setTeeth] = useState<number[]>([]);
-  const [restoration, setRestoration] = useState("");
   const [notes, setNotes] = useState("");
+  const [singleFile, setSingleFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{
+    fileUrl: string;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+  } | null>(null);
+  const [generatedCaseId, setGeneratedCaseId] = useState<string>("");
+  const [labName, setLabName] = useState<string>("Client");
+
+  useEffect(() => {
+    setGeneratedCaseId(generateCaseId(category));
+  }, [category]);
+
+  useEffect(() => {
+    async function fetchProfile() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('labName').eq('id', user.id).single();
+        if (profile?.labName) setLabName(profile.labName);
+      }
+    }
+    fetchProfile();
+  }, []);
+
+  const handleFileSelect = async (file: File) => {
+    const check = validateFile(file);
+    if (!check.isValid) {
+      window.alert(check.error);
+      return;
+    }
+
+    setSingleFile(file);
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    uploadFileWithXHR(
+      file,
+      labName,
+      (progress) => {
+        setUploadProgress(progress);
+      },
+      (res) => {
+        setUploadProgress(100);
+        setUploadedFileUrl(res.fileUrl);
+        setUploadedFile(res);
+        setTimeout(() => setIsUploading(false), 500);
+      },
+      (err) => {
+        console.error('Immediate upload error:', err);
+        setIsUploading(false);
+        setUploadProgress(0);
+      }
+    );
+  };
 
   // Bulk upload
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
@@ -65,28 +235,98 @@ export default function CasesPage() {
     [search, statusFilter, typeFilter, from, to],
   );
 
-  const handleSubmit = () => {
-    if (!restoration.trim()) return;
-    setUploadOpen(false);
-    setRestoration("");
-    setNotes("");
-    setTeeth([]);
-    setModelRequired("no");
-    setNewType("Crown & Bridge");
+  const handleSubmit = async () => {
+    if (!category) return;
+
+    const formData = new FormData();
+    const caseData = {
+      patientName: "Single Patient",
+      category,
+      subTypeData,
+      caseNumber: generatedCaseId,
+      uploadedFile,
+    };
+
+    formData.append('cases', JSON.stringify(caseData));
+
+    try {
+      const res = await fetch('/api/cases', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        toast.success("Case submitted successfully!");
+        setUploadOpen(false);
+        setNotes("");
+        setTeeth([]);
+        setModelRequired("no");
+        setCategory("Crown & Bridges");
+        setSubTypeData({});
+        setSingleFile(null);
+        setUploadedFileUrl(null);
+        setUploadedFile(null);
+        setGeneratedCaseId(generateCaseId("Crown & Bridges"));
+        router.refresh();
+      } else {
+        toast.error("Failed to submit case.");
+        console.error('Failed to submit single case');
+      }
+    } catch (error) {
+      toast.error("An error occurred during submission.");
+      console.error('Single submit error:', error);
+    }
   };
 
   const onBulkFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const picked = Array.from(files).slice(0, 10);
-    const rows: BulkRow[] = picked.map((f) => ({
-      fileName: f.name,
-      caseType: "Crown & Bridge",
-      modelRequired: "no",
-      teeth: [],
-      notes: "",
-      extras: 0,
-    }));
+    const pickedFiles = Array.from(files).slice(0, 10);
+
+    // Validate all picked files first
+    for (const f of pickedFiles) {
+      const check = validateFile(f);
+      if (!check.isValid) {
+        window.alert(`File "${f.name}": ${check.error}`);
+        return;
+      }
+    }
+
+    // First, set the rows with uploading status
+    const rows: BulkRow[] = pickedFiles.map((f) => {
+      const caseId = generateCaseId("Crown & Bridges");
+      return {
+        fileName: f.name,
+        file: f,
+        category: "Crown & Bridges",
+        subTypeData: {},
+        modelRequired: "no",
+        teeth: [],
+        notes: "",
+        uploadProgress: 0,
+        uploadedUrl: null,
+        isUploading: true,
+        caseId,
+      };
+    });
+
     setBulkRows(rows);
+
+    rows.forEach((row) => {
+      uploadFileWithXHR(
+        row.file,
+        labName,
+        (progress) => {
+          setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, uploadProgress: progress } : r));
+        },
+        (res) => {
+          setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, uploadProgress: 100, isUploading: false, uploadedUrl: res.fileUrl, uploadedFile: res } : r));
+        },
+        (err) => {
+          console.error(`Immediate bulk upload error for ${row.fileName}:`, err);
+          setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, isUploading: false, uploadProgress: 0 } : r));
+        }
+      );
+    });
   };
 
   const updateBulkRow = (i: number, patch: Partial<BulkRow>) =>
@@ -95,11 +335,41 @@ export default function CasesPage() {
   const removeBulkRow = (i: number) =>
     setBulkRows((prev) => prev.filter((_, idx) => idx !== i));
 
-  const handleBulkSubmit = () => {
+  const handleBulkSubmit = async () => {
     if (bulkRows.length === 0) return;
-    setBulkRows([]);
-    if (bulkFileRef.current) bulkFileRef.current.value = "";
-    setUploadOpen(false);
+
+    const formData = new FormData();
+
+    const casesData = bulkRows.map(row => ({
+      patientName: `Bulk Patient (${row.fileName})`,
+      category: row.category,
+      subTypeData: row.subTypeData,
+      caseNumber: row.caseId,
+      uploadedFile: row.uploadedFile,
+    }));
+
+    formData.append('cases', JSON.stringify(casesData));
+
+    try {
+      const res = await fetch('/api/cases', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        toast.success("Cases submitted successfully!");
+        setBulkRows([]);
+        if (bulkFileRef.current) bulkFileRef.current.value = "";
+        setUploadOpen(false);
+        router.refresh();
+      } else {
+        toast.error("Failed to submit bulk cases.");
+        console.error('Failed to submit bulk cases');
+      }
+    } catch (error) {
+      toast.error("An error occurred during submission.");
+      console.error('Bulk submit error:', error);
+    }
   };
 
   return (
@@ -129,13 +399,56 @@ export default function CasesPage() {
                   </TabsList>
 
                   <TabsContent value="single" className="space-y-5 mt-4">
+                    {/* Drag and Drop / Fast Upload Area */}
+                    <div className="space-y-2">
+                      <Label>Case File</Label>
+                      <label className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block ${isUploading ? 'border-emerald-500 bg-emerald-50/10' : 'border-border hover:border-emerald-800'}`}>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileSelect(file);
+                          }}
+                        />
+                        {isUploading ? (
+                          <div className="space-y-2">
+                            <Upload className="h-6 w-6 mx-auto text-emerald-600 animate-pulse" />
+                            <p className="text-sm font-medium text-foreground">Uploading... {uploadProgress}%</p>
+                            <div className="w-full bg-muted rounded-full h-1.5 max-width-xs mx-auto">
+                              <div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                            </div>
+                          </div>
+                        ) : uploadedFileUrl ? (
+                          <div className="space-y-1 text-center">
+                            <FileBox className="h-8 w-8 mx-auto text-emerald-600 animate-bounce" />
+                            <p className="text-sm font-semibold text-foreground truncate max-w-md mx-auto">{singleFile?.name}</p>
+                            <p className="text-xs text-muted-foreground">({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)</p>
+                            <p className="text-sm text-emerald-600 flex items-center justify-center gap-1 font-medium mt-1">
+                              <span className="inline-block bg-emerald-600 text-white rounded-full px-1 text-[10px] font-bold">✓</span> File uploaded at light speed!
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+                            <p className="text-sm font-medium text-foreground">Drop file here or click to upload</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)</p>
+                          </div>
+                        )}
+                      </label>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Case Type</Label>
-                        <Select value={newType} onValueChange={(v) => setNewType(v)}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {caseTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        <Label>Category</Label>
+                        <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData({}); }}>
+                          <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
+                          <SelectContent className="bg-emerald-800 text-white">
+                            {Object.keys(CASE_HIERARCHY).map((cat) => (
+                              <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
+                                {cat}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -148,10 +461,25 @@ export default function CasesPage() {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Restoration / Material</Label>
-                      <Input placeholder="e.g. Zirconia Crown, A2 shade" value={restoration} onChange={(e) => setRestoration(e.target.value)} />
-                    </div>
+                    {/* Dynamic Fields */}
+                    {CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
+                      <div className="space-y-2" key={field.name}>
+                        <Label>{field.label}</Label>
+                        <Select
+                          value={subTypeData[field.name] || ""}
+                          onValueChange={(v) => setSubTypeData({ ...subTypeData, [field.name]: v })}
+                        >
+                          <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+                          <SelectContent className="bg-emerald-800 text-white">
+                            {field.options.map((opt) => (
+                              <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                {opt}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
 
                     <div className="space-y-2">
                       <Label>Tooth Selection (USA Universal Numbering)</Label>
@@ -163,7 +491,12 @@ export default function CasesPage() {
                       <Textarea placeholder="Special instructions, shade reference, occlusion notes…" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
 
-                    <Button className="w-full" onClick={handleSubmit}>Submit Case</Button>
+                    {/* <div className="space-y-2">
+                      <Label>Case File</Label>
+                      <Input type="file" onChange={(e) => setSingleFile(e.target.files?.[0] || null)} />
+                    </div> */}
+
+                    <Button className="w-full bg-emerald-800 text-white hover:bg-emerald-900" onClick={handleSubmit}>Submit Case</Button>
                   </TabsContent>
 
                   <TabsContent value="bulk" className="space-y-4 mt-4">
@@ -178,7 +511,7 @@ export default function CasesPage() {
                         />
                         <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                         <p className="text-sm font-medium text-foreground">Select up to 10 case files</p>
-                        <p className="text-xs text-muted-foreground mt-1">STL, PLY, OBJ, ZIP — one row will appear per file</p>
+                        <p className="text-xs text-muted-foreground mt-1">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT — one row per file (Max 2GB)</p>
                       </label>
                     ) : (
                       <>
@@ -195,23 +528,62 @@ export default function CasesPage() {
                               <CardContent className="p-4 space-y-3">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2 min-w-0">
-                                    <FileBox className="h-4 w-4 text-primary shrink-0" />
+                                    <FileBox className="h-4 w-4 text-emerald-600 shrink-0" />
                                     <p className="text-sm font-medium text-foreground truncate">{row.fileName}</p>
+                                    {row.uploadedUrl && <span className="text-emerald-600 text-xs flex items-center font-semibold ml-1">✓ Uploaded</span>}
                                   </div>
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeBulkRow(i)}><X className="h-4 w-4" /></Button>
                                 </div>
+                                {row.isUploading && (
+                                  <div className="space-y-1">
+                                    <div className="w-full bg-muted rounded-full h-1">
+                                      <div className="bg-emerald-600 h-1 rounded-full transition-all duration-300" style={{ width: `${row.uploadProgress}%` }}></div>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground text-right">Uploading... {row.uploadProgress}%</p>
+                                  </div>
+                                )}
                                 <div className="grid grid-cols-2 gap-3">
-                                  <Select value={row.caseType} onValueChange={(v) => updateBulkRow(i, { caseType: v })}>
-                                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      {caseTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                                    </SelectContent>
-                                  </Select>
-                                  <RadioGroup value={row.modelRequired} onValueChange={(v) => updateBulkRow(i, { modelRequired: v as "yes" | "no" })} className="flex gap-4 items-center">
-                                    <div className="flex items-center gap-1.5"><RadioGroupItem value="yes" id={`bm-yes-${i}`} /><Label htmlFor={`bm-yes-${i}`} className="text-xs">Yes</Label></div>
-                                    <div className="flex items-center gap-1.5"><RadioGroupItem value="no" id={`bm-no-${i}`} /><Label htmlFor={`bm-no-${i}`} className="text-xs">No</Label></div>
-                                  </RadioGroup>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Category</Label>
+                                    <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: {} })}>
+                                      <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
+                                      <SelectContent className="bg-emerald-800 text-white">
+                                        {Object.keys(CASE_HIERARCHY).map((cat) => (
+                                          <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
+                                            {cat}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Model Required?</Label>
+                                    <RadioGroup value={row.modelRequired} onValueChange={(v) => updateBulkRow(i, { modelRequired: v as "yes" | "no" })} className="flex gap-4 items-center pt-1">
+                                      <div className="flex items-center gap-1.5"><RadioGroupItem value="yes" id={`bm-yes-${i}`} /><Label htmlFor={`bm-yes-${i}`} className="text-xs">Yes</Label></div>
+                                      <div className="flex items-center gap-1.5"><RadioGroupItem value="no" id={`bm-no-${i}`} /><Label htmlFor={`bm-no-${i}`} className="text-xs">No</Label></div>
+                                    </RadioGroup>
+                                  </div>
                                 </div>
+
+                                {/* Dynamic Fields */}
+                                {CASE_HIERARCHY[row.category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
+                                  <div className="space-y-1" key={field.name}>
+                                    <Label className="text-xs">{field.label}</Label>
+                                    <Select
+                                      value={row.subTypeData[field.name] || ""}
+                                      onValueChange={(v) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, [field.name]: v } })}
+                                    >
+                                      <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+                                      <SelectContent className="bg-emerald-800 text-white">
+                                        {field.options.map((opt) => (
+                                          <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                            {opt}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                ))}
                                 <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} />
                                 <Textarea
                                   value={row.notes}

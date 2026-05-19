@@ -44,3 +44,6 @@ next-env.d.ts
 # referencecode
 referanceCode/
 referencecode/
+
+# local uploaded cases data
+/case_data/

@@ -25,3 +25,97 @@ when admin approve then show him to generate login credentials and send an email
 
 sign-in:
 only for client and admin side members
+
+
+
+Case Creation
+- clinet, subuser of a client,admin as behalf of client , these only can a case report 
+- if subuser create a case :
+    - get the client id from the subuser
+    - get the client name from the subuser
+  if admin create a case:
+    then admin have to select client name form dropdown 
+    then we can create a case
+
+First design a database structure for case management:
+then create a api for storing files
+then create a api for creating cases 
+then create a api for updating cases 
+then create a api for deleting cases 
+    
+and maintaing all the case files for each access level like admin,client,subuser
+
+like admin can do anything
+client can see his own cases and subuser cases - they can anything on their cases created by them or subusers
+only if their ceated case status if not in progress or completed or qc review etc
+
+subuser can see only his own cases - but he can only upload the files and nothing else
+
+for more information you can refer the frontend code in respect to each roles like admin,client,subuser and qc
+
+
+
+
+case:
+  Crown & Bridges
+    case-subtypes:
+      Case Type:
+        Crown
+        Bridge
+        Cutback
+        Coping
+        Screw Retained
+        In-Lay
+        On-Lay
+
+  Denture:
+  case-subtypes:
+    Case Type 1:
+      Reference Denture
+      Copy Denture
+      Immediate Denture
+      Full Denture
+      Partial Denture
+    case Type 2:
+      Lower
+      Upper 
+      Full Arches
+
+  Cosmetics:
+    case-subtypes:
+      Case Type:
+        Digital Wax Up
+        Vineers
+        Snap on Smile
+
+
+  Appliances:
+    case-subtypes:
+      Case Type 1:
+        Night Guards
+        Sports Guard
+        Mouth Guard
+        NTI
+      Oclussion:
+        even oclussion
+        custom
+      
+      Arch:
+        Lower
+        Upper 
+
+Implant:
+  case-subtypes:
+    Case Type 1:
+      Robotic
+      Custom
+      Ti-Base
+      
+    Case Type 2:
+      crown
+      bridge
+      coping
+      screw reatined
+      in-lay
+      on-lay
+

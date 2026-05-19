@@ -133,7 +133,8 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     pathname.startsWith('/profile') ||
     pathname.startsWith('/api/profile') ||
     pathname.startsWith('/api/user') ||
-    pathname.startsWith('/admin/sign-up')
+    pathname.startsWith('/admin/sign-up') ||
+    pathname.startsWith('/api/cases')
   )
     return true
 

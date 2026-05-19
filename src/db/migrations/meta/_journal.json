@@ -8,6 +8,27 @@
       "when": 1778744879177,
       "tag": "0000_productive_captain_britain",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779097483949,
+      "tag": "0001_daily_lester",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779101332201,
+      "tag": "0002_marvelous_steel_serpent",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779106001093,
+      "tag": "0003_chief_robbie_robertson",
+      "breakpoints": true
     }
   ]
 }

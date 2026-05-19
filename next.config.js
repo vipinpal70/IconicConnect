@@ -9,7 +9,10 @@ const nextConfig = {
     }
     return config;
   },
-  turbopack: {}
+  turbopack: {},
+  experimental: {
+    proxyClientMaxBodySize: '2gb',
+  }
 };
 
 module.exports = nextConfig;
