@@ -30,9 +30,9 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    
-    const origin = req.nextUrl.origin;
-    
+
+    const origin = process.env.NEXT_PUBLIC_APP_URL!;
+
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: email,
