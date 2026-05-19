@@ -13,7 +13,18 @@ type CaseUpdateData = {
   dueDate?: Date
   category?: string
   subTypeData?: unknown
-  status?: string
+  status?:
+    | 'scan_received'
+    | 'allocated_to_designer'
+    | 'scan_verified'
+    | 'scan_not_verified'
+    | 'in_progress'
+    | 'internal_qc'
+    | 'submitted_to_client'
+    | 'on_hold'
+    | 'client_feedback'
+    | 'approved'
+    | 'delivered'
   designerId?: string | null
   qcId?: string | null
   accountManagerId?: string | null
