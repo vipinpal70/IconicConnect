@@ -44,6 +44,16 @@ jobs:
             fi
             
             cd "$TARGET_DIR"
+
+            # Load application environment for migrations/build/runtime commands
+            if [ -f "$TARGET_DIR/.env" ]; then
+              echo "Loading environment from .env..."
+              set -a
+              . "$TARGET_DIR/.env"
+              set +a
+            else
+              echo "Warning: $TARGET_DIR/.env not found"
+            fi
             
             # Check if directory is a git repository
             if [ ! -d ".git" ]; then
