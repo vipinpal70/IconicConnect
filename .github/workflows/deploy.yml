@@ -55,6 +55,11 @@ jobs:
               git reset --hard origin/$GITHUB_REF_NAME
             fi
 
+            # Ensure case_data directory exists and has correct permissions for local uploads
+            echo "Setting up case_data directory and permissions..."
+            mkdir -p "$TARGET_DIR/case_data"
+            chmod -R 777 "$TARGET_DIR/case_data"
+
             # Remove existing build and modules
             echo "Cleaning old build and modules..."
             rm -rf node_modules .next
