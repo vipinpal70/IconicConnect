@@ -135,3 +135,13 @@ check the proxy.ts file and allow user to reset or forget password even they are
 allow /auth/verify route to access
 and allow reset-password and forgot-password routes to access 
 i am using the supabase for authentication
+
+
+
+https://connect.fynback.com/auth/verify?token_hash=7472d8a72342422698a5aee975a58390e4accaebb4f2e4ffa87d7fbb&type=recovery&next=/auth/reset-password
+
+now i am gettting production correctly but when i click on it 
+it redirect to the localhost:4000
+
+check for the codebase 
+and correct it
