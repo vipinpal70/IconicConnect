@@ -1,6 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { connection } from './client';
 import { resend } from '../resend';
+import { runCleanup } from './cleanup-task';
 
 export interface EmailJobData {
   to: string;
@@ -13,12 +14,34 @@ let worker: Worker | null = null;
 
 if (process.env.NODE_ENV === 'production') {
   worker = createWorker();
+  
+  // Start the background cleanup task every 1 hour (3600000 ms) in production
+  setInterval(() => {
+    runCleanup().catch(console.error);
+  }, 60 * 60 * 1000);
+  
+  // Also run once on start after a short safety delay
+  setTimeout(() => {
+    runCleanup().catch(console.error);
+  }, 10000);
 } else {
   // In development, prevent multiple instances from starting due to HMR
   if (!(global as any).emailWorker) {
     (global as any).emailWorker = createWorker();
   }
   worker = (global as any).emailWorker;
+
+  if (!(global as any).cleanupInterval) {
+    // Run cleanup once in development on server startup
+    setTimeout(() => {
+      runCleanup().catch(console.error);
+    }, 5000);
+
+    // Schedule cleanup to run every 1 hour in development
+    (global as any).cleanupInterval = setInterval(() => {
+      runCleanup().catch(console.error);
+    }, 60 * 60 * 1000);
+  }
 }
 
 function createWorker() {

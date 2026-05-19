@@ -63,6 +63,10 @@ export default async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
   const isAuthPage = pathname.startsWith('/auth')
+  const isRecoveryAuthPage =
+    pathname === '/auth/verify' ||
+    pathname === '/auth/reset-password' ||
+    pathname === '/auth/forgot-password'
   const isSignUpPage = pathname.startsWith('/admin/sign-up')
   const isPublicApi =
     pathname.startsWith('/api/auth') ||
@@ -89,8 +93,14 @@ export default async function proxy(request: NextRequest) {
     const role = profile?.user_role
     const createdBy = profile?.created_by
 
-    // 2. Redirect to dashboard if logged in and trying to access auth pages, root, or base role paths
-    if (isAuthPage || pathname === '/' || pathname === '/admin' || pathname === '/client') {
+    // Allow password recovery routes even when a session already exists.
+    // Other auth pages should still redirect authenticated users away.
+    if (
+      (isAuthPage && !isRecoveryAuthPage) ||
+      pathname === '/' ||
+      pathname === '/admin' ||
+      pathname === '/client'
+    ) {
       return NextResponse.redirect(new URL(getHomeRoute(role, createdBy), request.url))
     }
 
@@ -130,6 +140,9 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
 
   // Publicly accessible paths for logged in users
   if (
+    pathname === '/auth/verify' ||
+    pathname === '/auth/reset-password' ||
+    pathname === '/auth/forgot-password' ||
     pathname.startsWith('/profile') ||
     pathname.startsWith('/api/profile') ||
     pathname.startsWith('/api/user') ||

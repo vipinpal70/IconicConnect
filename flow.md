@@ -119,3 +119,19 @@ Implant:
       in-lay
       on-lay
 
+
+
+i want to write a background script that will cleanup the case_data folder in each 1H 
+it will check if a files is stored in the case_data/client folder
+but file is not linked with any case created with client
+then delete that files
+
+
+http://localhost:4000/auth/verify?token_hash=d609076ce81bf1e2744ecbb1ec06b66400e3b4a6ab193e64cbfa236e&type=recovery&next=/auth/reset-password
+
+This is the url i am getting on my mail to forgot password but when I click on this url i got redirect to dashboard.
+The reset-password page is not opening. Please check why this is happening.
+check the proxy.ts file and allow user to reset or forget password even they are logged in or their session is active.
+allow /auth/verify route to access
+and allow reset-password and forgot-password routes to access 
+i am using the supabase for authentication

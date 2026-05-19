@@ -83,30 +83,30 @@ jobs:
             echo "Setting up Firewall, Nginx and SSL..."
             
             # Configure Firewall
-            sudo ufw allow 'Nginx Full' || (sudo ufw allow 80/tcp && sudo ufw allow 443/tcp)
-            sudo ufw allow 4000/tcp
+            # sudo ufw allow 'Nginx Full' || (sudo ufw allow 80/tcp && sudo ufw allow 443/tcp)
+            # sudo ufw allow 4000/tcp
             
 
             # Install Nginx and Certbot if they don't exist
-            sudo apt-get update -y || true
-            sudo apt-get install -y nginx certbot python3-certbot-nginx
+            # sudo apt-get update -y || true
+            # sudo apt-get install -y nginx certbot python3-certbot-nginx
             
             # Copy Nginx config from repo
-            sudo cp "$TARGET_DIR/nginx/connect.fynback.com" /etc/nginx/sites-available/connect.fynback.com
+            # sudo cp "$TARGET_DIR/nginx/connect.fynback.com" /etc/nginx/sites-available/connect.fynback.com
             
             # Enable the site
-            sudo ln -sf /etc/nginx/sites-available/connect.fynback.com /etc/nginx/sites-enabled/
+            # sudo ln -sf /etc/nginx/sites-available/connect.fynback.com /etc/nginx/sites-enabled/
             
             # Remove default site if it exists to prevent conflicts
-            sudo rm -f /etc/nginx/sites-enabled/default
+            # sudo rm -f /etc/nginx/sites-enabled/default
             
             # Test Nginx config and reload
-            sudo nginx -t
+            # sudo nginx -t
             sudo systemctl reload nginx
             
             # Issue SSL Certificate (non-interactive)
             # This will automatically modify the Nginx config to add HTTPS
-            sudo certbot --nginx -d connect.fynback.com --non-interactive --agree-tos -m admin@fynback.com --redirect || echo "Certbot already configured or failed."
+            # sudo certbot --nginx -d connect.fynback.com --non-interactive --agree-tos -m admin@fynback.com --redirect || echo "Certbot already configured or failed."
 
             # Start or restart services using PM2 ecosystem config
             echo "Starting/Restarting PM2 processes..."
