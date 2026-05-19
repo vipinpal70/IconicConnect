@@ -7,6 +7,7 @@ import { Button } from "@/src/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { StatusBadge } from "@/src/components/StatusBadge"
 import { CaseChat } from "@/src/components/CaseChat"
+import { CASE_LIFECYCLE_STEPS, CASE_STATUS_TO_LIFECYCLE_STEP } from "@/src/db/schema/case"
 
 type CaseRecord = {
   id: string
@@ -18,6 +19,7 @@ type CaseRecord = {
   qcId: string | null
   accountManagerId: string | null
   dueDate: string | null
+  timeline: CaseActivity[]
   createdAt: string
 }
 
@@ -28,6 +30,14 @@ type CaseFile = {
   fileType: string | null
   fileSize: number | null
   createdAt: string
+}
+
+type CaseActivity = {
+  id: string
+  action: string
+  label: string
+  actor: string
+  actionAt: string
 }
 
 function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
@@ -53,6 +63,58 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="text-sm font-medium text-foreground text-right">{value}</span>
     </div>
+  )
+}
+
+function LifecycleStrip({ status }: { status: string }) {
+  const currentStep = CASE_STATUS_TO_LIFECYCLE_STEP[status as keyof typeof CASE_STATUS_TO_LIFECYCLE_STEP]
+  const currentIndex = Math.max(CASE_LIFECYCLE_STEPS.indexOf(currentStep ?? "Submitted"), 0)
+
+  return (
+    <Card className="shadow-card border-emerald-100 bg-[linear-gradient(180deg,rgba(236,253,245,0.9),rgba(240,253,250,0.7))]">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-medium text-emerald-900">Case Lifecycle</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto pb-2">
+          <div className="flex items-center min-w-max">
+            {CASE_LIFECYCLE_STEPS.map((step, index) => {
+              const done = index < currentIndex || step === currentStep || currentStep === "Completed"
+              const current = step === currentStep
+
+              return (
+                <div key={step} className="flex items-center">
+                  <div className="flex flex-col items-center min-w-[136px]">
+                    <div
+                      className={[
+                        "flex h-10 w-10 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors",
+                        done
+                          ? "border-emerald-600 bg-emerald-600 text-white"
+                          : "border-emerald-200 bg-white text-emerald-500",
+                        current ? "shadow-[0_0_0_5px_rgba(16,185,129,0.14)]" : "",
+                      ].join(" ")}
+                    >
+                      {done ? "✓" : index + 1}
+                    </div>
+                    <span
+                      className={[
+                        "mt-2 px-2 text-center text-[11px] font-medium",
+                        done ? "text-emerald-800" : "text-emerald-500",
+                      ].join(" ")}
+                    >
+                      {step}
+                    </span>
+                  </div>
+                  {index < CASE_LIFECYCLE_STEPS.length - 1 && (
+                    <div className={`h-1 w-14 rounded-full ${done ? "bg-emerald-500" : "bg-emerald-100"}`} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -96,6 +158,7 @@ export function CaseDetailView({
 
   const caseRecord = caseResponse?.data
   const files = filesResponse?.data || []
+  const activities = caseRecord?.timeline || []
 
   if (isLoading) {
     return shell(<div className="p-10 text-center text-muted-foreground">Loading case details...</div>)
@@ -133,6 +196,8 @@ export function CaseDetailView({
         </div>
       </div>
 
+      <LifecycleStrip status={caseRecord.status} />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="shadow-card lg:col-span-1">
           <CardHeader className="pb-4 border-b border-border/50">
@@ -163,6 +228,34 @@ export function CaseDetailView({
         </Card>
 
         <div className="lg:col-span-2 space-y-6">
+          <Card className="shadow-card">
+            <CardHeader className="pb-4 border-b border-border/50">
+              <CardTitle className="text-base font-medium">Activity Timeline</CardTitle>
+            </CardHeader>
+            <CardContent className="mt-4">
+              {activities.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No activity recorded for this case yet.</p>
+              ) : (
+                <div className="space-y-6">
+                  {activities.map((activity, index) => (
+                    <div key={activity.id} className="flex gap-4">
+                      <div className="flex flex-col items-center">
+                        <div className="mt-1.5 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
+                        {index < activities.length - 1 && <div className="mt-2 w-0.5 flex-1 bg-emerald-100" />}
+                      </div>
+                      <div className="pb-2">
+                        <p className="text-sm font-medium text-foreground">{activity.label}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {new Date(activity.actionAt).toLocaleDateString('en-CA')} · {activity.actor}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="shadow-card">
             <CardHeader className="pb-4 border-b border-border/50">
               <CardTitle className="text-base font-medium flex items-center gap-2">

@@ -43,6 +43,13 @@
       "when": 1779181000000,
       "tag": "0005_remove_patient_name_from_cases",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779192803885,
+      "tag": "0006_curved_zeigeist",
+      "breakpoints": true
     }
   ]
 }

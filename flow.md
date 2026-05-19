@@ -162,3 +162,49 @@ Referrer Policy
 strict-origin-when-cross-origin
 
 {"category":"Crown & Bridges","subTypeData":{"caseType":"Bridge","modelRequired":"yes","teeth":[1,16],"notes":"special instructions"},"caseNumber":"CAB-6187914911","uploadedFile":{"success":true,"fileUrl":"/api/cases/files?labName=Dandy%20Dental&fileName=notification_triggers_sys3537c7188d0880d1a%20(1).pdf","fileName":"notification_triggers_sys3537c7188d0880d1a (1).pdf","fileSize":104711,"fileType":"application/pdf","storagePath":"Dandy Dental/notification_triggers_sys3537c7188d0880d1a (1).pdf"}}
+
+
+- Prevent admins from deleting their own account.
+  inside the admin/team
+  - disable the delete button for self
+  - if login user is admin 
+  - hide the 
+
+- Add phone number validation.
+  - inside the sign-up page
+  - inside the admin/team/[id].tsx page
+  - job title is set properly, make it work properly
+
+  - only numbers and select country code as +91 
+  - i want all countries code and national format number should be like 10 digits in india
+
+
+- without teeth selection case submit (all field mandatory)
+- clear button on filters case page 
+  - when user click on clear button
+  - it should clear all the filters like status, case type, dates, search text, case number
+
+
+great, now let work on the case details page 
+when user click on the case it should open the case details page 
+and show the case details
+when user click on the table data, and use click on the row then we will open the case detail page
+add this into admin and client both urls 
+
+also i want to show the case files in the case details page 
+if there are multiple files then show them in a carousel 
+if there is single file then show it in a image viewer 
+if there is pdf file then show it in a pdf viewer
+
+
+
+inside case details page 
+Case Lifecycle ✓ Submitted ✓ In Validation ✓ In Design ✓ Internal QC ✓ Pending Client Approval ✓ Completed
+case lifecycle show at the top of case details page , and it should be in green color in horizontal 
+so add these case lifecycle states inside the case details page and even in the db as well as 
+
+for ui/ux you can explore the IconicConnect/referanceCode/pages/CaseDetail.tsx
+
+case detail pages fetch timeline events from activity_logs
+i want to store these timelines events in the case data db itself
+so that each case have its own timeline events

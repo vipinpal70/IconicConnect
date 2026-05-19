@@ -1,6 +1,6 @@
 {
-  "id": "51c27cac-8e2d-4083-b9a6-1e6945fa728f",
-  "prevId": "ede879d6-b96b-4a7a-9435-4600fb5aca27",
+  "id": "e8c8a30d-4914-4e69-a91c-6d78ccafd39c",
+  "prevId": "51c27cac-8e2d-4083-b9a6-1e6945fa728f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -478,6 +478,13 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
+        },
+        "timeline": {
+          "name": "timeline",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "created_at": {
           "name": "created_at",

@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { profiles } from './profile'
 
 export const caseStatusEnum = pgEnum('case_status', [
@@ -24,6 +25,32 @@ export const caseStatusEnum = pgEnum('case_status', [
   'delivered',               // 11. Delivered
 ])
 
+export const CASE_LIFECYCLE_STEPS = [
+  'Submitted',
+  'In Validation',
+  'In Design',
+  'Internal QC',
+  'Pending Client Approval',
+  'Completed',
+] as const
+
+export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
+  typeof caseStatusEnum.enumValues[number],
+  (typeof CASE_LIFECYCLE_STEPS)[number]
+> = {
+  scan_received: 'Submitted',
+  allocated_to_designer: 'In Design',
+  scan_verified: 'In Validation',
+  scan_not_verified: 'In Validation',
+  in_progress: 'In Design',
+  internal_qc: 'Internal QC',
+  submitted_to_client: 'Pending Client Approval',
+  on_hold: 'Pending Client Approval',
+  client_feedback: 'Pending Client Approval',
+  approved: 'Completed',
+  delivered: 'Completed',
+}
+
 /**
  * Cases are editable (by client/subuser) only BEFORE work starts.
  * Once a case reaches 'in_progress' or beyond, only admins can modify it.
@@ -35,6 +62,13 @@ export const EDITABLE_STATUSES: Array<typeof caseStatusEnum.enumValues[number]> 
   'scan_not_verified',
 ]
 
+export type CaseTimelineEvent = {
+  id: string
+  action: string
+  label: string
+  actor: string
+  actionAt: string
+}
 
 export const cases = pgTable('cases', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -59,6 +93,7 @@ export const cases = pgTable('cases', {
 
   // Dates
   dueDate: timestamp('due_date'),
+  timeline: jsonb('timeline').$type<CaseTimelineEvent[]>().default(sql`'[]'::jsonb`).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

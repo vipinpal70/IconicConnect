@@ -8,6 +8,22 @@ import { isValidRoleForType } from '@/src/lib/auth/role';
 import { generateCaseId } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
 
+const caseListSelection = {
+  id: cases.id,
+  clientId: cases.clientId,
+  subuserId: cases.subuserId,
+  caseNumber: cases.caseNumber,
+  category: cases.category,
+  subTypeData: cases.subTypeData,
+  status: cases.status,
+  designerId: cases.designerId,
+  qcId: cases.qcId,
+  accountManagerId: cases.accountManagerId,
+  dueDate: cases.dueDate,
+  createdAt: cases.createdAt,
+  updatedAt: cases.updatedAt,
+};
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error';
 }
@@ -173,13 +189,13 @@ export async function GET() {
 
     if (isValidRoleForType('admin_portal', profile.role)) {
       // Admin sees all cases
-      results = await db.select().from(cases);
+      results = await db.select(caseListSelection).from(cases);
     } else if (profile.role === 'client') {
       // Client sees their own cases and cases created by their subusers (which also have clientId = client's id)
-      results = await db.select().from(cases).where(eq(cases.clientId, profile.id));
+      results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, profile.id));
     } else if (profile.role === 'subuser') {
       // Subuser sees only cases they created
-      results = await db.select().from(cases).where(eq(cases.subuserId, profile.id));
+      results = await db.select(caseListSelection).from(cases).where(eq(cases.subuserId, profile.id));
     } else {
       return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
     }
