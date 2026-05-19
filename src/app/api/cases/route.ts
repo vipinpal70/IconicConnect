@@ -6,6 +6,11 @@ import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { generateCaseId } from '@/src/lib/case-utils';
+import { logActivity } from '@/src/lib/activity-log';
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Internal Server Error';
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -101,7 +106,7 @@ export async function POST(req: NextRequest) {
         // Legacy/Direct fallback upload
         const storagePath = `case_data/${labName}/${caseNumber}/${file.name}`;
         
-        const { data: uploadData, error: uploadError } = await supabase
+        const { error: uploadError } = await supabase
           .storage
           .from('case-files')
           .upload(storagePath, file, { upsert: true });
@@ -125,17 +130,32 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      await logActivity({
+        actor: profile,
+        action: 'case.created',
+        caseId: insertedCase.id,
+        details: {
+          caseNumber: insertedCase.caseNumber,
+          patientName: insertedCase.patientName,
+          category: insertedCase.category,
+          clientId: insertedCase.clientId,
+          subuserId: insertedCase.subuserId,
+          status: insertedCase.status,
+          hasUploadedFile: Boolean(caseData.uploadedFile || file),
+        },
+      });
+
       results.push(insertedCase);
     }
 
     return NextResponse.json({ data: isArray ? results : results[0] }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Create case error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -167,8 +187,8 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({ data: results });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Get cases error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

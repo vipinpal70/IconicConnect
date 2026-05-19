@@ -3,8 +3,25 @@ import { db } from '@/src/db';
 import { cases, EDITABLE_STATUSES } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
+import { logActivity } from '@/src/lib/activity-log';
+
+type CaseUpdateData = {
+  patientName?: string
+  caseNumber?: string
+  dueDate?: Date
+  category?: string
+  subTypeData?: unknown
+  status?: string
+  designerId?: string | null
+  qcId?: string | null
+  accountManagerId?: string | null
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Internal Server Error';
+}
 
 export async function GET(
   req: NextRequest,
@@ -40,9 +57,9 @@ export async function GET(
     }
 
     return NextResponse.json({ data: caseRecord });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Get case error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -88,7 +105,7 @@ export async function PUT(
 
     const body = await req.json();
     
-    const updateData: any = {};
+    const updateData: CaseUpdateData = {};
     if (body.patientName) updateData.patientName = body.patientName;
     if (body.caseNumber) updateData.caseNumber = body.caseNumber;
     if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
@@ -105,10 +122,41 @@ export async function PUT(
 
     const updatedCase = await db.update(cases).set(updateData).where(eq(cases.id, id)).returning();
 
+    await logActivity({
+      actor: profile,
+      action: 'case.updated',
+      caseId: id,
+      details: {
+        caseNumber: caseRecord.caseNumber,
+        before: {
+          patientName: caseRecord.patientName,
+          caseNumber: caseRecord.caseNumber,
+          dueDate: caseRecord.dueDate?.toISOString() ?? null,
+          category: caseRecord.category,
+          subTypeData: caseRecord.subTypeData,
+          status: caseRecord.status,
+          designerId: caseRecord.designerId,
+          qcId: caseRecord.qcId,
+          accountManagerId: caseRecord.accountManagerId,
+        },
+        changes: {
+          patientName: updateData.patientName,
+          caseNumber: updateData.caseNumber,
+          dueDate: updateData.dueDate?.toISOString?.() ?? null,
+          category: updateData.category,
+          subTypeData: updateData.subTypeData,
+          status: updateData.status,
+          designerId: updateData.designerId,
+          qcId: updateData.qcId,
+          accountManagerId: updateData.accountManagerId,
+        },
+      },
+    });
+
     return NextResponse.json({ data: updatedCase[0] });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Update case error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -152,11 +200,25 @@ export async function DELETE(
       }
     }
 
+    await logActivity({
+      actor: profile,
+      action: 'case.deleted',
+      caseId: id,
+      details: {
+        caseNumber: caseRecord.caseNumber,
+        patientName: caseRecord.patientName,
+        category: caseRecord.category,
+        clientId: caseRecord.clientId,
+        subuserId: caseRecord.subuserId,
+        status: caseRecord.status,
+      },
+    });
+
     await db.delete(cases).where(eq(cases.id, id));
 
     return NextResponse.json({ message: 'Case deleted successfully' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Delete case error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

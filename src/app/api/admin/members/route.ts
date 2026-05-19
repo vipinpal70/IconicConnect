@@ -3,8 +3,8 @@ import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
 import { supabaseAdmin } from '@/src/lib/supabase/admin';
 import { createClient } from '@/src/lib/supabase/server';
-import { sendCredentialsEmail } from '@/src/lib/mailer';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
+import { logActivity } from '@/src/lib/activity-log';
 
 // Helper to check if current user is admin
 async function isAdmin() {
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get('status');
 
   try {
-    let query = db.select().from(profiles).orderBy(desc(profiles.createdAt));
+    const query = db.select().from(profiles).orderBy(desc(profiles.createdAt));
     
     // Exclude client and subuser roles from the team list
     const members = (await query).filter(m => !['client', 'subuser'].includes(m.role));
@@ -44,7 +44,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await isAdmin())) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
+  const [actorProfile] = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
+
+  if (!actorProfile) {
+    return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+  }
+
+  if (actorProfile?.role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -94,6 +107,19 @@ export async function POST(req: NextRequest) {
         <p><strong>Password:</strong> ${password}</p>
         <p>Please change your password after your first login.</p>
       `
+    });
+
+    await logActivity({
+      actor: actorProfile,
+      action: 'member.created',
+      details: {
+        memberId: authData.user.id,
+        email,
+        fullName,
+        role,
+        userType,
+        phone,
+      },
     });
 
     return NextResponse.json({ success: true, user: authData.user });

@@ -4,7 +4,11 @@ import { cases, caseFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
-import { isValidRoleForType } from '@/src/lib/auth/role';
+import { logActivity } from '@/src/lib/activity-log';
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Internal Server Error';
+}
 
 export async function POST(
   req: NextRequest,
@@ -49,7 +53,7 @@ export async function POST(
     const fileExt = file.name.split('.').pop();
     const fileName = `${id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
-    const { data: uploadData, error: uploadError } = await supabase
+    const { error: uploadError } = await supabase
       .storage
       .from('case-files')
       .upload(fileName, file);
@@ -73,10 +77,22 @@ export async function POST(
       fileSize: file.size,
     }).returning();
 
+    await logActivity({
+      actor: profile,
+      action: 'case.file_uploaded',
+      caseId: id,
+      details: {
+        caseNumber: caseRecord.caseNumber,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+      },
+    });
+
     return NextResponse.json({ data: insertedFile[0] }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Upload file error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -116,8 +132,8 @@ export async function GET(
     const files = await db.select().from(caseFiles).where(eq(caseFiles.caseId, id));
 
     return NextResponse.json({ data: files });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Get case files error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

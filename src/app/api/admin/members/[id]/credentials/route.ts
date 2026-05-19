@@ -3,30 +3,30 @@ import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
 import { supabaseAdmin } from '@/src/lib/supabase/admin';
 import { createClient } from '@/src/lib/supabase/server';
-import { sendCredentialsEmail } from '@/src/lib/mailer';
 import { eq } from 'drizzle-orm';
-
-// Helper to check if current user is admin
-async function isAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const results = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
-  const profile = results[0];
-
-  return profile?.role === 'admin';
-}
+import { logActivity } from '@/src/lib/activity-log';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!(await isAdmin())) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
-  const { id } = await params;
+  const [actorProfile] = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
+
+  if (!actorProfile) {
+    return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+  }
+
+  if (actorProfile?.role !== 'admin') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
 
   try {
     const body = await req.json();
@@ -68,6 +68,16 @@ export async function POST(
         <p><strong>New Password:</strong> ${password}</p>
         <p>Please change your password after logging in.</p>
       `
+    });
+
+    await logActivity({
+      actor: actorProfile,
+      action: 'member.password_reset',
+      details: {
+        memberId: id,
+        email: profile.email,
+        role: profile.role,
+      },
     });
 
     return NextResponse.json({ success: true });
