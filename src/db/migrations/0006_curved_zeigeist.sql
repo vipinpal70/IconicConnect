@@ -28,7 +28,7 @@ WITH timeline_rows AS (
             ELSE replace(log.action, '.', ' ')
           END,
         'actor',
-          CASE actor.role
+          CASE actor.user_role
             WHEN 'client' THEN coalesce(actor.lab_name, actor.full_name, 'Client')
             WHEN 'subuser' THEN coalesce(actor.full_name, 'Subuser')
             WHEN 'admin' THEN coalesce(actor.full_name, 'Super Admin')
