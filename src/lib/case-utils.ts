@@ -8,17 +8,18 @@ const CATEGORY_PREFIXES: Record<string, string> = {
 
 export function generateCaseId(category: string): string {
   const prefix = CATEGORY_PREFIXES[category] || getFallbackPrefix(category);
-  
+
   let suffix = '';
   if (typeof process !== 'undefined' && process.hrtime && process.hrtime.bigint) {
     const nsStr = process.hrtime.bigint().toString();
     suffix = nsStr.slice(-10).padStart(10, '0');
   } else {
-    // Browser fallback: Use Date.now() and take last 10 digits
+    // Browser fallback: Use Date.now() and append random digits to ensure absolute uniqueness
     const msStr = Date.now().toString();
-    suffix = msStr.slice(-10).padStart(10, '0');
+    const rand = Math.floor(100000 + Math.random() * 900000).toString(); // 6 random digits
+    suffix = (msStr.slice(-4) + rand).padStart(10, '0');
   }
-  
+
   return `${prefix}-${suffix}`;
 }
 

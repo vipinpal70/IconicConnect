@@ -9,7 +9,7 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
-import { cases as allCases, caseTypes, type CaseStatus } from "@/src/data/demoData";
+import { type CaseStatus } from "@/src/data/demoData";
 import { Plus, Search, Download, Upload, X, FileBox } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
@@ -151,6 +151,31 @@ export default function CasesPage() {
   const [to, setTo] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  const [cases, setCases] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchCases = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/cases");
+      if (res.ok) {
+        const json = await res.json();
+        setCases(json.data || []);
+      } else {
+        toast.error("Failed to load cases");
+      }
+    } catch (err) {
+      console.error("Error fetching cases:", err);
+      toast.error("Failed to fetch cases");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCases();
+  }, []);
+
   const [category, setCategory] = useState<string>("Crown & Bridges");
   const [subTypeData, setSubTypeData] = useState<Record<string, string>>({});
   const [modelRequired, setModelRequired] = useState("no");
@@ -220,19 +245,52 @@ export default function CasesPage() {
     );
   };
 
-  const filtered = useMemo(
-    () =>
-      allCases.filter((c) => {
-        const s = search.toLowerCase();
-        const matchesSearch = !s || c.id.toLowerCase().includes(s) || c.patientRef.toLowerCase().includes(s) || c.restoration.toLowerCase().includes(s);
-        const matchesStatus = statusFilter === "All" || c.status === statusFilter;
-        const matchesType = typeFilter === "All" || c.caseType === typeFilter;
-        const matchesFrom = !from || c.createdAt >= from;
-        const matchesTo = !to || c.createdAt <= to;
-        return matchesSearch && matchesStatus && matchesType && matchesFrom && matchesTo;
-      }),
-    [search, statusFilter, typeFilter, from, to],
-  );
+  const filtered = useMemo(() => {
+    return cases.filter((c) => {
+      const s = search.toLowerCase();
+      const friendlyId = (c.caseNumber || c.id || "").toLowerCase();
+      const friendlyPatient = (c.patientName || "").toLowerCase();
+      const friendlyRestoration = (
+        c.subTypeData
+          ? Object.entries(c.subTypeData)
+              .filter(([k, v]) => k !== 'teeth' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
+              .map(([_, v]) => v)
+              .join(" - ")
+          : c.category || ""
+      ).toLowerCase();
+
+      const matchesSearch =
+        !s ||
+        friendlyId.includes(s) ||
+        friendlyPatient.includes(s) ||
+        friendlyRestoration.includes(s);
+
+      // Map UI filters to database enums
+      const statusFilterMap: Record<string, string[]> = {
+        "Submitted": ["scan_received"],
+        "In Validation": ["scan_verified"],
+        "In Design": ["allocated_to_designer", "in_progress"],
+        "Internal QC": ["internal_qc"],
+        "Pending Client Approval": ["submitted_to_client"],
+        "Feedback": ["client_feedback"],
+        "On Hold": ["on_hold", "scan_not_verified"],
+        "Completed": ["approved", "delivered"],
+        "Cancelled": ["cancelled"],
+      };
+
+      const matchesStatus =
+        statusFilter === "All" ||
+        (statusFilterMap[statusFilter] && statusFilterMap[statusFilter].includes(c.status));
+
+      const matchesType = typeFilter === "All" || c.category === typeFilter;
+
+      const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : "";
+      const matchesFrom = !from || createdAtDate >= from;
+      const matchesTo = !to || createdAtDate <= to;
+
+      return matchesSearch && matchesStatus && matchesType && matchesFrom && matchesTo;
+    });
+  }, [cases, search, statusFilter, typeFilter, from, to]);
 
   const handleSubmit = async () => {
     if (!category) return;
@@ -241,7 +299,12 @@ export default function CasesPage() {
     const caseData = {
       patientName: "Single Patient",
       category,
-      subTypeData,
+      subTypeData: {
+        ...subTypeData,
+        modelRequired,
+        teeth,
+        notes,
+      },
       caseNumber: generatedCaseId,
       uploadedFile,
     };
@@ -267,7 +330,7 @@ export default function CasesPage() {
         setUploadedFile(null);
         // Regenerate for next time
         setGeneratedCaseId(generateCaseId("Crown & Bridges"));
-        router.refresh();
+        fetchCases();
       } else {
         toast.error("Failed to submit case.");
         console.error('Failed to submit single case');
@@ -344,7 +407,12 @@ export default function CasesPage() {
     const casesData = bulkRows.map(row => ({
       patientName: `Bulk Patient (${row.fileName})`,
       category: row.category,
-      subTypeData: row.subTypeData,
+      subTypeData: {
+        ...row.subTypeData,
+        modelRequired: row.modelRequired,
+        teeth: row.teeth,
+        notes: row.notes,
+      },
       caseNumber: row.caseId,
       uploadedFile: row.uploadedFile,
     }));
@@ -362,7 +430,7 @@ export default function CasesPage() {
         setBulkRows([]);
         if (bulkFileRef.current) bulkFileRef.current.value = "";
         setUploadOpen(false);
-        router.refresh();
+        fetchCases();
       } else {
         toast.error("Failed to submit bulk cases.");
         console.error('Failed to submit bulk cases');
@@ -379,7 +447,7 @@ export default function CasesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Cases</h1>
-            <p className="text-sm text-muted-foreground mt-1">{allCases.length} lifetime cases · {filtered.length} shown</p>
+            <p className="text-sm text-muted-foreground mt-1">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline">
@@ -618,7 +686,7 @@ export default function CasesPage() {
                 <SelectTrigger className="w-full lg:w-56"><SelectValue placeholder="Case type" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Case Types</SelectItem>
-                  {caseTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  {Object.keys(CASE_HIERARCHY).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-44" />
@@ -641,29 +709,55 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
-                    {["Case ID", "Patient Ref", "Type", "Restoration", "Teeth", "Status", "Due"].map((h) => (
+                    {["Case ID", "Type", "Case Sub Type", "Teeth", "Status", "CreatedAt"].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-6 py-4 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((c) => (
-                    <tr
-                      key={c.id}
-                      className="hover:bg-muted/10 cursor-pointer transition-colors"
-                      onClick={() => router.push(`/cases/${c.id}`)}
-                    >
-                      <td className="px-6 py-4 text-sm font-medium text-primary">{c.id}</td>
-                      <td className="px-6 py-4 text-sm text-foreground">{c.patientRef}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.caseType}</td>
-                      <td className="px-6 py-4 text-sm text-foreground">{c.restoration}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{c.toothNumbers.length ? `#${c.toothNumbers.join(", #")}` : "—"}</td>
-                      <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">May 20, 2024</td>
-                    </tr>
-                  ))}
-                  {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-muted-foreground">No cases match your filters</td></tr>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, idx) => (
+                      <tr key={idx} className="animate-pulse">
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-28"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-32"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-16"></div></td>
+                        <td className="px-6 py-4"><div className="h-6 bg-muted rounded-full w-24"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20"></div></td>
+                      </tr>
+                    ))
+                  ) : (
+                    filtered.map((c) => {
+                      const toothNumbers = c.subTypeData?.teeth || [];
+                      const restoration = c.subTypeData
+                        ? Object.entries(c.subTypeData)
+                            .filter(([k, v]) => k !== 'teeth' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
+                            .map(([_, v]) => v)
+                            .join(" - ")
+                        : c.category || "—";
+                      
+                      const createdAtFormatted = c.createdAt
+                        ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : "—";
+
+                      return (
+                        <tr
+                          key={c.id}
+                          className="hover:bg-muted/10 cursor-pointer transition-colors"
+                          onClick={() => router.push(`/cases/${c.id}`)}
+                        >
+                          <td className="px-6 py-4 text-sm font-medium text-primary">{c.caseNumber || c.id}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
+                          <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")}` : "—"}</td>
+                          <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                  {!isLoading && filtered.length === 0 && (
+                    <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>

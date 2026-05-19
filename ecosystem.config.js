@@ -26,6 +26,19 @@ module.exports = {
         NODE_ENV: 'production',
       },
     },
+    {
+      name: 'iconic-connect-cleanup',
+      script: 'npx',
+      args: 'tsx src/lib/queue/cleanup-task.ts',
+      instances: 1,
+      autorestart: false,
+      watch: false,
+      cron_restart: '0 * * * *',
+      max_memory_restart: '200M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
   ],
 };
 
