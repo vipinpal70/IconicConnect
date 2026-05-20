@@ -284,10 +284,10 @@ export default function AdminCasesPage() {
         <Card className="shadow-card border-border/50 overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["Case", "Client", "Type / Restoration", "Status", "Designer", "Created At", "Actions"].map((heading) => (
+                    {["Case", "Client", "Type/Teeth", "Status", "Designer", "Created At", "Actions"].map((heading) => (
                       <th key={heading} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         {heading}
                       </th>
@@ -342,7 +342,7 @@ export default function AdminCasesPage() {
                           <td className="px-4 py-3 text-foreground">{clientDisplayName}</td>
                           <td className="px-4 py-3">
                             <p className="text-foreground">{restoration || "—"}</p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-[10px] text-muted-foreground">
                               {caseItem.category} · {teeth.length ? `#${teeth.join(", #")} (${toothSystem})` : "—"}
                             </p>
                           </td>
@@ -592,8 +592,8 @@ export default function AdminCasesPage() {
                 </SelectTrigger>
                 <SelectContent className="bg-primary border-primary-50/50 text-white">
                   {qcs.map((qc) => (
-                    <SelectItem 
-                      key={qc.id} 
+                    <SelectItem
+                      key={qc.id}
                       value={qc.id}
                       className="text-white focus:bg-emerald-600 focus:text-white cursor-pointer"
                     >
@@ -620,8 +620,8 @@ export default function AdminCasesPage() {
               onClick={async () => {
                 if (!assignQcCaseId || !selectedQcId) return
                 await handleUpdate(
-                  assignQcCaseId, 
-                  { qcId: selectedQcId, status: "internal_qc" }, 
+                  assignQcCaseId,
+                  { qcId: selectedQcId, status: "internal_qc" },
                   "Successfully assigned QC lead and transitioned case status to Internal QC"
                 )
                 setAssignQcCaseId(null)
