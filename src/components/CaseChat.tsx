@@ -34,7 +34,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const [currentId, setCurrentId] = useState(caseId)
   if (currentId !== caseId) {
@@ -67,9 +67,11 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
     }
   }, [caseId, fetchMessages])
 
-  // Scroll to bottom whenever messages load or change
+  // Scroll to bottom of the chat container whenever messages load or change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
   }, [messages])
 
   // 2. Format file sizes nicely
@@ -239,7 +241,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
 
   return (
     <div className={cn("flex flex-col rounded-lg border border-border bg-card overflow-hidden shadow-sm", className)}>
-      <div className={cn("flex-1 overflow-y-auto p-3 space-y-2 bg-muted/15 flex flex-col", heightClass)}>
+      <div ref={scrollContainerRef} className={cn("flex-1 overflow-y-auto p-3 space-y-2 bg-muted/15 flex flex-col", heightClass)}>
         {sortedMessages === null ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground text-xs gap-2 py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -286,7 +288,6 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
                 </div>
               )
             })}
-            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
