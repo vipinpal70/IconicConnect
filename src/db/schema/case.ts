@@ -26,28 +26,29 @@ export const caseStatusEnum = pgEnum('case_status', [
 ])
 
 export const CASE_LIFECYCLE_STEPS = [
-  'Case Submitted',
+  'Submitted',
   'In Validation',
-  'Validated',
   'In Design',
   'Internal QC',
+  'Pending Client Approval',
+  'Completed',
 ] as const
 
 export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
   typeof caseStatusEnum.enumValues[number],
   (typeof CASE_LIFECYCLE_STEPS)[number]
 > = {
-  scan_received: 'Case Submitted',
+  scan_received: 'Submitted',
   scan_not_verified: 'In Validation',
-  scan_verified: 'Validated',
+  scan_verified: 'In Validation',
   allocated_to_designer: 'In Design',
   in_progress: 'In Design',
   internal_qc: 'Internal QC',
-  submitted_to_client: 'Internal QC',
+  submitted_to_client: 'Pending Client Approval',
   client_feedback: 'In Design',
   on_hold: 'In Validation',
-  approved: 'Internal QC',
-  delivered: 'Internal QC',
+  approved: 'Completed',
+  delivered: 'Completed',
 }
 
 export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
