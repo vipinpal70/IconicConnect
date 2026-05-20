@@ -6,9 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { Button } from "@/src/components/ui/button";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { CaseChat } from "@/src/components/CaseChat";
-import { CURRENT_LAB } from "@/src/lib/labStore";
 import { cases, type CaseStatus } from "@/src/data/demoData";
-import { ArrowLeft, MessageSquare, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, MessageSquare, CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 const lifecycle: CaseStatus[] = [
@@ -23,6 +22,7 @@ const lifecycle: CaseStatus[] = [
 export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const c = (cases as any[]).find((x) => x.id === id);
 
   if (!c) {
@@ -114,6 +114,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             </CardHeader>
             <CardContent className="mt-4">
               <div className="space-y-6">
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {c.timeline?.map((t: any, i: number) => (
                   <div key={i} className="flex gap-4">
                     <div className="flex flex-col items-center">
@@ -164,7 +165,6 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             <CaseChat 
               caseId={c.id} 
               side="lab" 
-              author={`${CURRENT_LAB.clientId}`} 
               className="border-none rounded-none"
               heightClass="h-[500px]"
             />

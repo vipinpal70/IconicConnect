@@ -423,7 +423,6 @@ export function CaseDetailView({
                 <CaseChat
                   caseId={caseRecord.id}
                   side={chatSide}
-                  author={chatSide === "admin" ? "Iconic Connect Team" : "Lab User"}
                   className="border-none rounded-none"
                   heightClass="h-[500px]"
                 />

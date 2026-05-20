@@ -523,7 +523,7 @@ export default function AdminCasesPage() {
                 </TabsList>
 
                 <TabsContent value="chat" className="mt-4">
-                  <CaseChat caseId={openCase.id} side="admin" author="Iconic Connect Team" heightClass="h-[440px]" />
+                  <CaseChat caseId={openCase.id} side="admin" heightClass="h-[440px]" />
                 </TabsContent>
 
                 <TabsContent value="prefs" className="mt-4 space-y-3">
