@@ -271,9 +271,9 @@ export default function CasesPage() {
       const friendlyRestoration = (
         c.subTypeData
           ? Object.entries(c.subTypeData)
-              .filter(([k, v]) => k !== 'teeth' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
-              .map(([_, v]) => v)
-              .join(" - ")
+            .filter(([k, v]) => k !== 'teeth' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
+            .map(([_, v]) => v)
+            .join(" - ")
           : c.category || ""
       ).toLowerCase();
 
@@ -363,7 +363,7 @@ export default function CasesPage() {
   const onBulkFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const pickedFiles = Array.from(files).slice(0, 10);
-    
+
     // Validate all picked files first
     for (const f of pickedFiles) {
       const check = validateFile(f);
@@ -390,7 +390,7 @@ export default function CasesPage() {
         caseId,
       };
     });
-    
+
     setBulkRows(rows);
 
     // Then start uploads immediately
@@ -583,12 +583,6 @@ export default function CasesPage() {
                       <Label>Additional Notes</Label>
                       <Textarea placeholder="Special instructions, shade reference, occlusion notes…" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
-
-                    {/* <div className="space-y-2">
-                      <Label>Case File</Label>
-                      <Input type="file" onChange={(e) => setSingleFile(e.target.files?.[0] || null)} />
-                    </div> */}
-
                     <Button className="w-full bg-emerald-800 text-white hover:bg-emerald-900" onClick={handleSubmit}>Submit Case</Button>
                   </TabsContent>
 
@@ -765,13 +759,14 @@ export default function CasesPage() {
                   ) : (
                     filtered.map((c) => {
                       const toothNumbers = c.subTypeData?.teeth || [];
+                      const toothSystem = c.subTypeData?.toothSystem || "USA";
                       const restoration = c.subTypeData
                         ? Object.entries(c.subTypeData)
-                            .filter(([k, v]) => k !== 'teeth' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
-                            .map(([_, v]) => v)
-                            .join(" - ")
+                          .filter(([k, v]) => k !== 'teeth' && k !== 'toothSystem' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
+                          .map(([, v]) => v)
+                          .join(" - ")
                         : c.category || "—";
-                      
+
                       const createdAtFormatted = c.createdAt
                         ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                         : "—";
@@ -785,7 +780,7 @@ export default function CasesPage() {
                           <td className="px-6 py-4 text-sm font-medium text-primary">{c.caseNumber || c.id}</td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")}` : "—"}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem})` : "—"}</td>
                           <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
                         </tr>

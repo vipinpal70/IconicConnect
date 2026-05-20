@@ -38,7 +38,7 @@ function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
   if (!subTypeData) return "—"
 
   const values = Object.entries(subTypeData)
-    .filter(([key, value]) => key !== "teeth" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value)
+    .filter(([key, value]) => key !== "teeth" && key !== "toothSystem" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value)
     .map(([, value]) => value as string)
 
   return values.length ? values.join(" - ") : "—"
@@ -118,7 +118,7 @@ export default function AdminCasesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["Case ID", "Category", "Case Sub Type", "Status", "Created"].map((heading) => (
+                    {["Case ID", "Category", "Case Sub Type", "Teeth", "Status", "Created"].map((heading) => (
                       <th key={heading} className="text-left px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                         {heading}
                       </th>
@@ -132,38 +132,44 @@ export default function AdminCasesPage() {
                         <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24" /></td>
                         <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24" /></td>
                         <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-40" /></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-16" /></td>
                         <td className="px-6 py-4"><div className="h-6 bg-muted rounded-full w-28" /></td>
                         <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20" /></td>
                       </tr>
                     ))
                   ) : error ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-sm text-red-500">
+                      <td colSpan={6} className="px-6 py-12 text-center text-sm text-red-500">
                         {(error as Error).message}
                       </td>
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={6} className="px-6 py-12 text-center text-sm text-muted-foreground">
                         No cases found.
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((caseItem) => (
-                      <tr
-                        key={caseItem.id}
-                        className="hover:bg-muted/20 transition-colors cursor-pointer"
-                        onClick={() => router.push(`/admin/cases/${caseItem.id}`)}
-                      >
-                        <td className="px-6 py-4 font-semibold text-primary">{caseItem.caseNumber || caseItem.id}</td>
-                        <td className="px-6 py-4 text-foreground">{caseItem.category || "—"}</td>
-                        <td className="px-6 py-4 text-muted-foreground">{renderSubTypeSummary(caseItem.subTypeData)}</td>
-                        <td className="px-6 py-4"><StatusBadge status={caseItem.status} /></td>
-                        <td className="px-6 py-4 text-muted-foreground">
-                          {new Date(caseItem.createdAt).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))
+                    filtered.map((caseItem) => {
+                      const toothNumbers = (caseItem.subTypeData?.teeth as number[]) || [];
+                      const toothSystem = (caseItem.subTypeData?.toothSystem as string) || "USA";
+                      return (
+                        <tr
+                          key={caseItem.id}
+                          className="hover:bg-muted/20 transition-colors cursor-pointer"
+                          onClick={() => router.push(`/admin/cases/${caseItem.id}`)}
+                        >
+                          <td className="px-6 py-4 font-semibold text-primary">{caseItem.caseNumber || caseItem.id}</td>
+                          <td className="px-6 py-4 text-foreground">{caseItem.category || "—"}</td>
+                          <td className="px-6 py-4 text-muted-foreground">{renderSubTypeSummary(caseItem.subTypeData)}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem})` : "—"}</td>
+                          <td className="px-6 py-4"><StatusBadge status={caseItem.status} /></td>
+                          <td className="px-6 py-4 text-muted-foreground">
+                            {new Date(caseItem.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

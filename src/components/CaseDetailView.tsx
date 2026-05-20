@@ -44,7 +44,7 @@ function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
   if (!subTypeData) return "—"
 
   const values = Object.entries(subTypeData)
-    .filter(([key, value]) => key !== "teeth" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value)
+    .filter(([key, value]) => key !== "teeth" && key !== "toothSystem" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value)
     .map(([, value]) => value as string)
 
   return values.length ? values.join(" - ") : "—"
@@ -174,6 +174,7 @@ export function CaseDetailView({
 
   const subTypeData = caseRecord.subTypeData || {}
   const teeth = Array.isArray(subTypeData.teeth) ? (subTypeData.teeth as number[]) : []
+  const toothSystem = typeof subTypeData.toothSystem === "string" ? subTypeData.toothSystem : "USA"
   const notes = typeof subTypeData.notes === "string" ? subTypeData.notes : "—"
   const modelRequired = typeof subTypeData.modelRequired === "string" ? subTypeData.modelRequired : "—"
 
@@ -208,7 +209,7 @@ export function CaseDetailView({
             <DetailRow label="Category" value={caseRecord.category || "—"} />
             <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
             <DetailRow label="Model Required" value={modelRequired} />
-            <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")}` : "—"} />
+            <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem})` : "—"} />
             <DetailRow label="Designer" value={caseRecord.designerId || "—"} />
             <DetailRow label="QC" value={caseRecord.qcId || "—"} />
             <DetailRow label="Account Manager" value={caseRecord.accountManagerId || "—"} />
