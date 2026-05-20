@@ -47,15 +47,29 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1779192803885,
-      "tag": "0006_curved_zeigeist",
+      "when": 1779200000000,
+      "tag": "0006_tutorials",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
-      "when": 1779266210583,
-      "tag": "0007_optimal_earthquake",
+      "when": 1779201000000,
+      "tag": "0007_tutorial_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779202000000,
+      "tag": "0008_offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779203000000,
+      "tag": "0009_offer_claims",
       "breakpoints": true
     }
   ]

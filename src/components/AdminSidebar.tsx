@@ -3,15 +3,15 @@
 import {
   LayoutDashboard,
   ClipboardList,
+  PlayCircle,
   Tag,
   Building2,
-  ArrowLeftRight,
   LogOut,
   Users,
   Bell,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/src/components/ui/button";
@@ -33,6 +33,7 @@ export function AdminSidebar() {
   const navItems = [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
     { title: "Cases", url: "/admin/cases", icon: ClipboardList },
+    { title: "Tutorials", url: "/admin/tutorials", icon: PlayCircle },
     { title: "Offers", url: "/admin/offers", icon: Tag },
     { title: "Clients", url: "/admin/clients", icon: Building2 },
     { title: "Team", url: "/admin/team", icon: Users },
@@ -42,7 +43,6 @@ export function AdminSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
-  const router = useRouter();
 
   const { data: currentUser } = useQuery({
     queryKey: ['me'],

@@ -11,7 +11,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center justify-between border-b border-border bg-card px-4 sticky top-0 z-10">
+          <header className="h-14 flex items-center justify-between bg-white border-b border-border px-4 sticky top-0 z-10">
             <SidebarTrigger className="text-muted-foreground" />
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" className="relative h-9 w-9">

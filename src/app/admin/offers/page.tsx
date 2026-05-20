@@ -1,127 +1,350 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { AdminLayout } from "@/src/components/AdminLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
-import { Button } from "@/src/components/ui/button";
-import { Input } from "@/src/components/ui/input";
-import { Label } from "@/src/components/ui/label";
-import { Textarea } from "@/src/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
-import { Badge } from "@/src/components/ui/badge";
-import { Plus, Sparkles, Pencil, Trash2, Tag, Calendar, Target } from "lucide-react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { AdminLayout } from "@/src/components/AdminLayout"
+import { Badge } from "@/src/components/ui/badge"
+import { Button } from "@/src/components/ui/button"
+import { Card, CardContent } from "@/src/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog"
+import { Input } from "@/src/components/ui/input"
+import { Label } from "@/src/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
+import { Switch } from "@/src/components/ui/switch"
+import { Textarea } from "@/src/components/ui/textarea"
+import { clients as clientList } from "@/src/components/demoData"
+import { AlertCircle, Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
+import { OFFER_CATEGORIES, type OfferCategory, type OfferClaimRecord, type OfferRecord } from "@/src/lib/offers"
 
-type Offer = {
-  id: string;
-  title: string;
-  brand: string;
-  category: "Intraoral Scanner" | "Materials" | "Equipment" | "Software" | "Consumables";
-  description: string;
-  discount: string;
-  validTill: string;
-  sponsored: boolean;
-  targetClients: string[];
-  targetLocations: string[];
-};
+type OffersResponse = { data: OfferRecord[] }
+type ClaimsResponse = { data: OfferClaimRecord[] }
 
-const initialOffers: Offer[] = [
-  {
-    id: "OF-001",
-    title: "20% Off Intraoral Scanners",
-    brand: "Medit",
-    category: "Intraoral Scanner",
-    description: "Exclusive discount on Medit i700 for all Iconic Connect labs.",
-    discount: "20% Off",
-    validTill: "2024-08-30",
-    sponsored: true,
-    targetClients: [],
-    targetLocations: ["USA"],
-  },
-  {
-    id: "OF-002",
-    title: "Zirconia Bulk Discount",
-    brand: "Ivoclar",
-    category: "Materials",
-    description: "Buy 10 discs, get 2 free. Applicable on all e.max ZirCAD.",
-    discount: "Buy 10 Get 2",
-    validTill: "2024-12-31",
-    sponsored: false,
-    targetClients: [],
-    targetLocations: [],
+type DraftOffer = {
+  title: string
+  brand: string
+  category: OfferCategory | ""
+  description: string
+  discount: string
+  validTill: string
+  sponsored: boolean
+  targetClients: string[]
+  targetLocations: string[]
+}
+
+const initialDraft: DraftOffer = {
+  title: "",
+  brand: "",
+  category: "",
+  description: "",
+  discount: "",
+  validTill: "",
+  sponsored: false,
+  targetClients: [],
+  targetLocations: [],
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+function draftFromOffer(offer: OfferRecord): DraftOffer {
+  return {
+    title: offer.title,
+    brand: offer.brand,
+    category: offer.category,
+    description: offer.description,
+    discount: offer.discount,
+    validTill: offer.validTill,
+    sponsored: offer.sponsored,
+    targetClients: offer.targetClients,
+    targetLocations: offer.targetLocations,
   }
-];
+}
 
 export default function AdminOffers() {
-  const [offers, setOffers] = useState<Offer[]>(initialOffers);
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Partial<Offer>>({ category: "Materials", sponsored: false });
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [editingOfferId, setEditingOfferId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<DraftOffer>(initialDraft)
 
-  const save = () => {
-    if (!draft.title || !draft.brand) {
-      toast.error("Title and brand are required");
-      return;
+  const offersQuery = useQuery<OffersResponse>({
+    queryKey: ["offers"],
+    queryFn: async () => {
+      const res = await fetch("/api/offers")
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to load offers")
+      }
+      return json
+    },
+  })
+
+  const claimsQuery = useQuery<ClaimsResponse>({
+    queryKey: ["offer-claims"],
+    queryFn: async () => {
+      const res = await fetch("/api/offers/claims")
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to load claimed offers")
+      }
+      return json
+    },
+  })
+
+  const saveMutation = useMutation({
+    mutationFn: async (payload: DraftOffer & { id?: string }) => {
+      const isEdit = Boolean(payload.id)
+      const res = await fetch(isEdit ? `/api/offers?id=${encodeURIComponent(payload.id!)}` : "/api/offers", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.error || `Failed to ${isEdit ? "update" : "create"} offer`)
+      }
+      return json as { data: OfferRecord }
+    },
+    onSuccess: async () => {
+      toast.success(editingOfferId ? "Offer updated" : "Offer published")
+      setOpen(false)
+      setEditingOfferId(null)
+      setDraft(initialDraft)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["offers"] }),
+        queryClient.invalidateQueries({ queryKey: ["offer-claims"] }),
+      ])
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to save offer")
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/offers?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to delete offer")
+      }
+      return json
+    },
+    onSuccess: async () => {
+      toast.success("Offer removed")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["offers"] }),
+        queryClient.invalidateQueries({ queryKey: ["offer-claims"] }),
+      ])
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete offer")
+    },
+  })
+
+  const offers = useMemo(() => offersQuery.data?.data ?? [], [offersQuery.data])
+  const claims = useMemo(() => claimsQuery.data?.data ?? [], [claimsQuery.data])
+
+  const submitOffer = async () => {
+    if (!draft.title.trim() || !draft.brand.trim()) {
+      toast.error("Title and brand are required")
+      return
     }
-    const newOffer: Offer = {
-      id: `OF-${String(offers.length + 1).padStart(3, "0")}`,
-      title: draft.title!,
-      brand: draft.brand!,
-      category: (draft.category ?? "Materials") as Offer["category"],
-      description: draft.description ?? "",
-      discount: draft.discount ?? "",
-      validTill: draft.validTill ?? "",
-      sponsored: !!draft.sponsored,
-      targetClients: draft.targetClients ?? [],
-      targetLocations: draft.targetLocations ?? [],
-    };
-    setOffers([newOffer, ...offers]);
-    setOpen(false);
-    setDraft({ category: "Materials", sponsored: false });
-    toast.success("Offer published");
-  };
+    if (!draft.category) {
+      toast.error("Category is required")
+      return
+    }
+    if (!draft.description.trim() || !draft.discount.trim() || !draft.validTill.trim()) {
+      toast.error("Description, discount and valid till are required")
+      return
+    }
 
-  const remove = (id: string) => {
-    setOffers(offers.filter((o) => o.id !== id));
-    toast.success("Offer removed");
-  };
+    const payload = {
+      ...(editingOfferId ? { id: editingOfferId } : {}),
+      title: draft.title.trim(),
+      brand: draft.brand.trim(),
+      category: draft.category,
+      description: draft.description.trim(),
+      discount: draft.discount.trim(),
+      validTill: draft.validTill.trim(),
+      sponsored: draft.sponsored,
+      targetClients: draft.targetClients,
+      targetLocations: draft.targetLocations,
+    }
+
+    try {
+      await saveMutation.mutateAsync(payload)
+    } catch {
+      // Handled by mutation onError.
+    }
+  }
+
+  const remove = async (id: string) => {
+    const confirmed = window.confirm("Delete this offer?")
+    if (!confirmed) return
+    try {
+      await deleteMutation.mutateAsync(id)
+    } catch {
+      // Handled by mutation onError.
+    }
+  }
+
+  const openCreateDialog = () => {
+    setEditingOfferId(null)
+    setDraft(initialDraft)
+    setOpen(true)
+  }
+
+  const openEditDialog = (offer: OfferRecord) => {
+    setEditingOfferId(offer.id)
+    setDraft(draftFromOffer(offer))
+    setOpen(true)
+  }
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen)
+    if (!nextOpen) {
+      setEditingOfferId(null)
+      setDraft(initialDraft)
+    }
+  }
 
   return (
     <AdminLayout>
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Offers & Promotions</h1>
-            <p className="text-sm text-muted-foreground mt-1">Manage marketing content shown to client labs</p>
+            <h1 className="text-2xl font-semibold text-foreground">Offers</h1>
+            <p className="text-sm text-muted-foreground mt-1">Manage promotional offers shown to client labs</p>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-              <Button className="gradient-primary border-none shadow-glow"><Plus className="h-4 w-4 mr-2" />Create New Offer</Button>
+              <Button className="gap-2" onClick={openCreateDialog}>
+                <Plus className="h-4 w-4" />
+                New Offer
+              </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader><DialogTitle>Create Promotional Offer</DialogTitle></DialogHeader>
+            <DialogContent className="sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>{editingOfferId ? "Edit Offer" : "Create Offer"}</DialogTitle>
+                <DialogDescription>
+                  Update offer details and publish promotional campaigns for client labs.
+                </DialogDescription>
+              </DialogHeader>
               <div className="space-y-4 mt-2">
-                <div className="space-y-2"><Label>Offer Title</Label><Input placeholder="e.g. Early Bird 15% Discount" value={draft.title ?? ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></div>
+                <div className="space-y-2">
+                  <Label>Title</Label>
+                  <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Brand / Partner</Label><Input placeholder="e.g. 3Shape" value={draft.brand ?? ""} onChange={(e) => setDraft({ ...draft, brand: e.target.value })} /></div>
+                  <div className="space-y-2">
+                    <Label>Brand</Label>
+                    <Input value={draft.brand} onChange={(e) => setDraft({ ...draft, brand: e.target.value })} />
+                  </div>
                   <div className="space-y-2">
                     <Label>Category</Label>
-                    <Select value={draft.category} onValueChange={(v) => setDraft({ ...draft, category: v as Offer["category"] })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                    <Select
+                      value={draft.category}
+                      onValueChange={(v) => setDraft({ ...draft, category: v as OfferCategory })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
                       <SelectContent>
-                        {(["Intraoral Scanner", "Materials", "Equipment", "Software", "Consumables"] as Offer["category"][]).map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        {OFFER_CATEGORIES.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
-                <div className="space-y-2"><Label>Description</Label><Textarea placeholder="Details of the offer..." value={draft.description ?? ""} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Discount Text</Label><Input placeholder="e.g. 15% off" value={draft.discount ?? ""} onChange={(e) => setDraft({ ...draft, discount: e.target.value })} /></div>
-                  <div className="space-y-2"><Label>Expiry Date</Label><Input type="date" value={draft.validTill ?? ""} onChange={(e) => setDraft({ ...draft, validTill: e.target.value })} /></div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Textarea
+                    value={draft.description}
+                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  />
                 </div>
-                <Button className="w-full h-11 gradient-primary border-none shadow-glow" onClick={save}>Publish to Portal</Button>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Discount</Label>
+                    <Input
+                      placeholder="e.g. 15% off"
+                      value={draft.discount}
+                      onChange={(e) => setDraft({ ...draft, discount: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Valid till</Label>
+                    <Input
+                      type="date"
+                      value={draft.validTill}
+                      onChange={(e) => setDraft({ ...draft, validTill: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Target client (optional)</Label>
+                    <Select
+                      value={draft.targetClients[0] ?? "all"}
+                      onValueChange={(v) => setDraft({ ...draft, targetClients: v === "all" ? [] : [v] })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All clients" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All clients</SelectItem>
+                        {clientList.map((client) => (
+                          <SelectItem key={client.id} value={client.company}>
+                            {client.company}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Target location (optional)</Label>
+                    <Input
+                      placeholder="e.g. USA"
+                      value={draft.targetLocations[0] ?? ""}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          targetLocations: e.target.value ? [e.target.value] : [],
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Sponsored</p>
+                    <p className="text-xs text-muted-foreground">Show a sponsored badge on the client portal card.</p>
+                  </div>
+                  <Switch
+                    checked={draft.sponsored}
+                    onCheckedChange={(checked) => setDraft({ ...draft, sponsored: checked })}
+                  />
+                </div>
+                <Button className="w-full gap-2" onClick={submitOffer} disabled={saveMutation.isPending}>
+                  {saveMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  {editingOfferId ? "Update Offer" : "Publish Offer"}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -133,57 +356,182 @@ export default function AdminOffers() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["Offer Details", "Brand", "Category", "Discount", "Targeting", "Expiry", "Actions"].map((h) => (
-                      <th key={h} className="text-left px-6 py-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{h}</th>
+                    {["Offer", "Brand", "Category", "Discount", "Targeting", "Valid till", "Actions"].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
+                        {h}
+                      </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
-                  {offers.map((o) => (
-                    <tr key={o.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-foreground">{o.title}</span>
-                          {o.sponsored && (
-                            <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1 px-1.5 h-5 text-[10px]">
-                              <Sparkles className="h-2.5 w-2.5" /> Sponsored
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-1 max-w-[300px]">{o.description}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <Badge variant="secondary" className="font-medium">{o.brand}</Badge>
-                      </td>
-                      <td className="px-6 py-4 text-xs font-medium text-muted-foreground">{o.category}</td>
-                      <td className="px-6 py-4">
-                        <span className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-bold border border-primary/20">
-                          {o.discount}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[10px] flex items-center gap-1.5 text-muted-foreground">
-                            <Target className="h-3 w-3" />
-                            {o.targetClients?.length ? o.targetClients.join(", ") : "Global"}
-                          </span>
-                          {o.targetLocations?.length > 0 && (
-                            <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
-                              <Calendar className="h-3 w-3" />
-                              {o.targetLocations.join(", ")}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-xs text-muted-foreground whitespace-nowrap">{o.validTill}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toast.info("Edit modal coming soon")}><Pencil className="h-4 w-4 text-muted-foreground" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => remove(o.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                <tbody className="divide-y divide-border/60">
+                  {offersQuery.isLoading ? (
+                    Array.from({ length: 4 }).map((_, index) => (
+                      <tr key={index} className="animate-pulse">
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-48 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-24 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-28 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-24 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-44 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-20 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-8 w-16 rounded bg-muted" />
+                        </td>
+                      </tr>
+                    ))
+                  ) : offersQuery.error ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center gap-2 text-red-500">
+                          <AlertCircle className="h-8 w-8" />
+                          <p>{(offersQuery.error as Error).message}</p>
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  ) : offers.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                        No offers published yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    offers.map((offer) => (
+                      <tr key={offer.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">{offer.title}</span>
+                            {offer.sponsored && (
+                              <Badge className="gap-1 bg-warning text-warning-foreground">
+                                <Sparkles className="h-3 w-3" />
+                                Sponsored
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-1">{offer.description}</p>
+                        </td>
+                        <td className="px-4 py-4 text-muted-foreground">{offer.brand}</td>
+                        <td className="px-4 py-4 text-muted-foreground">{offer.category}</td>
+                        <td className="px-4 py-4 text-primary font-medium">{offer.discount}</td>
+                        <td className="px-4 py-4 text-xs text-muted-foreground">
+                          {offer.targetClients.length ? `Client: ${offer.targetClients.join(", ")}` : "All clients"}
+                          {offer.targetLocations.length ? ` | ${offer.targetLocations.join(", ")}` : ""}
+                        </td>
+                        <td className="px-4 py-4 text-muted-foreground whitespace-nowrap">
+                          {formatDate(offer.validTill)}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openEditDialog(offer)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => remove(offer.id)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-card border-border/50 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="border-b border-border/60 px-5 py-4">
+              <h2 className="text-lg font-semibold text-foreground">Claimed Offers</h2>
+              <p className="text-sm text-muted-foreground">Client details are shown here when an offer is claimed.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    {["Offer", "Client name", "Lab name", "Email", "Phone", "Claimed at"].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {claimsQuery.isLoading ? (
+                    Array.from({ length: 3 }).map((_, index) => (
+                      <tr key={index} className="animate-pulse">
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-40 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-32 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-36 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-44 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-28 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-28 rounded bg-muted" />
+                        </td>
+                      </tr>
+                    ))
+                  ) : claimsQuery.error ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center gap-2 text-red-500">
+                          <AlertCircle className="h-8 w-8" />
+                          <p>{(claimsQuery.error as Error).message}</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : claims.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                        No offers have been claimed yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    claims.map((claim) => (
+                      <tr key={claim.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">{claim.offerTitle}</span>
+                            <Badge variant="secondary" className="text-xs">
+                              {claim.offerBrand}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{claim.offerDiscount}</p>
+                        </td>
+                        <td className="px-4 py-4 text-muted-foreground">{claim.clientName}</td>
+                        <td className="px-4 py-4 text-muted-foreground">{claim.labName}</td>
+                        <td className="px-4 py-4 text-muted-foreground">{claim.email}</td>
+                        <td className="px-4 py-4 text-muted-foreground">{claim.phone}</td>
+                        <td className="px-4 py-4 text-muted-foreground whitespace-nowrap">
+                          {formatDate(claim.claimedAt)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -191,5 +539,5 @@ export default function AdminOffers() {
         </Card>
       </div>
     </AdminLayout>
-  );
+  )
 }

@@ -144,6 +144,8 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     pathname.startsWith('/profile') ||
     pathname.startsWith('/api/profile') ||
     pathname.startsWith('/api/user') ||
+    pathname.startsWith('/api/offers') ||
+    pathname.startsWith('/api/tutorials') ||
     pathname.startsWith('/admin/sign-up') ||
     pathname.startsWith('/api/cases')
   )
@@ -153,11 +155,11 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
 
   switch (role) {
     case 'admin':
-      return pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
+      return pathname.startsWith('/admin') || pathname.startsWith('/api/admin') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers')
     case 'client':
-      return pathname.startsWith('/client') || pathname.startsWith('/api/client')
+      return pathname.startsWith('/client') || pathname.startsWith('/api/client') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers')
     case 'subuser':
-      return pathname.startsWith(`/client/${createdBy}/subuser`) || pathname.startsWith(`/api/client/${createdBy}/subuser`)
+      return pathname.startsWith(`/client/${createdBy}/subuser`) || pathname.startsWith(`/api/client/${createdBy}/subuser`) || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers')
     case 'qc':
     case 'designer':
     case 'account_manager':
@@ -165,7 +167,9 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/dashboard') ||
         pathname.startsWith('/cases') ||
         pathname.startsWith('/case') ||
-        pathname.startsWith('/analytics')
+        pathname.startsWith('/analytics') ||
+        pathname.startsWith('/api/tutorials') ||
+        pathname.startsWith('/api/offers')
       )
     default:
       return false

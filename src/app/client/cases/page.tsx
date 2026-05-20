@@ -682,7 +682,7 @@ export default function CasesPage() {
                                   value={row.notes}
                                   onChange={(e) => updateBulkRow(i, { notes: e.target.value })}
                                   placeholder="Notes for this case…"
-                                  className="min-h-[60px]"
+                                  className="min-h-60px"
                                 />
                               </CardContent>
                             </Card>
