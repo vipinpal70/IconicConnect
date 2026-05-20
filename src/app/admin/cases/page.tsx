@@ -284,11 +284,11 @@ export default function AdminCasesPage() {
         <Card className="shadow-card border-border/50 overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     {["Case", "Client", "Type/Teeth", "Status", "Designer", "Created At", "Actions"].map((heading) => (
-                      <th key={heading} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      <th key={heading} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         {heading}
                       </th>
                     ))}
@@ -342,7 +342,7 @@ export default function AdminCasesPage() {
                           <td className="px-4 py-3 text-foreground">{clientDisplayName}</td>
                           <td className="px-4 py-3">
                             <p className="text-foreground">{restoration || "—"}</p>
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {caseItem.category} · {teeth.length ? `#${teeth.join(", #")} (${toothSystem})` : "—"}
                             </p>
                           </td>
