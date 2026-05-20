@@ -193,6 +193,9 @@ export function CaseDetailView({
   const caseRecord = caseResponse?.data
   const files = filesResponse?.data || []
   const activities = caseRecord?.timeline || []
+  const wasValidated = activities.some(
+    (act) => act.label === "Scan validated" || act.label === "Scan rejected" || act.label.includes("QC") || act.label.includes("designer")
+  )
 
   if (isLoading) {
     return shell(<div className="p-10 text-center text-muted-foreground">Loading case details...</div>)
@@ -315,8 +318,9 @@ export function CaseDetailView({
                       size="sm"
                       variant="destructive"
                       className="text-xs font-medium"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || wasValidated}
                       onClick={() => handleStatusChange("cancelled")}
+                      title={wasValidated ? "Cannot cancel case after validation has started" : undefined}
                     >
                       🚫 Cancel Case
                     </Button>

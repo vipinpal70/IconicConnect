@@ -155,9 +155,17 @@ export async function PUT(
           // Allowed to resume
         }
         // 3. Cancel case (Cancelled) before In Validation
-        else if (target === 'cancelled' || target === 'on_hold') {
+        else if (target === 'cancelled') {
           if (current !== 'scan_received' && current !== 'on_hold') {
             return NextResponse.json({ error: 'Forbidden: Cannot cancel case after validation has started' }, { status: 400 });
+          }
+          if (current === 'on_hold') {
+            const hasBeenValidated = (caseRecord.timeline || []).some(
+              (act: CaseTimelineEvent) => act.label === "Scan validated" || act.label === "Scan rejected" || act.label.includes("QC") || act.label.includes("designer")
+            );
+            if (hasBeenValidated) {
+              return NextResponse.json({ error: 'Forbidden: Cannot cancel case after validation has started' }, { status: 400 });
+            }
           }
         }
         // 4. Approve case (approved) during Client Review
