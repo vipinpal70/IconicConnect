@@ -249,10 +249,10 @@ export default function AdminCasesPage() {
               <SelectTrigger className="w-full lg:w-60">
                 <SelectValue placeholder="All clients" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All clients</SelectItem>
+              <SelectContent className="bg-primary border-primary/50 text-white">
+                <SelectItem className="bg-primary text-white focus:bg-primary-hover focus:text-white cursor-pointer" value="All">All clients</SelectItem>
                 {clientsData?.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
+                  <SelectItem className="bg-primary text-white focus:bg-primary-hover focus:text-white cursor-pointer" key={c.id} value={c.id}>
                     {c.labName || c.fullName || c.email}
                   </SelectItem>
                 ))}
@@ -262,9 +262,9 @@ export default function AdminCasesPage() {
               <SelectTrigger className="w-full lg:w-60">
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-primary border-primary/50 text-white">
                 {statusFilters.map((status) => (
-                  <SelectItem key={status} value={status}>
+                  <SelectItem key={status} value={status} className="bg-primary text-white focus:bg-primary-hover focus:text-white cursor-pointer">
                     {status === "All" ? "All Statuses" : (STATUS_LABELS[status] || status)}
                   </SelectItem>
                 ))}
@@ -546,14 +546,14 @@ function AllocateMenu({
           <UserPlus className="h-3.5 w-3.5 mr-1" /> Allocate
         </span>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="bg-primary border-primary/50 text-white">
         {designers.map((d) => (
-          <SelectItem key={d.id} value={d.id}>
+          <SelectItem key={d.id} value={d.id} className="bg-primary text-white focus:bg-primary-hover focus:text-white cursor-pointer">
             {d.fullName || d.email}
           </SelectItem>
         ))}
         {designers.length === 0 && (
-          <SelectItem value="none" disabled>
+          <SelectItem value="none" disabled className="bg-primary text-white/50 focus:bg-primary/95 cursor-not-allowed">
             No active designers
           </SelectItem>
         )}
