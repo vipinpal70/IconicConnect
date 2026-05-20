@@ -66,7 +66,32 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 });
     }
 
-    return NextResponse.json({ data: caseRecord });
+    let designerName: string | null = null;
+    if (caseRecord.designerId) {
+      const [designerProfile] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.designerId)).limit(1);
+      designerName = designerProfile?.fullName || null;
+    }
+
+    let qcName: string | null = null;
+    if (caseRecord.qcId) {
+      const [qcProfile] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.qcId)).limit(1);
+      qcName = qcProfile?.fullName || null;
+    }
+
+    let accountManagerName: string | null = null;
+    if (caseRecord.accountManagerId) {
+      const [amProfile] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.accountManagerId)).limit(1);
+      accountManagerName = amProfile?.fullName || null;
+    }
+
+    return NextResponse.json({
+      data: {
+        ...caseRecord,
+        designerName,
+        qcName,
+        accountManagerName,
+      }
+    });
   } catch (error: unknown) {
     console.error('Get case error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });

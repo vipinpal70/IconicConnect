@@ -18,6 +18,9 @@ type CaseRecord = {
   designerId: string | null
   qcId: string | null
   accountManagerId: string | null
+  designerName?: string | null
+  qcName?: string | null
+  accountManagerName?: string | null
   dueDate: string | null
   timeline: CaseActivity[]
   createdAt: string
@@ -210,9 +213,9 @@ export function CaseDetailView({
             <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
             <DetailRow label="Model Required" value={modelRequired} />
             <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem})` : "—"} />
-            <DetailRow label="Designer" value={caseRecord.designerId || "—"} />
-            <DetailRow label="QC" value={caseRecord.qcId || "—"} />
-            <DetailRow label="Account Manager" value={caseRecord.accountManagerId || "—"} />
+            <DetailRow label="Designer" value={caseRecord.designerName || caseRecord.designerId || "—"} />
+            <DetailRow label="QC" value={caseRecord.qcName || caseRecord.qcId || "—"} />
+            <DetailRow label="Account Manager" value={caseRecord.accountManagerName || caseRecord.accountManagerId || "—"} />
             <DetailRow
               label="Submitted"
               value={new Date(caseRecord.createdAt).toLocaleDateString()}
