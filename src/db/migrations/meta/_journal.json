@@ -50,6 +50,13 @@
       "when": 1779192803885,
       "tag": "0006_curved_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779266210583,
+      "tag": "0007_optimal_earthquake",
+      "breakpoints": true
     }
   ]
 }
