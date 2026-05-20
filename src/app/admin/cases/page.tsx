@@ -287,7 +287,7 @@ export default function AdminCasesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["Case", "Client", "Type / Restoration", "Status", "Designer", "Due", "Actions"].map((heading) => (
+                    {["Case", "Client", "Type / Restoration", "Status", "Designer", "Created At", "Actions"].map((heading) => (
                       <th key={heading} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         {heading}
                       </th>
@@ -349,7 +349,7 @@ export default function AdminCasesPage() {
                           <td className="px-4 py-3"><StatusBadge status={caseItem.status} role="internal" /></td>
                           <td className="px-4 py-3 text-muted-foreground">{designerName}</td>
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                            {caseItem.dueDate ? new Date(caseItem.dueDate).toLocaleDateString() : "—"}
+                            {new Date(caseItem.createdAt).toLocaleDateString()}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex gap-2 items-center flex-wrap">
