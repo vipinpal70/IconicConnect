@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, EDITABLE_STATUSES } from '@/src/db/schema/case';
+import { cases, CaseTimelineEvent, EDITABLE_STATUSES } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and } from 'drizzle-orm';

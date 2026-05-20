@@ -236,8 +236,9 @@ export function CaseDetailView({
 
       <LifecycleStrip status={caseRecord.status} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="shadow-card lg:col-span-1 flex flex-col justify-between">
+      {/* Upper Grid: Details & Timeline side-by-side on lg screen */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="shadow-card flex flex-col justify-between">
           <div>
             <CardHeader className="pb-4 border-b border-border/50">
               <CardTitle className="text-base font-medium">Case Details</CardTitle>
@@ -354,85 +355,88 @@ export function CaseDetailView({
           )}
         </Card>
 
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="shadow-card">
-            <CardHeader className="pb-4 border-b border-border/50">
-              <CardTitle className="text-base font-medium">Activity Timeline</CardTitle>
-            </CardHeader>
-            <CardContent className="mt-4">
-              {activities.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No activity recorded for this case yet.</p>
-              ) : (
-                <div className="space-y-6">
-                  {activities.map((activity, index) => (
-                    <div key={activity.id} className="flex gap-4">
-                      <div className="flex flex-col items-center">
-                        <div className="mt-1.5 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
-                        {index < activities.length - 1 && <div className="mt-2 w-0.5 flex-1 bg-emerald-100" />}
-                      </div>
-                      <div className="pb-2">
-                        <p className="text-sm font-medium text-foreground">{activity.label}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {new Date(activity.actionAt).toLocaleDateString('en-CA')} · {activity.actor}
-                        </p>
-                      </div>
+        {/* Activity Timeline Card */}
+        <Card className="shadow-card">
+          <CardHeader className="pb-4 border-b border-border/50">
+            <CardTitle className="text-base font-medium">Activity Timeline</CardTitle>
+          </CardHeader>
+          <CardContent className="mt-4">
+            {activities.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No activity recorded for this case yet.</p>
+            ) : (
+              <div className="space-y-6">
+                {activities.map((activity, index) => (
+                  <div key={activity.id} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className="mt-1.5 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
+                      {index < activities.length - 1 && <div className="mt-2 w-0.5 flex-1 bg-emerald-100" />}
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-card">
-            <CardHeader className="pb-4 border-b border-border/50">
-              <CardTitle className="text-base font-medium flex items-center gap-2">
-                <Paperclip className="h-4 w-4 text-primary" />
-                Attachments
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="mt-4 space-y-3">
-              {files.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No files attached to this case.</p>
-              ) : (
-                files.map((file) => (
-                  <a
-                    key={file.id}
-                    href={file.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-between rounded-lg border border-border/50 p-3 hover:bg-muted/20 transition-colors"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{file.fileName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {file.fileType || "Unknown type"} · {formatFileSize(file.fileSize)}
+                    <div className="pb-2">
+                      <p className="text-sm font-medium text-foreground">{activity.label}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {new Date(activity.actionAt).toLocaleDateString('en-CA')} · {activity.actor}
                       </p>
                     </div>
-                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                  </a>
-                ))
-              )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Full Width Section: Attachments & Case Chat */}
+      <div className="space-y-6">
+        <Card className="shadow-card">
+          <CardHeader className="pb-4 border-b border-border/50">
+            <CardTitle className="text-base font-medium flex items-center gap-2">
+              <Paperclip className="h-4 w-4 text-primary" />
+              Attachments
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="mt-4 space-y-3">
+            {files.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No files attached to this case.</p>
+            ) : (
+              files.map((file) => (
+                <a
+                  key={file.id}
+                  href={file.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between rounded-lg border border-border/50 p-3 hover:bg-muted/20 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{file.fileName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {file.fileType || "Unknown type"} · {formatFileSize(file.fileSize)}
+                    </p>
+                  </div>
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                </a>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <div ref={chatRef}>
+          <Card className="shadow-card overflow-hidden">
+            <CardHeader className="pb-4 border-b border-border/50 bg-muted/10">
+              <CardTitle className="text-base font-medium flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-primary" />
+                Case Chat
+                <span className="text-xs font-normal text-muted-foreground ml-1">— with Iconic Connect Team</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <CaseChat
+                caseId={caseRecord.id}
+                side={chatSide}
+                className="border-none rounded-none"
+                heightClass="h-[500px]"
+              />
             </CardContent>
           </Card>
-
-          <div ref={chatRef}>
-            <Card className="shadow-card overflow-hidden">
-              <CardHeader className="pb-4 border-b border-border/50 bg-muted/10">
-                <CardTitle className="text-base font-medium flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-primary" />
-                  Case Chat
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <CaseChat
-                  caseId={caseRecord.id}
-                  side={chatSide}
-                  className="border-none rounded-none"
-                  heightClass="h-[500px]"
-                />
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </div>
     </div>
