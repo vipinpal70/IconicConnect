@@ -26,29 +26,56 @@ export const caseStatusEnum = pgEnum('case_status', [
 ])
 
 export const CASE_LIFECYCLE_STEPS = [
-  'Submitted',
+  'Case Submitted',
   'In Validation',
+  'Validated',
   'In Design',
   'Internal QC',
-  'Pending Client Approval',
-  'Completed',
 ] as const
 
 export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
   typeof caseStatusEnum.enumValues[number],
   (typeof CASE_LIFECYCLE_STEPS)[number]
 > = {
-  scan_received: 'Submitted',
-  allocated_to_designer: 'In Design',
-  scan_verified: 'In Validation',
+  scan_received: 'Case Submitted',
   scan_not_verified: 'In Validation',
+  scan_verified: 'Validated',
+  allocated_to_designer: 'In Design',
   in_progress: 'In Design',
   internal_qc: 'Internal QC',
-  submitted_to_client: 'Pending Client Approval',
-  on_hold: 'Pending Client Approval',
-  client_feedback: 'Pending Client Approval',
-  approved: 'Completed',
+  submitted_to_client: 'Internal QC',
+  client_feedback: 'In Design',
+  on_hold: 'In Validation',
+  approved: 'Internal QC',
+  delivered: 'Internal QC',
+}
+
+export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
+  scan_received: 'Case Submitted',
+  scan_not_verified: 'In Validation',
+  scan_verified: 'Validated',
+  allocated_to_designer: 'In Design',
+  in_progress: 'In Design',
+  internal_qc: 'Internal QC',
+  submitted_to_client: 'Client Review',
+  client_feedback: 'Feedback',
+  on_hold: 'On Hold',
+  approved: 'Case Approved',
   delivered: 'Completed',
+}
+
+export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
+  scan_received: 'Scan Received',
+  scan_not_verified: 'Scan Rejected',
+  scan_verified: 'Scan Verified',
+  allocated_to_designer: 'Allocated (Designer)',
+  in_progress: 'In Progress',
+  internal_qc: 'Internal QC',
+  submitted_to_client: 'Submitted to Client',
+  client_feedback: 'Client Feedback',
+  on_hold: 'On Hold',
+  approved: 'Approved',
+  delivered: 'Delivered',
 }
 
 /**

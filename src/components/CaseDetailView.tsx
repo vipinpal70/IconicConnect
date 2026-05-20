@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { StatusBadge } from "@/src/components/StatusBadge"
 import { CaseChat } from "@/src/components/CaseChat"
 import { CASE_LIFECYCLE_STEPS, CASE_STATUS_TO_LIFECYCLE_STEP } from "@/src/db/schema/case"
+import { useState, useRef } from "react"
+import { toast } from "sonner"
 
 type CaseRecord = {
   id: string
@@ -82,7 +84,7 @@ function LifecycleStrip({ status }: { status: string }) {
         <div className="overflow-x-auto pb-2">
           <div className="flex items-center min-w-max">
             {CASE_LIFECYCLE_STEPS.map((step, index) => {
-              const done = index < currentIndex || step === currentStep || currentStep === "Completed"
+              const done = index < currentIndex || step === currentStep || status === "approved" || status === "delivered"
               const current = step === currentStep
 
               return (
@@ -133,6 +135,35 @@ export function CaseDetailView({
   chatSide: "lab" | "admin"
 }) {
   const router = useRouter()
+  const chatRef = useRef<HTMLDivElement>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleStatusChange = async (targetStatus: string) => {
+    setIsSubmitting(true)
+    try {
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: targetStatus }),
+      })
+      if (res.ok) {
+        toast.success(`Case status updated successfully!`)
+        router.refresh()
+      } else {
+        const err = await res.json()
+        toast.error(err.error || "Failed to update case status")
+      }
+    } catch {
+      toast.error("Failed to update case status")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleRequestChanges = () => {
+    chatRef.current?.scrollIntoView({ behavior: "smooth" })
+    toast.info("Please scroll down to type your specific feedback inside Case Chat.")
+  }
 
   const { data: caseResponse, isLoading, error } = useQuery<{ data: CaseRecord }>({
     queryKey: ["case", caseId],
@@ -196,39 +227,127 @@ export function CaseDetailView({
           </p>
         </div>
         <div className="ml-auto">
-          <StatusBadge status={caseRecord.status} />
+          <StatusBadge status={caseRecord.status} role={chatSide === "admin" ? "internal" : "client"} />
         </div>
       </div>
 
       <LifecycleStrip status={caseRecord.status} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="shadow-card lg:col-span-1">
-          <CardHeader className="pb-4 border-b border-border/50">
-            <CardTitle className="text-base font-medium">Case Details</CardTitle>
-          </CardHeader>
-          <CardContent className="mt-4">
-            <DetailRow label="Case Number" value={caseRecord.caseNumber || caseRecord.id} />
-            <DetailRow label="Category" value={caseRecord.category || "—"} />
-            <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
-            <DetailRow label="Model Required" value={modelRequired} />
-            <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem})` : "—"} />
-            <DetailRow label="Designer" value={caseRecord.designerName || caseRecord.designerId || "—"} />
-            <DetailRow label="QC" value={caseRecord.qcName || caseRecord.qcId || "—"} />
-            <DetailRow label="Account Manager" value={caseRecord.accountManagerName || caseRecord.accountManagerId || "—"} />
-            <DetailRow
-              label="Submitted"
-              value={new Date(caseRecord.createdAt).toLocaleDateString()}
-            />
-            <DetailRow
-              label="Due Date"
-              value={caseRecord.dueDate ? new Date(caseRecord.dueDate).toLocaleDateString() : "—"}
-            />
-            <div className="pt-4 border-t border-border/50 mt-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Notes</p>
-              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{notes}</p>
-            </div>
-          </CardContent>
+        <Card className="shadow-card lg:col-span-1 flex flex-col justify-between">
+          <div>
+            <CardHeader className="pb-4 border-b border-border/50">
+              <CardTitle className="text-base font-medium">Case Details</CardTitle>
+            </CardHeader>
+            <CardContent className="mt-4">
+              <DetailRow label="Case Number" value={caseRecord.caseNumber || caseRecord.id} />
+              <DetailRow label="Category" value={caseRecord.category || "—"} />
+              <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
+              <DetailRow label="Model Required" value={modelRequired} />
+              <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem})` : "—"} />
+              <DetailRow label="Designer" value={caseRecord.designerName || caseRecord.designerId || "—"} />
+              <DetailRow label="QC" value={caseRecord.qcName || caseRecord.qcId || "—"} />
+              <DetailRow label="Account Manager" value={caseRecord.accountManagerName || caseRecord.accountManagerId || "—"} />
+              <DetailRow
+                label="Submitted"
+                value={new Date(caseRecord.createdAt).toLocaleDateString()}
+              />
+              <DetailRow
+                label="Due Date"
+                value={caseRecord.dueDate ? new Date(caseRecord.dueDate).toLocaleDateString() : "—"}
+              />
+              <div className="pt-4 border-t border-border/50 mt-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Notes</p>
+                <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{notes}</p>
+              </div>
+            </CardContent>
+          </div>
+
+          {/* Client Self-Serve Contextual Actions */}
+          {chatSide === "lab" && (
+            <CardContent className="pt-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-3">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Lab Actions</p>
+              <div className="flex flex-col gap-2">
+                {caseRecord.status === "scan_received" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="text-xs font-medium"
+                      disabled={isSubmitting}
+                      onClick={() => handleStatusChange("on_hold")}
+                    >
+                      ⏸ Hold Case
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="text-xs font-medium"
+                      disabled={isSubmitting}
+                      onClick={() => handleStatusChange("cancelled")}
+                    >
+                      🚫 Cancel Case
+                    </Button>
+                  </div>
+                )}
+                {["scan_not_verified", "scan_verified"].includes(caseRecord.status) && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="w-full text-xs font-medium"
+                    disabled={isSubmitting}
+                    onClick={() => handleStatusChange("on_hold")}
+                  >
+                    ⏸ Put Case on Hold
+                  </Button>
+                )}
+                {caseRecord.status === "on_hold" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+                      disabled={isSubmitting}
+                      onClick={() => handleStatusChange("scan_received")}
+                    >
+                      ▶ Resume Case
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="text-xs font-medium"
+                      disabled={isSubmitting}
+                      onClick={() => handleStatusChange("cancelled")}
+                    >
+                      🚫 Cancel Case
+                    </Button>
+                  </div>
+                )}
+                {caseRecord.status === "submitted_to_client" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+                      disabled={isSubmitting}
+                      onClick={() => handleStatusChange("approved")}
+                    >
+                      ✓ Approve Case
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs font-medium text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={handleRequestChanges}
+                    >
+                      ✗ Request Changes
+                    </Button>
+                  </div>
+                )}
+                {!["scan_received", "scan_not_verified", "scan_verified", "on_hold", "submitted_to_client"].includes(caseRecord.status) && (
+                  <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
+                )}
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         <div className="lg:col-span-2 space-y-6">
@@ -292,23 +411,25 @@ export function CaseDetailView({
             </CardContent>
           </Card>
 
-          <Card className="shadow-card overflow-hidden">
-            <CardHeader className="pb-4 border-b border-border/50 bg-muted/10">
-              <CardTitle className="text-base font-medium flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-primary" />
-                Case Chat
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <CaseChat
-                caseId={caseRecord.id}
-                side={chatSide}
-                author={chatSide === "admin" ? "Iconic Connect Team" : "Lab User"}
-                className="border-none rounded-none"
-                heightClass="h-[500px]"
-              />
-            </CardContent>
-          </Card>
+          <div ref={chatRef}>
+            <Card className="shadow-card overflow-hidden">
+              <CardHeader className="pb-4 border-b border-border/50 bg-muted/10">
+                <CardTitle className="text-base font-medium flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-primary" />
+                  Case Chat
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <CaseChat
+                  caseId={caseRecord.id}
+                  side={chatSide}
+                  author={chatSide === "admin" ? "Iconic Connect Team" : "Lab User"}
+                  className="border-none rounded-none"
+                  heightClass="h-[500px]"
+                />
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>

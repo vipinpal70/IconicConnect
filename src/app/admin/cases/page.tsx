@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   UserPlus,
   ClipboardCheck,
-  ArrowRight,
   MessageSquare,
   FileText
 } from "lucide-react"
@@ -334,7 +333,7 @@ export default function AdminCasesPage() {
                               {caseItem.category} · {teeth.length ? `#${teeth.join(", #")} (${toothSystem})` : "—"}
                             </p>
                           </td>
-                          <td className="px-4 py-3"><StatusBadge status={caseItem.status} /></td>
+                          <td className="px-4 py-3"><StatusBadge status={caseItem.status} role="internal" /></td>
                           <td className="px-4 py-3 text-muted-foreground">{designerName}</td>
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                             {caseItem.dueDate ? new Date(caseItem.dueDate).toLocaleDateString() : "—"}
@@ -392,14 +391,41 @@ export default function AdminCasesPage() {
                               )}
 
                               {caseItem.status === "internal_qc" && (
-                                <Button
-                                  size="sm"
-                                  disabled={isMutating}
-                                  onClick={() => handleUpdate(caseItem.id, { status: "submitted_to_client" }, `Sent case to client for approval`)}
-                                  className="h-8 text-xs bg-primary hover:bg-primary/90"
-                                >
-                                  Approve & Send to Client <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                                </Button>
+                                <div className="flex flex-wrap gap-1.5 items-center">
+                                  <Button
+                                    size="sm"
+                                    disabled={isMutating}
+                                    onClick={() => handleUpdate(caseItem.id, { status: "submitted_to_client" }, `Approved QC and sent design to client`)}
+                                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
+                                  >
+                                    ✓ Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={isMutating}
+                                    onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Rejected design; sent back to designer`)}
+                                    className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm transition-all"
+                                  >
+                                    ✗ Reject
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    disabled={isMutating}
+                                    onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Feedback logged; sent back to designer`)}
+                                    className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
+                                  >
+                                    💬 Feedback
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    disabled={isMutating}
+                                    onClick={() => handleUpdate(caseItem.id, { status: "on_hold" }, `Case put on hold by QC Lead`)}
+                                    className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
+                                  >
+                                    ⏸ Hold
+                                  </Button>
+                                </div>
                               )}
 
                               {caseItem.status === "client_feedback" && (
@@ -451,7 +477,7 @@ export default function AdminCasesPage() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-xl font-bold">
                   {openCase.caseNumber || openCase.id} · {renderSubTypeSummary(openCase.subTypeData)}
-                  <StatusBadge status={openCase.status} />
+                  <StatusBadge status={openCase.status} role="internal" />
                 </DialogTitle>
                 <p className="text-xs text-muted-foreground">
                   {clientsMap.get(openCase.clientId)?.labName || "—"} · {openCase.category} · Patient Ref {openCase.subTypeData?.patientRef as string || "—"} · Due {openCase.dueDate ? new Date(openCase.dueDate).toLocaleDateString() : "—"}

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, EDITABLE_STATUSES } from '@/src/db/schema/case';
-import { profiles } from '@/src/db/schema/profile';
+import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { logActivity } from '@/src/lib/activity-log';
 
@@ -124,34 +124,106 @@ export async function PUT(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
-    // Role checks for PUT
-    if (profile.role === 'subuser') {
-      return NextResponse.json({ error: 'Forbidden: Subusers cannot update case details' }, { status: 403 });
-    }
+    const body = await req.json();
+    const updateData: CaseUpdateData = {};
 
-    if (profile.role === 'client') {
-      if (caseRecord.clientId !== profile.id) {
+    // Validate and build updates based on role
+    if (profile.role === 'client' || profile.role === 'subuser') {
+      if (profile.role === 'client' && caseRecord.clientId !== profile.id) {
         return NextResponse.json({ error: 'Forbidden: You can only update cases from your lab' }, { status: 403 });
       }
-      if (!EDITABLE_STATUSES.includes(caseRecord.status as typeof EDITABLE_STATUSES[number])) {
-        return NextResponse.json({ error: 'Forbidden: Cannot update case once work has started' }, { status: 403 });
+      if (profile.role === 'subuser') {
+        const [subuserRecord] = await db.select().from(subUsers).where(and(eq(subUsers.profileId, profile.id), eq(subUsers.clientId, caseRecord.clientId))).limit(1);
+        if (!subuserRecord) {
+          return NextResponse.json({ error: 'Forbidden: You do not have access to this client\'s cases' }, { status: 403 });
+        }
       }
-    }
 
-    const body = await req.json();
+      if (body.status) {
+        const current = caseRecord.status;
+        const target = body.status;
 
-    const updateData: CaseUpdateData = {};
-    if (body.caseNumber) updateData.caseNumber = body.caseNumber;
-    if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
-    if (body.category) updateData.category = body.category;
-    if (body.subTypeData) updateData.subTypeData = body.subTypeData;
+        // 1. Hold before In Design
+        if (target === 'on_hold') {
+          const allowedForHold = ['scan_received', 'scan_not_verified', 'scan_verified'];
+          if (!allowedForHold.includes(current)) {
+            return NextResponse.json({ error: 'Forbidden: Cannot place case on hold after design has started' }, { status: 400 });
+          }
+        }
+        // 2. Resume from hold
+        else if (target === 'scan_received' && current === 'on_hold') {
+          // Allowed to resume
+        }
+        // 3. Cancel case (Cancelled) before In Validation
+        else if (target === 'cancelled' || target === 'on_hold') {
+          if (current !== 'scan_received' && current !== 'on_hold') {
+            return NextResponse.json({ error: 'Forbidden: Cannot cancel case after validation has started' }, { status: 400 });
+          }
+        }
+        // 4. Approve case (approved) during Client Review
+        else if (target === 'approved') {
+          if (current !== 'submitted_to_client') {
+            return NextResponse.json({ error: 'Forbidden: Cannot approve case unless it is in Client Review status' }, { status: 400 });
+          }
+        } else {
+          return NextResponse.json({ error: `Forbidden: Client/Subusers cannot transition status from ${current} to ${target}` }, { status: 403 });
+        }
 
-    // Only admins can change status or assignees
-    if (isValidRoleForType('admin_portal', profile.role)) {
-      if (body.status) updateData.status = body.status;
+        updateData.status = target;
+      }
+
+      // Allow editing details only if before work starts
+      if (body.caseNumber || body.dueDate || body.category || body.subTypeData) {
+        if (!EDITABLE_STATUSES.includes(caseRecord.status as typeof EDITABLE_STATUSES[number])) {
+          return NextResponse.json({ error: 'Forbidden: Cannot edit case details after work has started' }, { status: 403 });
+        }
+        if (body.caseNumber) updateData.caseNumber = body.caseNumber;
+        if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
+        if (body.category) updateData.category = body.category;
+        if (body.subTypeData) updateData.subTypeData = body.subTypeData;
+      }
+    } else if (isValidRoleForType('admin_portal', profile.role)) {
+      if (body.caseNumber) updateData.caseNumber = body.caseNumber;
+      if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
+      if (body.category) updateData.category = body.category;
+      if (body.subTypeData) updateData.subTypeData = body.subTypeData;
       if (body.designerId !== undefined) updateData.designerId = body.designerId;
       if (body.qcId !== undefined) updateData.qcId = body.qcId;
       if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
+
+      if (body.status) {
+        const current = caseRecord.status;
+        const target = body.status;
+
+        if (profile.role === 'admin') {
+          updateData.status = target;
+        } else if (profile.role === 'designer') {
+          if (caseRecord.designerId !== profile.id) {
+            return NextResponse.json({ error: 'Forbidden: You can only update cases assigned to you' }, { status: 403 });
+          }
+          if (target === 'in_progress' && current === 'allocated_to_designer') {
+            updateData.status = target;
+          } else if (target === 'internal_qc' && current === 'in_progress') {
+            updateData.status = target;
+          } else {
+            return NextResponse.json({ error: `Forbidden: Designers cannot transition status from ${current} to ${target}` }, { status: 403 });
+          }
+        } else if (profile.role === 'qc') {
+          if (current !== 'internal_qc') {
+            return NextResponse.json({ error: 'Forbidden: QC Leads can only perform actions on cases in Internal QC stage' }, { status: 403 });
+          }
+          const qcAllowed = ['submitted_to_client', 'in_progress', 'on_hold'];
+          if (qcAllowed.includes(target)) {
+            updateData.status = target;
+          } else {
+            return NextResponse.json({ error: `Forbidden: QC Leads cannot transition status from ${current} to ${target}` }, { status: 403 });
+          }
+        } else {
+          return NextResponse.json({ error: 'Forbidden: Unauthorized internal role action' }, { status: 403 });
+        }
+      }
+    } else {
+      return NextResponse.json({ error: 'Forbidden: Unauthorized role' }, { status: 403 });
     }
 
     const updatedCase = await db.update(cases).set(updateData).where(eq(cases.id, id)).returning();
