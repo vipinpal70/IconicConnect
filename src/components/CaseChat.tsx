@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { Send, Paperclip, FileText, Loader2, Download } from "lucide-react"
@@ -34,6 +34,8 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
 
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
   const [currentId, setCurrentId] = useState(caseId)
   if (currentId !== caseId) {
     setCurrentId(caseId)
@@ -64,6 +66,11 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
       clearInterval(interval)
     }
   }, [caseId, fetchMessages])
+
+  // Scroll to bottom whenever messages load or change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
   // 2. Format file sizes nicely
   const formatSize = (bytesStr?: string | null) => {
@@ -97,25 +104,22 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
     }
   }
 
-  // 4. File selection and dynamic upload constraints
+  // 4. File selection and upload constraints
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Limit upload access to Clients/Subusers
     if (side !== "lab") {
       toast.error("Admins and QC operators can only send text messages.")
       return
     }
 
-    // Strict 500MB size limit validation
     const maxLimit = 500 * 1024 * 1024 // 500MB
     if (file.size > maxLimit) {
       toast.error("File size exceeds the 500MB chat message upload limit.")
       return
     }
 
-    // Secure Extension Verification
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
     const allowedExtensions = [
       ".png", ".jpg", ".jpeg",
@@ -129,7 +133,6 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
       return
     }
 
-    // Trigger XHR streaming upload with progress feedback
     setUploading(true)
     setUploadProgress(0)
 
@@ -147,7 +150,6 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
       xhr.onload = async () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           const uploadRes = JSON.parse(xhr.responseText)
-          // File uploaded successfully, now link it to a chat message
           const msgPayload = {
             messageText: `Shared an attachment: ${file.name}`,
             fileUrl: uploadRes.fileUrl,
@@ -181,7 +183,6 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
         setUploading(false)
       }
 
-      // Stream binary data directly
       xhr.send(file)
     } catch {
       toast.error("Upload error")
@@ -195,12 +196,12 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
     const type = m.fileType || ""
     if (type.startsWith("image/")) {
       return (
-        <div className="relative mt-2 rounded-lg overflow-hidden border border-border/60 bg-muted/20">
+        <div className="relative mt-1.5 rounded-md overflow-hidden border border-border/60 bg-muted/20 max-w-[200px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img 
             src={m.fileUrl} 
             alt={m.fileName || "Image"} 
-            className="max-w-full max-h-[220px] object-cover hover:scale-105 transition-transform duration-200 cursor-pointer"
+            className="max-w-full max-h-[140px] object-cover hover:scale-105 transition-transform duration-200 cursor-pointer"
             onClick={() => window.open(m.fileUrl!, "_blank")}
           />
         </div>
@@ -209,8 +210,8 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
 
     if (type.startsWith("video/")) {
       return (
-        <div className="mt-2 rounded-lg overflow-hidden border border-border/60 bg-black max-w-[320px]">
-          <video src={m.fileUrl} controls className="w-full max-h-[200px]" />
+        <div className="mt-1.5 rounded-md overflow-hidden border border-border/60 bg-black max-w-[240px]">
+          <video src={m.fileUrl} controls className="w-full max-h-[140px]" />
         </div>
       )
     }
@@ -221,60 +222,62 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
         href={m.fileUrl}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center gap-3 p-3 mt-2 rounded-lg bg-muted/60 border border-border/50 hover:bg-muted/80 transition-all text-xs truncate max-w-[280px]"
+        className="flex items-center gap-2 p-2 mt-1.5 rounded-md bg-muted/60 border border-border/50 hover:bg-muted/80 transition-all text-[11px] truncate max-w-[240px]"
       >
-        <FileText className="h-5 w-5 text-emerald-600 shrink-0" />
+        <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-foreground">{m.fileName}</p>
-          <p className="text-[10px] text-muted-foreground">{formatSize(m.fileSize)}</p>
+          <p className="text-[9px] text-muted-foreground">{formatSize(m.fileSize)}</p>
         </div>
-        <Download className="h-4 w-4 text-muted-foreground hover:text-emerald-600 transition-colors shrink-0" />
+        <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-emerald-600 transition-colors shrink-0" />
       </a>
     )
   }
 
+  // Reverse timeline order (oldest at top, latest at bottom)
+  const sortedMessages = messages ? [...messages].reverse() : null
+
   return (
     <div className={cn("flex flex-col rounded-lg border border-border bg-card overflow-hidden shadow-sm", className)}>
-      <div className={cn("flex-1 overflow-y-auto p-4 space-y-4 bg-muted/15 flex flex-col", heightClass)}>
-        {messages === null ? (
+      <div className={cn("flex-1 overflow-y-auto p-3 space-y-2 bg-muted/15 flex flex-col", heightClass)}>
+        {sortedMessages === null ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground text-xs gap-2 py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
             Loading conversations...
           </div>
-        ) : messages.length === 0 ? (
+        ) : sortedMessages.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground py-16 my-auto">
             No messages recorded. Start the conversation for this case below.
           </p>
         ) : (
-          <div className="space-y-4">
-            {messages.map((m) => {
+          <div className="space-y-2">
+            {sortedMessages.map((m) => {
               const isAdminColumn = ["admin", "qc", "designer"].includes(m.senderRole)
-              // Columns: Admin column is RIGHT side, Client column is LEFT side
               const alignment = isAdminColumn ? "justify-end" : "justify-start"
 
               return (
                 <div key={m.id} className={cn("flex w-full", alignment)}>
                   <div className={cn(
-                    "max-w-[75%] md:max-w-[65%] rounded-2xl p-4 shadow-sm relative group transition-all duration-150",
+                    "max-w-[80%] md:max-w-[70%] rounded-xl py-1.5 px-3 shadow-sm relative group transition-all duration-150",
                     isAdminColumn
                       ? "bg-primary text-primary-foreground rounded-br-sm"
                       : "bg-card text-foreground border border-border rounded-bl-sm"
                   )}>
-                    <div className="flex items-center justify-between gap-4 mb-1">
+                    <div className="flex items-center justify-between gap-4 mb-0.5">
                       <span className={cn(
-                        "text-[10px] font-bold uppercase tracking-wide",
+                        "text-[9px] font-bold uppercase tracking-wide",
                         isAdminColumn ? "text-zinc-200" : "text-emerald-700"
                       )}>
                         {m.senderName} ({m.senderRole === "qc" ? "QC Lead" : m.senderRole})
                       </span>
                     </div>
 
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{m.messageText}</p>
+                    <p className="text-xs leading-normal whitespace-pre-wrap break-words">{m.messageText}</p>
 
                     {renderFilePreview(m)}
 
                     <span className={cn(
-                      "block text-[9px] mt-2 text-right",
+                      "block text-[8px] mt-1 text-right",
                       isAdminColumn ? "text-zinc-300" : "text-muted-foreground"
                     )}>
                       {new Date(m.createdAt).toLocaleDateString()} {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -283,28 +286,27 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
                 </div>
               )
             })}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
-      {/* Upload Progress Bar */}
       {uploading && (
-        <div className="px-4 py-2 border-t border-border bg-emerald-50/20 text-xs text-emerald-800 flex items-center gap-3 animate-pulse">
-          <Loader2 className="h-4 w-4 animate-spin text-emerald-600 shrink-0" />
+        <div className="px-3 py-1.5 border-t border-border bg-emerald-50/20 text-[11px] text-emerald-800 flex items-center gap-3 animate-pulse">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" />
           <div className="flex-1">
-            <div className="flex justify-between font-medium mb-1">
+            <div className="flex justify-between font-medium mb-0.5">
               <span>Uploading attachment...</span>
               <span>{uploadProgress}%</span>
             </div>
-            <div className="w-full bg-emerald-100 h-1.5 rounded-full overflow-hidden">
+            <div className="w-full bg-emerald-100 h-1 rounded-full overflow-hidden">
               <div className="bg-emerald-600 h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
             </div>
           </div>
         </div>
       )}
 
-      {/* Footer controls */}
-      <div className="flex gap-2 p-3 border-t border-border bg-card items-center">
+      <div className="flex gap-1.5 p-2 border-t border-border bg-card items-center">
         {side === "lab" && (
           <>
             <input 
@@ -320,9 +322,9 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
               disabled={uploading}
               onClick={() => document.getElementById("chat-file-input")?.click()}
               title="Attach media files (images, video, zip, pdf, docs upto 500MB)"
-              className="h-9 w-9 shrink-0 border-border hover:bg-muted"
+              className="h-8 w-8 shrink-0 border-border hover:bg-muted"
             >
-              <Paperclip className="h-4 w-4 text-muted-foreground" />
+              <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
           </>
         )}
@@ -333,16 +335,16 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
           disabled={uploading}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          className="bg-muted/10 h-9"
+          className="bg-muted/10 h-8 text-xs"
         />
 
         <Button 
           onClick={handleSend} 
           disabled={!text.trim() || uploading} 
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className="h-8 w-8 shrink-0"
         >
-          <Send className="h-4 w-4" />
+          <Send className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
