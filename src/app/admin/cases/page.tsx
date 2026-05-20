@@ -100,6 +100,8 @@ export default function AdminCasesPage() {
   const [clientFilter, setClientFilter] = useState("All")
   const [openCase, setOpenCase] = useState<CaseRecord | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null)
+  const [selectedQcId, setSelectedQcId] = useState<string>("")
 
   // Fetch Cases list
   const { data, isLoading, error, refetch } = useQuery<{ data: CaseRecord[] }>({
@@ -167,6 +169,12 @@ export default function AdminCasesPage() {
   const designers = useMemo(() => {
     if (!membersData) return []
     return membersData.filter((m) => m.role === "designer" && m.status === "active")
+  }, [membersData])
+
+  // Extract active QCs for the allocate dropdown
+  const qcs = useMemo(() => {
+    if (!membersData) return []
+    return membersData.filter((m) => m.role === "qc" && m.status === "active")
   }, [membersData])
 
   const filtered = useMemo(() => {
@@ -382,15 +390,29 @@ export default function AdminCasesPage() {
                                       onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
                                     />
                                   ) : (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
-                                      className="h-8 text-xs"
-                                    >
-                                      <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
-                                    </Button>
+                                    <>
+                                      {!caseItem.qcId ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={isMutating}
+                                          onClick={() => setAssignQcCaseId(caseItem.id)}
+                                          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
+                                        >
+                                          <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={isMutating}
+                                          onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
+                                          className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800"
+                                        >
+                                          <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                        </Button>
+                                      )}
+                                    </>
                                   )}
                                 </>
                               )}
@@ -546,6 +568,70 @@ export default function AdminCasesPage() {
               </Tabs>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!assignQcCaseId} onOpenChange={(o) => { if (!o) { setAssignQcCaseId(null); setSelectedQcId(""); } }}>
+        <DialogContent className="sm:max-w-[425px] bg-primary border-primary/50 text-white shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-emerald-500" /> Assign QC Lead
+            </DialogTitle>
+            <p className="text-xs text-zinc-300">
+              Select an active Quality Control team member to allocate to this case and transition it to QC review.
+            </p>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label htmlFor="qc-select" className="text-sm font-semibold text-zinc-200">
+                QC Member
+              </label>
+              <Select value={selectedQcId} onValueChange={setSelectedQcId}>
+                <SelectTrigger id="qc-select" className="bg-primary/80 border-primary-50/50 text-white focus:bg-emerald-600 focus:text-white">
+                  <SelectValue placeholder="Select QC Lead" />
+                </SelectTrigger>
+                <SelectContent className="bg-primary border-primary-50/50 text-white">
+                  {qcs.map((qc) => (
+                    <SelectItem 
+                      key={qc.id} 
+                      value={qc.id}
+                      className="text-white focus:bg-emerald-600 focus:text-white cursor-pointer"
+                    >
+                      {qc.fullName}
+                    </SelectItem>
+                  ))}
+                  {qcs.length === 0 && (
+                    <p className="text-xs p-2 text-zinc-400">No active QC leads found.</p>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="ghost"
+              onClick={() => { setAssignQcCaseId(null); setSelectedQcId(""); }}
+              className="text-white hover:bg-zinc-800"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!selectedQcId || updatingId === assignQcCaseId}
+              onClick={async () => {
+                if (!assignQcCaseId || !selectedQcId) return
+                await handleUpdate(
+                  assignQcCaseId, 
+                  { qcId: selectedQcId, status: "internal_qc" }, 
+                  "Successfully assigned QC lead and transitioned case status to Internal QC"
+                )
+                setAssignQcCaseId(null)
+                setSelectedQcId("")
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+            >
+              Assign & Transition
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </AdminLayout>
