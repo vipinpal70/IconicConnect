@@ -13,17 +13,17 @@ type CaseUpdateData = {
   category?: string
   subTypeData?: unknown
   status?:
-    | 'scan_received'
-    | 'allocated_to_designer'
-    | 'scan_verified'
-    | 'scan_not_verified'
-    | 'in_progress'
-    | 'internal_qc'
-    | 'submitted_to_client'
-    | 'on_hold'
-    | 'client_feedback'
-    | 'approved'
-    | 'delivered'
+  | 'scan_received'
+  | 'allocated_to_designer'
+  | 'scan_verified'
+  | 'scan_not_verified'
+  | 'in_progress'
+  | 'internal_qc'
+  | 'submitted_to_client'
+  | 'on_hold'
+  | 'client_feedback'
+  | 'approved'
+  | 'delivered'
   designerId?: string | null
   qcId?: string | null
   accountManagerId?: string | null
@@ -128,7 +128,7 @@ export async function PUT(
     if (profile.role === 'subuser') {
       return NextResponse.json({ error: 'Forbidden: Subusers cannot update case details' }, { status: 403 });
     }
-    
+
     if (profile.role === 'client') {
       if (caseRecord.clientId !== profile.id) {
         return NextResponse.json({ error: 'Forbidden: You can only update cases from your lab' }, { status: 403 });
@@ -139,19 +139,19 @@ export async function PUT(
     }
 
     const body = await req.json();
-    
+
     const updateData: CaseUpdateData = {};
     if (body.caseNumber) updateData.caseNumber = body.caseNumber;
     if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
     if (body.category) updateData.category = body.category;
     if (body.subTypeData) updateData.subTypeData = body.subTypeData;
-    
+
     // Only admins can change status or assignees
     if (isValidRoleForType('admin_portal', profile.role)) {
-       if (body.status) updateData.status = body.status;
-       if (body.designerId !== undefined) updateData.designerId = body.designerId;
-       if (body.qcId !== undefined) updateData.qcId = body.qcId;
-       if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
+      if (body.status) updateData.status = body.status;
+      if (body.designerId !== undefined) updateData.designerId = body.designerId;
+      if (body.qcId !== undefined) updateData.qcId = body.qcId;
+      if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
     }
 
     const updatedCase = await db.update(cases).set(updateData).where(eq(cases.id, id)).returning();
@@ -222,7 +222,7 @@ export async function DELETE(
     if (profile.role === 'subuser') {
       return NextResponse.json({ error: 'Forbidden: Subusers cannot delete cases' }, { status: 403 });
     }
-    
+
     if (profile.role === 'client') {
       if (caseRecord.clientId !== profile.id) {
         return NextResponse.json({ error: 'Forbidden: You can only delete cases from your lab' }, { status: 403 });

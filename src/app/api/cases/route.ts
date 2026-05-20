@@ -3,7 +3,7 @@ import { db } from '@/src/db';
 import { cases, caseFiles } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { generateCaseId } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
@@ -200,7 +200,21 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
     }
 
-    return NextResponse.json({ data: results });
+    const designerIds = Array.from(new Set(results.map(r => r.designerId).filter(Boolean))) as string[];
+    const designersMap = new Map<string, string>();
+    if (designerIds.length > 0) {
+      const designersProfiles = await db.select().from(profiles).where(inArray(profiles.id, designerIds));
+      designersProfiles.forEach(p => {
+        designersMap.set(p.id, p.fullName || p.email);
+      });
+    }
+
+    const mappedResults = results.map(r => ({
+      ...r,
+      designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null
+    }));
+
+    return NextResponse.json({ data: mappedResults });
   } catch (error: unknown) {
     console.error('Get cases error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
