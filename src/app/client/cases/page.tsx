@@ -28,6 +28,7 @@ interface BulkRow {
   subTypeData: Record<string, string>;
   modelRequired: "yes" | "no";
   teeth: number[];
+  toothSystem: "USA" | "FDI";
   notes: string;
   uploadProgress: number;
   uploadedUrl: string | null;
@@ -200,6 +201,7 @@ export default function CasesPage() {
   const [subTypeData, setSubTypeData] = useState<Record<string, string>>({});
   const [modelRequired, setModelRequired] = useState("no");
   const [teeth, setTeeth] = useState<number[]>([]);
+  const [toothSystem, setToothSystem] = useState<"USA" | "FDI">("USA");
   const [notes, setNotes] = useState("");
   const [singleFile, setSingleFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -323,6 +325,7 @@ export default function CasesPage() {
         ...subTypeData,
         modelRequired,
         teeth,
+        toothSystem,
         notes,
       },
       caseNumber: generatedCaseId,
@@ -384,6 +387,7 @@ export default function CasesPage() {
         subTypeData: {},
         modelRequired: "no",
         teeth: [],
+        toothSystem: "USA",
         notes: "",
         uploadProgress: 0,
         uploadedUrl: null,
@@ -436,6 +440,7 @@ export default function CasesPage() {
         ...row.subTypeData,
         modelRequired: row.modelRequired,
         teeth: row.teeth,
+        toothSystem: row.toothSystem,
         notes: row.notes,
       },
       caseNumber: row.caseId,
@@ -576,8 +581,8 @@ export default function CasesPage() {
                     ))}
 
                     <div className="space-y-2">
-                      <Label>Tooth Selection (USA Universal Numbering)</Label>
-                      <ToothChart selected={teeth} onChange={setTeeth} />
+                      <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                      <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
                     </div>
 
                     <div className="space-y-2">
@@ -672,7 +677,7 @@ export default function CasesPage() {
                                     </Select>
                                   </div>
                                 ))}
-                                <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} />
+                                <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} system={row.toothSystem} onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })} />
                                 <Textarea
                                   value={row.notes}
                                   onChange={(e) => updateBulkRow(i, { notes: e.target.value })}
