@@ -39,7 +39,7 @@ async function getAdminProfile() {
     return { user, profile, error: "Forbidden" as const }
   }
 
-  return { user, profile, error: null as const }
+  return { user, profile, error: null as null }
 }
 
 export async function GET() {
