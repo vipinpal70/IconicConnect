@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { AdminLayout } from "@/src/components/AdminLayout"
@@ -325,7 +326,11 @@ export default function AdminCasesPage() {
                           key={caseItem.id}
                           className="hover:bg-muted/10 transition-colors"
                         >
-                          <td className="px-4 py-3 font-semibold text-primary">{caseItem.caseNumber || caseItem.id}</td>
+                          <td className="px-4 py-3 font-semibold text-primary">
+                            <Link href={`/admin/cases/${caseItem.id}`} className="hover:underline cursor-pointer">
+                              {caseItem.caseNumber || caseItem.id}
+                            </Link>
+                          </td>
                           <td className="px-4 py-3 text-foreground">{clientDisplayName}</td>
                           <td className="px-4 py-3">
                             <p className="text-foreground">{restoration || "—"}</p>
