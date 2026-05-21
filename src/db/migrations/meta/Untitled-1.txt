@@ -1,0 +1,40 @@
+- billing:
+
+- pricelist link to client lab/client:
+    - edit only for admin
+
+-support:
+    - status change: admin/QC/account manager
+    - change live chat to request callback
+
+- client profile:
+    - prefrence form
+    - display step wise
+    - delete form only by client
+
+
+- sign up:
+    - client directly get signed in after signup (creating account)
+
+
+create a new prefrence form page for client, client can add multiple forms and edit or delete them. All the prefrence forms submit by the client linked to their account. Please make the prefrence form same as the src\app\client\image.png. remove the old prefrence from card in src\app\client\profile\page.tsx line number 193.
+Also admin can see the prefrence form submitted by the client in the client page into respected client profile card.
+
+
+AdminLayout
+
+<header className="h-17 flex items-center justify-end border-b border-border bg-gray-50 px-4 sticky top-0 z-10">
+            <SidebarTrigger className="text-muted-foreground md:hidden" />
+            <Button variant="ghost" size="icon" className="relative h-9 w-9">
+              <Bell className="h-4 w-4 text-muted-foreground" />
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500" />
+            </Button>
+
+cll
+
+ <header className="h-17 flex items-center justify-end border-b border-border bg-gray-50 px-4 sticky top-0 z-10">
+            <SidebarTrigger className="text-muted-foreground md:hidden" />
+            <Button variant="ghost" size="icon" className="relative h-9 w-9">
+              <Bell className="h-4 w-4 text-muted-foreground" />
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500" />
+            </Button>
