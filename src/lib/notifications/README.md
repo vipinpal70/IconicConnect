@@ -15,6 +15,8 @@ This guide explains how notification triggers are structured inside IconicConnec
 | **Case Put on Hold** | `case_hold` | `PUT /api/cases/[id]` | Admin / QC | **Assigned Designer** & **Client Lab** (warning them of paused flow). |
 | **Case Cancelled** | `case_cancel` | `PUT /api/cases/[id]` | Client / Admin | The **Assigned Designer** (alerting them to stop all active work). |
 | **Live Chat Message** | `chat_message` | `POST /api/cases/[id]/chat` | Message Sender | **Counterparts**: If Client sends, alerts Designer/QC/Admin. If Designer/QC/Admin sends, alerts Client. |
+| **Welcome Internal Team** | `welcome` | `POST /api/admin/members` | Admin | The **Newly Created Team Member** (QC, Designer, Manager). |
+| **Client Plan Onboarded** | `plan_upgraded` | `POST /api/admin/clients/plan` | Admin | The **Upgraded/Onboarded Client Lab**. |
 
 ---
 

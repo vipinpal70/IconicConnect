@@ -92,6 +92,24 @@ export async function POST(req: NextRequest) {
       status: 'active',
     });
 
+    // 2.5 Trigger Welcome Notification
+    try {
+      const { NotificationService } = await import('@/src/lib/notifications/notification-service');
+      const { NotificationType } = await import('@/src/lib/notifications/notification-events');
+
+      await NotificationService.dispatch({
+        type: NotificationType.WELCOME,
+        actorUserId: user.id,
+        targetUserId: authData.user.id,
+        title: 'Welcome to the Team!',
+        message: `Welcome to the IconicConnect team, ${fullName || email}! We are thrilled to have you onboard as our new ${role.replace('_', ' ')}.`,
+        link: '/dashboard',
+        metadata: { role }
+      });
+    } catch (notifyError) {
+      console.error('Failed to send welcome notification:', notifyError);
+    }
+
     // 3. Send email with credentials via Queue
     const { queueEmail } = await import('@/src/lib/queue/jobs');
     await queueEmail({

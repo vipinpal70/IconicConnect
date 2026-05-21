@@ -36,6 +36,24 @@ export async function POST(req: NextRequest) {
 
     if (plan === 'Onboarded') {
       updateData.onBoardedAt = new Date()
+
+      // Trigger Onboarding/Plan Upgraded Notification
+      try {
+        const { NotificationService } = await import('@/src/lib/notifications/notification-service');
+        const { NotificationType } = await import('@/src/lib/notifications/notification-events');
+
+        await NotificationService.dispatch({
+          type: NotificationType.PLAN_UPGRADED,
+          actorUserId: user.id,
+          targetUserId: clientId,
+          title: 'Account Onboarded!',
+          message: 'Welcome to the official onboarded plan! Your trial account has been upgraded and you now have full operational access to IconicConnect.',
+          link: '/client/dashboard',
+          metadata: { plan: 'Onboarded' }
+        });
+      } catch (notifyError) {
+        console.error('Failed to send onboarding notification:', notifyError);
+      }
     }
 
     await db.update(profiles)

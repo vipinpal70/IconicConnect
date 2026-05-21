@@ -7,6 +7,8 @@ export enum NotificationType {
   CASE_CANCEL = 'case_cancel',
   CASE_REMINDER = 'case_reminder',
   CHAT_MESSAGE = 'chat_message',
+  WELCOME = 'welcome',
+  PLAN_UPGRADED = 'plan_upgraded',
 }
 
 export interface NotificationEventPayload {
