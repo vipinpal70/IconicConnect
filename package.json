@@ -8,7 +8,7 @@
     "start": "next start -p 4000",
     "lint": "eslint",
     "db:migrate": "node scripts/migrate.mjs",
-    "db:push": "drizzle-kit push",
+    "db:push": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate"
   },

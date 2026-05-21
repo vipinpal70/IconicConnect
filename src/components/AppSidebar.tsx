@@ -9,11 +9,10 @@ import {
   HeadphonesIcon,
   PlayCircle,
   UserCircle,
-  ArrowLeftRight,
   LogOut,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -26,6 +25,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  SidebarTrigger,
   useSidebar,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
@@ -46,7 +46,6 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
-  const router = useRouter();
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -70,16 +69,19 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center shadow-glow">
-            <span className="text-sm font-bold text-primary-foreground">IC</span>
-          </div>
-          {!collapsed && (
-            <div>
-              <h1 className="text-sm font-semibold text-foreground">Iconic Connect</h1>
-              <p className="text-xs text-muted-foreground">Lab Portal</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center shadow-glow">
+              <span className="text-sm font-bold text-primary-foreground">IC</span>
             </div>
-          )}
+            {!collapsed && (
+              <div>
+                <h1 className="text-sm font-semibold text-foreground">Iconic Connect</h1>
+                <p className="text-xs text-muted-foreground">Lab Portal</p>
+              </div>
+            )}
+          </div>
+          <SidebarTrigger className="hidden text-muted-foreground shrink-0 md:inline-flex" />
         </div>
       </SidebarHeader>
       <SidebarContent className="px-2 py-3">

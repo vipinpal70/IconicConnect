@@ -7,19 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
-import { Textarea } from "@/src/components/ui/textarea";
 import { Badge } from "@/src/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/src/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
-import { caseTypes } from "@/src/data/demoData";
-import {
-  getPreferences, savePreferences, type PreferenceForm,
-  getUsers, saveUsers, type LabUser,
-} from "@/src/lib/labStore";
+import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
 import {
   Building2, Mail, Phone, MapPin, FileText, Plus, Eye, EyeOff,
-  Settings2, Users, KeyRound, Trash2,
+  Users, KeyRound, Trash2, Settings
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface Profile {
   id: string;
@@ -61,6 +57,7 @@ const mockLab = {
 
 export default function ProfilePage() {
   const lab = mockLab;
+  const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
 
@@ -95,32 +92,6 @@ export default function ProfilePage() {
     phone: profile?.phone || lab.phone,
     poc: profile?.fullName || profile?.name || lab.poc,
     title: profile?.title || (profile?.role === 'admin' ? 'Administrator' : profile?.role) || '—',
-  };
-
-  // Preferences
-  const [prefs, setPrefs] = useState<PreferenceForm[]>(() => getPreferences(lab.id));
-  const [prefOpen, setPrefOpen] = useState(false);
-  const [draft, setDraft] = useState<{ title: string; category: string; body: string }>({
-    title: "", category: "Crown & Bridge", body: "",
-  });
-
-  const addPref = () => {
-    if (!draft.title.trim() || !draft.body.trim()) {
-      return;
-    }
-    const next: PreferenceForm[] = [
-      { id: `PF-${Date.now()}`, title: draft.title, category: draft.category, body: draft.body, createdAt: new Date().toISOString().slice(0, 10) },
-      ...prefs,
-    ];
-    setPrefs(next);
-    savePreferences(profile?.id || lab.id, next);
-    setDraft({ title: "", category: "Crown & Bridge", body: "" });
-  };
-
-  const removePref = (id: string) => {
-    const next = prefs.filter((p) => p.id !== id);
-    setPrefs(next);
-    savePreferences(profile?.id || lab.id, next);
   };
 
   // Users
@@ -164,85 +135,29 @@ export default function ProfilePage() {
         {/* Header */}
         <Card className="shadow-card overflow-hidden">
           <div className="gradient-primary h-20" />
-          <CardContent className="pt-0 -mt-10 px-6 pb-6">
-            <div className="flex items-end justify-between flex-wrap gap-4">
+          <CardContent className="pt-0 -mt-10 px-6 pb-6 flex justify-between items-center">
+            <div className="flex items-end justify-between flex-wrap gap-4 pt-4">
               <div className="flex items-end gap-4">
-                <div className="w-20 h-20 rounded-xl bg-card border-4 border-card shadow-card flex items-center justify-center">
+                <div className="w-20 h-20 rounded-xl bg-gray-200 border-2 border-gray-300 shadow-card flex items-center justify-center">
                   <Building2 className="h-9 w-9 text-primary" />
                 </div>
-                <div className="pb-2">
+                <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-semibold text-foreground">{displayProfile.company}</h1>
-                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none">{displayProfile.status}</Badge>
+                    <h1 className="text-xl font-semibold text-foreground">{displayProfile.company}</h1>
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border border-green-200">{displayProfile.status}</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">Onboarded {displayProfile.onboardedAt} · ID {displayProfile.id}</p>
                 </div>
               </div>
-              <Dialog open={prefOpen} onOpenChange={setPrefOpen}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2"><Settings2 className="h-4 w-4" /> Preferences</Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-3xl">
-                  <DialogHeader>
-                    <DialogTitle>Preference Forms</DialogTitle>
-                  </DialogHeader>
-                  <p className="text-sm text-muted-foreground">
-                    Add one or more preference forms. These are visible to the Iconic Connect team when working on your cases.
-                  </p>
-
-                  <Card className="bg-muted/30 border-dashed">
-                    <CardContent className="p-4 space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Label>Title</Label>
-                          <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="e.g. Anterior crown preferences" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Applies to</Label>
-                          <Select value={draft.category} onValueChange={(v) => setDraft({ ...draft, category: v })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="All cases">All cases</SelectItem>
-                              {caseTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Details</Label>
-                        <Textarea
-                          value={draft.body}
-                          onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                          placeholder="Cement gap, occlusal contact, default shade, file format..."
-                          className="min-h-[100px]"
-                        />
-                      </div>
-                      <Button onClick={addPref} className="gap-2"><Plus className="h-4 w-4" /> Save preference form</Button>
-                    </CardContent>
-                  </Card>
-
-                  <div className="space-y-3 mt-4 max-h-[300px] overflow-y-auto pr-2">
-                    {prefs.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">No preference forms saved yet.</p>}
-                    {prefs.map((p) => (
-                      <Card key={p.id} className="shadow-sm">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-3 mb-2">
-                            <div>
-                              <p className="font-medium text-foreground">{p.title}</p>
-                              <p className="text-xs text-muted-foreground">{p.category} · added {p.createdAt}</p>
-                            </div>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removePref(p.id)}>
-                              <Trash2 className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          </div>
-                          <p className="text-sm text-foreground whitespace-pre-wrap">{p.body}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </DialogContent>
-              </Dialog>
             </div>
+
+            <Button
+              className="bg-primary text-primary-foreground hover:bg-[#238c67] mb-2"
+              onClick={() => router.push("/client/preferences")}
+            >
+              <Settings className="h-4 w-4 mr-1" />
+              Preferences
+            </Button>
           </CardContent>
         </Card>
 

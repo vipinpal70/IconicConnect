@@ -14,6 +14,7 @@ import { Building2, Mail, Phone, MapPin, FileText, Plus, ShieldCheck, XCircle } 
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { caseTypes } from "@/src/data/demoData";
+import type { PreferenceFormRecord } from "@/src/lib/preference-forms";
 
 type ClientProfile = {
 	id: string;
@@ -63,6 +64,18 @@ export default function AdminClients() {
 			queryClient.invalidateQueries({ queryKey: ["pendingClients"] });
 			toast.success("Client approved successfully");
 		},
+	});
+
+	const { data: preferenceForms, isLoading: preferenceFormsLoading } = useQuery<PreferenceFormRecord[]>({
+		queryKey: ["clientPreferenceForms", activeClient?.id],
+		queryFn: async () => {
+			if (!activeClient) return [];
+			const res = await fetch(`/api/preference-forms?clientId=${activeClient.id}`);
+			if (!res.ok) throw new Error("Failed to fetch preference forms");
+			const data = await res.json();
+			return data.data ?? [];
+		},
+		enabled: !!activeClient,
 	});
 
 	if (isLoading) return <LoadingSpinner />;
@@ -160,12 +173,12 @@ export default function AdminClients() {
 								</DialogHeader>
 								<div className="space-y-6 mt-4">
 									<div className="grid grid-cols-2 gap-4">
-										<Info label="Full Name (POC)" value={activeClient.fullName || "—"} />
-										<Info label="Location" value={`${activeClient.city || "—"}, ${activeClient.state || "—"}`} />
+										<Info label="Full Name (POC)" value={activeClient.fullName || "-"} />
+										<Info label="Location" value={`${activeClient.city || "-"}, ${activeClient.state || "-"}`} />
 										<Info label="Email" value={activeClient.email} />
-										<Info label="Phone" value={activeClient.phone || "—"} />
+										<Info label="Phone" value={activeClient.phone || "-"} />
 										<Info label="Registered On" value={format(new Date(activeClient.createdAt), "PPP")} />
-										<Info label="Current Plan" value={activeClient.plan || "—"} />
+										<Info label="Current Plan" value={activeClient.plan || "-"} />
 									</div>
 
 									<div>
@@ -191,6 +204,42 @@ export default function AdminClients() {
 											</table>
 										</div>
 										<p className="text-[10px] text-muted-foreground mt-2 italic">Prices shown are default values for this portal.</p>
+									</div>
+
+									<div>
+										<p className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+											<FileText className="h-4 w-4 text-primary" /> Preference Forms
+										</p>
+										{preferenceFormsLoading ? (
+											<p className="text-sm text-muted-foreground">Loading forms...</p>
+										) : (preferenceForms?.length ?? 0) === 0 ? (
+											<p className="text-sm text-muted-foreground">No preference forms submitted yet.</p>
+										) : (
+											<div className="space-y-3">
+												{preferenceForms?.map((form) => (
+													<Card key={form.id} className="shadow-sm border-border/60">
+														<CardContent className="p-4 space-y-3">
+															<div className="flex items-start justify-between gap-3">
+																<div>
+																	<p className="font-medium text-foreground">{form.formName}</p>
+																	<p className="text-xs text-muted-foreground">Submitted {format(new Date(form.createdAt), "PPP")}</p>
+																</div>
+															</div>
+															<div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
+																<Info label="Occlusion" value={form.payload.occlusion.defaultValues || "-"} />
+																<Info label="Proximal Contacts" value={form.payload.proximalContacts.defaultValues || "-"} />
+																<Info label="Distal-most Crown" value={form.payload.distalMostCrownContact.defaultValues || "-"} />
+																<Info label="Anatomy" value={form.payload.anatomy.option || "-"} />
+																<Info label="Smile Library" value={form.payload.smileLibrary.option || "-"} />
+																<Info label="Pontic Type" value={form.payload.ponticType.option || "-"} />
+																<Info label="Pontic Distance" value={form.payload.ponticDistanceFromTissue.option || "-"} />
+																<Info label="Match Marginal Ridge" value={form.payload.matchMarginalRidge.option || "-"} />
+															</div>
+														</CardContent>
+													</Card>
+												))}
+											</div>
+										)}
 									</div>
 
 									<div className="flex gap-3 pt-2">

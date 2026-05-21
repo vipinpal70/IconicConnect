@@ -9,11 +9,11 @@ import {
   LogOut,
   Users,
   Bell,
+  Headset,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/src/components/ui/button";
 import {
   Sidebar,
@@ -25,9 +25,13 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  SidebarTrigger,
   useSidebar,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
+import { useEffect, useState } from "react";
+import Image from "next/image"
+import logo from "@/public/IconicConnectLogo.png"
 
 export function AdminSidebar() {
   const navItems = [
@@ -36,6 +40,7 @@ export function AdminSidebar() {
     { title: "Tutorials", url: "/admin/tutorials", icon: PlayCircle },
     { title: "Offers", url: "/admin/offers", icon: Tag },
     { title: "Clients", url: "/admin/clients", icon: Building2 },
+    { title: "Support", url: "/admin/support", icon: Headset },
     { title: "Team", url: "/admin/team", icon: Users },
     { title: "Notifications", url: "/admin/notifications", icon: Bell },
   ];
@@ -43,17 +48,52 @@ export function AdminSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
+  const [profile, setProfile] = useState<{
+    fullName: string | null
+    role: string | null
+    labName: string | null
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const { data: currentUser } = useQuery({
-    queryKey: ['me'],
-    queryFn: async () => {
-      const res = await fetch('/api/admin/me')
-      if (!res.ok) return null
-      return res.json()
+  useEffect(() => {
+    let active = true
+
+    const fetchProfile = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user || !active) {
+        setProfile(null)
+        setLoading(false)
+        return
+      }
+
+      const res = await fetch(`/api/profile/${user.id}`, {
+        cache: "no-store",
+      })
+      if (!active) return
+
+      if (!res.ok) {
+        setProfile(null)
+        setLoading(false)
+        return
+      }
+
+      const data = await res.json().catch(() => null)
+      if (!active) return
+
+      setProfile(data)
+      setLoading(false)
     }
-  })
 
-  const isNotAdmin = currentUser && currentUser.role !== 'admin';
+    fetchProfile()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const isNotAdmin = profile?.role !== "admin"
 
   const filteredNavItems = navItems.filter(item => {
     if (item.title === "Team" && isNotAdmin) return false;
@@ -82,16 +122,24 @@ export function AdminSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center shadow-glow">
-            <span className="text-sm font-bold text-primary-foreground">IC</span>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+
+            <Image src={logo} alt="Iconic Connect" width={100} height={100} />
+
+            {/* {!collapsed && (
+              <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center shadow-glow">
+                <span className="text-sm font-bold text-primary-foreground">IC</span>
+              </div>
+            )} */}
+            {/* {!collapsed && (
+              <div>
+                <h1 className="text-sm font-semibold text-foreground">Iconic Connect</h1>
+                <p className="text-xs text-muted-foreground">Admin Portal</p>
+              </div>
+            )} */}
           </div>
-          {!collapsed && (
-            <div>
-              <h1 className="text-sm font-semibold text-foreground">Iconic Connect</h1>
-              <p className="text-xs text-muted-foreground">Admin Portal</p>
-            </div>
-          )}
+          <SidebarTrigger className="hidden text-muted-foreground shrink-0 md:inline-flex" />
         </div>
       </SidebarHeader>
       <SidebarContent className="px-2 py-3">
@@ -120,25 +168,34 @@ export function AdminSidebar() {
       </SidebarContent>
       <SidebarFooter className="p-4 border-t border-border space-y-3">
         <div className="flex items-center gap-4">
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-[10px] font-bold">
-            SA
+          <div className="flex items-center gap-3 min-w-0">
+            {!collapsed && (
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-semibold">
+                {(profile?.fullName)?.charAt(0).toUpperCase()}
+              </div>
+            )}
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {loading ? "Loading..." : (profile?.fullName || "-")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {loading ? "Loading role..." : (profile?.role || "-")}
+                </p>
+              </div>
+            )}
           </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">Iconic Dental</p>
-              <p className="text-xs text-muted-foreground">Super Admin</p>
-            </div>
-          )}
           <Button
             variant="ghost"
             size="sm"
             className={cn(
               "justify-end text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-3",
-              collapsed && "justify-center px-0 "
+              collapsed && "justify-center px-0"
             )}
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4" />
+            {!collapsed && <span className="text-xs font-medium">Log Out</span>}
           </Button>
         </div>
       </SidebarFooter>

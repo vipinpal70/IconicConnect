@@ -86,12 +86,13 @@ export default async function proxy(request: NextRequest) {
     // Fetch profile to get role and parent client ID
     const { data: profile } = await supabase
       .from('profiles')
-      .select('user_role, created_by')
+      .select('user_role, created_by, user_status')
       .eq('id', user.id)
       .single()
 
     const role = profile?.user_role
     const createdBy = profile?.created_by
+    const status = profile?.user_status
 
     // Allow password recovery routes even when a session already exists.
     // Other auth pages should still redirect authenticated users away.
@@ -102,6 +103,13 @@ export default async function proxy(request: NextRequest) {
       pathname === '/client'
     ) {
       return NextResponse.redirect(new URL(getHomeRoute(role, createdBy), request.url))
+    }
+
+    if (status !== 'active') {
+      if (pathname.startsWith('/api')) {
+        return NextResponse.json({ error: 'Account is not active' }, { status: 403 })
+      }
+      return NextResponse.redirect(new URL('/auth/sign-in', request.url))
     }
 
     // 3. Role-based path protection
@@ -143,7 +151,10 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     pathname === '/auth/forgot-password' ||
     pathname.startsWith('/profile') ||
     pathname.startsWith('/api/profile') ||
+    pathname.startsWith('/api/preference-forms') ||
+    pathname.startsWith('/client/preferences') ||
     pathname.startsWith('/api/user') ||
+    pathname.startsWith('/api/support') ||
     pathname.startsWith('/api/offers') ||
     pathname.startsWith('/api/tutorials') ||
     pathname.startsWith('/admin/sign-up') ||
@@ -151,7 +162,8 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     pathname.startsWith('/notifications') ||
     pathname.startsWith('/admin/notifications') ||
     pathname.startsWith('/api/notifications') ||
-    pathname.startsWith('/api/notification-preferences')
+    pathname.startsWith('/api/notification-preferences') ||
+    pathname.startsWith('/api/cases')
   )
     return true
 
@@ -159,11 +171,11 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
 
   switch (role) {
     case 'admin':
-      return pathname.startsWith('/admin') || pathname.startsWith('/api/admin') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers')
+      return pathname.startsWith('/admin') || pathname.startsWith('/api/admin') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers') || pathname.startsWith('/api/preference-forms')
     case 'client':
-      return pathname.startsWith('/client') || pathname.startsWith('/api/client') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers')
+      return pathname.startsWith('/client') || pathname.startsWith('/api/client') || pathname.startsWith('/api/support') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers') || pathname.startsWith('/client/preferences') || pathname.startsWith('/api/preference-forms')
     case 'subuser':
-      return pathname.startsWith(`/client/${createdBy}/subuser`) || pathname.startsWith(`/api/client/${createdBy}/subuser`) || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers')
+      return pathname.startsWith(`/client/${createdBy}/subuser`) || pathname.startsWith(`/api/client/${createdBy}/subuser`) || pathname.startsWith('/api/support') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers') || pathname.startsWith('/client/preferences') || pathname.startsWith('/api/preference-forms')
     case 'qc':
     case 'designer':
     case 'account_manager':
@@ -172,6 +184,8 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/cases') ||
         pathname.startsWith('/case') ||
         pathname.startsWith('/analytics') ||
+        pathname.startsWith('/admin/support') ||
+        pathname.startsWith('/api/admin/support') ||
         pathname.startsWith('/api/tutorials') ||
         pathname.startsWith('/api/offers')
       )

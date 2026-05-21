@@ -198,12 +198,12 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
     const type = m.fileType || ""
     if (type.startsWith("image/")) {
       return (
-        <div className="relative mt-1.5 rounded-md overflow-hidden border border-border/60 bg-muted/20 max-w-[200px]">
+        <div className="relative mt-1.5 rounded-md overflow-hidden border border-border/60 bg-muted/20 max-w-200px">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img 
             src={m.fileUrl} 
             alt={m.fileName || "Image"} 
-            className="max-w-full max-h-[140px] object-cover hover:scale-105 transition-transform duration-200 cursor-pointer"
+            className="max-w-full max-h-140px object-cover hover:scale-105 transition-transform duration-200 cursor-pointer"
             onClick={() => window.open(m.fileUrl!, "_blank")}
           />
         </div>
@@ -212,8 +212,8 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
 
     if (type.startsWith("video/")) {
       return (
-        <div className="mt-1.5 rounded-md overflow-hidden border border-border/60 bg-black max-w-[240px]">
-          <video src={m.fileUrl} controls className="w-full max-h-[140px]" />
+        <div className="mt-1.5 rounded-md overflow-hidden border border-border/60 bg-black max-w-240px">
+          <video src={m.fileUrl} controls className="w-full max-h-140px" />
         </div>
       )
     }
@@ -224,7 +224,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
         href={m.fileUrl}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center gap-2 p-2 mt-1.5 rounded-md bg-muted/60 border border-border/50 hover:bg-muted/80 transition-all text-[11px] truncate max-w-[240px]"
+        className="flex items-center gap-2 p-2 mt-1.5 rounded-md bg-muted/60 border border-border/50 hover:bg-muted/80 transition-all text-11px truncate max-w-240px"
       >
         <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
         <div className="min-w-0 flex-1">
@@ -274,7 +274,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
                       </span>
                     </div>
 
-                    <p className="text-xs leading-normal whitespace-pre-wrap break-words">{m.messageText}</p>
+                    <p className="text-xs leading-normal whitespace-pre-wrap wrap-break-words">{m.messageText}</p>
 
                     {renderFilePreview(m)}
 

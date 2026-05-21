@@ -112,8 +112,12 @@ export default function SignUpPage() {
 			}
 		}
 
+		// Supabase can create a session on sign-up. Sign out before redirecting so
+		// the user lands on the sign-in page instead of getting bounced to the dashboard.
+		await supabase.auth.signOut();
+
 		setLoading(false);
-		router.push("/auth/sign-in");
+		router.replace("/auth/sign-in?registered=1");
 		return;
 	}
 
@@ -169,7 +173,7 @@ export default function SignUpPage() {
 									<select
 										value={countryCode}
 										onChange={(e) => setCountryCode(e.target.value)}
-										className="px-3 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 max-w-[180px]"
+										className="px-3 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 max-w-[100px]"
 									>
 										{COUNTRY_CODES.map((entry) => (
 											<option key={`${entry.code}-${entry.label}`} value={entry.code}>

@@ -1,17 +1,89 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 import { cn } from "@/src/lib/utils"
 
-const SidebarProvider = ({ children }: { children: React.ReactNode }) => {
-  return <div className="flex min-h-screen w-full">{children}</div>
+type SidebarContextValue = {
+  state: "expanded" | "collapsed"
+  mobileOpen: boolean
+  toggleSidebar: () => void
+  closeMobileSidebar: () => void
 }
 
-const Sidebar = ({ children, collapsible }: { children: React.ReactNode, collapsible?: string }) => {
+const SidebarContext = React.createContext<SidebarContextValue | null>(null)
+
+const SidebarProvider = ({
+  children,
+  defaultCollapsed = false,
+}: {
+  children: React.ReactNode
+  defaultCollapsed?: boolean
+}) => {
+  const [collapsed, setCollapsed] = React.useState(defaultCollapsed)
+  const [mobileOpen, setMobileOpen] = React.useState(false)
+  const pathname = usePathname()
+
+  React.useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
+  const value = React.useMemo<SidebarContextValue>(() => ({
+    state: collapsed ? "collapsed" : "expanded",
+    mobileOpen,
+    toggleSidebar: () => {
+      if (window.matchMedia("(min-width: 768px)").matches) {
+        setCollapsed((current) => !current)
+      } else {
+        setMobileOpen((current) => !current)
+      }
+    },
+    closeMobileSidebar: () => setMobileOpen(false),
+  }), [collapsed, mobileOpen])
+
   return (
-    <aside className="w-64 border-r border-border bg-card flex flex-col h-screen sticky top-0">
+    <SidebarContext.Provider value={value}>
       {children}
-    </aside>
+    </SidebarContext.Provider>
+  )
+}
+
+const Sidebar = ({
+  children,
+  collapsible,
+  className,
+}: {
+  children: React.ReactNode
+  collapsible?: string
+  className?: string
+}) => {
+  const sidebar = useSidebar()
+
+  return (
+    <>
+      {sidebar.mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          onClick={sidebar.closeMobileSidebar}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        />
+      )}
+      <aside
+        className={cn(
+          "border-r border-border bg-card flex flex-col h-screen sticky top-0 transition-all duration-200 ease-in-out overflow-hidden",
+          "fixed inset-y-0 left-0 z-50 w-64 shadow-xl md:shadow-none md:sticky md:z-auto md:translate-x-0",
+          sidebar.mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          sidebar.state === "collapsed" ? "md:w-16" : "md:w-64",
+          className
+        )}
+        data-collapsible={collapsible}
+        data-state={sidebar.state}
+        data-mobile-open={sidebar.mobileOpen}
+      >
+        {children}
+      </aside>
+    </>
   )
 }
 
@@ -47,13 +119,40 @@ const SidebarMenuButton = ({ children, asChild }: { children: React.ReactNode, a
   <div className="w-full">{children}</div>
 )
 
-const SidebarTrigger = ({ className }: { className?: string }) => (
-  <button className={cn("p-2 rounded-md hover:bg-accent", className)}>
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-  </button>
-)
+const SidebarTrigger = ({ className }: { className?: string }) => {
+  const { state, toggleSidebar } = useSidebar()
 
-const useSidebar = () => ({ state: "expanded" })
+  return (
+    <button
+      type="button"
+      aria-label={state === "collapsed" ? "Expand sidebar" : "Collapse sidebar"}
+      aria-pressed={state === "collapsed"}
+      onClick={toggleSidebar}
+      className={cn("p-2 rounded-md hover:bg-accent transition-colors", className)}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+      </svg>
+    </button>
+  )
+}
+
+const useSidebar = () => {
+  const context = React.useContext(SidebarContext)
+
+  if (!context) {
+    return {
+      state: "expanded" as const,
+      mobileOpen: false,
+      toggleSidebar: () => {},
+      closeMobileSidebar: () => {},
+    }
+  }
+
+  return context
+}
 
 export {
   SidebarProvider,

@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from "sonner";
@@ -9,6 +9,8 @@ import { Eye, EyeOff } from "lucide-react";
 
 export default function SignInPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const registered = useMemo(() => searchParams.get("registered") === "1", [searchParams])
   // const supabase = createClient() // We'll use the API instead
 
   const [form, setForm] = useState({ email: '', password: '' })
@@ -69,6 +71,12 @@ export default function SignInPage() {
           <h1 className="text-2xl font-semibold text-gray-900 text-center">Iconic Connect</h1>
           <p className="text-sm text-gray-500 mt-1 text-center">Sign in to your account</p>
         </div>
+
+        {registered && (
+          <p className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-lg">
+            Account created. Your request is under review. You can sign in only after the account is activated.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
