@@ -136,6 +136,16 @@ export default function AdminCasesPage() {
     }
   })
 
+  // Fetch current logged in user
+  const { data: currentUser } = useQuery<{ id: string; role: string; fullName: string | null }>({
+    queryKey: ["admin-me"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/me")
+      if (!res.ok) return null
+      return res.json()
+    }
+  })
+
   // Mappings to translate UUIDs to descriptive names
   const clientsMap = useMemo(() => {
     const map = new Map<string, { labName: string; fullName: string; email: string }>()
@@ -353,63 +363,206 @@ export default function AdminCasesPage() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex gap-2 items-center flex-wrap">
-                              {caseItem.status === "scan_received" && (
+                              {/* 1. Admin and QC Lead actions */}
+                              {(currentUser?.role === "admin" || currentUser?.role === "qc") && (
                                 <>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={isMutating}
-                                    onClick={() => handleUpdate(caseItem.id, { status: "scan_verified" }, `Scan validated · ready for allocation`)}
-                                    title="Validate scan"
-                                    className="h-8 text-xs"
-                                  >
-                                    <ShieldCheck className="h-3.5 w-3.5 mr-1" />Validate
-                                  </Button>
-                                  <AllocateMenu
-                                    designers={designers}
-                                    disabled={isMutating}
-                                    onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
-                                  />
-                                </>
-                              )}
+                                  {caseItem.status === "scan_received" && (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={isMutating}
+                                        onClick={() => handleUpdate(caseItem.id, { status: "scan_verified" }, `Scan validated · ready for allocation`)}
+                                        title="Validate scan"
+                                        className="h-8 text-xs"
+                                      >
+                                        <ShieldCheck className="h-3.5 w-3.5 mr-1" />Validate
+                                      </Button>
+                                      <AllocateMenu
+                                        designers={designers}
+                                        disabled={isMutating}
+                                        onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
+                                      />
+                                    </>
+                                  )}
 
-                              {(caseItem.status === "scan_verified" || caseItem.status === "scan_not_verified") && (
-                                <AllocateMenu
-                                  designers={designers}
-                                  disabled={isMutating}
-                                  onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
-                                />
-                              )}
-
-                              {(caseItem.status === "allocated_to_designer" || caseItem.status === "in_progress") && (
-                                <>
-                                  {!caseItem.designerId ? (
+                                  {(caseItem.status === "scan_verified" || caseItem.status === "scan_not_verified") && (
                                     <AllocateMenu
                                       designers={designers}
                                       disabled={isMutating}
                                       onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
                                     />
-                                  ) : (
+                                  )}
+
+                                  {(caseItem.status === "allocated_to_designer" || caseItem.status === "in_progress") && (
                                     <>
-                                      {!caseItem.qcId ? (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
+                                      {!caseItem.designerId ? (
+                                        <AllocateMenu
+                                          designers={designers}
                                           disabled={isMutating}
-                                          onClick={() => setAssignQcCaseId(caseItem.id)}
-                                          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
-                                        >
-                                          <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
-                                        </Button>
+                                          onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
+                                        />
                                       ) : (
+                                        <>
+                                          {!caseItem.qcId ? (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={isMutating}
+                                              onClick={() => setAssignQcCaseId(caseItem.id)}
+                                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
+                                            >
+                                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={isMutating}
+                                              onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
+                                              className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800"
+                                            >
+                                              <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                            </Button>
+                                          )}
+                                        </>
+                                      )}
+                                    </>
+                                  )}
+
+                                  {caseItem.status === "internal_qc" && (
+                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                      <Button
+                                        size="sm"
+                                        disabled={isMutating}
+                                        onClick={() => handleUpdate(caseItem.id, { status: "submitted_to_client" }, `Approved QC and sent design to client`)}
+                                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
+                                      >
+                                        ✓ Approve
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        disabled={isMutating}
+                                        onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Rejected design; sent back to designer`)}
+                                        className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm transition-all"
+                                      >
+                                        ✗ Reject
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        disabled={isMutating}
+                                        onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Feedback logged; sent back to designer`)}
+                                        className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
+                                      >
+                                        💬 Feedback
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        disabled={isMutating}
+                                        onClick={() => handleUpdate(caseItem.id, { status: "on_hold" }, `Case put on hold by QC Lead`)}
+                                        className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
+                                      >
+                                        ⏸ Hold
+                                      </Button>
+                                    </div>
+                                  )}
+
+                                  {caseItem.status === "client_feedback" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={isMutating}
+                                      onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Sent case back to design`)}
+                                      className="h-8 text-xs"
+                                    >
+                                      Back to designer
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+
+                              {/* 2. Designer actions */}
+                              {currentUser?.role === "designer" && (
+                                <>
+                                  {/* Allocate to Self for unallocated cases */}
+                                  {!caseItem.designerId && (caseItem.status === "scan_received" || caseItem.status === "scan_verified") && (
+                                    <Button
+                                      size="sm"
+                                      disabled={isMutating}
+                                      onClick={() => handleUpdate(caseItem.id, { designerId: currentUser.id, status: "allocated_to_designer" }, `Allocated case to yourself`)}
+                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
+                                    >
+                                      <UserPlus className="h-3.5 w-3.5 mr-1" /> Allocate to Self
+                                    </Button>
+                                  )}
+
+                                  {/* Actions on assigned cases */}
+                                  {caseItem.designerId === currentUser?.id && (
+                                    <>
+                                      {caseItem.status === "allocated_to_designer" && (
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            disabled={isMutating}
+                                            onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Started design work`)}
+                                            className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
+                                          >
+                                            Start Work
+                                          </Button>
+                                          {!caseItem.qcId && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={isMutating}
+                                              onClick={() => setAssignQcCaseId(caseItem.id)}
+                                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
+                                            >
+                                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                            </Button>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {caseItem.status === "in_progress" && (
+                                        <>
+                                          {!caseItem.qcId ? (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={isMutating}
+                                              onClick={() => setAssignQcCaseId(caseItem.id)}
+                                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
+                                            >
+                                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={isMutating}
+                                              onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
+                                              className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800"
+                                            >
+                                              <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                            </Button>
+                                          )}
+                                        </>
+                                      )}
+
+                                      {/* Status display indicators */}
+                                      {caseItem.status === "internal_qc" && (
+                                        <span className="text-xs text-amber-600 italic px-1">In QC Review</span>
+                                      )}
+
+                                      {caseItem.status === "client_feedback" && (
                                         <Button
                                           size="sm"
-                                          variant="outline"
                                           disabled={isMutating}
-                                          onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
-                                          className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800"
+                                          onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Restarted design to apply feedback`)}
+                                          className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
                                         >
-                                          <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                          Apply Feedback
                                         </Button>
                                       )}
                                     </>
@@ -417,61 +570,15 @@ export default function AdminCasesPage() {
                                 </>
                               )}
 
-                              {caseItem.status === "internal_qc" && (
-                                <div className="flex flex-wrap gap-1.5 items-center">
-                                  <Button
-                                    size="sm"
-                                    disabled={isMutating}
-                                    onClick={() => handleUpdate(caseItem.id, { status: "submitted_to_client" }, `Approved QC and sent design to client`)}
-                                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
-                                  >
-                                    ✓ Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    disabled={isMutating}
-                                    onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Rejected design; sent back to designer`)}
-                                    className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm transition-all"
-                                  >
-                                    ✗ Reject
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    disabled={isMutating}
-                                    onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Feedback logged; sent back to designer`)}
-                                    className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
-                                  >
-                                    💬 Feedback
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    disabled={isMutating}
-                                    onClick={() => handleUpdate(caseItem.id, { status: "on_hold" }, `Case put on hold by QC Lead`)}
-                                    className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
-                                  >
-                                    ⏸ Hold
-                                  </Button>
-                                </div>
-                              )}
-
-                              {caseItem.status === "client_feedback" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={isMutating}
-                                  onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Sent case back to design`)}
-                                  className="h-8 text-xs"
-                                >
-                                  Back to designer
-                                </Button>
-                              )}
-
-                              {caseItem.status === "submitted_to_client" && (
+                              {/* 3. Awaiting client status display (visible to admin/qc, and designer if assigned) */}
+                              {caseItem.status === "submitted_to_client" && 
+                               ((currentUser?.role === "admin" || currentUser?.role === "qc") || caseItem.designerId === currentUser?.id) && (
                                 <span className="text-xs text-muted-foreground italic px-1">awaiting client…</span>
                               )}
 
-                              {(caseItem.status === "approved" || caseItem.status === "delivered") && (
+                              {/* 4. Completed status display (visible to admin/qc, and designer if assigned) */}
+                              {(caseItem.status === "approved" || caseItem.status === "delivered") && 
+                               ((currentUser?.role === "admin" || currentUser?.role === "qc") || caseItem.designerId === currentUser?.id) && (
                                 <span className="text-xs text-green-600 font-semibold px-1">Completed</span>
                               )}
 

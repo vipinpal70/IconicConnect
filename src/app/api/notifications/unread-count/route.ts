@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { notifications } from '@/src/db/schema/notification';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,22 +13,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const limit = Math.min(Number(searchParams.get('limit') || '20'), 100);
-    const offset = Math.max(Number(searchParams.get('offset') || '0'), 0);
-
-    // Retrieve active (non-dismissed) notifications sorted by latest first
-    const list = await db
-      .select()
+    // Fast count query optimized by compound indexes
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
       .from(notifications)
-      .where(and(eq(notifications.userId, user.id), eq(notifications.dismissed, false)))
-      .orderBy(desc(notifications.createdAt))
-      .limit(limit)
-      .offset(offset);
+      .where(
+        and(
+          eq(notifications.userId, user.id),
+          eq(notifications.read, false),
+          eq(notifications.dismissed, false)
+        )
+      );
 
-    return NextResponse.json({ data: list });
+    return NextResponse.json({ count: countResult?.count || 0 });
   } catch (error: unknown) {
-    console.error('Fetch notifications error:', error);
+    console.error('Fetch unread count error:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 });
   }
 }

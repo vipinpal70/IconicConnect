@@ -9,8 +9,8 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
-import { cases as allCases, caseTypes, type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileBox } from "lucide-react";
+import { type CaseStatus } from "@/src/data/demoData";
+import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/src/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
 interface BulkRow {
   fileName: string;
@@ -171,6 +172,93 @@ export default function CasesPage() {
   const [to, setTo] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  const [cases, setCases] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchCases = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/cases");
+      if (res.ok) {
+        const json = await res.json();
+        setCases(json.data || []);
+      } else {
+        toast.error("Failed to load cases");
+      }
+    } catch (err) {
+      console.error("Error fetching cases:", err);
+      toast.error("Failed to fetch cases");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCases();
+  }, []);
+
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
+  const [selectedQcId, setSelectedQcId] = useState<string>("");
+
+  // Fetch active operations members (designers, QCs)
+  const { data: membersData } = useQuery<any[]>({
+    queryKey: ["ops-members-list"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/members")
+      if (!res.ok) return []
+      return res.json()
+    }
+  })
+
+  // Fetch current logged in user
+  const { data: currentUser } = useQuery<{ id: string; role: string; fullName: string | null }>({
+    queryKey: ["ops-me"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/me")
+      if (!res.ok) return null
+      return res.json()
+    }
+  })
+
+  // Live database updates
+  const handleUpdate = async (caseId: string, patch: Record<string, string | number | boolean | null>, successMessage: string) => {
+    setUpdatingId(caseId)
+    try {
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(patch),
+      })
+
+      if (res.ok) {
+        toast.success(successMessage)
+        fetchCases()
+      } else {
+        const err = await res.json()
+        toast.error(err.error || "Failed to update case")
+      }
+    } catch {
+      toast.error("Failed to update case")
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
+  // Extract active designers for the allocate dropdown
+  const designers = useMemo(() => {
+    if (!membersData) return []
+    return membersData.filter((m) => m.role === "designer" && m.status === "active")
+  }, [membersData])
+
+  // Extract active QCs for the allocate dropdown
+  const qcs = useMemo(() => {
+    if (!membersData) return []
+    return membersData.filter((m) => m.role === "qc" && m.status === "active")
+  }, [membersData])
+
   // Add Case form
   const [category, setCategory] = useState<string>("Crown & Bridges");
   const [subTypeData, setSubTypeData] = useState<Record<string, string>>({});
@@ -190,6 +278,7 @@ export default function CasesPage() {
   } | null>(null);
   const [generatedCaseId, setGeneratedCaseId] = useState<string>("");
   const [labName, setLabName] = useState<string>("Client");
+  const [userProfile, setUserProfile] = useState<{ id: string; role: string; fullName: string | null } | null>(null);
 
   useEffect(() => {
     setGeneratedCaseId(generateCaseId(category));
@@ -197,11 +286,21 @@ export default function CasesPage() {
 
   useEffect(() => {
     async function fetchProfile() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('labName').eq('id', user.id).single();
-        if (profile?.labName) setLabName(profile.labName);
+      try {
+        const res = await fetch("/api/admin/me");
+        if (res.ok) {
+          const profile = await res.json();
+          if (profile) {
+            setUserProfile({
+              id: profile.id,
+              role: profile.role,
+              fullName: profile.fullName || null,
+            });
+            if (profile.labName) setLabName(profile.labName);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching operations profile:", err);
       }
     }
     fetchProfile();
@@ -242,19 +341,50 @@ export default function CasesPage() {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
-  const filtered = useMemo(
-    () =>
-      allCases.filter((c) => {
-        const s = search.toLowerCase();
-        const matchesSearch = !s || c.id.toLowerCase().includes(s) || c.patientRef.toLowerCase().includes(s) || c.restoration.toLowerCase().includes(s);
-        const matchesStatus = statusFilter === "All" || c.status === statusFilter;
-        const matchesType = typeFilter === "All" || c.caseType === typeFilter;
-        const matchesFrom = !from || c.createdAt >= from;
-        const matchesTo = !to || c.createdAt <= to;
-        return matchesSearch && matchesStatus && matchesType && matchesFrom && matchesTo;
-      }),
-    [search, statusFilter, typeFilter, from, to],
-  );
+  const filtered = useMemo(() => {
+    return cases.filter((c) => {
+      const s = search.toLowerCase();
+      const friendlyId = (c.caseNumber || c.id || "").toLowerCase();
+      const friendlyRestoration = (
+        c.subTypeData
+          ? Object.entries(c.subTypeData)
+            .filter(([k, v]) => k !== 'teeth' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
+            .map(([_, v]) => v)
+            .join(" - ")
+          : c.category || ""
+      ).toLowerCase();
+
+      const matchesSearch =
+        !s ||
+        friendlyId.includes(s) ||
+        friendlyRestoration.includes(s);
+
+      // Map UI filters to database enums
+      const statusFilterMap: Record<string, string[]> = {
+        "Submitted": ["scan_received"],
+        "In Validation": ["scan_verified"],
+        "In Design": ["allocated_to_designer", "in_progress"],
+        "Internal QC": ["internal_qc"],
+        "Pending Client Approval": ["submitted_to_client"],
+        "Feedback": ["client_feedback"],
+        "On Hold": ["on_hold", "scan_not_verified"],
+        "Completed": ["approved", "delivered"],
+        "Cancelled": ["cancelled"],
+      };
+
+      const matchesStatus =
+        statusFilter === "All" ||
+        (statusFilterMap[statusFilter] && statusFilterMap[statusFilter].includes(c.status));
+
+      const matchesType = typeFilter === "All" || c.category === typeFilter;
+
+      const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : "";
+      const matchesFrom = !from || createdAtDate >= from;
+      const matchesTo = !to || createdAtDate <= to;
+
+      return matchesSearch && matchesStatus && matchesType && matchesFrom && matchesTo;
+    });
+  }, [cases, search, statusFilter, typeFilter, from, to]);
 
   const handleSubmit = async () => {
     if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile)) {
@@ -297,7 +427,7 @@ export default function CasesPage() {
         setUploadedFileUrl(null);
         setUploadedFile(null);
         setGeneratedCaseId(generateCaseId("Crown & Bridges"));
-        router.refresh();
+        fetchCases();
       } else {
         toast.error("Failed to submit case.");
         console.error('Failed to submit single case');
@@ -403,7 +533,7 @@ export default function CasesPage() {
         setBulkRows([]);
         if (bulkFileRef.current) bulkFileRef.current.value = "";
         setUploadOpen(false);
-        router.refresh();
+        fetchCases();
       } else {
         toast.error("Failed to submit bulk cases.");
         console.error('Failed to submit bulk cases');
@@ -420,7 +550,7 @@ export default function CasesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Cases</h1>
-            <p className="text-sm text-muted-foreground mt-1">{allCases.length} lifetime cases · {filtered.length} shown</p>
+            <p className="text-sm text-muted-foreground mt-1">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline">
@@ -532,11 +662,6 @@ export default function CasesPage() {
                       <Label>Additional Notes</Label>
                       <Textarea placeholder="Special instructions, shade reference, occlusion notes…" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
-
-                    {/* <div className="space-y-2">
-                      <Label>Case File</Label>
-                      <Input type="file" onChange={(e) => setSingleFile(e.target.files?.[0] || null)} />
-                    </div> */}
 
                     <Button className="w-full bg-emerald-800 text-white hover:bg-emerald-900" onClick={handleSubmit}>Submit Case</Button>
                   </TabsContent>
@@ -664,7 +789,7 @@ export default function CasesPage() {
                 <SelectTrigger className="w-full lg:w-56"><SelectValue placeholder="Case type" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Case Types</SelectItem>
-                  {caseTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  {Object.keys(CASE_HIERARCHY).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-44" />
@@ -699,29 +824,258 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
-                    {["Case ID", "Patient Ref", "Type", "Restoration", "Teeth", "Status", "Due"].map((h) => (
+                    {["Case ID", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-6 py-4 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((c) => (
-                    <tr
-                      key={c.id}
-                      className="hover:bg-muted/10 cursor-pointer transition-colors"
-                      onClick={() => router.push(`/cases/${c.id}`)}
-                    >
-                      <td className="px-6 py-4 text-sm font-medium text-primary">{c.id}</td>
-                      <td className="px-6 py-4 text-sm text-foreground">{c.patientRef}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.caseType}</td>
-                      <td className="px-6 py-4 text-sm text-foreground">{c.restoration}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">{c.toothNumbers.length ? `#${c.toothNumbers.join(", #")}` : "—"}</td>
-                      <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">May 20, 2024</td>
-                    </tr>
-                  ))}
-                  {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-muted-foreground">No cases match your filters</td></tr>
+                  {isLoading ? (
+                    Array.from({ length: 5 }).map((_, idx) => (
+                      <tr key={idx} className="animate-pulse">
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-28"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-32"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-16"></div></td>
+                        <td className="px-6 py-4"><div className="h-6 bg-muted rounded-full w-24"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24"></div></td>
+                      </tr>
+                    ))
+                  ) : (
+                    filtered.map((c) => {
+                       const toothNumbers = c.subTypeData?.teeth || [];
+                       const toothSystem = c.subTypeData?.toothSystem || "USA";
+                       const restoration = c.subTypeData
+                        ? Object.entries(c.subTypeData)
+                          .filter(([k, v]) => k !== 'teeth' && k !== 'toothSystem' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
+                          .map(([, v]) => v)
+                          .join(" - ")
+                        : c.category || "—";
+
+                       const createdAtFormatted = c.createdAt
+                        ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : "—";
+
+                       const isMutating = updatingId === c.id;
+
+                       return (
+                        <tr
+                          key={c.id}
+                          className="hover:bg-muted/10 cursor-pointer transition-colors"
+                          onClick={() => router.push(`/cases/${c.id}`)}
+                        >
+                          <td className="px-6 py-4 text-sm font-medium text-primary">{c.caseNumber || c.id}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
+                          <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem})` : "—"}</td>
+                           <td className="px-6 py-4"><StatusBadge status={c.status} role="internal" /></td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
+                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                             <div className="flex gap-2 items-center flex-wrap">
+                               {/* 1. Admin and QC Lead actions */}
+                               {((userProfile?.role || currentUser?.role) === "admin" || (userProfile?.role || currentUser?.role) === "qc") && (
+                                 <>
+                                   {c.status === "scan_received" && (
+                                     <>
+                                       <Button
+                                         size="sm"
+                                         variant="outline"
+                                         disabled={isMutating}
+                                         onClick={() => handleUpdate(c.id, { status: "scan_verified" }, `Scan validated · ready for allocation`)}
+                                         title="Validate scan"
+                                         className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none font-medium shadow-sm"
+                                       >
+                                         <ShieldCheck className="h-3.5 w-3.5 mr-1" />Validate
+                                       </Button>
+                                       <AllocateMenu
+                                         designers={designers}
+                                         disabled={isMutating}
+                                         onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
+                                       />
+                                     </>
+                                   )}
+
+                                   {(c.status === "scan_verified" || c.status === "scan_not_verified") && (
+                                     <AllocateMenu
+                                       designers={designers}
+                                       disabled={isMutating}
+                                       onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
+                                     />
+                                   )}
+
+                                   {(c.status === "allocated_to_designer" || c.status === "in_progress") && (
+                                     <>
+                                       {!c.designerId ? (
+                                         <AllocateMenu
+                                           designers={designers}
+                                           disabled={isMutating}
+                                           onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
+                                         />
+                                       ) : (
+                                         <>
+                                           {!c.qcId ? (
+                                             <Button
+                                               size="sm"
+                                               variant="outline"
+                                               disabled={isMutating}
+                                               onClick={() => setAssignQcCaseId(c.id)}
+                                               className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
+                                             >
+                                               <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                             </Button>
+                                           ) : (
+                                             <Button
+                                               size="sm"
+                                               variant="outline"
+                                               disabled={isMutating}
+                                               onClick={() => handleUpdate(c.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
+                                               className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800"
+                                             >
+                                               <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                             </Button>
+                                           )}
+                                         </>
+                                       )}
+                                     </>
+                                   )}
+
+                                   {c.status === "internal_qc" && (
+                                     <div className="flex flex-wrap gap-1.5 items-center">
+                                       <Button
+                                         size="sm"
+                                         disabled={isMutating}
+                                         onClick={() => handleUpdate(c.id, { status: "submitted_to_client" }, `Approved QC and sent design to client`)}
+                                         className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
+                                       >
+                                         ✓ Approve
+                                       </Button>
+                                       <Button
+                                         size="sm"
+                                         variant="destructive"
+                                         disabled={isMutating}
+                                         onClick={() => handleUpdate(c.id, { status: "in_progress" }, `Rejected design; sent back to designer`)}
+                                         className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm transition-all"
+                                       >
+                                         ✗ Reject
+                                       </Button>
+                                       <Button
+                                         size="sm"
+                                         disabled={isMutating}
+                                         onClick={() => handleUpdate(c.id, { status: "in_progress" }, `Feedback logged; sent back to designer`)}
+                                         className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
+                                       >
+                                         💬 Feedback
+                                       </Button>
+                                       <Button
+                                         size="sm"
+                                         disabled={isMutating}
+                                         onClick={() => handleUpdate(c.id, { status: "on_hold" }, `Case put on hold by QC Lead`)}
+                                         className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
+                                       >
+                                         ⏸ Hold
+                                       </Button>
+                                     </div>
+                                   )}
+
+                                   {c.status === "client_feedback" && (
+                                     <Button
+                                       size="sm"
+                                       variant="outline"
+                                       disabled={isMutating}
+                                       onClick={() => handleUpdate(c.id, { status: "in_progress" }, `Sent case back to design`)}
+                                       className="h-8 text-xs"
+                                     >
+                                       Back to designer
+                                     </Button>
+                                   )}
+                                 </>
+                               )}
+
+                               {/* 2. Designer actions */}
+                               {(userProfile?.role || currentUser?.role) === "designer" && (
+                                 <>
+                                   {/* Allocate to Self for unallocated cases */}
+                                   {!c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
+                                     <Button
+                                       size="sm"
+                                       disabled={isMutating}
+                                       onClick={() => handleUpdate(c.id, { designerId: (userProfile?.id || currentUser?.id || null), status: "allocated_to_designer" }, `Allocated case to yourself`)}
+                                       className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
+                                     >
+                                       <UserPlus className="h-3.5 w-3.5 mr-1" /> Allocate to Self
+                                     </Button>
+                                   )}
+
+                                   {/* Actions on assigned cases */}
+                                   {c.designerId === (userProfile?.id || currentUser?.id) && (
+                                     <>
+                                       {c.status === "allocated_to_designer" && (
+                                         <div className="flex gap-2">
+                                           <Button
+                                             size="sm"
+                                             disabled={isMutating}
+                                             onClick={() => handleUpdate(c.id, { status: "in_progress" }, `Started design work`)}
+                                             className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
+                                           >
+                                             Start Work
+                                           </Button>
+                                           {!c.qcId && (
+                                             <Button
+                                               size="sm"
+                                               variant="outline"
+                                               disabled={isMutating}
+                                               onClick={() => setAssignQcCaseId(c.id)}
+                                               className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
+                                             >
+                                               <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                             </Button>
+                                           )}
+                                         </div>
+                                       )}
+
+                                       {c.status === "in_progress" && (
+                                         <>
+                                           {!c.qcId ? (
+                                             <Button
+                                               size="sm"
+                                               variant="outline"
+                                               disabled={isMutating}
+                                               onClick={() => setAssignQcCaseId(c.id)}
+                                               className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
+                                             >
+                                               <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                             </Button>
+                                           ) : (
+                                             <Button
+                                               size="sm"
+                                               variant="outline"
+                                               disabled={isMutating}
+                                               onClick={() => handleUpdate(c.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
+                                               className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800"
+                                             >
+                                               <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                             </Button>
+                                           )}
+                                         </>
+                                       )}
+                                     </>
+                                   )}
+                                 </>
+                               )}
+                               {(userProfile || currentUser) && !["admin", "qc", "designer"].includes((userProfile?.role || currentUser?.role) || "") && (
+                                 <span className="text-xs text-muted-foreground italic">AM (Read-only)</span>
+                               )}
+                             </div>
+                           </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                  {!isLoading && filtered.length === 0 && (
+                    <tr><td colSpan={8} className="px-6 py-12 text-center text-sm text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
@@ -729,6 +1083,102 @@ export default function CasesPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!assignQcCaseId} onOpenChange={(o) => { if (!o) { setAssignQcCaseId(null); setSelectedQcId(""); } }}>
+        <DialogContent className="sm:max-w-[425px] bg-primary border-primary/50 text-white shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-emerald-500" /> Assign QC Lead
+            </DialogTitle>
+            <p className="text-xs text-zinc-300">
+              Select an active Quality Control team member to allocate to this case and transition it to QC review.
+            </p>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label htmlFor="qc-select" className="text-sm font-semibold text-zinc-200">
+                QC Member
+              </label>
+              <Select value={selectedQcId} onValueChange={setSelectedQcId}>
+                <SelectTrigger id="qc-select" className="bg-primary/80 border-primary-50/50 text-white focus:bg-emerald-600 focus:text-white">
+                  <SelectValue placeholder="Select QC Lead" />
+                </SelectTrigger>
+                <SelectContent className="bg-primary border-primary-50/50 text-white">
+                  {qcs.map((qc) => (
+                    <SelectItem
+                      key={qc.id}
+                      value={qc.id}
+                      className="text-white focus:bg-emerald-600 focus:text-white cursor-pointer"
+                    >
+                      {qc.fullName || qc.email}
+                    </SelectItem>
+                  ))}
+                  {qcs.length === 0 && (
+                    <p className="text-xs p-2 text-zinc-400">No active QC leads found.</p>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="ghost"
+              onClick={() => { setAssignQcCaseId(null); setSelectedQcId(""); }}
+              className="text-white hover:bg-zinc-800 animate-pulse"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!selectedQcId || updatingId === assignQcCaseId}
+              onClick={async () => {
+                if (!assignQcCaseId || !selectedQcId) return
+                await handleUpdate(
+                  assignQcCaseId,
+                  { qcId: selectedQcId, status: "internal_qc" },
+                  "Successfully assigned QC lead and transitioned case status to Internal QC"
+                )
+                setAssignQcCaseId(null)
+                setSelectedQcId("")
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+            >
+              Assign & Transition
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </OpsLayout>
+  );
+}
+
+function AllocateMenu({
+  designers,
+  onPick,
+  disabled
+}: {
+  designers: any[]
+  onPick: (designerId: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <Select onValueChange={onPick} disabled={disabled}>
+      <SelectTrigger className="h-8 text-xs w-[160px] border-border/80 bg-white">
+        <span className="flex items-center text-zinc-800">
+          <UserPlus className="h-3.5 w-3.5 mr-1" /> Allocate
+        </span>
+      </SelectTrigger>
+      <SelectContent className="bg-primary border-primary/50 text-white">
+        {designers.map((d) => (
+          <SelectItem key={d.id} value={d.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer">
+            {d.fullName || d.email}
+          </SelectItem>
+        ))}
+        {designers.length === 0 && (
+          <SelectItem value="none" disabled className="bg-primary text-white/50 focus:bg-[#047857] cursor-not-allowed">
+            No active designers
+          </SelectItem>
+        )}
+      </SelectContent>
+    </Select>
   );
 }

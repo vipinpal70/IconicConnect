@@ -7,7 +7,7 @@ export interface EmailJobData {
   to: string;
   subject: string;
   html: string;
-  type: 'welcome' | 'credentials' | 'approval' | 'reset-password';
+  type: 'welcome' | 'credentials' | 'approval' | 'reset-password' | 'notification';
 }
 
 let worker: Worker | null = null;

@@ -147,7 +147,11 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     pathname.startsWith('/api/offers') ||
     pathname.startsWith('/api/tutorials') ||
     pathname.startsWith('/admin/sign-up') ||
-    pathname.startsWith('/api/cases')
+    pathname.startsWith('/api/cases') ||
+    pathname.startsWith('/notifications') ||
+    pathname.startsWith('/admin/notifications') ||
+    pathname.startsWith('/api/notifications') ||
+    pathname.startsWith('/api/notification-preferences')
   )
     return true
 

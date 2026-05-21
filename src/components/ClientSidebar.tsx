@@ -10,6 +10,7 @@ import {
   PlayCircle,
   UserCircle,
   LogOut,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -33,6 +34,7 @@ import { useEffect, useState } from "react";
 const navItems = [
   { title: "Dashboard", url: "/client/dashboard", icon: LayoutDashboard },
   { title: "Cases", url: "/client/cases", icon: FolderOpen },
+  { title: "Notifications", url: "/notifications", icon: Bell },
   { title: "Analytics", url: "/client/analytics", icon: BarChart3 },
   { title: "Offers", url: "/client/offers", icon: Tag },
   { title: "Billing", url: "/client/billing", icon: CreditCard },

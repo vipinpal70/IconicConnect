@@ -6,6 +6,8 @@ import { createClient } from '@/src/lib/supabase/server';
 import { eq, and } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { logActivity } from '@/src/lib/activity-log';
+import { NotificationService } from '@/src/lib/notifications/notification-service';
+import { NotificationType } from '@/src/lib/notifications/notification-events';
 
 type CaseUpdateData = {
   caseNumber?: string
@@ -191,50 +193,170 @@ export async function PUT(
         if (body.subTypeData) updateData.subTypeData = body.subTypeData;
       }
     } else if (isValidRoleForType('admin_portal', profile.role)) {
-      if (body.caseNumber) updateData.caseNumber = body.caseNumber;
-      if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
-      if (body.category) updateData.category = body.category;
-      if (body.subTypeData) updateData.subTypeData = body.subTypeData;
-      if (body.designerId !== undefined) updateData.designerId = body.designerId;
-      if (body.qcId !== undefined) updateData.qcId = body.qcId;
-      if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
-
-      if (body.status) {
+      if (profile.role === 'admin' || profile.role === 'qc') {
+        if (body.caseNumber) updateData.caseNumber = body.caseNumber;
+        if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
+        if (body.category) updateData.category = body.category;
+        if (body.subTypeData) updateData.subTypeData = body.subTypeData;
+        if (body.designerId !== undefined) updateData.designerId = body.designerId;
+        if (body.qcId !== undefined) updateData.qcId = body.qcId;
+        if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
+        if (body.status) updateData.status = body.status;
+      } else if (profile.role === 'designer') {
         const current = caseRecord.status;
         const target = body.status;
 
-        if (profile.role === 'admin') {
-          updateData.status = target;
-        } else if (profile.role === 'designer') {
+        // Check if this is self-allocation
+        const isSelfAllocation =
+          !caseRecord.designerId &&
+          body.designerId === profile.id &&
+          (current === 'scan_received' || current === 'scan_verified') &&
+          (target === 'allocated_to_designer' || !target);
+
+        if (isSelfAllocation) {
+          updateData.designerId = profile.id;
+          if (target) updateData.status = target;
+        } else {
+          // General designer validation: case must already be assigned to them
           if (caseRecord.designerId !== profile.id) {
             return NextResponse.json({ error: 'Forbidden: You can only update cases assigned to you' }, { status: 403 });
           }
-          if (target === 'in_progress' && current === 'allocated_to_designer') {
-            updateData.status = target;
-          } else if (target === 'internal_qc' && current === 'in_progress') {
-            updateData.status = target;
-          } else {
-            return NextResponse.json({ error: `Forbidden: Designers cannot transition status from ${current} to ${target}` }, { status: 403 });
+
+          // Allowed to assign QC Lead
+          if (body.qcId !== undefined) {
+            updateData.qcId = body.qcId;
           }
-        } else if (profile.role === 'qc') {
-          if (current !== 'internal_qc') {
-            return NextResponse.json({ error: 'Forbidden: QC Leads can only perform actions on cases in Internal QC stage' }, { status: 403 });
+
+          // Allowed status transitions
+          if (target) {
+            if (target === 'in_progress' && current === 'allocated_to_designer') {
+              updateData.status = target;
+            } else if (target === 'internal_qc' && current === 'in_progress') {
+              // Ensure QC is assigned or being assigned now
+              const finalQcId = body.qcId !== undefined ? body.qcId : caseRecord.qcId;
+              if (!finalQcId) {
+                return NextResponse.json({ error: 'Bad Request: Cannot send to QC without assigning a QC Lead first' }, { status: 400 });
+              }
+              updateData.status = target;
+            } else {
+              return NextResponse.json({ error: `Forbidden: Designers cannot transition status from ${current} to ${target}` }, { status: 403 });
+            }
           }
-          const qcAllowed = ['submitted_to_client', 'in_progress', 'on_hold'];
-          if (qcAllowed.includes(target)) {
-            updateData.status = target;
-          } else {
-            return NextResponse.json({ error: `Forbidden: QC Leads cannot transition status from ${current} to ${target}` }, { status: 403 });
+
+          // Block attempts to modify administrative/client fields
+          if (body.caseNumber || body.dueDate || body.category || body.subTypeData || (body.designerId !== undefined && body.designerId !== profile.id) || body.accountManagerId !== undefined) {
+            return NextResponse.json({ error: 'Forbidden: Designers cannot modify core case properties or administrative assignments' }, { status: 403 });
           }
-        } else {
-          return NextResponse.json({ error: 'Forbidden: Unauthorized internal role action' }, { status: 403 });
         }
+      } else if (profile.role === 'account_manager') {
+        return NextResponse.json({ error: 'Forbidden: Account Managers have read-only privileges' }, { status: 403 });
+      } else {
+        return NextResponse.json({ error: 'Forbidden: Unauthorized operational role action' }, { status: 403 });
       }
     } else {
       return NextResponse.json({ error: 'Forbidden: Unauthorized role' }, { status: 403 });
     }
 
     const updatedCase = await db.update(cases).set(updateData).where(eq(cases.id, id)).returning();
+
+    // Dispatch Notifications after successful DB update
+    if (updatedCase.length > 0) {
+      const uCase = updatedCase[0];
+      const actorUserId = profile.id;
+      const caseUrl = `/cases/${id}`;
+
+      // Helper to dispatch async safely without blocking the REST response
+      const triggerNotification = (type: NotificationType, targetUserId: string, title: string, message: string) => {
+        NotificationService.dispatch({
+          type,
+          actorUserId,
+          targetUserId,
+          entityId: id,
+          entityType: 'case',
+          title,
+          message,
+          link: caseUrl,
+        }).catch(err => console.error(`[NotificationTrigger] Failed to dispatch ${type}:`, err));
+      };
+
+      // 1. Case Assigned: designerId changed
+      if (updateData.designerId !== undefined && updateData.designerId !== caseRecord.designerId) {
+        if (updateData.designerId) {
+          triggerNotification(
+            NotificationType.CASE_ASSIGNED,
+            updateData.designerId,
+            'New Case Assigned',
+            `Case ${uCase.caseNumber} has been assigned to you.`
+          );
+        }
+      }
+
+      // 2. Status Transitions
+      if (updateData.status && updateData.status !== caseRecord.status) {
+        const status = updateData.status;
+
+        // Case Approved
+        if (status === 'approved') {
+          // Notify Designer
+          if (caseRecord.designerId) {
+            triggerNotification(
+              NotificationType.CASE_APPROVED,
+              caseRecord.designerId,
+              'Case Design Approved',
+              `Your design for case ${uCase.caseNumber} has been approved by the client.`
+            );
+          }
+        }
+
+        // Case Rejected / Sent Back (Internal QC -> In Progress)
+        else if (status === 'in_progress' && caseRecord.status === 'internal_qc') {
+          if (caseRecord.designerId) {
+            triggerNotification(
+              NotificationType.CASE_REJECTED,
+              caseRecord.designerId,
+              'Case Design Rejected',
+              `Your design for case ${uCase.caseNumber} was rejected in Internal QC. Please review and make modifications.`
+            );
+          }
+        }
+
+        // Case Feedback / Client Feedback
+        else if (status === 'client_feedback') {
+          if (caseRecord.designerId) {
+            triggerNotification(
+              NotificationType.CASE_FEEDBACK,
+              caseRecord.designerId,
+              'Case Feedback Received',
+              `Client has provided feedback on case ${uCase.caseNumber}.`
+            );
+          }
+        }
+
+        // Case On Hold
+        else if (status === 'on_hold') {
+          if (caseRecord.designerId) {
+            triggerNotification(
+              NotificationType.CASE_HOLD,
+              caseRecord.designerId,
+              'Case Put on Hold',
+              `Case ${uCase.caseNumber} has been placed on hold.`
+            );
+          }
+        }
+
+        // Case Cancelled
+        else if ((status as string) === 'cancelled') {
+          if (caseRecord.designerId) {
+            triggerNotification(
+              NotificationType.CASE_CANCEL,
+              caseRecord.designerId,
+              'Case Cancelled',
+              `Case ${uCase.caseNumber} has been cancelled.`
+            );
+          }
+        }
+      }
+    }
 
     await logActivity({
       actor: profile,

@@ -5,6 +5,7 @@ import {
   FolderOpen,
   UserCircle,
   LogOut,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -36,6 +37,7 @@ export function SubSidebar() {
   const navItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Cases", url: "/cases", icon: FolderOpen },
+    { title: "Notifications", url: "/notifications", icon: Bell },
     { title: "Profile", url: "/profile", icon: UserCircle },
   ];
 

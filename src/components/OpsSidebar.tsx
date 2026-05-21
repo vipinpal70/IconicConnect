@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   Layers,
   LogOut,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -25,11 +26,13 @@ import {
   useSidebar,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "All Cases", url: "/cases", icon: FolderOpen },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
+  { title: "Notifications", url: "/notifications", icon: Bell },
 ];
 
 export function OpsSidebar() {
@@ -37,6 +40,20 @@ export function OpsSidebar() {
   const collapsed = state === "collapsed";
   const pathname = usePathname();
   const router = useRouter();
+
+  // Fetch current user details dynamically
+  const { data: profile } = useQuery({
+    queryKey: ['my-profile'],
+    queryFn: async () => {
+      const res = await fetch('/api/profile')
+      if (!res.ok) return null
+      return res.json()
+    }
+  });
+
+  const initials = profile?.fullName
+    ? profile.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+    : 'OP';
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -93,12 +110,12 @@ export function OpsSidebar() {
       <SidebarFooter className="p-4 border-t border-border space-y-3">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-[10px] font-bold">
-            OP
+            {initials}
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">Ops Team</p>
-              <p className="text-xs text-muted-foreground">Internal Member</p>
+              <p className="text-sm font-medium text-foreground truncate">{profile?.fullName || "Ops User"}</p>
+              <p className="text-xs text-muted-foreground capitalize">{profile?.role?.replace('_', ' ') || "Internal Member"}</p>
             </div>
           )}
         </div>
