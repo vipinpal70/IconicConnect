@@ -9,6 +9,8 @@ export enum NotificationType {
   CHAT_MESSAGE = 'chat_message',
   WELCOME = 'welcome',
   PLAN_UPGRADED = 'plan_upgraded',
+  CASE_CREATED = 'case_created',
+  CASE_STATUS_CHANGED = 'case_status_changed',
   SUPPORT_TICKET_CREATED = 'support_ticket_created',
   SUPPORT_TICKET_UPDATED = 'support_ticket_updated',
   SUPPORT_TICKET_RESOLVED = 'support_ticket_resolved',

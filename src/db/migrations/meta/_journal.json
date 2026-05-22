@@ -99,6 +99,13 @@
       "when": 1779348000000,
       "tag": "0012_preference_forms",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1779349000000,
+      "tag": "0013_client_price_list",
+      "breakpoints": true
     }
   ]
 }

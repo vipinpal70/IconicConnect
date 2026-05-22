@@ -11,6 +11,7 @@ import { Badge } from "@/src/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/src/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
+import { PriceListTable, type PriceListRow } from "@/src/components/PriceListTable"
 import {
   Building2, Mail, Phone, MapPin, FileText, Plus, Eye, EyeOff,
   Users, KeyRound, Trash2, Settings
@@ -35,6 +36,14 @@ interface Profile {
   onBoardedAt?: string;
 }
 
+type ClientPriceListItem = {
+  id: string
+  serviceName: string
+  price: number
+  notes: string | null
+  sortOrder: number
+}
+
 // Mock lab data for UI
 const mockLab = {
   id: "LAB-001",
@@ -47,19 +56,21 @@ const mockLab = {
   poc: "Daniel Ortega",
   monthlyVolume: 120,
   preferences: "Prefer digital impressions via iTero.",
-  priceList: [
-    { caseType: "Crown & Bridge", price: 35 },
-    { caseType: "Implants", price: 65 },
-    { caseType: "Removables", price: 45 },
-    { caseType: "Orthodontics", price: 120 },
-  ]
 };
+
+const defaultPriceList: PriceListRow[] = [
+  { id: "default-1", serviceName: "Crown & Bridge", price: 35, notes: null, sortOrder: 0 },
+  { id: "default-2", serviceName: "Implants", price: 65, notes: null, sortOrder: 1 },
+  { id: "default-3", serviceName: "Removables", price: 45, notes: null, sortOrder: 2 },
+  { id: "default-4", serviceName: "Orthodontics", price: 120, notes: null, sortOrder: 3 },
+]
 
 export default function ProfilePage() {
   const lab = mockLab;
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [priceList, setPriceList] = useState<PriceListRow[]>(defaultPriceList)
 
   // fetch profile data from the api route and set it to the profile state
   useEffect(() => {
@@ -75,6 +86,23 @@ export default function ProfilePage() {
         }
         const data: Profile = await res.json();
         setProfile(data);
+
+        const priceRes = await fetch("/api/client/price-list");
+        if (priceRes.ok) {
+          const priceJson = await priceRes.json();
+          const items = Array.isArray(priceJson.data) ? priceJson.data : [];
+          if (items.length > 0) {
+            setPriceList(
+              items.map((item: ClientPriceListItem, index: number) => ({
+                id: item.id,
+                serviceName: item.serviceName,
+                price: Number(item.price) || 0,
+                notes: item.notes || null,
+                sortOrder: typeof item.sortOrder === "number" ? item.sortOrder : index,
+              }))
+            );
+          }
+        }
       } catch (err) {
         console.error("Error fetching profile:", err);
       }
@@ -183,25 +211,11 @@ export default function ProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Case Type</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Price (USD)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {lab.priceList.map((p) => (
-                      <tr key={p.caseType}>
-                        <td className="px-4 py-3 text-foreground">{p.caseType}</td>
-                        <td className="px-4 py-3 text-right font-medium text-foreground">${p.price}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-xs text-muted-foreground mt-3 italic">Price list is set by Iconic Connect during onboarding. Contact your account manager to revise.</p>
+              <PriceListTable
+                items={priceList}
+                emptyState="No custom price list has been assigned yet."
+              />
+              <p className="text-xs text-muted-foreground mt-3 italic">Price list updates made by the admin team are shown here automatically.</p>
             </CardContent>
           </Card>
         </div>

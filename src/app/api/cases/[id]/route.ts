@@ -8,6 +8,7 @@ import { isValidRoleForType } from '@/src/lib/auth/role';
 import { logActivity } from '@/src/lib/activity-log';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
+import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
 
 type CaseUpdateData = {
   caseNumber?: string
@@ -295,65 +296,62 @@ export async function PUT(
       if (updateData.status && updateData.status !== caseRecord.status) {
         const status = updateData.status;
 
-        // Case Approved
-        if (status === 'approved') {
-          // Notify Designer
-          if (caseRecord.designerId) {
-            triggerNotification(
-              NotificationType.CASE_APPROVED,
-              caseRecord.designerId,
-              'Case Design Approved',
-              `Your design for case ${uCase.caseNumber} has been approved by the client.`
-            );
+        if (profile.role === 'client' || profile.role === 'subuser') {
+          // Client-originated status changes should still notify the internal team/designer.
+          if (status === 'approved') {
+            if (caseRecord.designerId) {
+              triggerNotification(
+                NotificationType.CASE_APPROVED,
+                caseRecord.designerId,
+                'Case Design Approved',
+                `Your design for case ${uCase.caseNumber} has been approved by the client.`
+              );
+            }
+          } else if (status === 'in_progress' && caseRecord.status === 'internal_qc') {
+            if (caseRecord.designerId) {
+              triggerNotification(
+                NotificationType.CASE_REJECTED,
+                caseRecord.designerId,
+                'Case Design Rejected',
+                `Your design for case ${uCase.caseNumber} was rejected in Internal QC. Please review and make modifications.`
+              );
+            }
+          } else if (status === 'client_feedback') {
+            if (caseRecord.designerId) {
+              triggerNotification(
+                NotificationType.CASE_FEEDBACK,
+                caseRecord.designerId,
+                'Case Feedback Received',
+                `Client has provided feedback on case ${uCase.caseNumber}.`
+              );
+            }
+          } else if (status === 'on_hold') {
+            if (caseRecord.designerId) {
+              triggerNotification(
+                NotificationType.CASE_HOLD,
+                caseRecord.designerId,
+                'Case Put on Hold',
+                `Case ${uCase.caseNumber} has been placed on hold.`
+              );
+            }
+          } else if ((status as string) === 'cancelled') {
+            if (caseRecord.designerId) {
+              triggerNotification(
+                NotificationType.CASE_CANCEL,
+                caseRecord.designerId,
+                'Case Cancelled',
+                `Case ${uCase.caseNumber} has been cancelled.`
+              );
+            }
           }
-        }
-
-        // Case Rejected / Sent Back (Internal QC -> In Progress)
-        else if (status === 'in_progress' && caseRecord.status === 'internal_qc') {
-          if (caseRecord.designerId) {
-            triggerNotification(
-              NotificationType.CASE_REJECTED,
-              caseRecord.designerId,
-              'Case Design Rejected',
-              `Your design for case ${uCase.caseNumber} was rejected in Internal QC. Please review and make modifications.`
-            );
-          }
-        }
-
-        // Case Feedback / Client Feedback
-        else if (status === 'client_feedback') {
-          if (caseRecord.designerId) {
-            triggerNotification(
-              NotificationType.CASE_FEEDBACK,
-              caseRecord.designerId,
-              'Case Feedback Received',
-              `Client has provided feedback on case ${uCase.caseNumber}.`
-            );
-          }
-        }
-
-        // Case On Hold
-        else if (status === 'on_hold') {
-          if (caseRecord.designerId) {
-            triggerNotification(
-              NotificationType.CASE_HOLD,
-              caseRecord.designerId,
-              'Case Put on Hold',
-              `Case ${uCase.caseNumber} has been placed on hold.`
-            );
-          }
-        }
-
-        // Case Cancelled
-        else if ((status as string) === 'cancelled') {
-          if (caseRecord.designerId) {
-            triggerNotification(
-              NotificationType.CASE_CANCEL,
-              caseRecord.designerId,
-              'Case Cancelled',
-              `Case ${uCase.caseNumber} has been cancelled.`
-            );
-          }
+        } else {
+          await notifyCaseStatusChanged({
+            actorUserId: actorUserId,
+            targetUserId: caseRecord.clientId,
+            caseId: id,
+            caseNumber: uCase.caseNumber,
+            status: status as string,
+          }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case status notification:', err));
         }
       }
     }

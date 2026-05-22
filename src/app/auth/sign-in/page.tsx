@@ -3,9 +3,11 @@
 import React, { useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
+import Logo from '@/public/IconicConnectLogo.png'
 
 function SignInForm() {
   const router = useRouter()
@@ -68,8 +70,10 @@ function SignInForm() {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
 
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900 text-center">Iconic Connect</h1>
-          <p className="text-sm text-gray-500 mt-1 text-center">Sign in to your account</p>
+          {/* <h1 className="text-2xl font-semibold text-gray-900 text-center">Iconic Connect</h1>
+           */}
+          <Image src={Logo} alt="Iconic Connect" width={150} height={150} className="mx-auto" />
+          <p className="text-sm text-gray-500 mt-4 text-center">Sign in to your account</p>
         </div>
 
         {registered && (

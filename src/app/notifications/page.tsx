@@ -253,6 +253,18 @@ export default function NotificationsPage() {
           borderColor: 'border-l-[#00786f]',
           bgColor: 'bg-teal-50/30'
         };
+      case 'case_created':
+        return {
+          icon: <AlertCircle className="w-5 h-5 text-amber-500" />,
+          borderColor: 'border-l-amber-500',
+          bgColor: 'bg-amber-50/40'
+        };
+      case 'case_status_changed':
+        return {
+          icon: <Bell className="w-5 h-5 text-sky-500" />,
+          borderColor: 'border-l-sky-500',
+          bgColor: 'bg-sky-50/40'
+        };
       case 'support_ticket_created':
       case 'support_callback_requested':
         return {

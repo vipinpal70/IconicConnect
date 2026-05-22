@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { COUNTRY_CODES, formatPhoneForStorage, validateNationalPhone } from "@/src/lib/phone";
 import { Eye, EyeOff } from "lucide-react";
+import Logo from '@/public/IconicConnectLogo.png'
 
 type FormData = {
 	name: string;
@@ -126,14 +128,16 @@ export default function SignUpPage() {
 			<div className="w-full max-w-2xl bg-white rounded-2xl border border-gray-100 p-8">
 				{/* Brand */}
 				<div className="flex justify-between items-start mb-6">
-					<div className="">
+					{/* <div className="">
 						<h1 className="text-xl font-semibold text-gray-900">
 							Iconic<span className="text-teal-600"> Connect</span>
 						</h1>
-					</div>
+					</div> */}
+
+					<Image src={Logo} alt="Iconic Connect Logo" width={100} height={100} />
 
 					<div className="">
-						<h2 className="text-xl font-semibold text-gray-900">
+						<h2 className="text-lg font-semibold text-gray-900">
 							Please register here!
 						</h2>
 						<p className="text-sm text-gray-400">
@@ -145,7 +149,7 @@ export default function SignUpPage() {
 				<form onSubmit={handleSubmit} className="space-y-6">
 					{/* Personal Info */}
 					<div>
-						<p className="text-[11px] font-medium text-teal-600 tracking-widest uppercase mb-3">
+						<p className="text-[11px] font-medium text-teal-600 tracking-widest uppercase mb-2">
 							Personal info
 						</p>
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-black">
@@ -203,7 +207,7 @@ export default function SignUpPage() {
 
 					{/* Lab & Location */}
 					<div>
-						<p className="text-[11px] font-medium text-teal-600 tracking-widest uppercase mb-3">
+						<p className="text-[11px] font-medium text-teal-600 tracking-widest uppercase mb-2">
 							Lab &amp; location
 						</p>
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-black">

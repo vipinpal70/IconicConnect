@@ -523,8 +523,8 @@ export default function CasesPage() {
                             <FileBox className="h-8 w-8 mx-auto text-emerald-600 animate-bounce" />
                             <p className="text-sm font-semibold text-foreground truncate max-w-md mx-auto">{singleFile?.name}</p>
                             <p className="text-xs text-muted-foreground">({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)</p>
-                            <p className="text-sm text-emerald-600 flex items-center justify-center gap-1 font-medium mt-1">
-                              <span className="inline-block bg-emerald-600 text-white rounded-full px-1 text-[10px] font-bold">✓</span> File uploaded at light speed!
+                            <p className="text-sm text-amber-600 flex items-center justify-center gap-1 font-medium mt-1 italic">
+                              ⚡File uploaded at light speed
                             </p>
                           </div>
                         ) : (

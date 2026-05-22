@@ -74,6 +74,87 @@ export async function notifySupportTicketCreated(input: {
   }))
 }
 
+export async function notifyCaseSubmitted(input: {
+  actorUserId: string
+  caseId: string
+  caseNumber: string
+  category: string
+  clientName: string
+}) {
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
+
+  return dispatchToUserIds(adminIds, (targetUserId) => ({
+    type: NotificationType.CASE_CREATED,
+    actorUserId: input.actorUserId,
+    title: `New case submitted: ${input.caseNumber}`,
+    message: `${input.clientName} submitted a new ${input.category} case.`,
+    link: '/admin/cases',
+    metadata: {
+      caseId: input.caseId,
+      caseNumber: input.caseNumber,
+      category: input.category,
+      targetUserId,
+    },
+  }))
+}
+
+export async function notifyCaseStatusChanged(input: {
+  actorUserId: string
+  targetUserId: string
+  caseId: string
+  caseNumber: string
+  status: string
+  clientName?: string
+}) {
+  const statusLabel = input.status.replace(/_/g, ' ')
+  const statusKey = input.status.toLowerCase()
+  let type = NotificationType.CASE_STATUS_CHANGED
+  let title = `Case ${input.caseNumber} status updated`
+  let message = input.clientName
+    ? `${input.clientName}'s case ${input.caseNumber} is now ${statusLabel}.`
+    : `Your case ${input.caseNumber} is now ${statusLabel}.`
+
+  if (statusKey === 'approved') {
+    type = NotificationType.CASE_APPROVED
+    title = `Case ${input.caseNumber} approved`
+    message = input.clientName
+      ? `${input.clientName}'s case ${input.caseNumber} has been approved.`
+      : `Your case ${input.caseNumber} has been approved.`
+  } else if (statusKey === 'client_feedback') {
+    type = NotificationType.CASE_FEEDBACK
+    title = `Case ${input.caseNumber} feedback received`
+    message = input.clientName
+      ? `${input.clientName}'s case ${input.caseNumber} has new feedback.`
+      : `Your case ${input.caseNumber} has new feedback.`
+  } else if (statusKey === 'on_hold') {
+    type = NotificationType.CASE_HOLD
+    title = `Case ${input.caseNumber} placed on hold`
+    message = input.clientName
+      ? `${input.clientName}'s case ${input.caseNumber} has been placed on hold.`
+      : `Your case ${input.caseNumber} has been placed on hold.`
+  } else if (statusKey === 'cancelled') {
+    type = NotificationType.CASE_CANCEL
+    title = `Case ${input.caseNumber} cancelled`
+    message = input.clientName
+      ? `${input.clientName}'s case ${input.caseNumber} has been cancelled.`
+      : `Your case ${input.caseNumber} has been cancelled.`
+  }
+
+  return NotificationService.dispatch({
+    type,
+    actorUserId: input.actorUserId,
+    targetUserId: input.targetUserId,
+    title,
+    message,
+    link: '/client/cases',
+    metadata: {
+      caseId: input.caseId,
+      caseNumber: input.caseNumber,
+      status: input.status,
+    },
+  })
+}
+
 export async function notifySupportTicketUpdated(input: {
   actorUserId: string
   clientId: string

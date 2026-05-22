@@ -7,6 +7,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { generateCaseId } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
+import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 
 const caseListSelection = {
   id: cases.id,
@@ -106,6 +107,14 @@ export async function POST(req: NextRequest) {
       };
 
       const insertedCase = await db.insert(cases).values(newCase).returning().then(res => res[0]);
+
+      await notifyCaseSubmitted({
+        actorUserId: user.id,
+        caseId: insertedCase.id,
+        caseNumber: insertedCase.caseNumber,
+        category: insertedCase.category,
+        clientName: clientProfile?.labName || clientProfile?.fullName || clientProfile?.email || 'Client',
+      }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case submission notification:', err));
 
       if (caseData.uploadedFile) {
         // Already uploaded immediately by client
