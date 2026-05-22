@@ -1,13 +1,13 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 
-export default function SignInPage() {
+function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const registered = useMemo(() => searchParams.get("registered") === "1", [searchParams])
@@ -153,5 +153,20 @@ export default function SignInPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 flex flex-col items-center justify-center">
+          <h1 className="text-2xl font-semibold text-gray-900 text-center mb-8">Iconic Connect</h1>
+          <div className="text-sm text-gray-500">Loading...</div>
+        </div>
+      </div>
+    }>
+      <SignInForm />
+    </Suspense>
   )
 }
