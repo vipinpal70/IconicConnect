@@ -4,6 +4,7 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { supportTickets } from '@/src/db/schema/support-ticket'
 import { createClient } from '@/src/lib/supabase/server'
+import { notifySupportTicketUpdated } from '@/src/lib/notifications/notification-dispatcher'
 import { SUPPORT_TICKET_STATUSES } from '@/src/lib/support-tickets'
 
 async function requireAdmin() {
@@ -62,6 +63,25 @@ export async function PATCH(
     }
 
     const [updated] = await db.update(supportTickets).set(updateData).where(eq(supportTickets.id, id)).returning()
+
+    if ((status !== undefined && status !== ticket.status) || adminNotes !== undefined) {
+      const notificationEvent = status === 'resolved'
+        ? 'resolved'
+        : status === 'closed'
+          ? 'closed'
+          : 'updated'
+
+      await notifySupportTicketUpdated({
+        actorUserId: auth.user.id,
+        clientId: ticket.clientId,
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        event: notificationEvent,
+        ticketStatus: (status ?? ticket.status) as string,
+        adminNotes: updateData.adminNotes ?? ticket.adminNotes ?? null,
+      })
+    }
 
     return NextResponse.json({ data: updated })
   } catch (error) {

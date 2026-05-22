@@ -4,6 +4,7 @@ import { db } from '@/src/db'
 import { profiles, subUsers } from '@/src/db/schema/profile'
 import { supportTickets } from '@/src/db/schema/support-ticket'
 import { createClient } from '@/src/lib/supabase/server'
+import { notifySupportTicketCreated } from '@/src/lib/notifications/notification-dispatcher'
 import { SUPPORT_TICKET_PRIORITIES, SUPPORT_TICKET_TYPES, isClientSupportStatus } from '@/src/lib/support-tickets'
 
 function getErrorMessage(error: unknown) {
@@ -127,6 +128,16 @@ export async function POST(req: NextRequest) {
       priority: priority as (typeof SUPPORT_TICKET_PRIORITIES)[number],
       status: 'open',
     }).returning()
+
+    await notifySupportTicketCreated({
+      actorUserId: profile.id,
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      subject: ticket.subject,
+      category: ticket.category,
+      priority: ticket.priority,
+      clientName: profile.labName || profile.fullName || profile.email || 'Client',
+    })
 
     return NextResponse.json({ data: ticket }, { status: 201 })
   } catch (error) {

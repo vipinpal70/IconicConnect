@@ -9,6 +9,13 @@ export enum NotificationType {
   CHAT_MESSAGE = 'chat_message',
   WELCOME = 'welcome',
   PLAN_UPGRADED = 'plan_upgraded',
+  SUPPORT_TICKET_CREATED = 'support_ticket_created',
+  SUPPORT_TICKET_UPDATED = 'support_ticket_updated',
+  SUPPORT_TICKET_RESOLVED = 'support_ticket_resolved',
+  SUPPORT_TICKET_CLOSED = 'support_ticket_closed',
+  SUPPORT_CALLBACK_REQUESTED = 'support_callback_requested',
+  OFFER_CREATED = 'offer_created',
+  TUTORIAL_CREATED = 'tutorial_created',
 }
 
 export interface NotificationEventPayload {
@@ -20,5 +27,5 @@ export interface NotificationEventPayload {
   title: string;
   message: string;
   link?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }

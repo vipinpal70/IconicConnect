@@ -4,6 +4,7 @@ import { db } from "@/src/db"
 import { tutorials } from "@/src/db/schema/tutorial"
 import { profiles } from "@/src/db/schema/profile"
 import { createClient } from "@/src/lib/supabase/server"
+import { notifyTutorialCreated } from "@/src/lib/notifications/notification-dispatcher"
 import { isValidRoleForType } from "@/src/lib/auth/role"
 import {
   extractYouTubeVideoId,
@@ -98,6 +99,14 @@ export async function POST(req: NextRequest) {
         youtubeVideoId,
       })
       .returning()
+
+    await notifyTutorialCreated({
+      actorUserId: admin.user.id,
+      tutorialId: inserted.id,
+      title: inserted.title,
+      category: inserted.category,
+      description: inserted.description,
+    })
 
     return NextResponse.json({ data: inserted }, { status: 201 })
   } catch (error) {

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Bell, Check, Trash2, Settings, UserPlus, 
   CheckCircle2, XCircle, MessageSquare, AlertCircle, 
-  PauseCircle, MinusCircle, Info, MoreHorizontal, Eye,
+  PauseCircle, Info, MoreHorizontal,
   Sliders, Mail, Sparkles, ArrowRight
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -33,10 +33,55 @@ interface PreferenceItem {
   emailKey: string;
 }
 
+interface NotificationRecord {
+  id: string
+  type: string
+  title: string
+  message: string
+  read: boolean
+  dismissed: boolean
+  createdAt: string
+  link?: string | null
+}
+
+interface ProfileRecord {
+  role?: 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | 'designer'
+}
+
+interface NotificationPreferencesRecord {
+  [key: string]: boolean
+}
+
+function NotificationsLayout({
+  role,
+  isLoading,
+  children,
+}: {
+  role?: ProfileRecord['role'] | null
+  isLoading: boolean
+  children: React.ReactNode
+}) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-slate-500 text-sm font-medium">Securing session layout...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (role === 'client') return <ClientLayout>{children}</ClientLayout>
+  if (role === 'subuser') return <SubLayout>{children}</SubLayout>
+  if (role === 'admin') return <AdminLayout>{children}</AdminLayout>
+  return <OpsLayout>{children}</OpsLayout>
+}
+
 export default function NotificationsPage() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'dashboard' | 'preferences'>('dashboard')
-  const [profile, setProfile] = useState<any>(null)
+  const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
 
   // Fetch logged-in user profile to determine correct portal layout wrapper
@@ -58,36 +103,36 @@ export default function NotificationsPage() {
   }, [])
 
   // Fetch Notifications
-  const { data: notifications = [], isLoading } = useQuery({
+  const { data: notifications = [], isLoading } = useQuery<NotificationRecord[]>({
     queryKey: ['notifications'],
     queryFn: async () => {
       const res = await fetch('/api/notifications')
       if (!res.ok) throw new Error('Failed to fetch notifications')
-      const json = await res.json()
+      const json: { data?: NotificationRecord[] } = await res.json()
       return json.data || []
     }
   })
 
   // Fetch Unread Count
-  const { data: unreadCountData } = useQuery({
+  const { data: unreadCountData } = useQuery<number>({
     queryKey: ['notifications-unread-count'],
     queryFn: async () => {
       const res = await fetch('/api/notifications/unread-count')
       if (!res.ok) throw new Error('Failed to fetch unread count')
-      const json = await res.json()
+      const json: { count?: number } = await res.json()
       return json.count || 0
     }
   })
 
-  const unreadCount = typeof unreadCountData === 'number' ? unreadCountData : notifications.filter((n: any) => !n.read).length
+  const unreadCount = typeof unreadCountData === 'number' ? unreadCountData : notifications.filter((n) => !n.read).length
 
   // Fetch Preferences Object
-  const { data: preferences = {}, isLoading: isPrefLoading } = useQuery({
+  const { data: preferences = {} as NotificationPreferencesRecord, isLoading: isPrefLoading } = useQuery<NotificationPreferencesRecord>({
     queryKey: ['notification-preferences'],
     queryFn: async () => {
       const res = await fetch('/api/notification-preferences')
       if (!res.ok) throw new Error('Failed to fetch notification preferences')
-      const json = await res.json()
+      const json: { data?: NotificationPreferencesRecord } = await res.json()
       return json.data || {}
     }
   })
@@ -107,8 +152,8 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notification-preferences'] });
       toast.success('Notification preference updated successfully');
     },
-    onError: (err: any) => {
-      toast.error(err.message || 'Failed to update preference');
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to update preference');
     }
   });
 
@@ -127,8 +172,8 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
     },
-    onError: (err: any) => {
-      toast.error(err.message || 'Failed to update notification');
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to update notification');
     }
   });
 
@@ -146,14 +191,25 @@ export default function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
       toast.success('All notifications marked as read');
     },
-    onError: (err: any) => {
-      toast.error(err.message || 'Failed to mark all as read');
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to mark all as read');
     }
   });
 
   // Helper: Classification for Client Activity
-  const isClientActivity = (notif: any) => {
-    const clientTypes = ['case_approved', 'case_rejected', 'case_feedback', 'case_cancel', 'case_hold'];
+  const isClientActivity = (notif: NotificationRecord) => {
+    const clientTypes = [
+      'case_approved',
+      'case_rejected',
+      'case_feedback',
+      'case_cancel',
+      'case_hold',
+      'support_ticket_updated',
+      'support_ticket_resolved',
+      'support_ticket_closed',
+      'offer_created',
+      'tutorial_created',
+    ];
     if (clientTypes.includes(notif.type)) return true;
     if (notif.type === 'chat_message') {
       const msg = notif.message?.toLowerCase() || '';
@@ -197,6 +253,38 @@ export default function NotificationsPage() {
           borderColor: 'border-l-[#00786f]',
           bgColor: 'bg-teal-50/30'
         };
+      case 'support_ticket_created':
+      case 'support_callback_requested':
+        return {
+          icon: <AlertCircle className="w-5 h-5 text-amber-500" />,
+          borderColor: 'border-l-amber-500',
+          bgColor: 'bg-amber-50/40'
+        };
+      case 'support_ticket_updated':
+        return {
+          icon: <Bell className="w-5 h-5 text-sky-500" />,
+          borderColor: 'border-l-sky-500',
+          bgColor: 'bg-sky-50/40'
+        };
+      case 'support_ticket_resolved':
+        return {
+          icon: <CheckCircle2 className="w-5 h-5 text-emerald-500" />,
+          borderColor: 'border-l-emerald-500',
+          bgColor: 'bg-emerald-50/40'
+        };
+      case 'support_ticket_closed':
+        return {
+          icon: <XCircle className="w-5 h-5 text-slate-500" />,
+          borderColor: 'border-l-slate-400',
+          bgColor: 'bg-slate-50/40'
+        };
+      case 'offer_created':
+      case 'tutorial_created':
+        return {
+          icon: <Sparkles className="w-5 h-5 text-fuchsia-500" />,
+          borderColor: 'border-l-fuchsia-500',
+          bgColor: 'bg-fuchsia-50/40'
+        };
       case 'chat_message':
         return {
           icon: <MessageSquare className="w-5 h-5 text-sky-500" />,
@@ -213,7 +301,7 @@ export default function NotificationsPage() {
   };
 
   const clientNotifications = notifications.filter(isClientActivity);
-  const internalNotifications = notifications.filter((n: any) => !isClientActivity(n));
+  const internalNotifications = notifications.filter((n) => !isClientActivity(n));
 
   // Defined dynamic mappings for fine-grained toggles matching database preference columns
   const PREFERENCE_MAPPINGS: PreferenceItem[] = [
@@ -268,43 +356,23 @@ export default function NotificationsPage() {
     }
   ];
 
-  // Dynamic selector to wrap contents with correct role sidebar and layout
-  const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
-    if (isProfileLoading) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="text-center space-y-3">
-            <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-slate-500 text-sm font-medium">Securing session layout...</p>
-          </div>
-        </div>
-      )
-    }
-
-    const role = profile?.role
-    if (role === 'client') return <ClientLayout>{children}</ClientLayout>
-    if (role === 'subuser') return <SubLayout>{children}</SubLayout>
-    if (role === 'admin') return <AdminLayout>{children}</AdminLayout>
-    return <OpsLayout>{children}</OpsLayout>
-  }
-
   return (
-    <LayoutWrapper>
-      <div className="min-h-screen bg-slate-50/40 p-4 md:p-8">
+    <NotificationsLayout role={profile?.role} isLoading={isProfileLoading}>
+      <div className="min-h-screen bg-slate-50/40 p-2">
         <div className="max-w-7xl mx-auto space-y-8">
           
           {/* Header Area */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
             <div className="space-y-1">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-[#00786f]/10 text-[#00786f] rounded-xl">
+                {/* <div className="p-2.5 bg-[#00786f]/10 text-[#00786f] rounded-xl">
                   <Bell className="w-6 h-6 animate-pulse" />
-                </div>
+                </div> */}
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                  <h1 className="text-xl font-semibold tracking-tight text-slate-900 flex items-center gap-2">
                     Notification Center
                     {unreadCount > 0 && (
-                      <Badge className="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                      <Badge className="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-2.5 py-0.5 text-[10px] font-semibold">
                         {unreadCount} Unread
                       </Badge>
                     )}
@@ -346,7 +414,8 @@ export default function NotificationsPage() {
                   disabled={unreadCount === 0}
                   className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
                 >
-                  <Check className="w-4 h-4 mr-2" /> Mark all read
+                  <Check className="w-4 h-4 mr-2" /> 
+                  <span className='text-sm'>Mark all read</span>
                 </Button>
               )}
             </div>
@@ -361,7 +430,7 @@ export default function NotificationsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-indigo-500" />
-                    <h2 className="text-lg font-semibold text-slate-900">Client Activities & Live Feedback</h2>
+                    <h2 className="text-md font-semibold text-slate-900">Client Activities & Live Feedback</h2>
                   </div>
                   <Badge variant="outline" className="bg-white border-slate-200 text-slate-600">
                     {clientNotifications.length} alerts
@@ -370,16 +439,16 @@ export default function NotificationsPage() {
 
                 <div className="space-y-3">
                   {isLoading ? (
-                    <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-500 shadow-sm">
+                    <div className="bg-white rounded-xl border border-slate-100 p-12 text-center text-slate-500 shadow-sm">
                       Loading client events...
                     </div>
                   ) : clientNotifications.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center shadow-sm">
-                      <Sparkles className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <div className="bg-white rounded-xl border border-dashed border-slate-200 p-12 text-center shadow-sm">
+                      <Sparkles className="w-8 h-8 text-slate-300 mx-auto mb-3" />
                       <p className="text-slate-500 font-medium text-sm">All caught up with client feedback!</p>
                     </div>
                   ) : (
-                    clientNotifications.map((notif: any) => {
+                    clientNotifications.map((notif) => {
                       const cfg = getNotificationConfig(notif.type);
                       return (
                         <div
@@ -452,7 +521,7 @@ export default function NotificationsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-teal-500" />
-                    <h2 className="text-lg font-semibold text-slate-900">Internal Operations & Case Flow</h2>
+                    <h2 className="text-md font-semibold text-slate-900">Internal Operations & Case Flow</h2>
                   </div>
                   <Badge variant="outline" className="bg-white border-slate-200 text-slate-600">
                     {internalNotifications.length} alerts
@@ -461,16 +530,16 @@ export default function NotificationsPage() {
 
                 <div className="space-y-3">
                   {isLoading ? (
-                    <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-500 shadow-sm">
+                    <div className="bg-white rounded-xl border border-slate-100 p-12 text-center text-slate-500 shadow-sm">
                       Loading internal events...
                     </div>
                   ) : internalNotifications.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center shadow-sm">
+                    <div className="bg-white rounded-xl border border-dashed border-slate-200 p-12 text-center shadow-sm">
                       <Sparkles className="w-10 h-10 text-slate-300 mx-auto mb-3" />
                       <p className="text-slate-500 font-medium text-sm">All caught up with internal operations!</p>
                     </div>
                   ) : (
-                    internalNotifications.map((notif: any) => {
+                    internalNotifications.map((notif) => {
                       const cfg = getNotificationConfig(notif.type);
                       return (
                         <div
@@ -543,7 +612,7 @@ export default function NotificationsPage() {
             
             /* PREFERENCES SETTINGS */
             <div className="max-w-3xl mx-auto space-y-6">
-              <Card className="bg-white border-slate-100 shadow-sm rounded-2xl overflow-hidden">
+              <Card className="bg-white border-slate-100 shadow-sm rounded-xl overflow-hidden">
                 <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6">
                   <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
                     <Sliders className="w-5 h-5 text-[#00786f]" /> Delivery Channels & Alerts
@@ -635,6 +704,6 @@ export default function NotificationsPage() {
 
         </div>
       </div>
-    </LayoutWrapper>
+    </NotificationsLayout>
   )
 }

@@ -4,6 +4,7 @@ import { db } from "@/src/db"
 import { offers } from "@/src/db/schema/offer"
 import { profiles } from "@/src/db/schema/profile"
 import { createClient } from "@/src/lib/supabase/server"
+import { notifyOfferCreated } from "@/src/lib/notifications/notification-dispatcher"
 import { isValidRoleForType } from "@/src/lib/auth/role"
 import { isOfferCategory } from "@/src/lib/offers"
 
@@ -202,6 +203,15 @@ export async function POST(req: NextRequest) {
         targetLocations,
       })
       .returning()
+
+    await notifyOfferCreated({
+      actorUserId: userContext.user.id,
+      offerId: inserted.id,
+      title: inserted.title,
+      brand: inserted.brand,
+      discount: inserted.discount,
+      category: inserted.category,
+    })
 
     return NextResponse.json({ data: inserted }, { status: 201 })
   } catch (error) {

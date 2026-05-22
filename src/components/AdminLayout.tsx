@@ -25,8 +25,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex w-full">
         <AdminSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center justify-between border-b border-border bg-card px-4 sticky top-0 z-10">
-            <SidebarTrigger className="text-muted-foreground" />
+          <header className="h-16 flex items-center justify-end border-b border-border bg-gray-50 px-4 sticky top-0 z-10">
+            {/* <SidebarTrigger className="text-muted-foreground" /> */}
             <div className="flex items-center gap-2">
               <Link href="/notifications">
                 <Button variant="ghost" size="icon" className="relative h-9 w-9">
@@ -38,7 +38,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-6 bg-background">
+          <main className="flex-1 overflow-auto p-6 bg-gray-50">
             {children}
           </main>
         </div>

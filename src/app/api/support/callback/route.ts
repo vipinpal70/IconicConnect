@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import { inArray, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { notifications } from '@/src/db/schema/notification'
 import { profiles, subUsers } from '@/src/db/schema/profile'
 import { supportCallbackRequests } from '@/src/db/schema/support-callback-request'
 import { createClient } from '@/src/lib/supabase/server'
+import { notifyCallbackRequestCreated } from '@/src/lib/notifications/notification-dispatcher'
 
 async function getClientContext() {
   const supabase = await createClient()
@@ -44,38 +44,30 @@ export async function POST() {
     if ('error' in auth) return auth.error
 
     const { clientId, clientProfile, profile } = auth
-    const internalRecipients = await db
-      .select({ id: profiles.id })
-      .from(profiles)
-      .where(inArray(profiles.role, ['admin', 'qc', 'account_manager']))
-
-    if (internalRecipients.length === 0) {
-      return NextResponse.json({ data: { notifiedCount: 0 } })
-    }
 
     const clientLabel = clientProfile?.labName || clientProfile?.fullName || clientProfile?.email || 'Client'
     const requester = profile.fullName || profile.email || 'A client'
     const clientName = clientProfile?.fullName || requester
     const labName = clientProfile?.labName || clientLabel
 
-    await db.insert(supportCallbackRequests).values({
+    const [request] = await db.insert(supportCallbackRequests).values({
       clientId,
       clientName,
       labName,
       phone: clientProfile?.phone || null,
       email: clientProfile?.email || requester,
+    }).returning()
+
+    const dispatchResult = await notifyCallbackRequestCreated({
+      actorUserId: profile.id,
+      requestId: request.id,
+      clientId,
+      clientName,
+      labName,
+      requesterName: requester,
     })
 
-    await db.insert(notifications).values(
-      internalRecipients.map((recipient) => ({
-        userId: recipient.id,
-        title: 'Callback requested',
-        message: `${clientLabel} requested a callback. Requested by ${requester}.`,
-        type: 'support',
-      }))
-    )
-
-    return NextResponse.json({ data: { notifiedCount: internalRecipients.length } })
+    return NextResponse.json({ data: { notifiedCount: dispatchResult.succeeded } })
   } catch (error) {
     console.error('[support/callback POST]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 })
