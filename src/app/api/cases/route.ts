@@ -111,8 +111,8 @@ export async function POST(req: NextRequest) {
       await notifyCaseSubmitted({
         actorUserId: user.id,
         caseId: insertedCase.id,
-        caseNumber: insertedCase.caseNumber,
-        category: insertedCase.category,
+        caseNumber: insertedCase.caseNumber ?? '',
+        category: insertedCase.category ?? '',
         clientName: clientProfile?.labName || clientProfile?.fullName || clientProfile?.email || 'Client',
       }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case submission notification:', err));
 
