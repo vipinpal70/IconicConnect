@@ -349,7 +349,7 @@ export async function PUT(
             actorUserId: actorUserId,
             targetUserId: caseRecord.clientId,
             caseId: id,
-            caseNumber: uCase.caseNumber,
+            caseNumber: uCase.caseNumber ?? '',
             status: status as string,
           }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case status notification:', err));
         }
