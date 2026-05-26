@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Simple in-memory rate limiter (Fixed window)
 // Note: This is instance-specific. For distributed rate limiting, use Redis.
 const rateLimitMap = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT = 100
+const RATE_LIMIT = 300
 const WINDOW_SIZE = 60 * 1000 // 1 minute
 
 function isRateLimited(key: string): boolean {
