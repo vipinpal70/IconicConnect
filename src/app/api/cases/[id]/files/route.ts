@@ -45,6 +45,7 @@ export async function POST(
 
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
+    const note = typeof formData.get('note') === 'string' ? String(formData.get('note')).trim() : '';
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -73,6 +74,7 @@ export async function POST(
       uploadedBy: user.id,
       fileName: file.name,
       fileUrl: publicUrlData.publicUrl,
+      note: note || null,
       fileType: file.type,
       fileSize: file.size,
     }).returning();
@@ -84,6 +86,7 @@ export async function POST(
       details: {
         caseNumber: caseRecord.caseNumber,
         fileName: file.name,
+        note: note || null,
         fileType: file.type,
         fileSize: file.size,
       },

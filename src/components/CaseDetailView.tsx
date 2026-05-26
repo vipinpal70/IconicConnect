@@ -32,6 +32,7 @@ type CaseFile = {
   id: string
   fileName: string
   fileUrl: string
+  note: string | null
   fileType: string | null
   fileSize: number | null
   createdAt: string
@@ -78,7 +79,7 @@ function LifecycleStrip({ status }: { status: string }) {
   return (
     <Card className="shadow-card border-emerald-100 bg-[linear-gradient(180deg,rgba(236,253,245,0.9),rgba(240,253,250,0.7))]">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base font-medium text-emerald-900">Case Lifecycle</CardTitle>
+        <CardTitle className="text-sm font-medium text-emerald-900">Case Lifecycle</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto pb-2">
@@ -89,10 +90,10 @@ function LifecycleStrip({ status }: { status: string }) {
 
               return (
                 <div key={step} className="flex items-center">
-                  <div className="flex flex-col items-center min-w-[136px]">
+                  <div className="flex flex-col items-center min-w-[100px]">
                     <div
                       className={[
-                        "flex h-10 w-10 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors",
+                        "flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-medium transition-colors",
                         done
                           ? "border-emerald-600 bg-emerald-600 text-white"
                           : "border-emerald-200 bg-white text-emerald-500",
@@ -243,7 +244,7 @@ export function CaseDetailView({
             <CardHeader className="pb-4 border-b border-border/50">
               <CardTitle className="text-base font-medium">Case Details</CardTitle>
             </CardHeader>
-            <CardContent className="mt-4">
+            <CardContent className="mt-4 px-6">
               <DetailRow label="Case Number" value={caseRecord.caseNumber || caseRecord.id} />
               <DetailRow label="Category" value={caseRecord.category || "—"} />
               <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
@@ -360,7 +361,7 @@ export function CaseDetailView({
           <CardHeader className="pb-4 border-b border-border/50">
             <CardTitle className="text-base font-medium">Activity Timeline</CardTitle>
           </CardHeader>
-          <CardContent className="mt-4">
+          <CardContent className="mt-4 px-6">
             {activities.length === 0 ? (
               <p className="text-sm text-muted-foreground">No activity recorded for this case yet.</p>
             ) : (
@@ -369,7 +370,7 @@ export function CaseDetailView({
                   <div key={activity.id} className="flex gap-4">
                     <div className="flex flex-col items-center">
                       <div className="mt-1.5 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
-                      {index < activities.length - 1 && <div className="mt-2 w-0.5 flex-1 bg-emerald-100" />}
+                      {index < activities.length - 1 && <div className="mt-2 w-0.5 flex-1 bg-emerald-200" />}
                     </div>
                     <div className="pb-2">
                       <p className="text-sm font-medium text-foreground">{activity.label}</p>
@@ -408,6 +409,11 @@ export function CaseDetailView({
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{file.fileName}</p>
+                    {file.note && (
+                      <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
+                        {file.note}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {file.fileType || "Unknown type"} · {formatFileSize(file.fileSize)}
                     </p>

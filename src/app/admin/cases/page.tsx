@@ -11,6 +11,8 @@ import { Button } from "@/src/components/ui/button"
 import { StatusBadge } from "@/src/components/StatusBadge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
+import { Label } from "@/src/components/ui/label"
+import { Textarea } from "@/src/components/ui/textarea"
 import { CaseChat } from "@/src/components/CaseChat"
 import { getPreferences } from "@/src/lib/labStore"
 import { toast } from "sonner"
@@ -53,6 +55,62 @@ type MemberRecord = {
   role: string
   email: string
   status: string
+}
+
+type CaseActionType = "approve" | "reject" | "feedback" | "hold"
+
+type CaseActionDialogState = {
+  caseId: string
+  action: CaseActionType
+  caseNumber?: string | null
+} | null
+
+const CASE_ACTIONS: Record<
+  CaseActionType,
+  {
+    title: string
+    description: string
+    status: string
+    successMessage: string
+    reasonKey?: string
+    reasonLabel?: string
+    confirmLabel: string
+  }
+> = {
+  approve: {
+    title: "Approve Case",
+    description: "Are you sure you want to approve this case? Click confirm to proceed.",
+    status: "submitted_to_client",
+    successMessage: "Approved QC and sent design to client",
+    confirmLabel: "Confirm",
+  },
+  reject: {
+    title: "Reject Case",
+    description: "Add the reason before sending the case back to the designer.",
+    status: "in_progress",
+    successMessage: "Rejected design; sent back to designer",
+    reasonKey: "rejectReason",
+    reasonLabel: "Reject reason",
+    confirmLabel: "Confirm",
+  },
+  feedback: {
+    title: "Add Feedback",
+    description: "Add the feedback reason before sending the case back to the designer.",
+    status: "in_progress",
+    successMessage: "Feedback logged; sent back to designer",
+    reasonKey: "feedbackReason",
+    reasonLabel: "Feedback reason",
+    confirmLabel: "Send",
+  },
+  hold: {
+    title: "Hold Case",
+    description: "Add the hold reason before putting this case on hold.",
+    status: "on_hold",
+    successMessage: "Case put on hold by QC Lead",
+    reasonKey: "holdReason",
+    reasonLabel: "Hold reason",
+    confirmLabel: "Confirm",
+  },
 }
 
 const statusFilters = [
@@ -102,6 +160,8 @@ export default function AdminCasesPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null)
   const [selectedQcId, setSelectedQcId] = useState<string>("")
+  const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null)
+  const [caseActionReason, setCaseActionReason] = useState("")
 
   // Fetch Cases list
   const { data, isLoading, error, refetch } = useQuery<{ data: CaseRecord[] }>({
@@ -238,6 +298,31 @@ export default function AdminCasesPage() {
     } finally {
       setUpdatingId(null)
     }
+  }
+
+  const openCaseActionDialog = (caseId: string, action: CaseActionType, caseNumber?: string | null) => {
+    setPendingCaseAction({ caseId, action, caseNumber })
+    setCaseActionReason("")
+  }
+
+  const closeCaseActionDialog = () => {
+    setPendingCaseAction(null)
+    setCaseActionReason("")
+  }
+
+  const confirmCaseAction = async () => {
+    if (!pendingCaseAction) return
+    const actionConfig = CASE_ACTIONS[pendingCaseAction.action]
+    const reason = caseActionReason.trim()
+    if (actionConfig.reasonKey && !reason) {
+      toast.error(`Please enter a ${actionConfig.reasonLabel?.toLowerCase()}.`)
+      return
+    }
+    const patch = actionConfig.reasonKey
+      ? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
+      : { status: actionConfig.status }
+    await handleUpdate(pendingCaseAction.caseId, patch, actionConfig.successMessage)
+    closeCaseActionDialog()
   }
 
   // Onboarding Preference forms details
@@ -434,8 +519,8 @@ export default function AdminCasesPage() {
                                     <div className="flex flex-wrap gap-1.5 items-center">
                                       <Button
                                         size="sm"
-                                        disabled={isMutating}
-                                        onClick={() => handleUpdate(caseItem.id, { status: "submitted_to_client" }, `Approved QC and sent design to client`)}
+                                        disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(caseItem.id, "approve", caseItem.caseNumber); }}
                                         className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
                                       >
                                         ✓ Approve
@@ -443,24 +528,24 @@ export default function AdminCasesPage() {
                                       <Button
                                         size="sm"
                                         variant="destructive"
-                                        disabled={isMutating}
-                                        onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Rejected design; sent back to designer`)}
+                                        disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(caseItem.id, "reject", caseItem.caseNumber); }}
                                         className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm transition-all"
                                       >
                                         ✗ Reject
                                       </Button>
                                       <Button
                                         size="sm"
-                                        disabled={isMutating}
-                                        onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Feedback logged; sent back to designer`)}
+                                        disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(caseItem.id, "feedback", caseItem.caseNumber); }}
                                         className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
                                       >
                                         💬 Feedback
                                       </Button>
                                       <Button
                                         size="sm"
-                                        disabled={isMutating}
-                                        onClick={() => handleUpdate(caseItem.id, { status: "on_hold" }, `Case put on hold by QC Lead`)}
+                                        disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(caseItem.id, "hold", caseItem.caseNumber); }}
                                         className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
                                       >
                                         ⏸ Hold
@@ -675,6 +760,51 @@ export default function AdminCasesPage() {
               </Tabs>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pendingCaseAction} onOpenChange={(open) => { if (!open) closeCaseActionDialog(); }}>
+        <DialogContent className="sm:max-w-[480px] bg-white text-gray-900 shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
+              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].title : "Case Action"}
+            </DialogTitle>
+            <p className="text-xs text-gray-700">
+              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].description : ""}
+              {pendingCaseAction?.caseNumber ? ` Case ${pendingCaseAction.caseNumber}.` : ""}
+            </p>
+          </DialogHeader>
+          {pendingCaseAction && CASE_ACTIONS[pendingCaseAction.action].reasonKey && (
+            <div className="grid gap-2 py-4">
+              <Label htmlFor="admin-case-action-reason" className="text-sm font-medium text-gray-700">
+                {CASE_ACTIONS[pendingCaseAction.action].reasonLabel}
+              </Label>
+              <Textarea
+                id="admin-case-action-reason"
+                value={caseActionReason}
+                onChange={(e) => setCaseActionReason(e.target.value)}
+                placeholder={`Add ${CASE_ACTIONS[pendingCaseAction.action].reasonLabel?.toLowerCase()}`}
+                className="min-h-[120px] bg-gray-100 border text-gray-900 placeholder:text-gray-400 focus-visible:ring-primary/80"
+              />
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="ghost"
+              onClick={closeCaseActionDialog}
+              className="text-gray-900 bg-gray-300 font-normal"
+              disabled={updatingId === pendingCaseAction?.caseId}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={updatingId === pendingCaseAction?.caseId || (pendingCaseAction ? Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim()) : true)}
+              onClick={confirmCaseAction}
+              className={"text-white bg-primary font-normal"}
+            >
+              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].confirmLabel : "Confirm"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -113,6 +113,10 @@ export const cases = pgTable('cases', {
 
   // Status
   status: caseStatusEnum('status').default('scan_received').notNull(),
+  holdReason: text('hold_reason'),
+  cancelReason: text('cancel_reason'),
+  feedbackReason: text('feedback_reason'),
+  rejectReason: text('reject_reason'),
 
   // Assignments (Operational Roles)
   designerId: uuid('designer_id').references(() => profiles.id),
@@ -140,6 +144,7 @@ export const caseFiles = pgTable('case_files', {
   uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
   fileName: varchar('file_name', { length: 255 }).notNull(),
   fileUrl: text('file_url').notNull(),
+  note: text('note'),
   fileType: varchar('file_type', { length: 100 }),
   fileSize: integer('file_size'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

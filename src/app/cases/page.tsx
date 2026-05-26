@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState, useRef, useEffect } from "react";
-import { createClient } from "@/src/lib/supabase/client";
 import { generateCaseId } from "@/src/lib/case-utils";
 import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent } from "@/src/components/ui/card";
@@ -9,7 +8,6 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
-import { type CaseStatus } from "@/src/data/demoData";
 import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
@@ -42,6 +40,85 @@ interface BulkRow {
   };
 }
 
+type OpsMember = {
+  id: string;
+  role: string;
+  email?: string | null;
+  fullName?: string | null;
+  // NOTE: API returns `userStatus`, not `status`
+  userStatus?: string | null;
+};
+
+type ProfileSummary = {
+  id: string;
+  role: string;
+  fullName: string | null;
+};
+
+type OpsCase = {
+  id: string;
+  caseNumber?: string | null;
+  category?: string | null;
+  status: string;
+  createdAt?: string | Date | null;
+  designerId?: string | null;
+  designerName?: string | null;
+  qcId?: string | null;
+  subTypeData?: Record<string, string | number | number[] | null | undefined> & {
+    teeth?: number[];
+    toothSystem?: "USA" | "FDI";
+  };
+};
+
+type CaseActionType = "reject" | "feedback" | "hold";
+
+type CaseActionDialogState = {
+  caseId: string;
+  action: CaseActionType;
+  caseNumber?: string | null;
+} | null;
+
+const CASE_ACTIONS: Record<
+  CaseActionType,
+  {
+    title: string;
+    description: string;
+    status: "submitted_to_client" | "in_progress" | "on_hold";
+    successMessage: string;
+    reasonKey?: "holdReason" | "feedbackReason" | "rejectReason";
+    reasonLabel?: string;
+    confirmLabel: string;
+  }
+> = {
+  reject: {
+    title: "Reject Case",
+    description: "Add the reason before sending the case back to the designer.",
+    status: "in_progress",
+    successMessage: "Rejected design; sent back to designer",
+    reasonKey: "rejectReason",
+    reasonLabel: "Reject reason",
+    confirmLabel: "Confirm",
+  },
+  feedback: {
+    title: "Add Feedback",
+    description: "Add the feedback reason before sending the case back to the designer.",
+    status: "in_progress",
+    successMessage: "Feedback logged; sent back to designer",
+    reasonKey: "feedbackReason",
+    reasonLabel: "Feedback reason",
+    confirmLabel: "Confirm",
+  },
+  hold: {
+    title: "Hold Case",
+    description: "Add the hold reason before putting this case on hold.",
+    status: "on_hold",
+    successMessage: "Case put on hold by QC Lead",
+    reasonKey: "holdReason",
+    reasonLabel: "Hold reason",
+    confirmLabel: "Confirm",
+  },
+};
+
 const uploadFileWithXHR = async (
   file: File,
   labName: string,
@@ -51,63 +128,50 @@ const uploadFileWithXHR = async (
 ) => {
   try {
     const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`;
-
     const xhr = new XMLHttpRequest();
-
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
-        const percentage = Math.round((event.loaded / event.total) * 100);
-        onProgress(percentage);
+        onProgress(Math.round((event.loaded / event.total) * 100));
       }
     };
-
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const res = JSON.parse(xhr.responseText);
-          onSuccess(res);
-        } catch (e) {
-          onError('Failed to parse response');
+          onSuccess(JSON.parse(xhr.responseText));
+        } catch {
+          onError("Failed to parse response");
         }
       } else {
-        onError('Upload failed with status ' + xhr.status);
+        onError("Upload failed with status " + xhr.status);
       }
     };
-
-    xhr.onerror = () => onError('Upload failed');
-
-    xhr.open('POST', url);
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.onerror = () => onError("Upload failed");
+    xhr.open("POST", url);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.send(file);
-  } catch (err: any) {
-    onError(err.message || 'Initialization failed');
+  } catch (err: unknown) {
+    onError(err instanceof Error ? err.message : "Initialization failed");
   }
 };
 
 const validateFile = (file: File): { isValid: boolean; error?: string } => {
-  const maxLimit = 2 * 1024 * 1024 * 1024; // 2GB
+  const maxLimit = 2 * 1024 * 1024 * 1024;
   if (file.size > maxLimit) {
     return { isValid: false, error: `File size exceeds the 2GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` };
   }
-
-  const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+  const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
   const allowedExtensions = [
-    '.png', '.jpg', '.jpeg',
-    '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.flv', '.3gp', '.mpeg', '.mpg',
-    '.pdf',
-    '.zip',
-    '.doc', '.docx',
-    '.txt'
+    ".png", ".jpg", ".jpeg",
+    ".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".flv", ".3gp", ".mpeg", ".mpg",
+    ".pdf", ".zip", ".doc", ".docx", ".txt",
   ];
-
   if (!allowedExtensions.includes(ext)) {
-    return { isValid: false, error: `File type "${ext}" is not supported. Allowed formats: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DOC, DOCX, TXT` };
+    return { isValid: false, error: `File type "${ext}" is not supported.` };
   }
-
   return { isValid: true };
 };
 
-const statusFilters: (CaseStatus | "All")[] = [
+const statusFilters: string[] = [
   "All", "Submitted", "In Validation", "In Design", "Internal QC",
   "Pending Client Approval", "Feedback", "On Hold", "Completed", "Cancelled",
 ];
@@ -119,60 +183,53 @@ const hasAllRequiredCaseFields = (
   teeth: number[],
   uploadedFile: unknown
 ) => {
-  const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
-  const allDynamicFieldsSelected = fields.every((field) => Boolean(subTypeData[field.name]))
-
-  return Boolean(
-    category &&
-    uploadedFile &&
-    allDynamicFieldsSelected &&
-    notes.trim() &&
-    teeth.length > 0
-  )
-}
+  const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || [];
+  const allDynamicFieldsSelected = fields.every((field) => Boolean(subTypeData[field.name]));
+  return Boolean(category && uploadedFile && allDynamicFieldsSelected && notes.trim() && teeth.length > 0);
+};
 
 const CASE_HIERARCHY = {
   "Crown & Bridges": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] }
-    ]
+      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] },
+    ],
   },
   "Denture": {
     fields: [
       { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Full Arches"] }
-    ]
+      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Full Arches"] },
+    ],
   },
   "Cosmetics": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"] }
-    ]
+      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"] },
+    ],
   },
   "Appliances": {
     fields: [
       { name: "caseType1", label: "Case Type 1", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"] },
       { name: "occlusion", label: "Occlusion", type: "select", options: ["even occlusion", "custom"] },
-      { name: "arch", label: "Arch", type: "select", options: ["Lower", "Upper"] }
-    ]
+      { name: "arch", label: "Arch", type: "select", options: ["Lower", "Upper"] },
+    ],
   },
   "Implant": {
     fields: [
       { name: "caseType1", label: "Case Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["crown", "bridge", "coping", "screw retained", "in-lay", "on-lay"] }
-    ]
-  }
+      { name: "caseType2", label: "Case Type 2", type: "select", options: ["crown", "bridge", "coping", "screw retained", "in-lay", "on-lay"] },
+    ],
+  },
 };
 
 export default function CasesPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<CaseStatus | "All">("All");
+  const [statusFilter, setStatusFilter] = useState<string>("All");
   const [typeFilter, setTypeFilter] = useState<string | "All">("All");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
 
-  const [cases, setCases] = useState<any[]>([]);
+  const [cases, setCases] = useState<OpsCase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchCases = async () => {
@@ -194,72 +251,151 @@ export default function CasesPage() {
   };
 
   useEffect(() => {
-    fetchCases();
+    const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
   const [selectedQcId, setSelectedQcId] = useState<string>("");
+  const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null);
+  const [caseActionReason, setCaseActionReason] = useState("");
+  const [designUploadCaseId, setDesignUploadCaseId] = useState<string | null>(null);
+  const [designUploadCaseNumber, setDesignUploadCaseNumber] = useState<string | null>(null);
+  const [designUploadNote, setDesignUploadNote] = useState("");
+  const [designUploadFile, setDesignUploadFile] = useState<File | null>(null);
+  const [isDesignUploading, setIsDesignUploading] = useState(false);
+  const designUploadInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch active operations members (designers, QCs)
-  const { data: membersData } = useQuery<any[]>({
+  const { data: membersData } = useQuery<OpsMember[]>({
     queryKey: ["ops-members-list"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/members")
-      if (!res.ok) return []
-      return res.json()
-    }
-  })
+      const res = await fetch("/api/admin/members");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 
-  // Fetch current logged in user
-  const { data: currentUser } = useQuery<{ id: string; role: string; fullName: string | null }>({
+  const { data: currentUser } = useQuery<ProfileSummary | null>({
     queryKey: ["ops-me"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/me")
-      if (!res.ok) return null
-      return res.json()
-    }
-  })
+      const res = await fetch("/api/profile");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
 
-  // Live database updates
-  const handleUpdate = async (caseId: string, patch: Record<string, string | number | boolean | null>, successMessage: string) => {
-    setUpdatingId(caseId)
+  const handleUpdate = async (
+    caseId: string,
+    patch: Record<string, string | number | boolean | null>,
+    successMessage: string
+  ): Promise<boolean> => {
+    setUpdatingId(caseId);
     try {
       const res = await fetch(`/api/cases/${caseId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
-      })
-
+      });
       if (res.ok) {
-        toast.success(successMessage)
-        fetchCases()
+        toast.success(successMessage);
+        fetchCases();
+        return true;
       } else {
-        const err = await res.json()
-        toast.error(err.error || "Failed to update case")
+        const err = await res.json();
+        toast.error(err.error || "Failed to update case");
+        return false;
       }
     } catch {
-      toast.error("Failed to update case")
+      toast.error("Failed to update case");
+      return false;
     } finally {
-      setUpdatingId(null)
+      setUpdatingId(null);
     }
-  }
+  };
 
-  // Extract active designers for the allocate dropdown
+  // FIX: Removed setTimeout — it caused a race condition where Radix's outside-click
+  // handler would fire after the tick and immediately close the dialog before it opened.
+  const openCaseActionDialog = (caseId: string, action: CaseActionType, caseNumber?: string | null) => {
+    setPendingCaseAction({ caseId, action, caseNumber });
+    setCaseActionReason("");
+  };
+
+  const closeCaseActionDialog = () => {
+    setPendingCaseAction(null);
+    setCaseActionReason("");
+  };
+
+  const confirmCaseAction = async () => {
+    if (!pendingCaseAction) return;
+    const actionConfig = CASE_ACTIONS[pendingCaseAction.action];
+    const reason = caseActionReason.trim();
+    if (actionConfig.reasonKey && !reason) {
+      toast.error(`Please enter a ${actionConfig.reasonLabel?.toLowerCase() || "reason"}.`);
+      return;
+    }
+    const patch = actionConfig.reasonKey
+      ? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
+      : { status: actionConfig.status };
+    const updated = await handleUpdate(pendingCaseAction.caseId, patch, actionConfig.successMessage);
+    if (updated) closeCaseActionDialog();
+  };
+
+  const openDesignUploadDialog = (caseId: string, caseNumber?: string | null) => {
+    setDesignUploadCaseId(caseId);
+    setDesignUploadCaseNumber(caseNumber || null);
+    setDesignUploadNote("");
+    setDesignUploadFile(null);
+    if (designUploadInputRef.current) designUploadInputRef.current.value = "";
+  };
+
+  const closeDesignUploadDialog = () => {
+    setDesignUploadCaseId(null);
+    setDesignUploadCaseNumber(null);
+    setDesignUploadNote("");
+    setDesignUploadFile(null);
+    if (designUploadInputRef.current) designUploadInputRef.current.value = "";
+  };
+
+  const confirmDesignUpload = async () => {
+    if (!designUploadCaseId) return;
+    if (!designUploadFile) { toast.error("Please select a design file."); return; }
+    if (!designUploadNote.trim()) { toast.error("Please add design notes before uploading."); return; }
+    const fileCheck = validateFile(designUploadFile);
+    if (!fileCheck.isValid) { toast.error(fileCheck.error || "Invalid file"); return; }
+
+    setIsDesignUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", designUploadFile);
+      formData.append("note", designUploadNote.trim());
+      const res = await fetch(`/api/cases/${designUploadCaseId}/files`, { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to upload design");
+      }
+      toast.success("Design uploaded successfully");
+      closeDesignUploadDialog();
+      fetchCases();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload design");
+    } finally {
+      setIsDesignUploading(false);
+    }
+  };
+
+  // FIX: Use `userStatus` (the correct field name on OpsMember) instead of `status`
   const designers = useMemo(() => {
-    if (!membersData) return []
-    return membersData.filter((m) => m.role === "designer" && m.status === "active")
-  }, [membersData])
+    if (!membersData) return [];
+    return membersData.filter((m) => m.role === "designer" && m.userStatus === "active");
+  }, [membersData]);
 
-  // Extract active QCs for the allocate dropdown
   const qcs = useMemo(() => {
-    if (!membersData) return []
-    return membersData.filter((m) => m.role === "qc" && m.status === "active")
-  }, [membersData])
+    if (!membersData) return [];
+    return membersData.filter((m) => m.role === "qc" && m.userStatus === "active");
+  }, [membersData]);
 
-  // Add Case form
+  // Add Case form state
   const [category, setCategory] = useState<string>("Crown & Bridges");
   const [subTypeData, setSubTypeData] = useState<Record<string, string>>({});
   const [modelRequired, setModelRequired] = useState("no");
@@ -270,32 +406,23 @@ export default function CasesPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
-  const [uploadedFile, setUploadedFile] = useState<{
-    fileUrl: string;
-    fileName: string;
-    fileSize: number;
-    fileType: string;
-  } | null>(null);
-  const [generatedCaseId, setGeneratedCaseId] = useState<string>("");
+  const [uploadedFile, setUploadedFile] = useState<{ fileUrl: string; fileName: string; fileSize: number; fileType: string } | null>(null);
   const [labName, setLabName] = useState<string>("Client");
-  const [userProfile, setUserProfile] = useState<{ id: string; role: string; fullName: string | null } | null>(null);
+  const [userProfile, setUserProfile] = useState<ProfileSummary | null>(null);
+  const generatedCaseId = useMemo(() => generateCaseId(category), [category]);
 
-  useEffect(() => {
-    setGeneratedCaseId(generateCaseId(category));
-  }, [category]);
+  const activeUser = userProfile || currentUser;
+  const activeUserRole = activeUser?.role || "";
+  const activeUserId = activeUser?.id || "";
 
   useEffect(() => {
     async function fetchProfile() {
       try {
-        const res = await fetch("/api/admin/me");
+        const res = await fetch("/api/profile");
         if (res.ok) {
           const profile = await res.json();
           if (profile) {
-            setUserProfile({
-              id: profile.id,
-              role: profile.role,
-              fullName: profile.fullName || null,
-            });
+            setUserProfile({ id: profile.id, role: profile.role, fullName: profile.fullName || null });
             if (profile.labName) setLabName(profile.labName);
           }
         }
@@ -308,36 +435,18 @@ export default function CasesPage() {
 
   const handleFileSelect = async (file: File) => {
     const check = validateFile(file);
-    if (!check.isValid) {
-      window.alert(check.error);
-      return;
-    }
-
+    if (!check.isValid) { window.alert(check.error); return; }
     setSingleFile(file);
     setIsUploading(true);
     setUploadProgress(0);
-
     uploadFileWithXHR(
-      file,
-      labName,
-      (progress) => {
-        setUploadProgress(progress);
-      },
-      (res) => {
-        setUploadProgress(100);
-        setUploadedFileUrl(res.fileUrl);
-        setUploadedFile(res);
-        setTimeout(() => setIsUploading(false), 500);
-      },
-      (err) => {
-        console.error('Immediate upload error:', err);
-        setIsUploading(false);
-        setUploadProgress(0);
-      }
+      file, labName,
+      (progress) => setUploadProgress(progress),
+      (res) => { setUploadProgress(100); setUploadedFileUrl(res.fileUrl); setUploadedFile(res); setTimeout(() => setIsUploading(false), 500); },
+      (err) => { console.error("Upload error:", err); setIsUploading(false); setUploadProgress(0); }
     );
   };
 
-  // Bulk upload
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
@@ -348,18 +457,13 @@ export default function CasesPage() {
       const friendlyRestoration = (
         c.subTypeData
           ? Object.entries(c.subTypeData)
-            .filter(([k, v]) => k !== 'teeth' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
-            .map(([_, v]) => v)
-            .join(" - ")
+            .filter(([k, v]) => k !== "teeth" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v)
+            .map(([, v]) => v).join(" - ")
           : c.category || ""
       ).toLowerCase();
 
-      const matchesSearch =
-        !s ||
-        friendlyId.includes(s) ||
-        friendlyRestoration.includes(s);
+      const matchesSearch = !s || friendlyId.includes(s) || friendlyRestoration.includes(s);
 
-      // Map UI filters to database enums
       const statusFilterMap: Record<string, string[]> = {
         "Submitted": ["scan_received"],
         "In Validation": ["scan_verified"],
@@ -372,13 +476,9 @@ export default function CasesPage() {
         "Cancelled": ["cancelled"],
       };
 
-      const matchesStatus =
-        statusFilter === "All" ||
-        (statusFilterMap[statusFilter] && statusFilterMap[statusFilter].includes(c.status));
-
+      const matchesStatus = statusFilter === "All" || (statusFilterMap[statusFilter]?.includes(c.status) ?? false);
       const matchesType = typeFilter === "All" || c.category === typeFilter;
-
-      const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : "";
+      const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "";
       const matchesFrom = !from || createdAtDate >= from;
       const matchesTo = !to || createdAtDate <= to;
 
@@ -388,104 +488,55 @@ export default function CasesPage() {
 
   const handleSubmit = async () => {
     if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile)) {
-      toast.error("Please complete all fields, select teeth, add notes, and upload a file.")
-      return
+      toast.error("Please complete all fields, select teeth, add notes, and upload a file.");
+      return;
     }
-
     const formData = new FormData();
     const caseData = {
       category,
-      subTypeData: {
-        ...subTypeData,
-        modelRequired,
-        teeth,
-        toothSystem,
-        notes,
-      },
+      subTypeData: { ...subTypeData, modelRequired, teeth, toothSystem, notes },
       caseNumber: generatedCaseId,
       uploadedFile,
     };
-
-    formData.append('cases', JSON.stringify(caseData));
-
+    formData.append("cases", JSON.stringify(caseData));
     try {
-      const res = await fetch('/api/cases', {
-        method: 'POST',
-        body: formData,
-      });
-
+      const res = await fetch("/api/cases", { method: "POST", body: formData });
       if (res.ok) {
         toast.success("Case submitted successfully!");
         setUploadOpen(false);
-        setNotes("");
-        setTeeth([]);
-        setToothSystem("USA");
-        setModelRequired("no");
-        setCategory("Crown & Bridges");
-        setSubTypeData({});
-        setSingleFile(null);
-        setUploadedFileUrl(null);
-        setUploadedFile(null);
-        setGeneratedCaseId(generateCaseId("Crown & Bridges"));
+        setNotes(""); setTeeth([]); setToothSystem("USA"); setModelRequired("no");
+        setCategory("Crown & Bridges"); setSubTypeData({});
+        setSingleFile(null); setUploadedFileUrl(null); setUploadedFile(null);
         fetchCases();
       } else {
         toast.error("Failed to submit case.");
-        console.error('Failed to submit single case');
       }
     } catch (error) {
       toast.error("An error occurred during submission.");
-      console.error('Single submit error:', error);
+      console.error("Single submit error:", error);
     }
   };
 
   const onBulkFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const pickedFiles = Array.from(files).slice(0, 10);
-
-    // Validate all picked files first
     for (const f of pickedFiles) {
       const check = validateFile(f);
-      if (!check.isValid) {
-        window.alert(`File "${f.name}": ${check.error}`);
-        return;
-      }
+      if (!check.isValid) { window.alert(`File "${f.name}": ${check.error}`); return; }
     }
-
-    // First, set the rows with uploading status
-    const rows: BulkRow[] = pickedFiles.map((f) => {
-      const caseId = generateCaseId("Crown & Bridges");
-      return {
-        fileName: f.name,
-        file: f,
-        category: "Crown & Bridges",
-        subTypeData: {},
-        modelRequired: "no",
-        teeth: [],
-        toothSystem: "USA",
-        notes: "",
-        uploadProgress: 0,
-        uploadedUrl: null,
-        isUploading: true,
-        caseId,
-      };
-    });
-
+    const rows: BulkRow[] = pickedFiles.map((f) => ({
+      fileName: f.name, file: f, category: "Crown & Bridges", subTypeData: {},
+      modelRequired: "no", teeth: [], toothSystem: "USA", notes: "",
+      uploadProgress: 0, uploadedUrl: null, isUploading: true,
+      caseId: generateCaseId("Crown & Bridges"),
+    }));
     setBulkRows(rows);
-
     rows.forEach((row) => {
       uploadFileWithXHR(
-        row.file,
-        labName,
-        (progress) => {
-          setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, uploadProgress: progress } : r));
-        },
-        (res) => {
-          setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, uploadProgress: 100, isUploading: false, uploadedUrl: res.fileUrl, uploadedFile: res } : r));
-        },
-        (err) => {
-          console.error(`Immediate bulk upload error for ${row.fileName}:`, err);
-          setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, isUploading: false, uploadProgress: 0 } : r));
-        }
+        row.file, labName,
+        (progress) => setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, uploadProgress: progress } : r)),
+        (res) => setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, uploadProgress: 100, isUploading: false, uploadedUrl: res.fileUrl, uploadedFile: res } : r)),
+        (err) => { console.error(`Bulk upload error for ${row.fileName}:`, err); setBulkRows((prev) => prev.map((r) => r.caseId === row.caseId ? { ...r, isUploading: false, uploadProgress: 0 } : r)); }
       );
     });
   };
@@ -493,41 +544,25 @@ export default function CasesPage() {
   const updateBulkRow = (i: number, patch: Partial<BulkRow>) =>
     setBulkRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const removeBulkRow = (i: number) =>
-    setBulkRows((prev) => prev.filter((_, idx) => idx !== i));
+  const removeBulkRow = (i: number) => setBulkRows((prev) => prev.filter((_, idx) => idx !== i));
 
   const handleBulkSubmit = async () => {
     if (bulkRows.length === 0) return;
-
-    const hasInvalidRow = bulkRows.some((row) => !hasAllRequiredCaseFields(row.category, row.subTypeData, row.notes, row.teeth, row.uploadedFile))
-    if (hasInvalidRow) {
-      toast.error("Complete all fields, teeth selection, notes, and file upload for every case.")
-      return
+    if (bulkRows.some((row) => !hasAllRequiredCaseFields(row.category, row.subTypeData, row.notes, row.teeth, row.uploadedFile))) {
+      toast.error("Complete all fields, teeth selection, notes, and file upload for every case.");
+      return;
     }
-
     const formData = new FormData();
-
-    const casesData = bulkRows.map(row => ({
-      category: row.category,
-      subTypeData: {
-        ...row.subTypeData,
-        modelRequired: row.modelRequired,
-        teeth: row.teeth,
-        toothSystem: row.toothSystem,
-        notes: row.notes,
-      },
-      caseNumber: row.caseId,
-      uploadedFile: row.uploadedFile,
-    }));
-
-    formData.append('cases', JSON.stringify(casesData));
-
+    formData.append("cases", JSON.stringify(
+      bulkRows.map((row) => ({
+        category: row.category,
+        subTypeData: { ...row.subTypeData, modelRequired: row.modelRequired, teeth: row.teeth, toothSystem: row.toothSystem, notes: row.notes },
+        caseNumber: row.caseId,
+        uploadedFile: row.uploadedFile,
+      }))
+    ));
     try {
-      const res = await fetch('/api/cases', {
-        method: 'POST',
-        body: formData,
-      });
-
+      const res = await fetch("/api/cases", { method: "POST", body: formData });
       if (res.ok) {
         toast.success("Cases submitted successfully!");
         setBulkRows([]);
@@ -536,11 +571,10 @@ export default function CasesPage() {
         fetchCases();
       } else {
         toast.error("Failed to submit bulk cases.");
-        console.error('Failed to submit bulk cases');
       }
     } catch (error) {
       toast.error("An error occurred during submission.");
-      console.error('Bulk submit error:', error);
+      console.error("Bulk submit error:", error);
     }
   };
 
@@ -553,17 +587,13 @@ export default function CasesPage() {
             <p className="text-sm text-muted-foreground mt-1">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" /> Export Excel
-            </Button>
+            <Button variant="outline"><Download className="h-4 w-4 mr-2" /> Export Excel</Button>
             <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
               <DialogTrigger asChild>
                 <Button><Plus className="h-4 w-4 mr-2" />Add New Case</Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Submit New Case</DialogTitle>
-                </DialogHeader>
+                <DialogHeader><DialogTitle>Submit New Case</DialogTitle></DialogHeader>
                 <Tabs defaultValue="single" className="mt-2">
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="single">Single Case</TabsTrigger>
@@ -571,34 +601,22 @@ export default function CasesPage() {
                   </TabsList>
 
                   <TabsContent value="single" className="space-y-5 mt-4">
-                    {/* Drag and Drop / Fast Upload Area */}
                     <div className="space-y-2">
                       <Label>Case File</Label>
-                      <label className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block ${isUploading ? 'border-emerald-500 bg-emerald-50/10' : 'border-border hover:border-emerald-800'}`}>
-                        <input
-                          type="file"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleFileSelect(file);
-                          }}
-                        />
+                      <label className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block ${isUploading ? "border-emerald-500 bg-emerald-50/10" : "border-border hover:border-emerald-800"}`}>
+                        <input type="file" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileSelect(file); }} />
                         {isUploading ? (
                           <div className="space-y-2">
                             <Upload className="h-6 w-6 mx-auto text-emerald-600 animate-pulse" />
                             <p className="text-sm font-medium text-foreground">Uploading... {uploadProgress}%</p>
-                            <div className="w-full bg-muted rounded-full h-1.5 max-width-xs mx-auto">
-                              <div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
-                            </div>
+                            <div className="w-full bg-muted rounded-full h-1.5"><div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div>
                           </div>
                         ) : uploadedFileUrl ? (
                           <div className="space-y-1 text-center">
                             <FileBox className="h-8 w-8 mx-auto text-emerald-600 animate-bounce" />
                             <p className="text-sm font-semibold text-foreground truncate max-w-md mx-auto">{singleFile?.name}</p>
                             <p className="text-xs text-muted-foreground">({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)</p>
-                            <p className="text-sm text-emerald-600 flex items-center justify-center gap-1 font-medium mt-1">
-                              <span className="inline-block bg-emerald-600 text-white rounded-full px-1 text-[10px] font-bold">✓</span> File uploaded at light speed!
-                            </p>
+                            <p className="text-sm text-emerald-600 flex items-center justify-center gap-1 font-medium mt-1"><span className="inline-block bg-emerald-600 text-white rounded-full px-1 text-[10px] font-bold">✓</span> File uploaded!</p>
                           </div>
                         ) : (
                           <div>
@@ -616,11 +634,7 @@ export default function CasesPage() {
                         <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData({}); }}>
                           <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                           <SelectContent className="bg-emerald-800 text-white">
-                            {Object.keys(CASE_HIERARCHY).map((cat) => (
-                              <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
-                                {cat}
-                              </SelectItem>
-                            ))}
+                            {Object.keys(CASE_HIERARCHY).map((cat) => (<SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">{cat}</SelectItem>))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -633,21 +647,13 @@ export default function CasesPage() {
                       </div>
                     </div>
 
-                    {/* Dynamic Fields */}
                     {CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
                       <div className="space-y-2" key={field.name}>
                         <Label>{field.label}</Label>
-                        <Select
-                          value={subTypeData[field.name] || ""}
-                          onValueChange={(v) => setSubTypeData({ ...subTypeData, [field.name]: v })}
-                        >
+                        <Select value={subTypeData[field.name] || ""} onValueChange={(v) => setSubTypeData({ ...subTypeData, [field.name]: v })}>
                           <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                           <SelectContent className="bg-emerald-800 text-white">
-                            {field.options.map((opt) => (
-                              <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                {opt}
-                              </SelectItem>
-                            ))}
+                            {field.options.map((opt) => (<SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">{opt}</SelectItem>))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -657,25 +663,17 @@ export default function CasesPage() {
                       <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
                       <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
                     </div>
-
                     <div className="space-y-2">
                       <Label>Additional Notes</Label>
                       <Textarea placeholder="Special instructions, shade reference, occlusion notes…" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
-
                     <Button className="w-full bg-emerald-800 text-white hover:bg-emerald-900" onClick={handleSubmit}>Submit Case</Button>
                   </TabsContent>
 
                   <TabsContent value="bulk" className="space-y-4 mt-4">
                     {bulkRows.length === 0 ? (
                       <label className="border-2 border-dashed border-border rounded-lg p-10 text-center cursor-pointer hover:border-primary/50 transition-colors block">
-                        <input
-                          ref={bulkFileRef}
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => onBulkFiles(e.target.files)}
-                        />
+                        <input ref={bulkFileRef} type="file" multiple className="hidden" onChange={(e) => onBulkFiles(e.target.files)} />
                         <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                         <p className="text-sm font-medium text-foreground">Select up to 10 case files</p>
                         <p className="text-xs text-muted-foreground mt-1">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT — one row per file (Max 2GB)</p>
@@ -703,9 +701,7 @@ export default function CasesPage() {
                                 </div>
                                 {row.isUploading && (
                                   <div className="space-y-1">
-                                    <div className="w-full bg-muted rounded-full h-1">
-                                      <div className="bg-emerald-600 h-1 rounded-full transition-all duration-300" style={{ width: `${row.uploadProgress}%` }}></div>
-                                    </div>
+                                    <div className="w-full bg-muted rounded-full h-1"><div className="bg-emerald-600 h-1 rounded-full transition-all duration-300" style={{ width: `${row.uploadProgress}%` }} /></div>
                                     <p className="text-[10px] text-muted-foreground text-right">Uploading... {row.uploadProgress}%</p>
                                   </div>
                                 )}
@@ -715,11 +711,7 @@ export default function CasesPage() {
                                     <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: {} })}>
                                       <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                                       <SelectContent className="bg-emerald-800 text-white">
-                                        {Object.keys(CASE_HIERARCHY).map((cat) => (
-                                          <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
-                                            {cat}
-                                          </SelectItem>
-                                        ))}
+                                        {Object.keys(CASE_HIERARCHY).map((cat) => (<SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">{cat}</SelectItem>))}
                                       </SelectContent>
                                     </Select>
                                   </div>
@@ -731,38 +723,19 @@ export default function CasesPage() {
                                     </RadioGroup>
                                   </div>
                                 </div>
-
-                                {/* Dynamic Fields */}
                                 {CASE_HIERARCHY[row.category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
                                   <div className="space-y-1" key={field.name}>
                                     <Label className="text-xs">{field.label}</Label>
-                                    <Select
-                                      value={row.subTypeData[field.name] || ""}
-                                      onValueChange={(v) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, [field.name]: v } })}
-                                    >
+                                    <Select value={row.subTypeData[field.name] || ""} onValueChange={(v) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, [field.name]: v } })}>
                                       <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                                       <SelectContent className="bg-emerald-800 text-white">
-                                        {field.options.map((opt) => (
-                                          <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                            {opt}
-                                          </SelectItem>
-                                        ))}
+                                        {field.options.map((opt) => (<SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">{opt}</SelectItem>))}
                                       </SelectContent>
                                     </Select>
                                   </div>
                                 ))}
-                                <ToothChart
-                                  selected={row.teeth}
-                                  onChange={(t) => updateBulkRow(i, { teeth: t })}
-                                  system={row.toothSystem}
-                                  onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })}
-                                />
-                                <Textarea
-                                  value={row.notes}
-                                  onChange={(e) => updateBulkRow(i, { notes: e.target.value })}
-                                  placeholder="Notes for this case…"
-                                  className="min-h-[60px]"
-                                />
+                                <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} system={row.toothSystem} onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })} />
+                                <Textarea value={row.notes} onChange={(e) => updateBulkRow(i, { notes: e.target.value })} placeholder="Notes for this case…" className="min-h-[60px]" />
                               </CardContent>
                             </Card>
                           ))}
@@ -794,24 +767,11 @@ export default function CasesPage() {
               </Select>
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-44" />
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-44" />
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearch("")
-                  setTypeFilter("All")
-                  setStatusFilter("All")
-                  setFrom("")
-                  setTo("")
-                }}
-              >
-                Clear
-              </Button>
+              <Button variant="outline" onClick={() => { setSearch(""); setTypeFilter("All"); setStatusFilter("All"); setFrom(""); setTo(""); }}>Clear</Button>
             </div>
             <div className="flex gap-1.5 flex-wrap">
               {statusFilters.map((s) => (
-                <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" onClick={() => setStatusFilter(s)}>
-                  {s}
-                </Button>
+                <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" onClick={() => setStatusFilter(s)}>{s}</Button>
               ))}
             </div>
           </CardContent>
@@ -833,34 +793,61 @@ export default function CasesPage() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-28"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-32"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-16"></div></td>
-                        <td className="px-6 py-4"><div className="h-6 bg-muted rounded-full w-24"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24"></div></td>
+                        {Array.from({ length: 8 }).map((__, col) => (
+                          <td key={col} className="px-6 py-4"><div className="h-4 bg-muted rounded w-20" /></td>
+                        ))}
                       </tr>
                     ))
                   ) : (
                     filtered.map((c) => {
-                       const toothNumbers = c.subTypeData?.teeth || [];
-                       const toothSystem = c.subTypeData?.toothSystem || "USA";
-                       const restoration = c.subTypeData
+                      const toothNumbers = c.subTypeData?.teeth || [];
+                      const toothSys = c.subTypeData?.toothSystem || "USA";
+                      const restoration = c.subTypeData
                         ? Object.entries(c.subTypeData)
-                          .filter(([k, v]) => k !== 'teeth' && k !== 'toothSystem' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
-                          .map(([, v]) => v)
-                          .join(" - ")
+                          .filter(([k, v]) => k !== "teeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v)
+                          .map(([, v]) => v).join(" - ")
                         : c.category || "—";
-
-                       const createdAtFormatted = c.createdAt
-                        ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      const createdAtFormatted = c.createdAt
+                        ? new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                         : "—";
 
-                       const isMutating = updatingId === c.id;
+                      const isMutating = updatingId === c.id;
 
-                       return (
+                      /**
+                       * ROLE FLAGS
+                       * ──────────────────────────────────────────────────────
+                       * isAdmin        — user is an admin
+                       * isDesigner     — user role is designer
+                       * isQc           — user role is qc
+                       *
+                       * isDesignerOnCase — this user is the assigned designer
+                       * isQcOnCase       — this user is the assigned QC
+                       *
+                       * canActAsDesigner — true for designers always, and for QC
+                       *                   members when they are the assigned designer
+                       *                   on this specific case (dual-role).
+                       *
+                       * canDoQcActions  — true only for QC members who ARE the
+                       *                   assigned QC on this case AND are NOT
+                       *                   simultaneously the designer (prevents
+                       *                   self-review).
+                       */
+                      const isAdmin = activeUserRole === "admin";
+                      const isDesigner = activeUserRole === "designer";
+                      const isQc = activeUserRole === "qc";
+
+                      const isDesignerOnCase = c.designerId === activeUserId;
+                      const isQcOnCase = c.qcId === activeUserId;
+
+                      // A QC can act as designer on the case if they are
+                      // the assigned designer (dual-role support).
+                      const canActAsDesigner = isDesigner || (isQc && isDesignerOnCase);
+
+                      // QC review actions are blocked if the QC is also
+                      // the designer on this case (no self-review).
+                      const canDoQcActions = isQc && isQcOnCase && !isDesignerOnCase;
+
+                      return (
                         <tr
                           key={c.id}
                           className="hover:bg-muted/10 cursor-pointer transition-colors"
@@ -869,207 +856,244 @@ export default function CasesPage() {
                           <td className="px-6 py-4 text-sm font-medium text-primary">{c.caseNumber || c.id}</td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem})` : "—"}</td>
-                           <td className="px-6 py-4"><StatusBadge status={c.status} role="internal" /></td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSys})` : "—"}</td>
+                          <td className="px-6 py-4"><StatusBadge status={c.status} role="internal" /></td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
-                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                             <div className="flex gap-2 items-center flex-wrap">
-                               {/* 1. Admin and QC Lead actions */}
-                               {((userProfile?.role || currentUser?.role) === "admin" || (userProfile?.role || currentUser?.role) === "qc") && (
-                                 <>
-                                   {c.status === "scan_received" && (
-                                     <>
-                                       <Button
-                                         size="sm"
-                                         variant="outline"
-                                         disabled={isMutating}
-                                         onClick={() => handleUpdate(c.id, { status: "scan_verified" }, `Scan validated · ready for allocation`)}
-                                         title="Validate scan"
-                                         className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none font-medium shadow-sm"
-                                       >
-                                         <ShieldCheck className="h-3.5 w-3.5 mr-1" />Validate
-                                       </Button>
-                                       <AllocateMenu
-                                         designers={designers}
-                                         disabled={isMutating}
-                                         onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
-                                       />
-                                     </>
-                                   )}
+                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex gap-2 items-center flex-wrap">
 
-                                   {(c.status === "scan_verified" || c.status === "scan_not_verified") && (
-                                     <AllocateMenu
-                                       designers={designers}
-                                       disabled={isMutating}
-                                       onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
-                                     />
-                                   )}
+                              {/* ── ADMIN BLOCK ─────────────────────────────── */}
+                              {isAdmin && (
+                                <>
+                                  {c.status === "scan_received" && (
+                                    <>
+                                      <Button size="sm" variant="outline" disabled={isMutating}
+                                        onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
+                                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none font-medium shadow-sm">
+                                        <ShieldCheck className="h-3.5 w-3.5 mr-1" />Validate
+                                      </Button>
+                                      <AllocateMenu designers={designers} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                    </>
+                                  )}
+                                  {(c.status === "scan_verified" || c.status === "scan_not_verified") && (
+                                    <AllocateMenu designers={designers} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                  )}
+                                  {(c.status === "allocated_to_designer" || c.status === "in_progress") && (
+                                    !c.designerId ? (
+                                      <AllocateMenu designers={designers} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                    ) : (
+                                      !c.qcId ? (
+                                        <Button size="sm" variant="outline" disabled={isMutating} onClick={() => setAssignQcCaseId(c.id)}
+                                          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium">
+                                          <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                        </Button>
+                                      ) : (
+                                        <Button size="sm" variant="outline" disabled={isMutating}
+                                          onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
+                                          className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
+                                          <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                        </Button>
+                                      )
+                                    )
+                                  )}
+                                  {c.status === "internal_qc" && (
+                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                      <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                        onClick={() => handleUpdate(c.id, { status: "submitted_to_client" }, "Approved QC and sent design to client")}
+                                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">✓ Approve</Button>
+                                      <Button size="sm" variant="destructive" disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "reject", c.caseNumber); }}
+                                        className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
+                                      <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "feedback", c.caseNumber); }}
+                                        className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
+                                      <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
+                                        className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
+                                    </div>
+                                  )}
+                                  {c.status === "client_feedback" && (
+                                    <Button size="sm" variant="outline" disabled={isMutating}
+                                      onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Sent case back to design")}
+                                      className="h-8 text-xs">Back to designer</Button>
+                                  )}
+                                </>
+                              )}
 
-                                   {(c.status === "allocated_to_designer" || c.status === "in_progress") && (
-                                     <>
-                                       {!c.designerId ? (
-                                         <AllocateMenu
-                                           designers={designers}
-                                           disabled={isMutating}
-                                           onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
-                                         />
-                                       ) : (
-                                         <>
-                                           {!c.qcId ? (
-                                             <Button
-                                               size="sm"
-                                               variant="outline"
-                                               disabled={isMutating}
-                                               onClick={() => setAssignQcCaseId(c.id)}
-                                               className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
-                                             >
-                                               <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
-                                             </Button>
-                                           ) : (
-                                             <Button
-                                               size="sm"
-                                               variant="outline"
-                                               disabled={isMutating}
-                                               onClick={() => handleUpdate(c.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
-                                               className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800"
-                                             >
-                                               <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
-                                             </Button>
-                                           )}
-                                         </>
-                                       )}
-                                     </>
-                                   )}
+                              {/* ── QC BLOCK ────────────────────────────────── */}
+                              {/*
+                               * QC has two possible roles on a case:
+                               *   1. Acting as DESIGNER — when qcId+designerId both point to them
+                               *      → handled in the DESIGNER BLOCK below via canActAsDesigner
+                               *   2. Acting as QC REVIEWER — when only qcId points to them
+                               *      → handled here, and blocked if they are also the designer
+                               *
+                               * Shared QC actions regardless of case assignment:
+                               *   - Validate scan
+                               *   - Self-allocate as designer (if no designer yet)
+                               *   - Self-assign as QC (if no QC yet)
+                               */}
+                              {isQc && (
+                                <>
+                                  {/* Validate scan */}
+                                  {c.status === "scan_received" && (
+                                    <Button size="sm" variant="outline" disabled={isMutating}
+                                      onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
+                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none font-medium shadow-sm">
+                                      <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Validate
+                                    </Button>
+                                  )}
 
-                                   {c.status === "internal_qc" && (
-                                     <div className="flex flex-wrap gap-1.5 items-center">
-                                       <Button
-                                         size="sm"
-                                         disabled={isMutating}
-                                         onClick={() => handleUpdate(c.id, { status: "submitted_to_client" }, `Approved QC and sent design to client`)}
-                                         className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
-                                       >
-                                         ✓ Approve
-                                       </Button>
-                                       <Button
-                                         size="sm"
-                                         variant="destructive"
-                                         disabled={isMutating}
-                                         onClick={() => handleUpdate(c.id, { status: "in_progress" }, `Rejected design; sent back to designer`)}
-                                         className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm transition-all"
-                                       >
-                                         ✗ Reject
-                                       </Button>
-                                       <Button
-                                         size="sm"
-                                         disabled={isMutating}
-                                         onClick={() => handleUpdate(c.id, { status: "in_progress" }, `Feedback logged; sent back to designer`)}
-                                         className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
-                                       >
-                                         💬 Feedback
-                                       </Button>
-                                       <Button
-                                         size="sm"
-                                         disabled={isMutating}
-                                         onClick={() => handleUpdate(c.id, { status: "on_hold" }, `Case put on hold by QC Lead`)}
-                                         className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
-                                       >
-                                         ⏸ Hold
-                                       </Button>
-                                     </div>
-                                   )}
+                                  {/* Self-allocate as designer when no designer is assigned */}
+                                  {!c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(c.id, { designerId: activeUserId, status: "allocated_to_designer" }, "Allocated case to yourself as designer")}
+                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
+                                      <UserPlus className="h-3.5 w-3.5 mr-1" /> Take as Designer
+                                    </Button>
+                                  )}
 
-                                   {c.status === "client_feedback" && (
-                                     <Button
-                                       size="sm"
-                                       variant="outline"
-                                       disabled={isMutating}
-                                       onClick={() => handleUpdate(c.id, { status: "in_progress" }, `Sent case back to design`)}
-                                       className="h-8 text-xs"
-                                     >
-                                       Back to designer
-                                     </Button>
-                                   )}
-                                 </>
-                               )}
+                                  {/* Self-assign as QC when no QC is assigned yet */}
+                                  {!c.qcId && (c.status === "allocated_to_designer" || c.status === "in_progress" || c.status === "internal_qc") && (
+                                    <Button size="sm" variant="outline" disabled={isMutating}
+                                      onClick={() => handleUpdate(c.id, { qcId: activeUserId }, "Assigned yourself as QC")}
+                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium">
+                                      <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC to Self
+                                    </Button>
+                                  )}
 
-                               {/* 2. Designer actions */}
-                               {(userProfile?.role || currentUser?.role) === "designer" && (
-                                 <>
-                                   {/* Allocate to Self for unallocated cases */}
-                                   {!c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
-                                     <Button
-                                       size="sm"
-                                       disabled={isMutating}
-                                       onClick={() => handleUpdate(c.id, { designerId: (userProfile?.id || currentUser?.id || null), status: "allocated_to_designer" }, `Allocated case to yourself`)}
-                                       className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-all"
-                                     >
-                                       <UserPlus className="h-3.5 w-3.5 mr-1" /> Allocate to Self
-                                     </Button>
-                                   )}
+                                  {/* QC review actions — only when assigned as QC AND not also the designer */}
+                                  {canDoQcActions && c.status === "internal_qc" && (
+                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                      <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                        onClick={() => handleUpdate(c.id, { status: "submitted_to_client" }, "Approved QC and sent design to client")}
+                                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">✓ Approve</Button>
+                                      <Button size="sm" variant="destructive" disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "reject", c.caseNumber); }}
+                                        className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
+                                      <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "feedback", c.caseNumber); }}
+                                        className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
+                                      <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
+                                        className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
+                                    </div>
+                                  )}
 
-                                   {/* Actions on assigned cases */}
-                                   {c.designerId === (userProfile?.id || currentUser?.id) && (
-                                     <>
-                                       {c.status === "allocated_to_designer" && (
-                                         <div className="flex gap-2">
-                                           <Button
-                                             size="sm"
-                                             disabled={isMutating}
-                                             onClick={() => handleUpdate(c.id, { status: "in_progress" }, `Started design work`)}
-                                             className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
-                                           >
-                                             Start Work
-                                           </Button>
-                                           {!c.qcId && (
-                                             <Button
-                                               size="sm"
-                                               variant="outline"
-                                               disabled={isMutating}
-                                               onClick={() => setAssignQcCaseId(c.id)}
-                                               className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
-                                             >
-                                               <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
-                                             </Button>
-                                           )}
-                                         </div>
-                                       )}
+                                  {/* Inform QC that they cannot self-review */}
+                                  {isQcOnCase && isDesignerOnCase && c.status === "internal_qc" && (
+                                    <span className="text-xs text-amber-600 italic px-1">Self-review blocked</span>
+                                  )}
+                                </>
+                              )}
 
-                                       {c.status === "in_progress" && (
-                                         <>
-                                           {!c.qcId ? (
-                                             <Button
-                                               size="sm"
-                                               variant="outline"
-                                               disabled={isMutating}
-                                               onClick={() => setAssignQcCaseId(c.id)}
-                                               className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium"
-                                             >
-                                               <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
-                                             </Button>
-                                           ) : (
-                                             <Button
-                                               size="sm"
-                                               variant="outline"
-                                               disabled={isMutating}
-                                               onClick={() => handleUpdate(c.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
-                                               className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800"
-                                             >
-                                               <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
-                                             </Button>
-                                           )}
-                                         </>
-                                       )}
-                                     </>
-                                   )}
-                                 </>
-                               )}
-                               {(userProfile || currentUser) && !["admin", "qc", "designer"].includes((userProfile?.role || currentUser?.role) || "") && (
-                                 <span className="text-xs text-muted-foreground italic">AM (Read-only)</span>
-                               )}
-                             </div>
-                           </td>
+                              {/* ── DESIGNER BLOCK ──────────────────────────── */}
+                              {/*
+                               * canActAsDesigner is true for:
+                               *   - role === "designer" (always)
+                               *   - role === "qc" AND they are the designated designerId on this case
+                               *
+                               * This block handles all design-side workflow:
+                               *   validate → self-allocate → start work → upload design → assign QC → send to QC
+                               */}
+                              {canActAsDesigner && (
+                                <>
+                                  {/* Validate: designer can validate unverified scans they intend to pick up */}
+                                  {isDesigner && !c.designerId && c.status === "scan_received" && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
+                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
+                                      <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Validate
+                                    </Button>
+                                  )}
+
+                                  {/* Self-allocate as designer (designer role only; QC has its own "Take as Designer" above) */}
+                                  {isDesigner && !c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(c.id, { designerId: activeUserId, status: "allocated_to_designer" }, "Allocated case to yourself")}
+                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
+                                      <UserPlus className="h-3.5 w-3.5 mr-1" /> Allocate to Self
+                                    </Button>
+                                  )}
+
+                                  {/* Actions for cases assigned to this user as designer */}
+                                  {isDesignerOnCase && (
+                                    <>
+                                      {c.status === "allocated_to_designer" && (
+                                        <div className="flex gap-2 flex-wrap">
+                                          <Button size="sm" disabled={isMutating}
+                                            onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Started design work")}
+                                            className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm">
+                                            Start Work
+                                          </Button>
+                                          <Button size="sm" variant="outline" disabled={isMutating}
+                                            onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber); }}
+                                            className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
+                                            <Upload className="h-3.5 w-3.5 mr-1" /> Upload Design
+                                          </Button>
+                                          {!c.qcId && (
+                                            <Button size="sm" variant="outline" disabled={isMutating}
+                                              onClick={() => setAssignQcCaseId(c.id)}
+                                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium">
+                                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                            </Button>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {c.status === "in_progress" && (
+                                        <div className="flex gap-2 flex-wrap">
+                                          <Button size="sm" variant="outline" disabled={isMutating}
+                                            onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber); }}
+                                            className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
+                                            <Upload className="h-3.5 w-3.5 mr-1" /> Upload Design
+                                          </Button>
+                                          {!c.qcId ? (
+                                            <Button size="sm" variant="outline" disabled={isMutating}
+                                              onClick={() => setAssignQcCaseId(c.id)}
+                                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium">
+                                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                            </Button>
+                                          ) : (
+                                            <Button size="sm" variant="outline" disabled={isMutating}
+                                              onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
+                                              className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
+                                              <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                            </Button>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {c.status === "internal_qc" && (
+                                        <span className="text-xs text-amber-600 italic px-1">In QC Review</span>
+                                      )}
+
+                                      {c.status === "client_feedback" && (
+                                        <Button size="sm" disabled={isMutating}
+                                          onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Restarted design to apply feedback")}
+                                          className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm">
+                                          Apply Feedback
+                                        </Button>
+                                      )}
+                                    </>
+                                  )}
+                                </>
+                              )}
+
+                              {/* Read-only states visible to any assigned member */}
+                              {c.status === "submitted_to_client" && (isDesignerOnCase || isQcOnCase || isAdmin) && (
+                                <span className="text-xs text-muted-foreground italic px-1">awaiting client…</span>
+                              )}
+                              {(c.status === "approved" || c.status === "delivered") && (isDesignerOnCase || isQcOnCase || isAdmin) && (
+                                <span className="text-xs text-green-600 font-semibold px-1">Completed</span>
+                              )}
+
+                              {activeUser && !["admin", "qc", "designer"].includes(activeUserRole) && (
+                                <span className="text-xs text-muted-foreground italic">Read-only</span>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })
@@ -1084,65 +1108,123 @@ export default function CasesPage() {
         </Card>
       </div>
 
+      {/* Case Action Dialog (reject / feedback / hold) */}
+      <Dialog open={!!pendingCaseAction} onOpenChange={(open) => { if (!open) closeCaseActionDialog(); }}>
+        <DialogContent className="sm:max-w-[480px] bg-primary border-primary/50 text-white shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].title : "Case Action"}
+            </DialogTitle>
+            <p className="text-xs text-zinc-300">
+              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].description : ""}
+              {pendingCaseAction?.caseNumber ? ` Case ${pendingCaseAction.caseNumber}.` : ""}
+            </p>
+          </DialogHeader>
+          {pendingCaseAction && CASE_ACTIONS[pendingCaseAction.action].reasonKey && (
+            <div className="grid gap-2 py-4">
+              <Label htmlFor="case-action-reason" className="text-sm font-semibold text-zinc-200">
+                {CASE_ACTIONS[pendingCaseAction.action].reasonLabel}
+              </Label>
+              <Textarea
+                id="case-action-reason"
+                value={caseActionReason}
+                onChange={(e) => setCaseActionReason(e.target.value)}
+                placeholder={`Add ${CASE_ACTIONS[pendingCaseAction.action].reasonLabel?.toLowerCase()}`}
+                className="min-h-[120px] bg-primary/80 border-primary-50/50 text-white placeholder:text-zinc-400 focus-visible:ring-emerald-500"
+              />
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="ghost" onClick={closeCaseActionDialog} className="text-white hover:bg-zinc-800"
+              disabled={updatingId === pendingCaseAction?.caseId}>Cancel</Button>
+            <Button
+              disabled={updatingId === pendingCaseAction?.caseId || (pendingCaseAction ? Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim()) : true)}
+              onClick={confirmCaseAction}
+              className={
+                pendingCaseAction?.action === "reject" ? "bg-red-600 hover:bg-red-700 text-white font-semibold"
+                  : pendingCaseAction?.action === "hold" ? "bg-gray-600 hover:bg-gray-700 text-white font-semibold"
+                  : pendingCaseAction?.action === "feedback" ? "bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+                  : "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+              }>
+              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].confirmLabel : "Confirm"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Design Upload Dialog */}
+      <Dialog open={!!designUploadCaseId} onOpenChange={(open) => { if (!open) closeDesignUploadDialog(); }}>
+        <DialogContent className="sm:max-w-[520px] bg-white border-gray-200 text-black shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-medium text-black flex items-center gap-2">
+              <Upload className="h-5 w-5 text-emerald-500" /> Upload Design
+            </DialogTitle>
+            <p className="text-xs text-gray-700">
+              Add the design notes and upload the case design file{designUploadCaseNumber ? ` for case ${designUploadCaseNumber}.` : "."}
+            </p>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="design-note" className="text-sm font-semibold text-gray-700">Output Note</Label>
+              <Textarea id="design-note" value={designUploadNote} onChange={(e) => setDesignUploadNote(e.target.value)}
+                placeholder="Add case design notes..."
+                className="min-h-[120px] bg-gray-100 border-gray-200 text-gray-900 placeholder:text-zinc-400 focus-visible:ring-emerald-500" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="design-file" className="text-sm font-semibold text-gray-700">Output File</Label>
+              <Input id="design-file" ref={designUploadInputRef} type="file"
+                onChange={(e) => setDesignUploadFile(e.target.files?.[0] || null)}
+                className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-emerald-600 file:border-none file:rounded-md file:px-3 file:py-2" />
+              {designUploadFile && <p className="text-xs text-gray-900">Selected: {designUploadFile.name}</p>}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="ghost" onClick={closeDesignUploadDialog} className="text-white hover:bg-zinc-800" disabled={isDesignUploading}>Cancel</Button>
+            <Button disabled={isDesignUploading} onClick={confirmDesignUpload} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+              {isDesignUploading ? "Uploading..." : "Confirm Upload"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign QC Dialog */}
       <Dialog open={!!assignQcCaseId} onOpenChange={(o) => { if (!o) { setAssignQcCaseId(null); setSelectedQcId(""); } }}>
         <DialogContent className="sm:max-w-[425px] bg-primary border-primary/50 text-white shadow-xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-emerald-500" /> Assign QC Lead
             </DialogTitle>
-            <p className="text-xs text-zinc-300">
-              Select an active Quality Control team member to allocate to this case and transition it to QC review.
-            </p>
+            <p className="text-xs text-zinc-300">Select an active Quality Control team member to allocate to this case.</p>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <label htmlFor="qc-select" className="text-sm font-semibold text-zinc-200">
-                QC Member
-              </label>
+              <label htmlFor="qc-select" className="text-sm font-semibold text-zinc-200">QC Member</label>
               <Select value={selectedQcId} onValueChange={setSelectedQcId}>
-                <SelectTrigger id="qc-select" className="bg-primary/80 border-primary-50/50 text-white focus:bg-emerald-600 focus:text-white">
+                <SelectTrigger id="qc-select" className="bg-primary/80 border-primary-50/50 text-white">
                   <SelectValue placeholder="Select QC Lead" />
                 </SelectTrigger>
                 <SelectContent className="bg-primary border-primary-50/50 text-white">
                   {qcs.map((qc) => (
-                    <SelectItem
-                      key={qc.id}
-                      value={qc.id}
-                      className="text-white focus:bg-emerald-600 focus:text-white cursor-pointer"
-                    >
+                    <SelectItem key={qc.id} value={qc.id} className="text-white focus:bg-emerald-600 focus:text-white cursor-pointer">
                       {qc.fullName || qc.email}
                     </SelectItem>
                   ))}
-                  {qcs.length === 0 && (
-                    <p className="text-xs p-2 text-zinc-400">No active QC leads found.</p>
-                  )}
+                  {qcs.length === 0 && <p className="text-xs p-2 text-zinc-400">No active QC leads found.</p>}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button
-              variant="ghost"
-              onClick={() => { setAssignQcCaseId(null); setSelectedQcId(""); }}
-              className="text-white hover:bg-zinc-800 animate-pulse"
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={!selectedQcId || updatingId === assignQcCaseId}
+            <Button variant="ghost" onClick={() => { setAssignQcCaseId(null); setSelectedQcId(""); }} className="text-white hover:bg-zinc-800">Cancel</Button>
+            <Button disabled={!selectedQcId || updatingId === assignQcCaseId}
               onClick={async () => {
-                if (!assignQcCaseId || !selectedQcId) return
-                await handleUpdate(
-                  assignQcCaseId,
-                  { qcId: selectedQcId, status: "internal_qc" },
-                  "Successfully assigned QC lead and transitioned case status to Internal QC"
-                )
-                setAssignQcCaseId(null)
-                setSelectedQcId("")
+                if (!assignQcCaseId || !selectedQcId) return;
+                await handleUpdate(assignQcCaseId, { qcId: selectedQcId }, "Successfully assigned QC lead");
+                setAssignQcCaseId(null);
+                setSelectedQcId("");
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-            >
-              Assign & Transition
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+              Assign QC
             </Button>
           </div>
         </DialogContent>
@@ -1151,15 +1233,7 @@ export default function CasesPage() {
   );
 }
 
-function AllocateMenu({
-  designers,
-  onPick,
-  disabled
-}: {
-  designers: any[]
-  onPick: (designerId: string) => void
-  disabled?: boolean
-}) {
+function AllocateMenu({ designers, onPick, disabled }: { designers: OpsMember[]; onPick: (designerId: string) => void; disabled?: boolean }) {
   return (
     <Select onValueChange={onPick} disabled={disabled}>
       <SelectTrigger className="h-8 text-xs w-[160px] border-border/80 bg-white">
@@ -1174,7 +1248,7 @@ function AllocateMenu({
           </SelectItem>
         ))}
         {designers.length === 0 && (
-          <SelectItem value="none" disabled className="bg-primary text-white/50 focus:bg-[#047857] cursor-not-allowed">
+          <SelectItem value="none" disabled className="bg-primary text-white/50 cursor-not-allowed">
             No active designers
           </SelectItem>
         )}

@@ -30,10 +30,24 @@ type CaseUpdateData = {
   designerId?: string | null
   qcId?: string | null
   accountManagerId?: string | null
+  holdReason?: string | null
+  cancelReason?: string | null
+  feedbackReason?: string | null
+  rejectReason?: string | null
 }
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error';
+}
+
+function appendCaseReason(existing: string | null | undefined, incoming: string | null | undefined) {
+  if (incoming === undefined) return undefined;
+
+  const next = incoming.trim();
+  if (!next) return undefined;
+
+  const current = existing?.trim();
+  return current ? `${current}\n\n${next}` : next;
 }
 
 export async function GET(
@@ -192,9 +206,12 @@ export async function PUT(
         if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
         if (body.category) updateData.category = body.category;
         if (body.subTypeData) updateData.subTypeData = body.subTypeData;
+
+        const nextCancelReason = appendCaseReason(caseRecord.cancelReason, body.cancelReason);
+        if (nextCancelReason !== undefined) updateData.cancelReason = nextCancelReason;
       }
     } else if (isValidRoleForType('admin_portal', profile.role)) {
-      if (profile.role === 'admin' || profile.role === 'qc') {
+      if (profile.role === 'admin') {
         if (body.caseNumber) updateData.caseNumber = body.caseNumber;
         if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
         if (body.category) updateData.category = body.category;
@@ -203,11 +220,85 @@ export async function PUT(
         if (body.qcId !== undefined) updateData.qcId = body.qcId;
         if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
         if (body.status) updateData.status = body.status;
+
+        const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
+        if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
+
+        const nextCancelReason = appendCaseReason(caseRecord.cancelReason, body.cancelReason);
+        if (nextCancelReason !== undefined) updateData.cancelReason = nextCancelReason;
+
+        const nextFeedbackReason = appendCaseReason(caseRecord.feedbackReason, body.feedbackReason);
+        if (nextFeedbackReason !== undefined) updateData.feedbackReason = nextFeedbackReason;
+
+        const nextRejectReason = appendCaseReason(caseRecord.rejectReason, body.rejectReason);
+        if (nextRejectReason !== undefined) updateData.rejectReason = nextRejectReason;
+      } else if (profile.role === 'qc') {
+        const current = caseRecord.status;
+        const target = body.status;
+
+        if (body.caseNumber || body.dueDate || body.category || body.subTypeData || body.accountManagerId !== undefined) {
+          return NextResponse.json({ error: 'Forbidden: QC cannot modify core case properties or administrative assignments' }, { status: 403 });
+        }
+
+        if (body.designerId !== undefined) {
+          if (body.designerId === profile.id && (!caseRecord.designerId || caseRecord.designerId === profile.id)) {
+            updateData.designerId = profile.id;
+          } else if (body.designerId !== caseRecord.designerId) {
+            return NextResponse.json({ error: 'Forbidden: QC can only self-assign as designer on this case' }, { status: 403 });
+          }
+        }
+
+        if (body.qcId !== undefined) {
+          if (body.qcId === profile.id && (!caseRecord.qcId || caseRecord.qcId === profile.id)) {
+            updateData.qcId = profile.id;
+          } else if (body.qcId !== caseRecord.qcId) {
+            return NextResponse.json({ error: 'Forbidden: QC can only self-assign as QC on this case' }, { status: 403 });
+          }
+        }
+
+        if (target) {
+          if (target === 'scan_verified' && current === 'scan_received') {
+            updateData.status = target;
+          } else if (target === 'allocated_to_designer' && (current === 'scan_received' || current === 'scan_verified')) {
+            if (body.designerId === profile.id || caseRecord.designerId === profile.id) {
+              updateData.status = target;
+            } else {
+              return NextResponse.json({ error: 'Forbidden: QC cannot allocate this case to a different designer' }, { status: 403 });
+            }
+          } else if (target === 'in_progress' && current === 'allocated_to_designer' && caseRecord.designerId === profile.id) {
+            updateData.status = target;
+          } else if (target === 'internal_qc' && current === 'in_progress' && (caseRecord.qcId === profile.id || body.qcId === profile.id)) {
+            updateData.status = target;
+          } else if (target === 'submitted_to_client' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
+            updateData.status = target;
+          } else if (target === 'on_hold' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
+            updateData.status = target;
+          } else if (target === 'client_feedback' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
+            updateData.status = target;
+          } else {
+            return NextResponse.json({ error: `Forbidden: QC cannot transition status from ${current} to ${target}` }, { status: 403 });
+          }
+        }
+
+        const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
+        if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
+
+        const nextCancelReason = appendCaseReason(caseRecord.cancelReason, body.cancelReason);
+        if (nextCancelReason !== undefined) updateData.cancelReason = nextCancelReason;
+
+        const nextFeedbackReason = appendCaseReason(caseRecord.feedbackReason, body.feedbackReason);
+        if (nextFeedbackReason !== undefined) updateData.feedbackReason = nextFeedbackReason;
+
+        const nextRejectReason = appendCaseReason(caseRecord.rejectReason, body.rejectReason);
+        if (nextRejectReason !== undefined) updateData.rejectReason = nextRejectReason;
       } else if (profile.role === 'designer') {
         const current = caseRecord.status;
         const target = body.status;
 
-        // Check if this is self-allocation
+        if (body.caseNumber || body.dueDate || body.category || body.subTypeData || body.accountManagerId !== undefined) {
+          return NextResponse.json({ error: 'Forbidden: Designers cannot modify core case properties or administrative assignments' }, { status: 403 });
+        }
+
         const isSelfAllocation =
           !caseRecord.designerId &&
           body.designerId === profile.id &&
@@ -217,23 +308,27 @@ export async function PUT(
         if (isSelfAllocation) {
           updateData.designerId = profile.id;
           if (target) updateData.status = target;
+        } else if (target === 'scan_verified' && current === 'scan_received' && !caseRecord.designerId) {
+          updateData.status = target;
         } else {
-          // General designer validation: case must already be assigned to them
           if (caseRecord.designerId !== profile.id) {
             return NextResponse.json({ error: 'Forbidden: You can only update cases assigned to you' }, { status: 403 });
           }
 
-          // Allowed to assign QC Lead
+          if (body.designerId !== undefined && body.designerId !== profile.id) {
+            return NextResponse.json({ error: 'Forbidden: Designers cannot reassign designer ownership' }, { status: 403 });
+          }
+
           if (body.qcId !== undefined) {
             updateData.qcId = body.qcId;
           }
 
-          // Allowed status transitions
           if (target) {
-            if (target === 'in_progress' && current === 'allocated_to_designer') {
+            if (target === 'scan_verified' && current === 'scan_received') {
+              updateData.status = target;
+            } else if (target === 'in_progress' && current === 'allocated_to_designer') {
               updateData.status = target;
             } else if (target === 'internal_qc' && current === 'in_progress') {
-              // Ensure QC is assigned or being assigned now
               const finalQcId = body.qcId !== undefined ? body.qcId : caseRecord.qcId;
               if (!finalQcId) {
                 return NextResponse.json({ error: 'Bad Request: Cannot send to QC without assigning a QC Lead first' }, { status: 400 });
@@ -242,11 +337,6 @@ export async function PUT(
             } else {
               return NextResponse.json({ error: `Forbidden: Designers cannot transition status from ${current} to ${target}` }, { status: 403 });
             }
-          }
-
-          // Block attempts to modify administrative/client fields
-          if (body.caseNumber || body.dueDate || body.category || body.subTypeData || (body.designerId !== undefined && body.designerId !== profile.id) || body.accountManagerId !== undefined) {
-            return NextResponse.json({ error: 'Forbidden: Designers cannot modify core case properties or administrative assignments' }, { status: 403 });
           }
         }
       } else if (profile.role === 'account_manager') {
@@ -371,6 +461,10 @@ export async function PUT(
           designerId: caseRecord.designerId,
           qcId: caseRecord.qcId,
           accountManagerId: caseRecord.accountManagerId,
+          holdReason: caseRecord.holdReason,
+          cancelReason: caseRecord.cancelReason,
+          feedbackReason: caseRecord.feedbackReason,
+          rejectReason: caseRecord.rejectReason,
         },
         changes: {
           caseNumber: updateData.caseNumber,
@@ -381,6 +475,10 @@ export async function PUT(
           designerId: updateData.designerId,
           qcId: updateData.qcId,
           accountManagerId: updateData.accountManagerId,
+          holdReason: updateData.holdReason,
+          cancelReason: updateData.cancelReason,
+          feedbackReason: updateData.feedbackReason,
+          rejectReason: updateData.rejectReason,
         },
       },
     });
