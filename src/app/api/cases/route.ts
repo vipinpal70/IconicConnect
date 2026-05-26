@@ -27,6 +27,8 @@ const caseListSelection = {
   dueDate: cases.dueDate,
   createdAt: cases.createdAt,
   updatedAt: cases.updatedAt,
+  outputFile: cases.outputFile,
+  previewFile: cases.previewFile,
 };
 
 function getErrorMessage(error: unknown) {

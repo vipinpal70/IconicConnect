@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, FileText, MessageSquare, Paperclip } from "lucide-react"
+import { ArrowLeft, FileText, MessageSquare, Paperclip, Download } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { StatusBadge } from "@/src/components/StatusBadge"
@@ -26,6 +26,8 @@ type CaseRecord = {
   dueDate: string | null
   timeline: CaseActivity[]
   createdAt: string
+  outputFile?: string | null
+  previewFile?: string | null
 }
 
 type CaseFile = {
@@ -138,6 +140,7 @@ export function CaseDetailView({
   const router = useRouter()
   const chatRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
 
   const handleStatusChange = async (targetStatus: string) => {
     setIsSubmitting(true)
@@ -388,6 +391,72 @@ export function CaseDetailView({
 
       {/* Full Width Section: Attachments & Case Chat */}
       <div className="space-y-6">
+        {/* Premium Deliverables Card */}
+        {(caseRecord.outputFile || caseRecord.previewFile) && (
+          <Card className="shadow-card border-indigo-100 bg-[linear-gradient(180deg,rgba(243,244,246,0.5),rgba(249,250,251,0.7))]">
+            <CardHeader className="pb-4 border-b border-border/50">
+              <CardTitle className="text-base font-semibold text-indigo-900 flex items-center gap-2">
+                <FileText className="h-5 w-5 text-indigo-600" />
+                Design Deliverables
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {caseRecord.outputFile && (
+                  <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div>
+                      <h4 className="text-sm font-semibold text-indigo-950">Final Design File</h4>
+                      <p className="text-xs text-muted-foreground mt-1">This is the ready-to-use production CAD/CAM file.</p>
+                    </div>
+                    <div className="mt-4">
+                      <a href={caseRecord.outputFile} download target="_blank" rel="noreferrer" className="w-full block">
+                        <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium">
+                          <Download className="h-4 w-4" /> Download Design
+                        </Button>
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {caseRecord.previewFile && (
+                  <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div>
+                      <h4 className="text-sm font-semibold text-indigo-950">Interactive 3D Preview</h4>
+                      <p className="text-xs text-muted-foreground mt-1">HTML interactive 3D rendering of the case.</p>
+                    </div>
+                    <div className="mt-4">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowPreview(!showPreview)}
+                        className="w-full border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-medium gap-2"
+                      >
+                        👁️ {showPreview ? "Hide Preview" : "Show 3D Preview"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {caseRecord.previewFile && showPreview && (
+                <div className="mt-4 border border-indigo-100 rounded-lg overflow-hidden bg-zinc-50 shadow-inner">
+                  <div className="bg-indigo-950/5 border-b border-indigo-100 px-4 py-2 flex items-center justify-between text-xs text-indigo-900 font-medium">
+                    <span>Interactive HTML Viewer</span>
+                    <a href={caseRecord.previewFile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                      Open in New Tab ↗
+                    </a>
+                  </div>
+                  <iframe
+                    src={caseRecord.previewFile}
+                    className="w-full h-[400px] border-none"
+                    title="3D Design Preview"
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="shadow-card">
           <CardHeader className="pb-4 border-b border-border/50">
             <CardTitle className="text-base font-medium flex items-center gap-2">

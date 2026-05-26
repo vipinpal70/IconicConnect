@@ -190,9 +190,19 @@ export default function AdminCasesPage() {
   const { data: membersData } = useQuery<MemberRecord[]>({
     queryKey: ["admin-members-list"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/members")
-      if (!res.ok) return []
-      return res.json()
+      try {
+        const res = await fetch("/api/admin/members", { cache: "no-store" })
+        if (!res.ok) {
+          console.error("fetch /api/admin/members failed in admin dashboard, status:", res.status)
+          return []
+        }
+        const data = await res.json()
+        console.log("fetch /api/admin/members returned in admin dashboard:", data)
+        return data
+      } catch (err) {
+        console.error("fetch /api/admin/members error in admin dashboard:", err)
+        return []
+      }
     }
   })
 

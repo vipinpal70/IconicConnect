@@ -186,6 +186,7 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/analytics') ||
         pathname.startsWith('/admin/support') ||
         pathname.startsWith('/api/admin/support') ||
+        pathname.startsWith('/api/admin/members') ||
         pathname.startsWith('/api/tutorials') ||
         pathname.startsWith('/api/offers')
       )

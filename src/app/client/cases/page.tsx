@@ -11,7 +11,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileBox } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileBox, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -126,7 +126,6 @@ const hasAllRequiredCaseFields = (
     category &&
     uploadedFile &&
     allDynamicFieldsSelected &&
-    notes.trim() &&
     teeth.length > 0
   )
 }
@@ -216,6 +215,11 @@ export default function CasesPage() {
   const [generatedCaseId, setGeneratedCaseId] = useState<string>("");
   const [labName, setLabName] = useState<string>("Client");
 
+  // Refs for replacement triggering
+  const singleFileRef = useRef<HTMLInputElement>(null);
+  const bulkRowFileRef = useRef<HTMLInputElement>(null);
+  const [replacingBulkRowIndex, setReplacingBulkRowIndex] = useState<number | null>(null);
+
   // Bulk upload
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const bulkFileRef = useRef<HTMLInputElement>(null);
@@ -235,6 +239,16 @@ export default function CasesPage() {
     }
     fetchProfile();
   }, []);
+
+  const handleDeleteUploadedFile = async (fileName: string) => {
+    try {
+      await fetch(`/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`, {
+        method: 'DELETE'
+      });
+    } catch (e) {
+      console.error("Failed to delete local case file:", e);
+    }
+  };
 
   const handleFileSelect = async (file: File) => {
     const check = validateFile(file);
@@ -263,6 +277,68 @@ export default function CasesPage() {
         console.error('Immediate upload error:', err);
         setIsUploading(false);
         setUploadProgress(0);
+      }
+    );
+  };
+
+  const handleSingleFileReplace = async (file: File) => {
+    const check = validateFile(file);
+    if (!check.isValid) {
+      window.alert(check.error);
+      return;
+    }
+
+    // Clean up old file if it exists
+    if (uploadedFile) {
+      await handleDeleteUploadedFile(uploadedFile.fileName);
+    }
+
+    // Upload the new one
+    handleFileSelect(file);
+  };
+
+  const handleBulkRowFileReplace = async (index: number, file: File) => {
+    const check = validateFile(file);
+    if (!check.isValid) {
+      window.alert(`File "${file.name}": ${check.error}`);
+      return;
+    }
+
+    const row = bulkRows[index];
+    if (!row) return;
+
+    // Clean up old file if it exists
+    if (row.uploadedFile) {
+      await handleDeleteUploadedFile(row.uploadedFile.fileName);
+    }
+
+    // Set row to uploading state in the UI
+    updateBulkRow(index, {
+      fileName: file.name,
+      file: file,
+      uploadProgress: 0,
+      uploadedUrl: null,
+      uploadedFile: undefined,
+      isUploading: true,
+    });
+
+    uploadFileWithXHR(
+      file,
+      labName,
+      (progress) => {
+        updateBulkRow(index, { uploadProgress: progress });
+      },
+      (res) => {
+        updateBulkRow(index, {
+          uploadProgress: 100,
+          isUploading: false,
+          uploadedUrl: res.fileUrl,
+          uploadedFile: res,
+        });
+      },
+      (err) => {
+        console.error(`Immediate bulk upload error for ${file.name}:`, err);
+        updateBulkRow(index, { isUploading: false, uploadProgress: 0 });
       }
     );
   };
@@ -314,7 +390,7 @@ export default function CasesPage() {
 
   const handleSubmit = async () => {
     if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile)) {
-      toast.error("Please complete all fields, select teeth, add notes, and upload a file.");
+      toast.error("Please complete all fields, select teeth, and upload a file.");
       return;
     }
 
@@ -428,7 +504,7 @@ export default function CasesPage() {
 
     const hasInvalidRow = bulkRows.some((row) => !hasAllRequiredCaseFields(row.category, row.subTypeData, row.notes, row.teeth, row.uploadedFile))
     if (hasInvalidRow) {
-      toast.error("Complete all fields, teeth selection, notes, and file upload for every case.");
+      toast.error("Complete all fields, teeth selection, and file upload for every case.");
       return;
     }
 
@@ -501,16 +577,17 @@ export default function CasesPage() {
                     {/* Drag and Drop / Fast Upload Area */}
                     <div className="space-y-2">
                       <Label>Case File</Label>
-                      <label className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block ${isUploading ? 'border-emerald-500 bg-emerald-50/10' : 'border-border hover:border-emerald-800'}`}>
-                        <input
-                          type="file"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleFileSelect(file);
-                          }}
-                        />
-                        {isUploading ? (
+                      <input
+                        ref={singleFileRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSingleFileReplace(file);
+                        }}
+                      />
+                      {isUploading ? (
+                        <div className="border-2 border-dashed rounded-lg p-6 text-center border-emerald-500 bg-emerald-50/10">
                           <div className="space-y-2">
                             <Upload className="h-6 w-6 mx-auto text-emerald-600 animate-pulse" />
                             <p className="text-sm font-medium text-foreground">Uploading... {uploadProgress}%</p>
@@ -518,23 +595,78 @@ export default function CasesPage() {
                               <div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
                             </div>
                           </div>
-                        ) : uploadedFileUrl ? (
-                          <div className="space-y-1 text-center">
-                            <FileBox className="h-8 w-8 mx-auto text-emerald-600 animate-bounce" />
-                            <p className="text-sm font-semibold text-foreground truncate max-w-md mx-auto">{singleFile?.name}</p>
-                            <p className="text-xs text-muted-foreground">({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)</p>
-                            <p className="text-sm text-amber-600 flex items-center justify-center gap-1 font-medium mt-1 italic">
-                              ⚡File uploaded at light speed
-                            </p>
+                        </div>
+                      ) : uploadedFileUrl ? (
+                        <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
+                              <FileBox className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+                                {singleFile?.name}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-xs text-muted-foreground">
+                                  ({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)
+                                </p>
+                                <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
+                                  ✓ Uploaded
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                        ) : (
+                          <div className="flex gap-2 shrink-0">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                singleFileRef.current?.click();
+                              }}
+                              className="h-9 text-xs flex items-center gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-600 hover:text-white bg-white font-medium"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" /> Replace File
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (uploadedFile) {
+                                  await handleDeleteUploadedFile(uploadedFile.fileName);
+                                }
+                                setSingleFile(null);
+                                setUploadedFileUrl(null);
+                                setUploadedFile(null);
+                              }}
+                              className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                          <input
+                            type="file"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleFileSelect(file);
+                            }}
+                          />
                           <div>
                             <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
                             <p className="text-sm font-medium text-foreground">Drop file here or click to upload</p>
                             <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)</p>
                           </div>
-                        )}
-                      </label>
+                        </label>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -608,10 +740,21 @@ export default function CasesPage() {
                       </label>
                     ) : (
                       <>
+                        <input
+                          ref={bulkRowFileRef}
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file && replacingBulkRowIndex !== null) {
+                              handleBulkRowFileReplace(replacingBulkRowIndex, file);
+                              setReplacingBulkRowIndex(null);
+                            }
+                          }}
+                        />
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-medium text-foreground">{bulkRows.length} cases ready</p>
                           <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => bulkFileRef.current?.click()}>Replace Selection</Button>
                             <Button variant="ghost" size="sm" onClick={() => setBulkRows([])}>Clear</Button>
                           </div>
                         </div>
@@ -620,12 +763,42 @@ export default function CasesPage() {
                             <Card key={i} className="shadow-sm">
                               <CardContent className="p-4 space-y-3">
                                 <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 min-w-0">
+                                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
                                     <FileBox className="h-4 w-4 text-emerald-600 shrink-0" />
                                     <p className="text-sm font-medium text-foreground truncate">{row.fileName}</p>
                                     {row.uploadedUrl && <span className="text-emerald-600 text-xs flex items-center font-semibold ml-1">✓ Uploaded</span>}
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title="Replace Case File"
+                                      className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded ml-1"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setReplacingBulkRowIndex(i);
+                                        setTimeout(() => bulkRowFileRef.current?.click(), 50);
+                                      }}
+                                    >
+                                      <RefreshCw className="h-3 w-3" />
+                                    </Button>
                                   </div>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeBulkRow(i)}><X className="h-4 w-4" /></Button>
+                                  <div className="flex items-center shrink-0">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-zinc-500 hover:text-red-500 hover:bg-red-50"
+                                      onClick={async () => {
+                                        if (row.uploadedFile) {
+                                          await handleDeleteUploadedFile(row.uploadedFile.fileName);
+                                        }
+                                        removeBulkRow(i);
+                                      }}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
                                 {row.isUploading && (
                                   <div className="space-y-1">

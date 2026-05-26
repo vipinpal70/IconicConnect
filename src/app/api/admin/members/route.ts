@@ -6,6 +6,8 @@ import { createClient } from '@/src/lib/supabase/server';
 import { eq, desc } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
 
+import { isValidRoleForType } from '@/src/lib/auth/role';
+
 // Helper to check if current user is admin
 async function isAdmin() {
   const supabase = await createClient();
@@ -18,8 +20,20 @@ async function isAdmin() {
   return profile?.role === 'admin';
 }
 
+// Helper to check if current user has portal access (admin, qc, designer, account_manager)
+async function isPortalUser() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const results = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
+  const profile = results[0];
+
+  return profile && isValidRoleForType('admin_portal', profile.role as any);
+}
+
 export async function GET(req: NextRequest) {
-  if (!(await isAdmin())) {
+  if (!(await isPortalUser())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -36,6 +50,7 @@ export async function GET(req: NextRequest) {
       ? members.filter(m => m.status === status)
       : members;
 
+    console.log("GET /api/admin/members - returning members:", filteredMembers.map(m => ({ id: m.id, role: m.role, status: m.status, fullName: m.fullName })));
     return NextResponse.json(filteredMembers);
   } catch (error) {
     console.error('Error fetching members:', error);

@@ -34,6 +34,8 @@ type CaseUpdateData = {
   cancelReason?: string | null
   feedbackReason?: string | null
   rejectReason?: string | null
+  outputFile?: string | null
+  previewFile?: string | null
 }
 
 function getErrorMessage(error: unknown) {
@@ -41,7 +43,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function appendCaseReason(existing: string | null | undefined, incoming: string | null | undefined) {
-  if (incoming === undefined) return undefined;
+  if (incoming === undefined || incoming === null) return undefined;
 
   const next = incoming.trim();
   if (!next) return undefined;
@@ -220,6 +222,8 @@ export async function PUT(
         if (body.qcId !== undefined) updateData.qcId = body.qcId;
         if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
         if (body.status) updateData.status = body.status;
+        if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
+        if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
 
         const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
         if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
@@ -291,6 +295,9 @@ export async function PUT(
 
         const nextRejectReason = appendCaseReason(caseRecord.rejectReason, body.rejectReason);
         if (nextRejectReason !== undefined) updateData.rejectReason = nextRejectReason;
+
+        if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
+        if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
       } else if (profile.role === 'designer') {
         const current = caseRecord.status;
         const target = body.status;
@@ -322,6 +329,9 @@ export async function PUT(
           if (body.qcId !== undefined) {
             updateData.qcId = body.qcId;
           }
+
+          if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
+          if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
 
           if (target) {
             if (target === 'scan_verified' && current === 'scan_received') {

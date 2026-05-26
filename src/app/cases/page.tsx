@@ -8,7 +8,7 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
-import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -45,8 +45,7 @@ type OpsMember = {
   role: string;
   email?: string | null;
   fullName?: string | null;
-  // NOTE: API returns `userStatus`, not `status`
-  userStatus?: string | null;
+  status?: string | null;
 };
 
 type ProfileSummary = {
@@ -57,6 +56,7 @@ type ProfileSummary = {
 
 type OpsCase = {
   id: string;
+  clientId?: string | null;
   caseNumber?: string | null;
   category?: string | null;
   status: string;
@@ -68,6 +68,8 @@ type OpsCase = {
     teeth?: number[];
     toothSystem?: "USA" | "FDI";
   };
+  outputFile?: string | null;
+  previewFile?: string | null;
 };
 
 type CaseActionType = "reject" | "feedback" | "hold";
@@ -185,7 +187,7 @@ const hasAllRequiredCaseFields = (
 ) => {
   const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || [];
   const allDynamicFieldsSelected = fields.every((field) => Boolean(subTypeData[field.name]));
-  return Boolean(category && uploadedFile && allDynamicFieldsSelected && notes.trim() && teeth.length > 0);
+  return Boolean(category && uploadedFile && allDynamicFieldsSelected && teeth.length > 0);
 };
 
 const CASE_HIERARCHY = {
@@ -262,17 +264,30 @@ export default function CasesPage() {
   const [caseActionReason, setCaseActionReason] = useState("");
   const [designUploadCaseId, setDesignUploadCaseId] = useState<string | null>(null);
   const [designUploadCaseNumber, setDesignUploadCaseNumber] = useState<string | null>(null);
+  const [designUploadClientId, setDesignUploadClientId] = useState<string | null>(null);
   const [designUploadNote, setDesignUploadNote] = useState("");
   const [designUploadFile, setDesignUploadFile] = useState<File | null>(null);
+  const [designUploadPreviewFile, setDesignUploadPreviewFile] = useState<File | null>(null);
   const [isDesignUploading, setIsDesignUploading] = useState(false);
   const designUploadInputRef = useRef<HTMLInputElement>(null);
+  const previewUploadInputRef = useRef<HTMLInputElement>(null);
 
   const { data: membersData } = useQuery<OpsMember[]>({
     queryKey: ["ops-members-list"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/members");
-      if (!res.ok) return [];
-      return res.json();
+      try {
+        const res = await fetch("/api/admin/members", { cache: "no-store" });
+        if (!res.ok) {
+          console.error("fetch /api/admin/members failed status:", res.status);
+          return [];
+        }
+        const data = await res.json();
+        console.log("fetch /api/admin/members returned:", data);
+        return data;
+      } catch (err) {
+        console.error("fetch /api/admin/members error:", err);
+        return [];
+      }
     },
   });
 
@@ -341,58 +356,111 @@ export default function CasesPage() {
     if (updated) closeCaseActionDialog();
   };
 
-  const openDesignUploadDialog = (caseId: string, caseNumber?: string | null) => {
+  const openDesignUploadDialog = (caseId: string, caseNumber?: string | null, clientId?: string | null) => {
     setDesignUploadCaseId(caseId);
     setDesignUploadCaseNumber(caseNumber || null);
+    setDesignUploadClientId(clientId || null);
     setDesignUploadNote("");
     setDesignUploadFile(null);
+    setDesignUploadPreviewFile(null);
     if (designUploadInputRef.current) designUploadInputRef.current.value = "";
+    if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
   };
 
   const closeDesignUploadDialog = () => {
     setDesignUploadCaseId(null);
     setDesignUploadCaseNumber(null);
+    setDesignUploadClientId(null);
     setDesignUploadNote("");
     setDesignUploadFile(null);
+    setDesignUploadPreviewFile(null);
     if (designUploadInputRef.current) designUploadInputRef.current.value = "";
+    if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
+  };
+
+  const uploadLocalFile = async (file: File, clientId: string): Promise<string> => {
+    const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}&clientId=${encodeURIComponent(clientId)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to upload file using existing upload API");
+    }
+    const data = await res.json();
+    return data.fileUrl;
+  };
+
+  const validateHtmlFile = (file: File): { isValid: boolean; error?: string } => {
+    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    if (ext !== ".html" && ext !== ".htm") {
+      return { isValid: false, error: "Only HTML files (.html, .htm) are allowed for 3D preview." };
+    }
+    return { isValid: true };
   };
 
   const confirmDesignUpload = async () => {
     if (!designUploadCaseId) return;
-    if (!designUploadFile) { toast.error("Please select a design file."); return; }
-    if (!designUploadNote.trim()) { toast.error("Please add design notes before uploading."); return; }
+    if (!designUploadFile) { toast.error("Please select an output file."); return; }
+    if (!designUploadNote.trim()) { toast.error("Please add output note/details before uploading."); return; }
     const fileCheck = validateFile(designUploadFile);
     if (!fileCheck.isValid) { toast.error(fileCheck.error || "Invalid file"); return; }
 
+    if (designUploadPreviewFile) {
+      const previewCheck = validateHtmlFile(designUploadPreviewFile);
+      if (!previewCheck.isValid) { toast.error(previewCheck.error || "Invalid preview file"); return; }
+    }
+
     setIsDesignUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", designUploadFile);
-      formData.append("note", designUploadNote.trim());
-      const res = await fetch(`/api/cases/${designUploadCaseId}/files`, { method: "POST", body: formData });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to upload design");
+      // 1. Upload output file using existing upload api
+      const outputUrl = await uploadLocalFile(designUploadFile, designUploadClientId || "");
+
+      // 2. Upload preview file if present
+      let previewUrl = null;
+      if (designUploadPreviewFile) {
+        previewUrl = await uploadLocalFile(designUploadPreviewFile, designUploadClientId || "");
       }
-      toast.success("Design uploaded successfully");
-      closeDesignUploadDialog();
-      fetchCases();
+
+      // 3. Link them to the case database structure
+      const patch = {
+        outputFile: outputUrl,
+        previewFile: previewUrl,
+      };
+
+      const updated = await handleUpdate(designUploadCaseId, patch, "Design output and preview files uploaded successfully");
+      if (updated) {
+        // Log design note as file/note attachment if note is provided
+        try {
+          const formData = new FormData();
+          formData.append("note", designUploadNote.trim());
+          await fetch(`/api/cases/${designUploadCaseId}/files`, { method: "POST", body: formData });
+        } catch (e) {
+          console.error("Failed to save design note as attachment:", e);
+        }
+        closeDesignUploadDialog();
+        fetchCases();
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to upload design");
+      toast.error(err instanceof Error ? err.message : "Failed to upload files");
     } finally {
       setIsDesignUploading(false);
     }
   };
 
-  // FIX: Use `userStatus` (the correct field name on OpsMember) instead of `status`
+  // FIX: Use `status` (the correct field name on OpsMember)
   const designers = useMemo(() => {
     if (!membersData) return [];
-    return membersData.filter((m) => m.role === "designer" && m.userStatus === "active");
+    return membersData.filter((m) => m.role === "designer" && m.status === "active");
   }, [membersData]);
 
   const qcs = useMemo(() => {
     if (!membersData) return [];
-    return membersData.filter((m) => m.role === "qc" && m.userStatus === "active");
+    return membersData.filter((m) => m.role === "qc" && m.status === "active");
   }, [membersData]);
 
   // Add Case form state
@@ -410,6 +478,11 @@ export default function CasesPage() {
   const [labName, setLabName] = useState<string>("Client");
   const [userProfile, setUserProfile] = useState<ProfileSummary | null>(null);
   const generatedCaseId = useMemo(() => generateCaseId(category), [category]);
+
+  // Refs for replacement triggering
+  const singleFileRef = useRef<HTMLInputElement>(null);
+  const bulkRowFileRef = useRef<HTMLInputElement>(null);
+  const [replacingBulkRowIndex, setReplacingBulkRowIndex] = useState<number | null>(null);
 
   const activeUser = userProfile || currentUser;
   const activeUserRole = activeUser?.role || "";
@@ -433,6 +506,16 @@ export default function CasesPage() {
     fetchProfile();
   }, []);
 
+  const handleDeleteUploadedFile = async (fileName: string) => {
+    try {
+      await fetch(`/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`, {
+        method: 'DELETE'
+      });
+    } catch (e) {
+      console.error("Failed to delete local case file:", e);
+    }
+  };
+
   const handleFileSelect = async (file: File) => {
     const check = validateFile(file);
     if (!check.isValid) { window.alert(check.error); return; }
@@ -444,6 +527,68 @@ export default function CasesPage() {
       (progress) => setUploadProgress(progress),
       (res) => { setUploadProgress(100); setUploadedFileUrl(res.fileUrl); setUploadedFile(res); setTimeout(() => setIsUploading(false), 500); },
       (err) => { console.error("Upload error:", err); setIsUploading(false); setUploadProgress(0); }
+    );
+  };
+
+  const handleSingleFileReplace = async (file: File) => {
+    const check = validateFile(file);
+    if (!check.isValid) {
+      window.alert(check.error);
+      return;
+    }
+
+    // Clean up old file if it exists
+    if (uploadedFile) {
+      await handleDeleteUploadedFile(uploadedFile.fileName);
+    }
+
+    // Upload the new one
+    handleFileSelect(file);
+  };
+
+  const handleBulkRowFileReplace = async (index: number, file: File) => {
+    const check = validateFile(file);
+    if (!check.isValid) {
+      window.alert(`File "${file.name}": ${check.error}`);
+      return;
+    }
+
+    const row = bulkRows[index];
+    if (!row) return;
+
+    // Clean up old file if it exists
+    if (row.uploadedFile) {
+      await handleDeleteUploadedFile(row.uploadedFile.fileName);
+    }
+
+    // Set row to uploading state in the UI
+    updateBulkRow(index, {
+      fileName: file.name,
+      file: file,
+      uploadProgress: 0,
+      uploadedUrl: null,
+      uploadedFile: undefined,
+      isUploading: true,
+    });
+
+    uploadFileWithXHR(
+      file,
+      labName,
+      (progress) => {
+        updateBulkRow(index, { uploadProgress: progress });
+      },
+      (res) => {
+        updateBulkRow(index, {
+          uploadProgress: 100,
+          isUploading: false,
+          uploadedUrl: res.fileUrl,
+          uploadedFile: res,
+        });
+      },
+      (err) => {
+        console.error(`Immediate bulk upload error for ${file.name}:`, err);
+        updateBulkRow(index, { isUploading: false, uploadProgress: 0 });
+      }
     );
   };
 
@@ -488,7 +633,7 @@ export default function CasesPage() {
 
   const handleSubmit = async () => {
     if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile)) {
-      toast.error("Please complete all fields, select teeth, add notes, and upload a file.");
+      toast.error("Please complete all fields, select teeth, and upload a file.");
       return;
     }
     const formData = new FormData();
@@ -549,7 +694,7 @@ export default function CasesPage() {
   const handleBulkSubmit = async () => {
     if (bulkRows.length === 0) return;
     if (bulkRows.some((row) => !hasAllRequiredCaseFields(row.category, row.subTypeData, row.notes, row.teeth, row.uploadedFile))) {
-      toast.error("Complete all fields, teeth selection, notes, and file upload for every case.");
+      toast.error("Complete all fields, teeth selection, and file upload for every case.");
       return;
     }
     const formData = new FormData();
@@ -603,29 +748,96 @@ export default function CasesPage() {
                   <TabsContent value="single" className="space-y-5 mt-4">
                     <div className="space-y-2">
                       <Label>Case File</Label>
-                      <label className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block ${isUploading ? "border-emerald-500 bg-emerald-50/10" : "border-border hover:border-emerald-800"}`}>
-                        <input type="file" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileSelect(file); }} />
-                        {isUploading ? (
+                      <input
+                        ref={singleFileRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSingleFileReplace(file);
+                        }}
+                      />
+                      {isUploading ? (
+                        <div className="border-2 border-dashed rounded-lg p-6 text-center border-emerald-500 bg-emerald-50/10">
                           <div className="space-y-2">
                             <Upload className="h-6 w-6 mx-auto text-emerald-600 animate-pulse" />
                             <p className="text-sm font-medium text-foreground">Uploading... {uploadProgress}%</p>
-                            <div className="w-full bg-muted rounded-full h-1.5"><div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div>
+                            <div className="w-full bg-muted rounded-full h-1.5 max-w-xs mx-auto">
+                              <div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                            </div>
                           </div>
-                        ) : uploadedFileUrl ? (
-                          <div className="space-y-1 text-center">
-                            <FileBox className="h-8 w-8 mx-auto text-emerald-600 animate-bounce" />
-                            <p className="text-sm font-semibold text-foreground truncate max-w-md mx-auto">{singleFile?.name}</p>
-                            <p className="text-xs text-muted-foreground">({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)</p>
-                            <p className="text-sm text-emerald-600 flex items-center justify-center gap-1 font-medium mt-1"><span className="inline-block bg-emerald-600 text-white rounded-full px-1 text-[10px] font-bold">✓</span> File uploaded!</p>
+                        </div>
+                      ) : uploadedFileUrl ? (
+                        <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
+                              <FileBox className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+                                {singleFile?.name}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-xs text-muted-foreground">
+                                  ({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)
+                                </p>
+                                <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
+                                  ✓ Uploaded
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                        ) : (
+                          <div className="flex gap-2 shrink-0">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                singleFileRef.current?.click();
+                              }}
+                              className="h-9 text-xs flex items-center gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-600 hover:text-white bg-white font-medium"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" /> Replace File
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (uploadedFile) {
+                                  await handleDeleteUploadedFile(uploadedFile.fileName);
+                                }
+                                setSingleFile(null);
+                                setUploadedFileUrl(null);
+                                setUploadedFile(null);
+                              }}
+                              className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                          <input
+                            type="file"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleFileSelect(file);
+                            }}
+                          />
                           <div>
                             <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
                             <p className="text-sm font-medium text-foreground">Drop file here or click to upload</p>
                             <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)</p>
                           </div>
-                        )}
-                      </label>
+                        </label>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -680,10 +892,21 @@ export default function CasesPage() {
                       </label>
                     ) : (
                       <>
+                        <input
+                          ref={bulkRowFileRef}
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file && replacingBulkRowIndex !== null) {
+                              handleBulkRowFileReplace(replacingBulkRowIndex, file);
+                              setReplacingBulkRowIndex(null);
+                            }
+                          }}
+                        />
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-medium text-foreground">{bulkRows.length} cases ready</p>
                           <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => bulkFileRef.current?.click()}>Replace Selection</Button>
                             <Button variant="ghost" size="sm" onClick={() => setBulkRows([])}>Clear</Button>
                           </div>
                         </div>
@@ -692,12 +915,42 @@ export default function CasesPage() {
                             <Card key={i} className="shadow-sm">
                               <CardContent className="p-4 space-y-3">
                                 <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 min-w-0">
+                                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
                                     <FileBox className="h-4 w-4 text-emerald-600 shrink-0" />
                                     <p className="text-sm font-medium text-foreground truncate">{row.fileName}</p>
                                     {row.uploadedUrl && <span className="text-emerald-600 text-xs flex items-center font-semibold ml-1">✓ Uploaded</span>}
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title="Replace Case File"
+                                      className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded ml-1"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setReplacingBulkRowIndex(i);
+                                        setTimeout(() => bulkRowFileRef.current?.click(), 50);
+                                      }}
+                                    >
+                                      <RefreshCw className="h-3 w-3" />
+                                    </Button>
                                   </div>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeBulkRow(i)}><X className="h-4 w-4" /></Button>
+                                  <div className="flex items-center shrink-0">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-zinc-500 hover:text-red-500 hover:bg-red-50"
+                                      onClick={async () => {
+                                        if (row.uploadedFile) {
+                                          await handleDeleteUploadedFile(row.uploadedFile.fileName);
+                                        }
+                                        removeBulkRow(i);
+                                      }}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
                                 {row.isUploading && (
                                   <div className="space-y-1">
@@ -1028,7 +1281,7 @@ export default function CasesPage() {
                                             Start Work
                                           </Button>
                                           <Button size="sm" variant="outline" disabled={isMutating}
-                                            onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber); }}
+                                            onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
                                             className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
                                             <Upload className="h-3.5 w-3.5 mr-1" /> Upload Design
                                           </Button>
@@ -1045,7 +1298,7 @@ export default function CasesPage() {
                                       {c.status === "in_progress" && (
                                         <div className="flex gap-2 flex-wrap">
                                           <Button size="sm" variant="outline" disabled={isMutating}
-                                            onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber); }}
+                                            onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
                                             className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
                                             <Upload className="h-3.5 w-3.5 mr-1" /> Upload Design
                                           </Button>
@@ -1143,8 +1396,8 @@ export default function CasesPage() {
               className={
                 pendingCaseAction?.action === "reject" ? "bg-red-600 hover:bg-red-700 text-white font-semibold"
                   : pendingCaseAction?.action === "hold" ? "bg-gray-600 hover:bg-gray-700 text-white font-semibold"
-                  : pendingCaseAction?.action === "feedback" ? "bg-amber-500 hover:bg-amber-600 text-white font-semibold"
-                  : "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                    : pendingCaseAction?.action === "feedback" ? "bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+                      : "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
               }>
               {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].confirmLabel : "Confirm"}
             </Button>
@@ -1165,21 +1418,42 @@ export default function CasesPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="design-note" className="text-sm font-semibold text-gray-700">Output Note</Label>
+              <Label htmlFor="design-note" className="text-sm font-semibold text-gray-700">Case Note</Label>
               <Textarea id="design-note" value={designUploadNote} onChange={(e) => setDesignUploadNote(e.target.value)}
                 placeholder="Add case design notes..."
                 className="min-h-[120px] bg-gray-100 border-gray-200 text-gray-900 placeholder:text-zinc-400 focus-visible:ring-emerald-500" />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="design-file" className="text-sm font-semibold text-gray-700">Output File</Label>
+              <Label htmlFor="design-file" className="text-sm font-semibold text-gray-700">Case File</Label>
               <Input id="design-file" ref={designUploadInputRef} type="file"
                 onChange={(e) => setDesignUploadFile(e.target.files?.[0] || null)}
                 className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-emerald-600 file:border-none file:rounded-md file:px-3 file:py-2" />
               {designUploadFile && <p className="text-xs text-gray-900">Selected: {designUploadFile.name}</p>}
             </div>
+            <div className="grid gap-2 mt-1">
+              <Label htmlFor="preview-file" className="text-sm font-semibold text-gray-700">Preview File (HTML Only - Optional)</Label>
+              <Input id="preview-file" ref={previewUploadInputRef} type="file" accept=".html,.htm"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (file) {
+                    const check = validateHtmlFile(file);
+                    if (!check.isValid) {
+                      toast.error(check.error || "Only HTML files are allowed");
+                      if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
+                      setDesignUploadPreviewFile(null);
+                    } else {
+                      setDesignUploadPreviewFile(file);
+                    }
+                  } else {
+                    setDesignUploadPreviewFile(null);
+                  }
+                }}
+                className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-indigo-600 file:border-none file:rounded-md file:px-3 file:py-2" />
+              {designUploadPreviewFile && <p className="text-xs text-gray-900">Selected HTML: {designUploadPreviewFile.name}</p>}
+            </div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="ghost" onClick={closeDesignUploadDialog} className="text-white hover:bg-zinc-800" disabled={isDesignUploading}>Cancel</Button>
+            <Button variant="ghost" onClick={closeDesignUploadDialog} className="text-gray-700 hover:bg-zinc-100 hover:text-black" disabled={isDesignUploading}>Cancel</Button>
             <Button disabled={isDesignUploading} onClick={confirmDesignUpload} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
               {isDesignUploading ? "Uploading..." : "Confirm Upload"}
             </Button>
