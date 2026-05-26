@@ -437,7 +437,7 @@ export default function AdminCasesPage() {
                       return (
                         <tr
                           key={caseItem.id}
-                          className="hover:bg-muted/10 transition-colors"
+                          className={`hover:bg-muted/10 transition-colors border-l-2 ${caseItem.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
                         >
                           <td className="px-4 py-3 font-semibold text-primary">
                             <Link href={`/admin/cases/${caseItem.id}`} className="hover:underline cursor-pointer">

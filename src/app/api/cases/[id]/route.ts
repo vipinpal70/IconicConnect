@@ -36,6 +36,7 @@ type CaseUpdateData = {
   rejectReason?: string | null
   outputFile?: string | null
   previewFile?: string | null
+  outputNote?: string | null
 }
 
 function getErrorMessage(error: unknown) {
@@ -271,6 +272,8 @@ export async function PUT(
             }
           } else if (target === 'in_progress' && current === 'allocated_to_designer' && caseRecord.designerId === profile.id) {
             updateData.status = target;
+          } else if (target === 'in_progress' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
+            updateData.status = target;
           } else if (target === 'internal_qc' && current === 'in_progress' && (caseRecord.qcId === profile.id || body.qcId === profile.id)) {
             updateData.status = target;
           } else if (target === 'submitted_to_client' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
@@ -298,6 +301,7 @@ export async function PUT(
 
         if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
         if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
+        if (body.outputNote !== undefined) updateData.outputNote = body.outputNote;
       } else if (profile.role === 'designer') {
         const current = caseRecord.status;
         const target = body.status;
@@ -332,6 +336,7 @@ export async function PUT(
 
           if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
           if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
+          if (body.outputNote !== undefined) updateData.outputNote = body.outputNote;
 
           if (target) {
             if (target === 'scan_verified' && current === 'scan_received') {

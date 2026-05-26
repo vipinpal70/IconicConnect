@@ -954,7 +954,7 @@ export default function CasesPage() {
                        return (
                         <tr
                           key={c.id}
-                          className="hover:bg-muted/10 cursor-pointer transition-colors"
+                          className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
                           onClick={() => router.push(`/client/cases/${c.id}`)}
                         >
                           <td className="px-6 py-4 text-sm font-medium text-primary">{c.caseNumber || c.id}</td>

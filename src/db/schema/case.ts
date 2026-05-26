@@ -128,6 +128,7 @@ export const cases = pgTable('cases', {
   timeline: jsonb('timeline').$type<CaseTimelineEvent[]>().default(sql`'[]'::jsonb`).notNull(),
   outputFile: text('output_file'),
   previewFile: text('preview_file'),
+  outputNote: text('output_note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

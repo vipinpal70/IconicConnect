@@ -28,6 +28,7 @@ type CaseRecord = {
   createdAt: string
   outputFile?: string | null
   previewFile?: string | null
+  outputNote?: string | null
 }
 
 type CaseFile = {
@@ -67,9 +68,9 @@ function formatFileSize(size: number | null) {
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-3 border-b border-border/40 py-3 last:border-b-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium text-foreground text-right">{value}</span>
+    <div className="flex justify-between gap-2 border-b border-border/40 py-2 last:border-b-0">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-medium text-foreground text-right">{value}</span>
     </div>
   )
 }
@@ -220,16 +221,16 @@ export function CaseDetailView({
   const modelRequired = typeof subTypeData.modelRequired === "string" ? subTypeData.modelRequired : "—"
 
   return shell(
-    <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Button variant="ghost" size="icon" onClick={() => router.push(backHref)}>
+    <div className="space-y-4 animate-fade-in max-w-6xl mx-auto">
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(backHref)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-xl font-semibold text-foreground">
+          <h1 className="text-lg font-semibold text-foreground leading-none">
             {caseRecord.caseNumber || caseRecord.id}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground mt-1">
             {caseRecord.category || "—"} · {renderSubTypeSummary(caseRecord.subTypeData)}
           </p>
         </div>
@@ -241,13 +242,13 @@ export function CaseDetailView({
       <LifecycleStrip status={caseRecord.status} />
 
       {/* Upper Grid: Details & Timeline side-by-side on lg screen */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="shadow-card flex flex-col justify-between">
           <div>
-            <CardHeader className="pb-4 border-b border-border/50">
-              <CardTitle className="text-base font-medium">Case Details</CardTitle>
+            <CardHeader className="py-2.5 px-4 border-b border-border/50">
+              <CardTitle className="text-sm font-semibold">Case Details</CardTitle>
             </CardHeader>
-            <CardContent className="mt-4 px-6">
+            <CardContent className="mt-2 px-4 pb-3">
               <DetailRow label="Case Number" value={caseRecord.caseNumber || caseRecord.id} />
               <DetailRow label="Category" value={caseRecord.category || "—"} />
               <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
@@ -264,16 +265,16 @@ export function CaseDetailView({
                 label="Due Date"
                 value={caseRecord.dueDate ? new Date(caseRecord.dueDate).toLocaleDateString() : "—"}
               />
-              <div className="pt-4 border-t border-border/50 mt-4">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Notes</p>
-                <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{notes}</p>
+              <div className="pt-2.5 border-t border-border/50 mt-2.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Notes</p>
+                <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{notes}</p>
               </div>
             </CardContent>
           </div>
 
           {/* Client Self-Serve Contextual Actions */}
           {chatSide === "lab" && (
-            <CardContent className="pt-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-3">
+            <CardContent className="py-3 px-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-2">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Lab Actions</p>
               <div className="flex flex-col gap-2">
                 {caseRecord.status === "scan_received" && (
@@ -361,23 +362,23 @@ export function CaseDetailView({
 
         {/* Activity Timeline Card */}
         <Card className="shadow-card">
-          <CardHeader className="pb-4 border-b border-border/50">
-            <CardTitle className="text-base font-medium">Activity Timeline</CardTitle>
+          <CardHeader className="py-2.5 px-4 border-b border-border/50">
+            <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>
           </CardHeader>
-          <CardContent className="mt-4 px-6">
+          <CardContent className="mt-2 px-4 max-h-[350px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-200">
             {activities.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No activity recorded for this case yet.</p>
+              <p className="text-xs text-muted-foreground">No activity recorded for this case yet.</p>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {activities.map((activity, index) => (
-                  <div key={activity.id} className="flex gap-4">
+                  <div key={activity.id} className="flex gap-3">
                     <div className="flex flex-col items-center">
-                      <div className="mt-1.5 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
-                      {index < activities.length - 1 && <div className="mt-2 w-0.5 flex-1 bg-emerald-200" />}
+                      <div className="mt-1 h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
+                      {index < activities.length - 1 && <div className="mt-1.5 w-0.5 flex-1 bg-emerald-200" />}
                     </div>
-                    <div className="pb-2">
-                      <p className="text-sm font-medium text-foreground">{activity.label}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                    <div className="pb-1">
+                      <p className="text-xs font-semibold text-foreground">{activity.label}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
                         {new Date(activity.actionAt).toLocaleDateString('en-CA')} · {activity.actor}
                       </p>
                     </div>
@@ -390,23 +391,67 @@ export function CaseDetailView({
       </div>
 
       {/* Full Width Section: Attachments & Case Chat */}
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Premium Deliverables Card */}
+
+        <Card className="shadow-card">
+          <CardHeader className="py-2.5 px-4 border-b border-border/50">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Paperclip className="h-4 w-4 text-primary" />
+              Case File
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="mt-2 px-4 pb-3 space-y-2">
+            {files.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No files attached to this case.</p>
+            ) : (
+              files.map((file) => (
+                <a
+                  key={file.id}
+                  href={file.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between rounded-lg border border-border/50 py-2 px-3 hover:bg-muted/20 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">{file.fileName}</p>
+                    {file.note && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5 whitespace-pre-wrap">
+                        {file.note}
+                      </p>
+                    )}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {file.fileType || "Unknown type"} · {formatFileSize(file.fileSize)}
+                    </p>
+                  </div>
+                  <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </a>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
         {(caseRecord.outputFile || caseRecord.previewFile) && (
           <Card className="shadow-card border-indigo-100 bg-[linear-gradient(180deg,rgba(243,244,246,0.5),rgba(249,250,251,0.7))]">
-            <CardHeader className="pb-4 border-b border-border/50">
-              <CardTitle className="text-base font-semibold text-indigo-900 flex items-center gap-2">
-                <FileText className="h-5 w-5 text-indigo-600" />
+            <CardHeader className="py-2.5 px-4 border-b border-border/50">
+              <CardTitle className="text-sm font-semibold text-indigo-900 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-indigo-600" />
                 Design Deliverables
               </CardTitle>
             </CardHeader>
-            <CardContent className="mt-4 space-y-4">
+            <CardContent className="mt-2 px-4 pb-3 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {caseRecord.outputFile && (
                   <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
                     <div>
                       <h4 className="text-sm font-semibold text-indigo-950">Final Design File</h4>
-                      <p className="text-xs text-muted-foreground mt-1">This is the ready-to-use production CAD/CAM file.</p>
+                      {caseRecord.outputNote ? (
+                        <p className="text-xs text-indigo-900 mt-1.5 bg-indigo-50/50 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
+                          {caseRecord.outputNote}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground mt-1">This is the ready-to-use production CAD/CAM file.</p>
+                      )}
                     </div>
                     <div className="mt-4">
                       <a href={caseRecord.outputFile} download target="_blank" rel="noreferrer" className="w-full block">
@@ -457,50 +502,15 @@ export function CaseDetailView({
           </Card>
         )}
 
-        <Card className="shadow-card">
-          <CardHeader className="pb-4 border-b border-border/50">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
-              <Paperclip className="h-4 w-4 text-primary" />
-              Attachments
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="mt-4 space-y-3">
-            {files.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No files attached to this case.</p>
-            ) : (
-              files.map((file) => (
-                <a
-                  key={file.id}
-                  href={file.fileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between rounded-lg border border-border/50 p-3 hover:bg-muted/20 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{file.fileName}</p>
-                    {file.note && (
-                      <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                        {file.note}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      {file.fileType || "Unknown type"} · {formatFileSize(file.fileSize)}
-                    </p>
-                  </div>
-                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                </a>
-              ))
-            )}
-          </CardContent>
-        </Card>
+
 
         <div ref={chatRef}>
           <Card className="shadow-card overflow-hidden">
-            <CardHeader className="pb-4 border-b border-border/50 bg-muted/10">
-              <CardTitle className="text-base font-medium flex items-center gap-2">
+            <CardHeader className="py-2.5 px-4 border-b border-border/50 bg-muted/10">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-primary" />
                 Case Chat
-                <span className="text-xs font-normal text-muted-foreground ml-1">— with Iconic Connect Team</span>
+                <span className="text-[11px] font-normal text-muted-foreground ml-1">— with Iconic Connect Team</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
