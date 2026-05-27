@@ -79,6 +79,7 @@ function buildCaseTimelineEvent({
     label: formatActivityLabel(action, details ?? null),
     actor: formatActivityActor(actor),
     actionAt: new Date().toISOString(),
+    actionTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
   }
 }
 

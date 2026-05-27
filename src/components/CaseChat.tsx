@@ -67,6 +67,30 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
     }
   }, [caseId, fetchMessages])
 
+  // Mark chat notifications for this case as read when chat is opened/loaded
+  useEffect(() => {
+    const clearChatNotifications = async () => {
+      try {
+        const notifRes = await fetch("/api/notifications");
+        if (!notifRes.ok) return;
+        const notifJson = await notifRes.json();
+        const unreadChatNotifs = (notifJson.data || []).filter(
+          (n: any) => !n.read && n.type === "chat_message" && n.link?.includes(caseId)
+        );
+        for (const notif of unreadChatNotifs) {
+          await fetch(`/api/notifications/${notif.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ read: true }),
+          });
+        }
+      } catch (err) {
+        console.error("Failed to clear chat notifications", err);
+      }
+    };
+    clearChatNotifications();
+  }, [caseId, messages]);
+
   // Scroll to bottom of the chat container whenever messages load or change
   useEffect(() => {
     if (scrollContainerRef.current) {

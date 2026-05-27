@@ -11,7 +11,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileBox, RefreshCw } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileBox, RefreshCw, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -139,7 +139,7 @@ const CASE_HIERARCHY = {
   "Denture": {
     fields: [
       { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Full Arches"] }
+      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Both Arches"] }
     ]
   },
   "Cosmetics": {
@@ -173,6 +173,25 @@ export default function CasesPage() {
 
   const [cases, setCases] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch("/api/notifications");
+      if (res.ok) {
+        const json = await res.json();
+        setNotifications(json.data || []);
+      }
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 8000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchCases = async () => {
     setIsLoading(true);
@@ -957,10 +976,21 @@ export default function CasesPage() {
                           className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
                           onClick={() => router.push(`/client/cases/${c.id}`)}
                         >
-                          <td className="px-6 py-4 text-sm font-medium text-primary">{c.caseNumber || c.id}</td>
+                          <td className="px-6 py-4 text-sm font-medium text-primary"><div className="flex items-center gap-2">
+                               <span>{c.caseNumber || c.id}</span>
+                               {notifications.some((n: any) => !n.read && n.type === "chat_message" && n.link?.includes(c.id)) && (
+                                 <span className="relative flex items-center shrink-0 animate-blink" title="New Message">
+                                   <MessageSquare className="h-4 w-4 text-emerald-500 shrink-0" />
+                                   <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                   </span>
+                                 </span>
+                               )}
+                             </div></td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem})` : "—"}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"}</td>
                           <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>

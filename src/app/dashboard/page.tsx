@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { FolderOpen, CheckCircle2, PauseCircle, XCircle, ClipboardCheck, Timer, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line,
@@ -55,6 +56,32 @@ const recentCases = [
 export default function Dashboard() {
   const router = useRouter();
 
+  const { data: casesData } = useQuery<{ data: any[] }>({
+    queryKey: ["dashboard-cases"],
+    queryFn: async () => {
+      const res = await fetch("/api/cases");
+      if (!res.ok) throw new Error("Failed to fetch cases");
+      return res.json();
+    },
+    refetchInterval: 8000,
+  });
+
+  const cases = casesData?.data || [];
+
+  const activeCount = cases.filter((c: any) => ["scan_received", "scan_verified", "allocated_to_designer", "in_progress", "internal_qc"].includes(c.status)).length;
+  const deliveredCount = cases.filter((c: any) => ["approved", "delivered"].includes(c.status)).length;
+  const pendingCount = cases.filter((c: any) => c.status === "submitted_to_client").length;
+  const holdCount = cases.filter((c: any) => ["on_hold", "scan_not_verified"].includes(c.status)).length;
+  const cancelledCount = cases.filter((c: any) => c.status === "cancelled").length;
+
+  const dynamicKpis = [
+    { label: "Active / In Progress", value: activeCount, icon: FolderOpen, color: "text-primary", bg: "bg-primary/10" },
+    { label: "Delivered", value: deliveredCount, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-100" },
+    { label: "Pending Approval", value: pendingCount, icon: ClipboardCheck, color: "text-yellow-600", bg: "bg-yellow-100" },
+    { label: "On Hold", value: holdCount, icon: PauseCircle, color: "text-blue-600", bg: "bg-blue-100" },
+    { label: "Cancelled", value: cancelledCount, icon: XCircle, color: "text-gray-600", bg: "bg-gray-100" },
+  ];
+
   return (
     <OpsLayout>
       <div className="space-y-6 animate-fade-in">
@@ -65,10 +92,11 @@ export default function Dashboard() {
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          {kpis.map((kpi) => (
+          {dynamicKpis.map((kpi) => (
             <Card
               key={kpi.label}
               className="shadow-card hover:shadow-elevated transition-shadow cursor-pointer"
+              onClick={() => router.push("/cases")}
             >
               <CardContent className="p-5">
                 <div className="flex items-start justify-between gap-2">
@@ -131,29 +159,46 @@ export default function Dashboard() {
 
         {/* Avg TAT trend + Recent cases */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Card className="shadow-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium flex items-center gap-2">
-                <Timer className="h-4 w-4 text-primary" /> Average Turnaround
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-end gap-2">
-                <p className="text-4xl font-semibold text-foreground">4.3</p>
-                <p className="text-sm text-muted-foreground pb-1.5">days</p>
-                <span className="ml-auto text-xs text-green-600 flex items-center gap-1 pb-1.5">
-                  <TrendingUp className="h-3 w-3" /> 12% faster
-                </span>
-              </div>
-              <ResponsiveContainer width="100%" height={120}>
-                <LineChart data={tatTrend}>
-                  <Line type="monotone" dataKey="tat" stroke="hsl(158,64%,28%)" strokeWidth={2.5} dot={{ r: 3 }} />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(158,12%,42%)" />
-                  <Tooltip />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          {holdCount > 0 ? (
+            <Card className="shadow-card border-red-500 bg-red-50/5 relative overflow-hidden animate-blink">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold flex items-center gap-2 text-red-600">
+                  <PauseCircle className="h-4 w-4 shrink-0 text-red-500" /> Cases On Hold
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="h-[188px] flex flex-col justify-center items-center text-center p-4">
+                <div className="bg-red-500/10 text-red-600 rounded-full p-4 mb-2">
+                  <PauseCircle className="h-10 w-10 shrink-0" />
+                </div>
+                <p className="text-5xl font-bold text-red-600">{holdCount}</p>
+                <p className="text-xs font-medium text-red-500 mt-2">Immediate Attention Required</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="shadow-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-medium flex items-center gap-2">
+                  <Timer className="h-4 w-4 text-primary" /> Average Turnaround
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-end gap-2">
+                  <p className="text-4xl font-semibold text-foreground">4.3</p>
+                  <p className="text-sm text-muted-foreground pb-1.5">days</p>
+                  <span className="ml-auto text-xs text-green-600 flex items-center gap-1 pb-1.5">
+                    <TrendingUp className="h-3 w-3" /> 12% faster
+                  </span>
+                </div>
+                <ResponsiveContainer width="100%" height={120}>
+                  <LineChart data={tatTrend}>
+                    <Line type="monotone" dataKey="tat" stroke="hsl(158,64%,28%)" strokeWidth={2.5} dot={{ r: 3 }} />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(158,12%,42%)" />
+                    <Tooltip />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="lg:col-span-2 shadow-card">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">

@@ -10,6 +10,11 @@ import { CaseChat } from "@/src/components/CaseChat"
 import { CASE_LIFECYCLE_STEPS, CASE_STATUS_TO_LIFECYCLE_STEP } from "@/src/db/schema/case"
 import { useState, useRef } from "react"
 import { toast } from "sonner"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
+import { Label } from "@/src/components/ui/label"
+import { Textarea } from "@/src/components/ui/textarea"
+import { HOLD_REASONS } from "@/src/lib/case-utils"
 
 type CaseRecord = {
   id: string
@@ -47,6 +52,7 @@ type CaseActivity = {
   label: string
   actor: string
   actionAt: string
+  actionTime?: string
 }
 
 function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
@@ -142,17 +148,31 @@ export function CaseDetailView({
   const chatRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [isHoldDialogOpen, setIsHoldDialogOpen] = useState(false)
+  const [holdReasonSelect, setHoldReasonSelect] = useState("")
+  const [holdCustomReason, setHoldCustomReason] = useState("")
 
-  const handleStatusChange = async (targetStatus: string) => {
+  const handleStatusChange = async (targetStatus: string, holdReason?: string) => {
+    if (targetStatus === "on_hold" && !holdReason) {
+      setIsHoldDialogOpen(true)
+      setHoldReasonSelect("")
+      setHoldCustomReason("")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const res = await fetch(`/api/cases/${caseId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: targetStatus }),
+        body: JSON.stringify({
+          status: targetStatus,
+          ...(holdReason ? { holdReason } : {})
+        }),
       })
       if (res.ok) {
         toast.success(`Case status updated successfully!`)
+        setIsHoldDialogOpen(false)
         router.refresh()
       } else {
         const err = await res.json()
@@ -163,6 +183,19 @@ export function CaseDetailView({
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleConfirmHold = () => {
+    if (!holdReasonSelect) {
+      toast.error("Please select a hold reason.")
+      return
+    }
+    if (holdReasonSelect === "Other (please specify)" && !holdCustomReason.trim()) {
+      toast.error("Please specify your reason for holding the case.")
+      return
+    }
+    const finalReason = holdReasonSelect === "Other (please specify)" ? holdCustomReason.trim() : holdReasonSelect
+    void handleStatusChange("on_hold", finalReason)
   }
 
   const handleRequestChanges = () => {
@@ -253,7 +286,7 @@ export function CaseDetailView({
               <DetailRow label="Category" value={caseRecord.category || "—"} />
               <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
               <DetailRow label="Model Required" value={modelRequired} />
-              <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem})` : "—"} />
+              <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
               <DetailRow label="Designer" value={caseRecord.designerName || caseRecord.designerId || "—"} />
               <DetailRow label="QC" value={caseRecord.qcName || caseRecord.qcId || "—"} />
               <DetailRow label="Account Manager" value={caseRecord.accountManagerName || caseRecord.accountManagerId || "—"} />
@@ -379,7 +412,7 @@ export function CaseDetailView({
                     <div className="pb-1">
                       <p className="text-xs font-semibold text-foreground">{activity.label}</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {new Date(activity.actionAt).toLocaleDateString('en-CA')} · {activity.actor}
+                        {new Date(activity.actionAt).toLocaleDateString('en-CA')} at {activity.actionTime || new Date(activity.actionAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} · {activity.actor}
                       </p>
                     </div>
                   </div>
@@ -524,6 +557,73 @@ export function CaseDetailView({
           </Card>
         </div>
       </div>
+
+      {/* Hold Reason Dropdown Dialog */}
+      <Dialog open={isHoldDialogOpen} onOpenChange={(open) => { if (!open) setIsHoldDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-[480px] bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
+              ⏸ Hold Case
+            </DialogTitle>
+            <p className="text-xs text-gray-500">
+              Please specify the reason before putting this case on hold.
+            </p>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="detail-hold-reason-select" className="text-sm font-semibold text-gray-700">
+                Hold Reason
+              </Label>
+              <Select value={holdReasonSelect} onValueChange={setHoldReasonSelect}>
+                <SelectTrigger id="detail-hold-reason-select" className="w-full bg-gray-50 border border-gray-300 text-gray-900 focus:ring-emerald-500 rounded-md">
+                  <SelectValue placeholder="Select a hold reason..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-gray-200 text-gray-900 shadow-lg rounded-md">
+                  {HOLD_REASONS.map((reason) => (
+                    <SelectItem key={reason} value={reason} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                      {reason}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {holdReasonSelect === "Other (please specify)" && (
+              <div className="space-y-2">
+                <Label htmlFor="detail-hold-custom-reason" className="text-sm font-semibold text-gray-700">
+                  Specify details
+                </Label>
+                <Textarea
+                  id="detail-hold-custom-reason"
+                  value={holdCustomReason}
+                  onChange={(e) => setHoldCustomReason(e.target.value)}
+                  placeholder="Please specify other hold reason details..."
+                  className="min-h-[100px] bg-gray-50 border border-gray-300 text-gray-900 placeholder:text-gray-400 focus-visible:ring-emerald-500 rounded-md"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsHoldDialogOpen(false)}
+              className="text-gray-700 border-gray-300 font-normal hover:bg-gray-100"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmHold}
+              disabled={isSubmitting || !holdReasonSelect || (holdReasonSelect === "Other (please specify)" && !holdCustomReason.trim())}
+              className="text-white bg-emerald-600 hover:bg-emerald-700 font-normal rounded-md"
+            >
+              Confirm
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

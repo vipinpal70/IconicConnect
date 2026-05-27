@@ -115,3 +115,11 @@ body {
 .animate-fade-in {
   animation: fade-in 0.4s ease-out forwards;
 }
+
+@keyframes blinker {
+  50% { opacity: 0.3; }
+}
+
+.animate-blink {
+  animation: blinker 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

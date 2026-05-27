@@ -19,6 +19,7 @@ export interface OfferRecord {
   targetClients: string[]
   targetLocations: string[]
   sponsored: boolean
+  active: boolean
   createdAt: string
   updatedAt: string
 }
@@ -35,6 +36,7 @@ export interface OfferClaimRecord {
   labName: string
   email: string
   phone: string
+  status: string
 }
 
 export function isOfferCategory(value: string): value is OfferCategory {

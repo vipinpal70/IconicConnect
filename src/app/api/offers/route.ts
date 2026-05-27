@@ -17,6 +17,7 @@ type OfferInput = {
   discount?: string
   validTill?: string
   sponsored?: boolean
+  active?: boolean
   targetClients?: string[]
   targetLocations?: string[]
 }
@@ -79,6 +80,7 @@ async function updateOffer(req: NextRequest) {
   const discount = body.discount?.trim() || current.discount
   const validTill = body.validTill?.trim() || current.validTill
   const sponsored = typeof body.sponsored === "boolean" ? body.sponsored : current.sponsored
+  const active = typeof body.active === "boolean" ? body.active : current.active
   const targetClients =
     body.targetClients !== undefined ? normalizeTargets(body.targetClients) : current.targetClients
   const targetLocations =
@@ -113,6 +115,7 @@ async function updateOffer(req: NextRequest) {
       discount,
       validTill,
       sponsored,
+      active,
       targetClients,
       targetLocations,
       updatedAt: new Date(),
@@ -135,7 +138,10 @@ export async function GET() {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
     }
 
-    const rows = await db.select().from(offers).orderBy(desc(offers.createdAt))
+    const isAdmin = isValidRoleForType("admin_portal", userContext.profile.role)
+    const rows = isAdmin
+      ? await db.select().from(offers).orderBy(desc(offers.createdAt))
+      : await db.select().from(offers).where(eq(offers.active, true)).orderBy(desc(offers.createdAt))
     return NextResponse.json({ data: rows })
   } catch (error) {
     console.error("[api/offers GET]", error)
@@ -167,6 +173,7 @@ export async function POST(req: NextRequest) {
     const discount = body.discount?.trim() ?? ""
     const validTill = body.validTill?.trim() ?? ""
     const sponsored = Boolean(body.sponsored)
+    const active = body.active !== undefined ? Boolean(body.active) : true
     const targetClients = normalizeTargets(body.targetClients)
     const targetLocations = normalizeTargets(body.targetLocations)
 
@@ -199,6 +206,7 @@ export async function POST(req: NextRequest) {
         discount,
         validTill,
         sponsored,
+        active,
         targetClients,
         targetLocations,
       })

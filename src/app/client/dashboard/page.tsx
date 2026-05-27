@@ -6,6 +6,7 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { cases, activityFeed } from "@/src/data/demoData";
 import { FolderOpen, CheckCircle2, ClipboardCheck, Timer, TrendingUp, Inbox } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line
@@ -43,6 +44,32 @@ const volumeData = [
 
 export default function ClientDashboard() {
   const router = useRouter();
+
+  const { data: casesData } = useQuery<{ data: any[] }>({
+    queryKey: ["client-dashboard-cases"],
+    queryFn: async () => {
+      const res = await fetch("/api/cases");
+      if (!res.ok) throw new Error("Failed to fetch cases");
+      return res.json();
+    },
+    refetchInterval: 8000,
+  });
+
+  const liveCases = casesData?.data || [];
+  const activeCount = liveCases.filter((c: any) => ["scan_received", "scan_verified", "allocated_to_designer", "in_progress", "internal_qc"].includes(c.status)).length;
+  const deliveredCount = liveCases.filter((c: any) => ["approved", "delivered"].includes(c.status)).length;
+  const pendingCount = liveCases.filter((c: any) => ["submitted_to_client", "client_feedback"].includes(c.status)).length;
+  const holdCasesCount = liveCases.filter((c: any) => c.status === "on_hold").length;
+
+  const dynamicKpis = [
+    { label: "Active Designs", value: activeCount, icon: Inbox, color: "text-blue-500", bg: "bg-blue-500/10" },
+    { label: "Delivered (Mo)", value: deliveredCount, icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { label: "Awaiting Action", value: pendingCount, icon: ClipboardCheck, color: "text-amber-500", bg: "bg-amber-500/10" },
+    holdCasesCount > 0
+      ? { label: "Cases On Hold", value: holdCasesCount, icon: Timer, color: "text-red-500 animate-blink", bg: "bg-red-500/10 border-red-500/30" }
+      : { label: "Avg. Turnaround", value: "4.3d", icon: Timer, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+  ];
+
   const recentCases = [...cases].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(0, 5);
 
   return (
@@ -60,8 +87,12 @@ export default function ClientDashboard() {
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {kpis.map((k) => (
-            <Card key={k.label} className="shadow-card hover:shadow-glow transition-all border-border/50">
+          {dynamicKpis.map((k) => (
+            <Card
+              key={k.label}
+              className="shadow-card hover:shadow-glow transition-all border-border/50 cursor-pointer"
+              onClick={() => router.push("/client/cases")}
+            >
               <CardContent className="p-5">
                 <div className="flex items-start justify-between gap-2">
                   <div>

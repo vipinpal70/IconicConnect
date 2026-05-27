@@ -96,6 +96,7 @@ export type CaseTimelineEvent = {
   label: string
   actor: string
   actionAt: string
+  actionTime?: string
 }
 
 export const cases = pgTable('cases', {

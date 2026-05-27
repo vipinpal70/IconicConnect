@@ -7,6 +7,7 @@ import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent } from "@/src/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
+import { Input } from "@/src/components/ui/input"
 import { ExternalLink, Loader2, Sparkles, Tag, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { OFFER_CATEGORIES, type OfferClaimRecord, type OfferRecord } from "@/src/lib/offers"
@@ -36,6 +37,7 @@ function formatDate(value: string) {
 export default function Offers() {
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<(typeof categories)[number]>("All")
+  const [search, setSearch] = useState("")
   const [selectedOffer, setSelectedOffer] = useState<OfferRecord | null>(null)
 
   const offersQuery = useQuery<OffersResponse>({
@@ -88,13 +90,26 @@ export default function Offers() {
   })
 
   const offers = useMemo(() => offersQuery.data?.data ?? [], [offersQuery.data])
-  const claimedOfferIds = useMemo(() => {
-    return new Set((claimsQuery.data?.data ?? []).map((claim) => claim.offerId))
+
+  const claimsByOfferId = useMemo(() => {
+    const map = new Map<string, OfferClaimRecord>()
+    for (const claim of (claimsQuery.data?.data ?? [])) {
+      map.set(claim.offerId, claim)
+    }
+    return map
   }, [claimsQuery.data])
 
   const list = useMemo(() => {
-    return filter === "All" ? offers : offers.filter((offer) => offer.category === filter)
-  }, [filter, offers])
+    let filtered = filter === "All" ? offers : offers.filter((offer) => offer.category === filter)
+    if (!search.trim()) return filtered
+    const q = search.toLowerCase()
+    return filtered.filter(
+      (offer) =>
+        offer.title.toLowerCase().includes(q) ||
+        offer.brand.toLowerCase().includes(q) ||
+        offer.description.toLowerCase().includes(q)
+    )
+  }, [filter, offers, search])
 
   const handleClaim = async (offer: OfferRecord) => {
     setSelectedOffer(offer)
@@ -115,23 +130,29 @@ export default function Offers() {
           </p>
         </div>
 
-        <Card className="shadow-card border-border/60">
-          <CardContent className="p-4">
-            <div className="flex flex-wrap gap-2">
-              {categories.map((category) => (
-                <Button
-                  key={category}
-                  type="button"
-                  variant={filter === category ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFilter(category)}
-                >
-                  {category}
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card p-4 rounded-lg border border-border/60 shadow-sm">
+          <div className="flex flex-wrap gap-2">
+            {categories.map((category) => (
+              <Button
+                key={category}
+                type="button"
+                variant={filter === category ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilter(category)}
+              >
+                {category}
+              </Button>
+            ))}
+          </div>
+          <div className="w-full md:w-72">
+            <Input
+              placeholder="Search by title, brand..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9"
+            />
+          </div>
+        </div>
 
         {offersQuery.isLoading || claimsQuery.isLoading ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -163,10 +184,10 @@ export default function Offers() {
             <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">
               <Tag className="h-10 w-10 text-muted-foreground" />
               <h3 className="mt-3 text-sm font-semibold text-foreground">
-                {filter === "All" ? "No offers available yet" : "No offers match this category"}
+                {search ? "No offers match your search." : filter === "All" ? "No offers available yet" : "No offers match this category"}
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                {filter === "All"
+                {search ? "Try searching for a different keyword." : filter === "All"
                   ? "Check back after the team publishes new partner offers."
                   : "Choose another category to see more offers."}
               </p>
@@ -175,7 +196,9 @@ export default function Offers() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {list.map((offer) => {
-              const claimed = claimedOfferIds.has(offer.id)
+              const claimRecord = claimsByOfferId.get(offer.id)
+              const claimed = Boolean(claimRecord)
+              const delivered = claimRecord?.status === "delivered"
 
               return (
                 <Card
@@ -207,13 +230,15 @@ export default function Offers() {
                       <span className="text-xs text-muted-foreground">Valid till {formatDate(offer.validTill)}</span>
                     </div>
                     <Button
-                      className="w-full"
+                      className="w-full font-medium"
                       variant={claimed ? "secondary" : "outline"}
                       disabled={claimed || claimMutation.isPending}
                       onClick={() => handleClaim(offer)}
                     >
                       {claimMutation.isPending && selectedOffer?.id === offer.id ? (
                         <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      ) : delivered ? (
+                        "Delivered"
                       ) : claimed ? (
                         "Claimed"
                       ) : (

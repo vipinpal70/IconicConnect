@@ -14,6 +14,7 @@ export const offers = pgTable(
     targetClients: jsonb("target_clients").$type<string[]>().notNull().default([]),
     targetLocations: jsonb("target_locations").$type<string[]>().notNull().default([]),
     sponsored: boolean("sponsored").default(false).notNull(),
+    active: boolean("active").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -39,6 +40,7 @@ export const offerClaims = pgTable(
     clientId: uuid("client_id")
       .notNull()
       .references(() => profiles.id, { onDelete: "cascade" }),
+    status: varchar("status", { length: 50 }).default("claimed").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

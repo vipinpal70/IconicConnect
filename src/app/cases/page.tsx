@@ -1,14 +1,14 @@
 "use client"
 
 import { useMemo, useState, useRef, useEffect } from "react";
-import { generateCaseId } from "@/src/lib/case-utils";
+import { generateCaseId, HOLD_REASONS } from "@/src/lib/case-utils";
 import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
-import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -200,7 +200,7 @@ const CASE_HIERARCHY = {
   "Denture": {
     fields: [
       { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Full Arches"] },
+      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Both Arches"] },
     ],
   },
   "Cosmetics": {
@@ -263,6 +263,7 @@ export default function CasesPage() {
   const [selectedQcId, setSelectedQcId] = useState<string>("");
   const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null);
   const [caseActionReason, setCaseActionReason] = useState("");
+  const [holdReasonSelect, setHoldReasonSelect] = useState("");
   const [designUploadCaseId, setDesignUploadCaseId] = useState<string | null>(null);
   const [designUploadCaseNumber, setDesignUploadCaseNumber] = useState<string | null>(null);
   const [designUploadClientId, setDesignUploadClientId] = useState<string | null>(null);
@@ -301,6 +302,17 @@ export default function CasesPage() {
     },
   });
 
+  const { data: notifications = [] } = useQuery<any[]>({
+    queryKey: ["unread-notifications"],
+    queryFn: async () => {
+      const res = await fetch("/api/notifications");
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.data || [];
+    },
+    refetchInterval: 8000,
+  });
+
   const handleUpdate = async (
     caseId: string,
     patch: Record<string, string | number | boolean | null>,
@@ -335,21 +347,40 @@ export default function CasesPage() {
   const openCaseActionDialog = (caseId: string, action: CaseActionType, caseNumber?: string | null) => {
     setPendingCaseAction({ caseId, action, caseNumber });
     setCaseActionReason("");
+    setHoldReasonSelect("");
   };
 
   const closeCaseActionDialog = () => {
     setPendingCaseAction(null);
     setCaseActionReason("");
+    setHoldReasonSelect("");
   };
 
   const confirmCaseAction = async () => {
     if (!pendingCaseAction) return;
     const actionConfig = CASE_ACTIONS[pendingCaseAction.action];
-    const reason = caseActionReason.trim();
-    if (actionConfig.reasonKey && !reason) {
-      toast.error(`Please enter a ${actionConfig.reasonLabel?.toLowerCase() || "reason"}.`);
-      return;
+    let reason = caseActionReason.trim();
+
+    if (pendingCaseAction.action === "hold") {
+      if (!holdReasonSelect) {
+        toast.error("Please select a hold reason.");
+        return;
+      }
+      if (holdReasonSelect === "Other (please specify)") {
+        if (!reason) {
+          toast.error("Please specify your reason for holding the case.");
+          return;
+        }
+      } else {
+        reason = holdReasonSelect;
+      }
+    } else {
+      if (actionConfig.reasonKey && !reason) {
+        toast.error(`Please enter a ${actionConfig.reasonLabel?.toLowerCase() || "reason"}.`);
+        return;
+      }
     }
+
     const patch = actionConfig.reasonKey
       ? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
       : { status: actionConfig.status };
@@ -874,7 +905,7 @@ export default function CasesPage() {
                     ))}
 
                     <div className="space-y-2">
-                      <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                      <Label>Tooth Selection ({toothSystem === "USA" ? "Universal Numbering System" : "FDI Numbering System"})</Label>
                       <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
                     </div>
                     <div className="space-y-2">
@@ -1101,6 +1132,7 @@ export default function CasesPage() {
                       // QC review actions are blocked if the QC is also
                       // the designer on this case (no self-review).
                       const canDoQcActions = isQc && isQcOnCase && !isDesignerOnCase;
+                      const hasUnreadChat = notifications.some((n: any) => !n.read && n.type === "chat_message" && n.link?.includes(c.id));
 
                       return (
                         <tr
@@ -1108,10 +1140,23 @@ export default function CasesPage() {
                           className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
                           onClick={() => router.push(`/cases/${c.id}`)}
                         >
-                          <td className="px-6 py-4 text-sm font-medium text-primary">{c.caseNumber || c.id}</td>
+                          <td className="px-6 py-4 text-sm font-medium text-primary">
+                            <div className="flex items-center gap-2">
+                              <span>{c.caseNumber || c.id}</span>
+                              {hasUnreadChat && (
+                                <span className="relative flex items-center shrink-0 animate-blink" title="New Message">
+                                  <MessageSquare className="h-4 w-4 text-emerald-500 shrink-0" />
+                                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                  </span>
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSys})` : "—"}</td>
+                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSys === "USA" ? "Universal" : toothSys})` : "—"}</td>
                           <td className="px-6 py-4"><StatusBadge status={c.status} role="internal" /></td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
@@ -1172,6 +1217,13 @@ export default function CasesPage() {
                                     <Button size="sm" variant="outline" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Sent case back to design")}
                                       className="h-8 text-xs">Back to designer</Button>
+                                  )}
+                                  {c.status === "on_hold" && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
+                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
+                                      <RefreshCw className="h-3.5 w-3.5 mr-1" /> Resume Case
+                                    </Button>
                                   )}
                                 </>
                               )}
@@ -1240,6 +1292,13 @@ export default function CasesPage() {
                                   {isQcOnCase && isDesignerOnCase && c.status === "internal_qc" && (
                                     <span className="text-xs text-amber-600 italic px-1">Self-review blocked</span>
                                   )}
+                                  {c.status === "on_hold" && (c.qcId === activeUserId || c.designerId === activeUserId) && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
+                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
+                                      <RefreshCw className="h-3.5 w-3.5 mr-1" /> Resume Case
+                                    </Button>
+                                  )}
                                 </>
                               )}
 
@@ -1272,9 +1331,15 @@ export default function CasesPage() {
                                     </Button>
                                   )}
 
-                                  {/* Actions for cases assigned to this user as designer */}
                                   {isDesignerOnCase && (
                                     <>
+                                      {c.status === "on_hold" && (
+                                        <Button size="sm" disabled={isMutating}
+                                          onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
+                                          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
+                                          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Resume Case
+                                        </Button>
+                                      )}
                                       {c.status === "allocated_to_designer" && (
                                         <div className="flex gap-2 flex-wrap">
                                           <Button size="sm" disabled={isMutating}
@@ -1376,24 +1441,58 @@ export default function CasesPage() {
             </p>
           </DialogHeader>
           {pendingCaseAction && CASE_ACTIONS[pendingCaseAction.action].reasonKey && (
-            <div className="grid gap-2 py-4">
+            <div className="grid gap-3 py-4">
               <Label htmlFor="case-action-reason" className="text-sm font-semibold text-zinc-200">
                 {CASE_ACTIONS[pendingCaseAction.action].reasonLabel}
               </Label>
-              <Textarea
-                id="case-action-reason"
-                value={caseActionReason}
-                onChange={(e) => setCaseActionReason(e.target.value)}
-                placeholder={`Add ${CASE_ACTIONS[pendingCaseAction.action].reasonLabel?.toLowerCase()}`}
-                className="min-h-[120px] bg-primary/80 border-primary-50/50 text-white placeholder:text-zinc-400 focus-visible:ring-emerald-500"
-              />
+              {pendingCaseAction.action === "hold" ? (
+                <div className="space-y-3">
+                  <Select value={holdReasonSelect} onValueChange={setHoldReasonSelect}>
+                    <SelectTrigger className="w-full bg-primary/80 border-primary-50/50 text-white focus:ring-emerald-500">
+                      <SelectValue placeholder="Select a hold reason..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-950 border border-zinc-800 text-white shadow-2xl">
+                      {HOLD_REASONS.map((reason) => (
+                        <SelectItem key={reason} value={reason} className="hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer">
+                          {reason}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {holdReasonSelect === "Other (please specify)" && (
+                    <Textarea
+                      id="case-action-reason"
+                      value={caseActionReason}
+                      onChange={(e) => setCaseActionReason(e.target.value)}
+                      placeholder="Please specify other hold reason details..."
+                      className="min-h-[100px] bg-primary/80 border-primary-50/50 text-white placeholder:text-zinc-400 focus-visible:ring-emerald-500"
+                    />
+                  )}
+                </div>
+              ) : (
+                <Textarea
+                  id="case-action-reason"
+                  value={caseActionReason}
+                  onChange={(e) => setCaseActionReason(e.target.value)}
+                  placeholder={`Add ${CASE_ACTIONS[pendingCaseAction.action].reasonLabel?.toLowerCase()}`}
+                  className="min-h-[120px] bg-primary/80 border-primary-50/50 text-white placeholder:text-zinc-400 focus-visible:ring-emerald-500"
+                />
+              )}
             </div>
           )}
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="ghost" onClick={closeCaseActionDialog} className="text-white hover:bg-zinc-800"
               disabled={updatingId === pendingCaseAction?.caseId}>Cancel</Button>
             <Button
-              disabled={updatingId === pendingCaseAction?.caseId || (pendingCaseAction ? Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim()) : true)}
+              disabled={
+                updatingId === pendingCaseAction?.caseId ||
+                (pendingCaseAction
+                  ? pendingCaseAction.action === "hold"
+                    ? !holdReasonSelect || (holdReasonSelect === "Other (please specify)" && !caseActionReason.trim())
+                    : Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim())
+                  : true)
+              }
               onClick={confirmCaseAction}
               className={
                 pendingCaseAction?.action === "reject" ? "bg-red-600 hover:bg-red-700 text-white font-semibold"

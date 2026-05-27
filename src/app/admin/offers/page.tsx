@@ -71,6 +71,8 @@ export default function AdminOffers() {
   const [open, setOpen] = useState(false)
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftOffer>(initialDraft)
+  const [offerSearch, setOfferSearch] = useState("")
+  const [claimSearch, setClaimSearch] = useState("")
 
   const offersQuery = useQuery<OffersResponse>({
     queryKey: ["offers"],
@@ -150,8 +152,74 @@ export default function AdminOffers() {
     },
   })
 
-  const offers = useMemo(() => offersQuery.data?.data ?? [], [offersQuery.data])
-  const claims = useMemo(() => claimsQuery.data?.data ?? [], [claimsQuery.data])
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const res = await fetch(`/api/offers?id=${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to update offer status")
+      }
+      return json
+    },
+    onSuccess: () => {
+      toast.success("Offer status updated")
+      queryClient.invalidateQueries({ queryKey: ["offers"] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update offer status")
+    },
+  })
+
+  const deliverMutation = useMutation({
+    mutationFn: async (claimId: string) => {
+      const res = await fetch(`/api/offers/claims?id=${encodeURIComponent(claimId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "delivered" }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to deliver offer")
+      }
+      return json
+    },
+    onSuccess: () => {
+      toast.success("Offer marked as delivered")
+      queryClient.invalidateQueries({ queryKey: ["offer-claims"] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to deliver offer")
+    },
+  })
+
+  const offers = useMemo(() => {
+    const raw = offersQuery.data?.data ?? []
+    if (!offerSearch.trim()) return raw
+    const q = offerSearch.toLowerCase()
+    return raw.filter(
+      (o) =>
+        o.title.toLowerCase().includes(q) ||
+        o.brand.toLowerCase().includes(q) ||
+        o.category.toLowerCase().includes(q)
+    )
+  }, [offersQuery.data, offerSearch])
+
+  const claims = useMemo(() => {
+    const raw = claimsQuery.data?.data ?? []
+    if (!claimSearch.trim()) return raw
+    const q = claimSearch.toLowerCase()
+    return raw.filter(
+      (c) =>
+        c.offerTitle.toLowerCase().includes(q) ||
+        c.offerBrand.toLowerCase().includes(q) ||
+        c.clientName.toLowerCase().includes(q) ||
+        (c.labName && c.labName.toLowerCase().includes(q))
+    )
+  }, [claimsQuery.data, claimSearch])
 
   const submitOffer = async () => {
     if (!draft.title.trim() || !draft.brand.trim()) {
@@ -316,7 +384,7 @@ export default function AdminOffers() {
                   <div className="space-y-2">
                     <Label>Target location (optional)</Label>
                     <Input
-                      placeholder="e.g. USA"
+                      placeholder="e.g. Universal"
                       value={draft.targetLocations[0] ?? ""}
                       onChange={(e) =>
                         setDraft({
@@ -350,13 +418,24 @@ export default function AdminOffers() {
           </Dialog>
         </div>
 
+        <div className="flex items-center gap-4 bg-card p-4 rounded-lg border border-border/50 shadow-sm max-w-sm">
+          <div className="flex-1">
+            <Input
+              placeholder="Search offers by title or brand..."
+              value={offerSearch}
+              onChange={(e) => setOfferSearch(e.target.value)}
+              className="h-9"
+            />
+          </div>
+        </div>
+
         <Card className="shadow-card border-border/50 overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["Offer", "Brand", "Category", "Discount", "Targeting", "Valid till", "Actions"].map((h) => (
+                    {["Offer", "Brand", "Category", "Discount", "Targeting", "Valid till", "Active", "Actions"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
                         {h}
                       </th>
@@ -386,13 +465,16 @@ export default function AdminOffers() {
                           <div className="h-4 w-20 rounded bg-muted" />
                         </td>
                         <td className="px-4 py-4">
+                          <div className="h-4 w-12 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
                           <div className="h-8 w-16 rounded bg-muted" />
                         </td>
                       </tr>
                     ))
                   ) : offersQuery.error ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center">
+                      <td colSpan={8} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2 text-red-500">
                           <AlertCircle className="h-8 w-8" />
                           <p>{(offersQuery.error as Error).message}</p>
@@ -401,8 +483,8 @@ export default function AdminOffers() {
                     </tr>
                   ) : offers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                        No offers published yet.
+                      <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                        {offerSearch ? "No offers match your search." : "No offers published yet."}
                       </td>
                     </tr>
                   ) : (
@@ -431,6 +513,15 @@ export default function AdminOffers() {
                           {formatDate(offer.validTill)}
                         </td>
                         <td className="px-4 py-4">
+                          <Switch
+                            checked={offer.active !== false}
+                            onCheckedChange={(checked) =>
+                              toggleActiveMutation.mutate({ id: offer.id, active: checked })
+                            }
+                            disabled={toggleActiveMutation.isPending}
+                          />
+                        </td>
+                        <td className="px-4 py-4">
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" onClick={() => openEditDialog(offer)}>
                               <Pencil className="h-4 w-4" />
@@ -456,15 +547,25 @@ export default function AdminOffers() {
 
         <Card className="shadow-card border-border/50 overflow-hidden">
           <CardContent className="p-0">
-            <div className="border-b border-border/60 px-5 py-4">
-              <h2 className="text-lg font-semibold text-foreground">Claimed Offers</h2>
-              <p className="text-sm text-muted-foreground">Client details are shown here when an offer is claimed.</p>
+            <div className="border-b border-border/60 px-5 py-4 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Claimed Offers</h2>
+                <p className="text-sm text-muted-foreground">Client details are shown here when an offer is claimed.</p>
+              </div>
+              <div className="w-full sm:w-72">
+                <Input
+                  placeholder="Search claims by lab, client, offer..."
+                  value={claimSearch}
+                  onChange={(e) => setClaimSearch(e.target.value)}
+                  className="h-9"
+                />
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["Offer", "Client name", "Lab name", "Email", "Phone", "Claimed at"].map((h) => (
+                    {["Offer", "Client name", "Lab name", "Email", "Phone", "Claimed at", "Status", "Actions"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
                         {h}
                       </th>
@@ -493,11 +594,17 @@ export default function AdminOffers() {
                         <td className="px-4 py-4">
                           <div className="h-4 w-28 rounded bg-muted" />
                         </td>
+                        <td className="px-4 py-4">
+                          <div className="h-4 w-16 rounded bg-muted" />
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="h-8 w-16 rounded bg-muted" />
+                        </td>
                       </tr>
                     ))
                   ) : claimsQuery.error ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-12 text-center">
+                      <td colSpan={8} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2 text-red-500">
                           <AlertCircle className="h-8 w-8" />
                           <p>{(claimsQuery.error as Error).message}</p>
@@ -506,8 +613,8 @@ export default function AdminOffers() {
                     </tr>
                   ) : claims.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                        No offers have been claimed yet.
+                      <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                        {claimSearch ? "No claimed offers match your search." : "No offers have been claimed yet."}
                       </td>
                     </tr>
                   ) : (
@@ -528,6 +635,37 @@ export default function AdminOffers() {
                         <td className="px-4 py-4 text-muted-foreground">{claim.phone}</td>
                         <td className="px-4 py-4 text-muted-foreground whitespace-nowrap">
                           {formatDate(claim.claimedAt)}
+                        </td>
+                        <td className="px-4 py-4">
+                          <Badge
+                            variant={claim.status === "delivered" ? "default" : "secondary"}
+                            className={
+                              claim.status === "delivered"
+                                ? "bg-emerald-500 hover:bg-emerald-600 text-white border-0"
+                                : "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-0"
+                            }
+                          >
+                            {claim.status === "delivered" ? "Delivered" : "Claimed"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-4">
+                          {claim.status !== "delivered" ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-600 text-emerald-500"
+                              onClick={() => deliverMutation.mutate(claim.id)}
+                              disabled={deliverMutation.isPending}
+                            >
+                              {deliverMutation.isPending ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                "Deliver"
+                              )}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                       </tr>
                     ))

@@ -184,7 +184,7 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
                 : "hover:text-foreground text-muted-foreground"
             )}
           >
-            USA
+            Universal
           </button>
           <button
             type="button"

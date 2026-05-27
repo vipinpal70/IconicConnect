@@ -33,3 +33,15 @@ function getFallbackPrefix(category: string): string {
     .slice(0, 3)
     .padEnd(3, 'X'); // Pad with X if less than 3 chars
 }
+
+export const HOLD_REASONS = [
+  "Scan has artifacts",
+  "Scan is not good",
+  "Bite is not Aligned",
+  "Margin is not good",
+  "Order set-up seems Wrong",
+  "No space to design crown/implant",
+  "Implant Kit not found",
+  "Scans missing",
+  "Other (please specify)"
+] as const;

@@ -280,6 +280,8 @@ export async function PUT(
             updateData.status = target;
           } else if (target === 'on_hold' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;
+          } else if (target === 'scan_received' && current === 'on_hold' && (caseRecord.qcId === profile.id || caseRecord.designerId === profile.id)) {
+            updateData.status = target;
           } else if (target === 'client_feedback' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;
           } else {
@@ -342,6 +344,8 @@ export async function PUT(
             if (target === 'scan_verified' && current === 'scan_received') {
               updateData.status = target;
             } else if (target === 'in_progress' && current === 'allocated_to_designer') {
+              updateData.status = target;
+            } else if (target === 'scan_received' && current === 'on_hold' && caseRecord.designerId === profile.id) {
               updateData.status = target;
             } else if (target === 'internal_qc' && current === 'in_progress') {
               const finalQcId = body.qcId !== undefined ? body.qcId : caseRecord.qcId;
