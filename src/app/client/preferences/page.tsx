@@ -154,52 +154,52 @@ export default function ClientPreferencesPage() {
 
   return (
     <ClientLayout>
-      <div className="mx-auto max-w-5xl space-y-6 animate-fade-in">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+      <div className="mx-auto max-w-5xl space-y-4 animate-fade-in">
+        <div className="flex flex-col gap-1.5 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Client</p>
-            <h1 className="text-2xl font-semibold text-foreground">{headerName}</h1>
-            <p className="text-sm text-muted-foreground">Create, edit, and manage multiple preference forms linked to your account.</p>
+            <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Client</p>
+            <h1 className="text-lg font-bold text-foreground">{headerName}</h1>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Create, edit, and manage multiple preference forms linked to your account.</p>
           </div>
-          <Button variant="outline" className="gap-2 w-fit" onClick={() => { setDraft(emptyForm()); setEditingId(null) }}>
-            <Plus className="h-4 w-4" />
+          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs w-fit" onClick={() => { setDraft(emptyForm()); setEditingId(null) }}>
+            <Plus className="h-3.5 w-3.5" />
             New Form
           </Button>
         </div>
 
-        <Card className="shadow-card">
-          <CardContent className="p-6 space-y-4">
+        <Card className="shadow-card border-border/50">
+          <CardContent className="p-3.5 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold text-foreground">Saved Forms</h3>
-                <p className="text-sm text-muted-foreground">Forms are stored under your account and visible to the admin team.</p>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Saved Forms</h3>
+                <p className="text-[11px] text-muted-foreground">Forms are stored under your account and visible to the admin team.</p>
               </div>
-              <Badge variant="secondary">{loading ? "Loading..." : `${forms.length} form(s)`}</Badge>
+              <Badge variant="secondary" className="text-[10px] scale-95">{loading ? "Loading..." : `${forms.length} form(s)`}</Badge>
             </div>
 
             {forms.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">No preference forms have been added yet.</p>
+              <p className="text-xs text-muted-foreground py-4 text-center">No preference forms have been added yet.</p>
             ) : (
-              <div className="grid gap-4">
+              <div className="grid gap-3">
                 {forms.map((form) => (
-                  <Card key={form.id} className="border-border/60">
-                    <CardContent className="p-4 space-y-3">
+                  <Card key={form.id} className="border-border/50 bg-muted/[0.02]">
+                    <CardContent className="p-3 space-y-2.5">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h4 className="font-semibold text-foreground">{form.formName}</h4>
-                          <p className="text-xs text-muted-foreground">Created {new Date(form.createdAt).toLocaleDateString()}</p>
+                          <h4 className="font-bold text-xs text-foreground">{form.formName}</h4>
+                          <p className="text-[10px] text-muted-foreground">Created {new Date(form.createdAt).toLocaleDateString()}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => editForm(form)}>
-                            <PencilLine className="h-4 w-4" />
+                        <div className="flex items-center gap-1.5">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => editForm(form)}>
+                            <PencilLine className="h-3.5 w-3.5 text-muted-foreground" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteForm(form.id)}>
-                            <Trash2 className="h-4 w-4" />
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => deleteForm(form.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </div>
 
-                      <div className="grid gap-2 text-sm md:grid-cols-2">
+                      <div className="grid gap-2 text-xs md:grid-cols-2">
                         <Summary label="Occlusion" value={form.payload.occlusion.defaultValues || "-"} />
                         <Summary label="Proximal Contacts" value={form.payload.proximalContacts.defaultValues || "-"} />
                         <Summary label="Distal-most Crown" value={form.payload.distalMostCrownContact.defaultValues || "-"} />
@@ -217,18 +217,19 @@ export default function ClientPreferencesPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-border shadow-sm bg-white">
+        <Card className="overflow-hidden border-border/50 shadow-sm bg-white">
           <CardContent className="p-0">
-            <div className="border-b border-border px-4 py-3">
-              <h2 className="text-lg font-semibold text-foreground">Full Contour</h2>
-              <p className="text-xs text-muted-foreground">
+            <div className="border-b border-border/50 px-4 py-2.5 bg-muted/20">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Contour Form</h2>
+              <p className="text-[10px] text-muted-foreground">
                 {editingId ? "Editing preference form" : "Add a new preference form"}
               </p>
             </div>
 
-            <div className="p-4 space-y-5">
+            <div className="p-4 space-y-3.5">
               <Section label="Form Name *">
                 <Input
+                  className="h-8 text-xs"
                   value={draft.formName}
                   onChange={(e) => setDraft((current) => ({ ...current, formName: e.target.value }))}
                   placeholder="form name"
@@ -238,11 +239,13 @@ export default function ClientPreferencesPage() {
               <Section label="Occlusion">
                 <div className="grid gap-2">
                   <Input
+                    className="h-8 text-xs"
                     value={draft.payload.occlusion.defaultValues}
                     onChange={(e) => updatePayload("occlusion", { ...draft.payload.occlusion, defaultValues: e.target.value })}
                     placeholder="Default Values"
                   />
                   <Input
+                    className="h-8 text-xs"
                     value={draft.payload.occlusion.comments}
                     onChange={(e) => updatePayload("occlusion", { ...draft.payload.occlusion, comments: e.target.value })}
                     placeholder="Comments"
@@ -253,11 +256,13 @@ export default function ClientPreferencesPage() {
               <Section label="Proximal Contacts">
                 <div className="grid gap-2">
                   <Input
+                    className="h-8 text-xs"
                     value={draft.payload.proximalContacts.defaultValues}
                     onChange={(e) => updatePayload("proximalContacts", { ...draft.payload.proximalContacts, defaultValues: e.target.value })}
                     placeholder="Default Values"
                   />
                   <Input
+                    className="h-8 text-xs"
                     value={draft.payload.proximalContacts.comments}
                     onChange={(e) => updatePayload("proximalContacts", { ...draft.payload.proximalContacts, comments: e.target.value })}
                     placeholder="Comments"
@@ -268,11 +273,13 @@ export default function ClientPreferencesPage() {
               <Section label="Contact for Distal-most Crown">
                 <div className="grid gap-2">
                   <Input
+                    className="h-8 text-xs"
                     value={draft.payload.distalMostCrownContact.defaultValues}
                     onChange={(e) => updatePayload("distalMostCrownContact", { ...draft.payload.distalMostCrownContact, defaultValues: e.target.value })}
                     placeholder="Default Values"
                   />
                   <Input
+                    className="h-8 text-xs"
                     value={draft.payload.distalMostCrownContact.comments}
                     onChange={(e) => updatePayload("distalMostCrownContact", { ...draft.payload.distalMostCrownContact, comments: e.target.value })}
                     placeholder="Comments"
@@ -288,6 +295,7 @@ export default function ClientPreferencesPage() {
                   onChange={(option) => updatePayload("anatomy", { ...draft.payload.anatomy, option })}
                 />
                 <Input
+                  className="h-8 text-xs mt-1"
                   value={draft.payload.anatomy.comments}
                   onChange={(e) => updatePayload("anatomy", { ...draft.payload.anatomy, comments: e.target.value })}
                   placeholder="Comments"
@@ -302,11 +310,13 @@ export default function ClientPreferencesPage() {
                   onChange={(option) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, option })}
                 />
                 <Input
+                  className="h-8 text-xs mt-1"
                   value={draft.payload.smileLibrary.libraryName}
                   onChange={(e) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, libraryName: e.target.value })}
                   placeholder="Name of Library"
                 />
                 <Input
+                  className="h-8 text-xs mt-1.5"
                   value={draft.payload.smileLibrary.comments}
                   onChange={(e) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, comments: e.target.value })}
                   placeholder="Comments"
@@ -321,6 +331,7 @@ export default function ClientPreferencesPage() {
                   onChange={(option) => updatePayload("ponticType", { ...draft.payload.ponticType, option })}
                 />
                 <Input
+                  className="h-8 text-xs mt-1"
                   value={draft.payload.ponticType.comments}
                   onChange={(e) => updatePayload("ponticType", { ...draft.payload.ponticType, comments: e.target.value })}
                   placeholder="Comments"
@@ -335,11 +346,13 @@ export default function ClientPreferencesPage() {
                   onChange={(option) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, option })}
                 />
                 <Input
+                  className="h-8 text-xs mt-1"
                   value={draft.payload.ponticDistanceFromTissue.comments}
                   onChange={(e) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, comments: e.target.value })}
                   placeholder="Comments"
                 />
                 <Input
+                  className="h-8 text-xs mt-1.5"
                   value={draft.payload.ponticDistanceFromTissue.distanceMm}
                   onChange={(e) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, distanceMm: e.target.value })}
                   placeholder="Distance (mm)"
@@ -354,6 +367,7 @@ export default function ClientPreferencesPage() {
                   onChange={(option) => updatePayload("matchMarginalRidge", { ...draft.payload.matchMarginalRidge, option })}
                 />
                 <Input
+                  className="h-8 text-xs mt-1"
                   value={draft.payload.matchMarginalRidge.comments}
                   onChange={(e) => updatePayload("matchMarginalRidge", { ...draft.payload.matchMarginalRidge, comments: e.target.value })}
                   placeholder="Comments"
@@ -361,8 +375,8 @@ export default function ClientPreferencesPage() {
               </Section>
 
               <div className="pt-2">
-                <Button onClick={saveForm} disabled={saving} className="gap-2">
-                  {editingId ? <PencilLine className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                <Button onClick={saveForm} disabled={saving} size="sm" className="gap-1.5 h-8 text-xs">
+                  {editingId ? <PencilLine className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                   {editingId ? "Update Form" : "Save Form"}
                 </Button>
               </div>
@@ -378,8 +392,8 @@ export default function ClientPreferencesPage() {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
-      <Label className="text-[11px] font-semibold uppercase tracking-wide text-foreground">{label}</Label>
+    <div className="space-y-1.5">
+      <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</Label>
       {children}
     </div>
   )
@@ -397,15 +411,15 @@ function ChoiceRow<T extends string>({
   onChange: (value: T) => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
       {options.map((option) => (
-        <label key={option} className="flex items-center gap-2 cursor-pointer">
+        <label key={option} className="flex items-center gap-1.5 cursor-pointer">
           <input
             type="radio"
             name={name}
             checked={value === option}
             onChange={() => onChange(option)}
-            className="h-3.5 w-3.5 border-border text-primary focus:ring-primary"
+            className="h-3 w-3 border-border text-primary focus:ring-primary"
           />
           <span className="text-foreground">{option}</span>
         </label>
@@ -416,9 +430,9 @@ function ChoiceRow<T extends string>({
 
 function Summary({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="truncate text-sm text-foreground">{value}</p>
+    <div className="rounded border border-border/50 bg-muted/20 px-2.5 py-1.5">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="truncate text-[11px] text-foreground font-semibold mt-0.5">{value}</p>
     </div>
   )
 }

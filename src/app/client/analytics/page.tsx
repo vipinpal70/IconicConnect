@@ -52,59 +52,59 @@ export default function AnalyticsPage() {
 
   return (
     <ClientLayout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-4 animate-fade-in">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Analytics & Reports</h1>
-          <p className="text-sm text-muted-foreground mt-1">Performance, delivery and billing insights for your account</p>
+          <h1 className="text-lg font-bold text-foreground">Analytics & Reports</h1>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Performance, delivery and billing insights for your account</p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {kpis.map((k) => (
-            <Card key={k.label} className="shadow-card">
-              <CardContent className="p-5">
-                <p className="text-xs text-muted-foreground">{k.label}</p>
-                <p className="text-2xl font-semibold text-foreground mt-1">{k.value}</p>
-                <p className={`text-xs mt-1 ${k.positive ? "text-green-600 font-medium" : "text-muted-foreground"}`}>{k.sub}</p>
+            <Card key={k.label} className="shadow-card border-border/50">
+              <CardContent className="p-3.5">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{k.label}</p>
+                <p className="text-xl font-black text-foreground mt-0.5">{k.value}</p>
+                <p className={`text-[10px] mt-0.5 ${k.positive ? "text-green-600 font-bold" : "text-muted-foreground"}`}>{k.sub}</p>
               </CardContent>
             </Card>
           ))}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card className="shadow-card">
-            <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Average TAT Trend</CardTitle></CardHeader>
-            <CardContent>
-              <div className="h-[260px] w-full">
+          <Card className="shadow-card border-border/50">
+            <CardHeader className="py-2 px-4"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Average TAT Trend</CardTitle></CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="h-[200px] w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={tatTrend}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(150,18%,90%)" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(158,12%,42%)" />
-                    <YAxis tick={{ fontSize: 12 }} stroke="hsl(158,12%,42%)" unit=" d" />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="tat" stroke="hsl(158,64%,28%)" strokeWidth={2.5} dot={{ r: 4 }} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" />
+                    <YAxis tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" unit=" d" />
+                    <Tooltip contentStyle={{ fontSize: 10 }} />
+                    <Line type="monotone" dataKey="tat" stroke="hsl(158,64%,28%)" strokeWidth={2} dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-card">
-            <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Case Delivery Status</CardTitle></CardHeader>
-            <CardContent className="flex flex-col items-center">
-              <div className="h-[220px] w-full">
+          <Card className="shadow-card border-border/50">
+            <CardHeader className="py-2 px-4"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Case Delivery Status</CardTitle></CardHeader>
+            <CardContent className="px-4 pb-3 flex flex-col items-center">
+              <div className="h-[150px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={deliveryStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" paddingAngle={2}>
+                    <Pie data={deliveryStatus} cx="50%" cy="50%" innerRadius={40} outerRadius={60} dataKey="value" paddingAngle={2}>
                       {deliveryStatus.map((e, i) => <Cell key={i} fill={e.color} />)}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip contentStyle={{ fontSize: 10 }} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs mt-2 w-full">
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] mt-1.5 w-full">
                 {deliveryStatus.map((d) => (
                   <div key={d.name} className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
                     <span className="text-muted-foreground truncate">{d.name} ({d.value})</span>
                   </div>
                 ))}
@@ -114,34 +114,34 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card className="shadow-card">
-            <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Monthly Billing Summary</CardTitle></CardHeader>
-            <CardContent>
-              <div className="h-[260px] w-full">
+          <Card className="shadow-card border-border/50">
+            <CardHeader className="py-2 px-4"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Monthly Billing Summary</CardTitle></CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="h-[200px] w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={monthlyBilling}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(150,18%,90%)" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(158,12%,42%)" />
-                    <YAxis tick={{ fontSize: 12 }} stroke="hsl(158,12%,42%)" tickFormatter={(v: any) => `$${v}`} />
-                    <Tooltip formatter={(v: any) => `$${v?.toLocaleString()}`} />
-                    <Bar dataKey="amount" fill="hsl(152,60%,45%)" radius={[6, 6, 0, 0]} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" />
+                    <YAxis tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" tickFormatter={(v: any) => `$${v}`} />
+                    <Tooltip contentStyle={{ fontSize: 10 }} formatter={(v: any) => `$${v?.toLocaleString()}`} />
+                    <Bar dataKey="amount" fill="hsl(152,60%,45%)" radius={[4, 4, 0, 0]} barSize={20} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-card">
-            <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Case Mix by Type</CardTitle></CardHeader>
-            <CardContent>
-              <div className="h-[260px] w-full">
+          <Card className="shadow-card border-border/50">
+            <CardHeader className="py-2 px-4"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Case Mix by Type</CardTitle></CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="h-[200px] w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={typeMix} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(150,18%,90%)" />
-                    <XAxis type="number" tick={{ fontSize: 12 }} stroke="hsl(158,12%,42%)" />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} stroke="hsl(158,12%,42%)" width={130} />
-                    <Tooltip />
-                    <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                    <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" width={110} />
+                    <Tooltip contentStyle={{ fontSize: 10 }} />
+                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
                       {typeMix.map((e, i) => <Cell key={i} fill={e.color} />)}
                     </Bar>
                   </BarChart>
@@ -151,41 +151,43 @@ export default function AnalyticsPage() {
           </Card>
         </div>
 
-        <Card className="shadow-card">
-          <CardHeader className="pb-2"><CardTitle className="text-base font-medium">On-Hold Reasons (last 90 days)</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="shadow-card border-border/50">
+          <CardHeader className="py-2.5 px-4"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">On-Hold Reasons (last 90 days)</CardTitle></CardHeader>
+          <CardContent className="px-4 pb-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
               {onHoldReasons.map((r) => (
-                <div key={r.reason} className="rounded-lg bg-muted/40 px-4 py-3 border border-border/50">
-                  <p className="text-xs text-muted-foreground">{r.reason}</p>
-                  <p className="text-xl font-semibold text-foreground mt-1">{r.count}</p>
+                <div key={r.reason} className="rounded px-3 py-1.5 bg-muted/40 border border-border/50">
+                  <p className="text-[10px] font-medium text-muted-foreground leading-tight">{r.reason}</p>
+                  <p className="text-base font-bold text-foreground mt-0.5">{r.count}</p>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="shadow-card">
-          <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Recent Invoices</CardTitle></CardHeader>
+        <Card className="shadow-card border-border/50">
+          <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recent Invoices</CardTitle>
+          </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {["Invoice", "Period", "Cases", "Amount", "Status"].map((h) => (
-                      <th key={h} className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {invoices.slice(0, 5).map((i) => (
                     <tr key={i.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="px-6 py-4 font-medium text-primary">{i.id}</td>
-                      <td className="px-6 py-4 text-foreground">{i.month}</td>
-                      <td className="px-6 py-4 text-muted-foreground">{i.caseCount}</td>
-                      <td className="px-6 py-4 font-medium">${i.amount.toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                      <td className="px-3.5 py-2 text-[11px] font-bold text-primary">{i.id}</td>
+                      <td className="px-3.5 py-2 text-[11px] text-foreground">{i.month}</td>
+                      <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{i.caseCount}</td>
+                      <td className="px-3.5 py-2 text-[11px] font-semibold text-foreground">${i.amount.toLocaleString()}</td>
+                      <td className="px-3.5 py-2">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 scale-95 origin-left">
                           {i.status}
                         </span>
                       </td>

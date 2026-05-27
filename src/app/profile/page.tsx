@@ -137,145 +137,136 @@ export default function ProfilePage() {
 
   return (
     <OpsLayout>
-      <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+      <div className="space-y-4 animate-fade-in max-w-5xl mx-auto">
         {/* Header */}
-        <Card className="shadow-card overflow-hidden">
-          <div className="gradient-primary h-20" />
-          <CardContent className="pt-0 -mt-10 px-6 pb-6">
-            <div className="flex items-end justify-between flex-wrap gap-4">
-              <div className="flex items-end gap-4">
-                <div className="w-20 h-20 rounded-xl bg-card border-4 border-card shadow-card flex items-center justify-center">
-                  <Building2 className="h-9 w-9 text-primary" />
+        <Card className="shadow-card overflow-hidden border-border/50">
+          <div className="gradient-primary h-14" />
+          <CardContent className="pt-0 -mt-8 px-4 pb-3.5 flex justify-between items-center">
+            <div className="flex items-end justify-between flex-wrap gap-3 pt-3">
+              <div className="flex items-end gap-3">
+                <div className="w-14 h-14 rounded-lg bg-card border-2 border-gray-300 shadow-card flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-primary" />
                 </div>
-                <div className="pb-2">
+                <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-semibold text-foreground">{displayProfile.company}</h1>
-                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none">{displayProfile.status}</Badge>
+                    <h1 className="text-base font-bold text-foreground">{displayProfile.company}</h1>
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none scale-90 origin-left">{displayProfile.status}</Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">Onboarded {displayProfile.onboardedAt} · ID {displayProfile.id}</p>
+                  <p className="text-[11px] text-muted-foreground">Onboarded {displayProfile.onboardedAt} · ID {displayProfile.id}</p>
                 </div>
               </div>
-              <Dialog open={prefOpen} onOpenChange={setPrefOpen}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2"><Settings2 className="h-4 w-4" /> Preferences</Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-3xl">
-                  <DialogHeader>
-                    <DialogTitle>Preference Forms</DialogTitle>
-                  </DialogHeader>
-                  <p className="text-sm text-muted-foreground">
-                    Add one or more preference forms. These are visible to the Iconic Connect team when working on your cases.
-                  </p>
+            </div>
+            <Dialog open={prefOpen} onOpenChange={setPrefOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="gap-1.5 h-8 text-xs font-semibold"><Settings2 className="h-3.5 w-3.5" /> Preferences</Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Preference Forms</DialogTitle>
+                </DialogHeader>
+                <p className="text-xs text-muted-foreground">
+                  Add one or more preference forms. These are visible to the Iconic Connect team when working on your cases.
+                </p>
 
-                  <Card className="bg-muted/30 border-dashed">
-                    <CardContent className="p-4 space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Label>Title</Label>
-                          <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="e.g. Anterior crown preferences" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Applies to</Label>
-                          <Select value={draft.category} onValueChange={(v) => setDraft({ ...draft, category: v })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="All cases">All cases</SelectItem>
-                              {caseTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                <Card className="bg-muted/30 border-dashed">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Title</Label>
+                        <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="e.g. Anterior crown preferences" />
                       </div>
                       <div className="space-y-2">
-                        <Label>Details</Label>
-                        <Textarea
-                          value={draft.body}
-                          onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                          placeholder="Cement gap, occlusal contact, default shade, file format..."
-                          className="min-h-[100px]"
-                        />
+                        <Label>Applies to</Label>
+                        <Select value={draft.category} onValueChange={(v) => setDraft({ ...draft, category: v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="All cases">All cases</SelectItem>
+                            {caseTypes.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <Button onClick={addPref} className="gap-2"><Plus className="h-4 w-4" /> Save preference form</Button>
-                    </CardContent>
-                  </Card>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Details</Label>
+                      <Textarea
+                        value={draft.body}
+                        onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                        placeholder="Cement gap, occlusal contact, default shade, file format..."
+                        className="min-h-[100px]"
+                      />
+                    </div>
+                    <Button onClick={addPref} className="gap-2"><Plus className="h-4 w-4" /> Save preference form</Button>
+                  </CardContent>
+                </Card>
 
-                  <div className="space-y-3 mt-4 max-h-[300px] overflow-y-auto pr-2">
-                    {prefs.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">No preference forms saved yet.</p>}
-                    {prefs.map((p) => (
-                      <Card key={p.id} className="shadow-sm">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-3 mb-2">
-                            <div>
-                              <p className="font-medium text-foreground">{p.title}</p>
-                              <p className="text-xs text-muted-foreground">{p.category} · added {p.createdAt}</p>
-                            </div>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removePref(p.id)}>
-                              <Trash2 className="h-4 w-4 text-muted-foreground" />
-                            </Button>
+                <div className="space-y-3 mt-4 max-h-[300px] overflow-y-auto pr-2">
+                  {prefs.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">No preference forms saved yet.</p>}
+                  {prefs.map((p) => (
+                    <Card key={p.id} className="shadow-sm">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div>
+                            <p className="font-medium text-foreground">{p.title}</p>
+                            <p className="text-xs text-muted-foreground">{p.category} · added {p.createdAt}</p>
                           </div>
-                          <p className="text-sm text-foreground whitespace-pre-wrap">{p.body}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removePref(p.id)}>
+                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </div>
+                        <p className="text-sm text-foreground whitespace-pre-wrap">{p.body}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="shadow-card lg:col-span-1">
-            <CardHeader className="pb-4"><CardTitle className="text-base font-medium">Company Details</CardTitle></CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              <Detail icon={<Building2 className="h-4 w-4" />} label="Company" value={displayProfile.company} />
-              <Detail icon={<MapPin className="h-4 w-4" />} label="Location" value={displayProfile.location} />
-              <Detail icon={<Mail className="h-4 w-4" />} label="POC email" value={displayProfile.email} />
-              <Detail icon={<Phone className="h-4 w-4" />} label="POC phone" value={displayProfile.phone} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card className="shadow-card lg:col-span-1 border-border/50">
+            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Company Details</CardTitle></CardHeader>
+            <CardContent className="p-3.5 space-y-3">
+              <Detail icon={<Building2 className="h-3.5 w-3.5" />} label="Company" value={displayProfile.company} />
+              <Detail icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={displayProfile.location} />
+              <Detail icon={<Mail className="h-3.5 w-3.5" />} label="POC email" value={displayProfile.email} />
+              <Detail icon={<Phone className="h-3.5 w-3.5" />} label="POC phone" value={displayProfile.phone} />
               <Detail label="Primary POC" value={displayProfile.poc} />
-              {/* {profile?.userType !== 'admin_portal' && (
-                <Detail label="Monthly volume" value={`~${displayProfile.monthlyVolume} cases / month`} />
-              )} */}
             </CardContent>
           </Card>
 
-          <Card className="shadow-card lg:col-span-2">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base font-medium flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" /> Allocated Price List
+          <Card className="shadow-card lg:col-span-2 border-border/50">
+            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <FileText className="h-3.5 w-3.5 text-primary" /> Allocated Price List
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <table className="w-full text-sm">
+            <CardContent className="p-3.5">
+              <div className="rounded border border-border overflow-hidden">
+                <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Case Type</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Price (USD)</th>
+                      <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Case Type</th>
+                      <th className="text-right px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Price (USD)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {/* {profile?.priceList.map((p) => (
-                      <tr key={p.caseType}>
-                        <td className="px-4 py-3 text-foreground">{p.caseType}</td>
-                        <td className="px-4 py-3 text-right font-medium text-foreground">${p.price}</td>
-                      </tr>
-                    ))} */}
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-muted-foreground mt-3 italic">Price list is set by Iconic Connect during onboarding. Contact your account manager to revise.</p>
+              <p className="text-[10px] text-muted-foreground mt-2 italic">Price list is set by Iconic Connect during onboarding. Contact your account manager to revise.</p>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="shadow-card">
-          <CardHeader className="pb-4 flex flex-row items-center justify-between">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" /> Users & Credentials
+        <Card className="shadow-card border-border/50">
+          <CardHeader className="py-2 px-4 flex flex-row items-center justify-between bg-muted/20 border-b border-border/50">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Users className="h-3.5 w-3.5 text-primary" /> Users & Credentials
             </CardTitle>
             <Dialog open={userOpen} onOpenChange={setUserOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-2"><Plus className="h-4 w-4" /> Add user</Button>
+                <Button size="sm" className="gap-1.5 h-8 text-xs font-semibold"><Plus className="h-3.5 w-3.5" /> Add user</Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader><DialogTitle>Add New Lab User</DialogTitle></DialogHeader>
@@ -302,38 +293,38 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {["Name", "Username", "Email", "Role", "Password", ""].map((h) => (
-                      <th key={h} className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {users.map((u) => (
                     <tr key={u.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="px-6 py-4 font-medium text-foreground">{u.name}</td>
-                      <td className="px-6 py-4 text-muted-foreground">{u.username}</td>
-                      <td className="px-6 py-4 text-muted-foreground">{u.email}</td>
-                      <td className="px-6 py-4">
-                        <Badge variant="outline" className="font-normal border-border text-muted-foreground">{u.role}</Badge>
+                      <td className="px-3.5 py-1.5 text-[11px] font-bold text-foreground">{u.name}</td>
+                      <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground">{u.username}</td>
+                      <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground">{u.email}</td>
+                      <td className="px-3.5 py-1.5">
+                        <Badge variant="outline" className="font-normal border-border text-muted-foreground scale-90 origin-left text-[10px] px-1.5 py-0.5">{u.role}</Badge>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
-                          <code className="text-xs bg-muted/40 px-2 py-1 rounded text-foreground font-mono">
+                      <td className="px-3.5 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <KeyRound className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <code className="text-[10px] bg-muted/40 px-1.5 py-0.5 rounded text-foreground font-mono leading-none">
                             {showPwd[u.id] ? u.password : "••••••••"}
                           </code>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowPwd((s) => ({ ...s, [u.id]: !s[u.id] }))}>
-                            {showPwd[u.id] ? <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> : <Eye className="h-3.5 w-3.5 text-muted-foreground" />}
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowPwd((s) => ({ ...s, [u.id]: !s[u.id] }))}>
+                            {showPwd[u.id] ? <EyeOff className="h-3 w-3 text-muted-foreground" /> : <Eye className="h-3 w-3 text-muted-foreground" />}
                           </Button>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-3.5 py-1.5 text-right">
                         {u.role !== "Owner" && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeUser(u.id)}>
-                            <Trash2 className="h-4 w-4" />
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeUser(u.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         )}
                       </td>
@@ -352,8 +343,8 @@ export default function ProfilePage() {
 function Detail({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string | number }) {
   return (
     <div>
-      <p className="text-xs text-muted-foreground flex items-center gap-1.5">{icon}{label}</p>
-      <p className="text-foreground font-medium mt-1">{value || "—"}</p>
+      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 leading-none">{icon}{label}</p>
+      <p className="text-[11px] font-semibold text-foreground mt-0.5">{value || "—"}</p>
     </div>
   );
 }

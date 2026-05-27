@@ -551,19 +551,19 @@ export default function CasesPage() {
 
   return (
     <ClientLayout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Cases</h1>
-            <p className="text-sm text-muted-foreground mt-1">{cases.length} lifetime cases · {filtered.length} shown</p>
+            <h1 className="text-lg font-bold text-foreground">Cases</h1>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" /> Export Excel
+            <Button variant="outline" size="sm" className="h-8 text-xs">
+              <Download className="h-3.5 w-3.5 mr-1.5" /> Export Excel
             </Button>
             <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
               <DialogTrigger asChild>
-                <Button><Plus className="h-4 w-4 mr-2" />Add New Case</Button>
+                <Button size="sm" className="h-8 text-xs"><Plus className="h-3.5 w-3.5 mr-1.5" />Add New Case</Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
@@ -874,24 +874,26 @@ export default function CasesPage() {
         </div>
 
         {/* Filters */}
-        <Card className="shadow-card">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex flex-col lg:flex-row gap-3">
+        <Card className="shadow-card border-border/50">
+          <CardContent className="p-3 space-y-2">
+            <div className="flex flex-col lg:flex-row gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-9" placeholder="Search cases..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input className="pl-9 h-8 text-xs" placeholder="Search cases..." value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
               <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v)}>
-                <SelectTrigger className="w-full lg:w-56"><SelectValue placeholder="Case type" /></SelectTrigger>
+                <SelectTrigger className="w-full lg:w-48 h-8 text-xs"><SelectValue placeholder="Case type" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Case Types</SelectItem>
                   {Object.keys(CASE_HIERARCHY).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-44" />
-              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-44" />
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
               <Button
                 variant="outline"
+                size="sm"
+                className="h-8 text-xs"
                 onClick={() => {
                   setSearch("")
                   setTypeFilter("All")
@@ -903,9 +905,9 @@ export default function CasesPage() {
                 Clear
               </Button>
             </div>
-            <div className="flex gap-1.5 flex-wrap">
+            <div className="flex gap-1 flex-wrap">
               {statusFilters.map((s) => (
-                <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" onClick={() => setStatusFilter(s)}>
+                <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" className="h-7 text-[10px] px-2" onClick={() => setStatusFilter(s)}>
                   {s}
                 </Button>
               ))}
@@ -914,14 +916,14 @@ export default function CasesPage() {
         </Card>
 
         {/* Table */}
-        <Card className="shadow-card">
+        <Card className="shadow-card border-border/50">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {["Case ID", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt"].map((h) => (
-                      <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-6 py-4 uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left text-[10px] font-bold text-muted-foreground px-3.5 py-2 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -929,13 +931,13 @@ export default function CasesPage() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-28"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-32"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-16"></div></td>
-                        <td className="px-6 py-4"><div className="h-6 bg-muted rounded-full w-24"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-24"></div></td>
-                        <td className="px-6 py-4"><div className="h-4 bg-muted rounded w-20"></div></td>
+                        <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-20"></div></td>
+                        <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-24"></div></td>
+                        <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-28"></div></td>
+                        <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-12"></div></td>
+                        <td className="px-3.5 py-2.5"><div className="h-5.5 bg-muted rounded-full w-20"></div></td>
+                        <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-20"></div></td>
+                        <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-16"></div></td>
                       </tr>
                     ))
                   ) : (
@@ -959,41 +961,47 @@ export default function CasesPage() {
                           className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
                           onClick={() => router.push(`/client/cases/${c.id}`)}
                         >
-                          <td className="px-6 py-4 text-sm font-medium text-primary"><div className="flex items-center gap-2">
-                               <span>{c.caseNumber || c.id}</span>
+                          <td className="px-3.5 py-2">
+                             <div className="flex items-center gap-1.5">
+                               <span className="font-bold text-[11px] text-slate-800">{c.caseNumber || c.id}</span>
                                {(() => {
                                  const hasUnreadChat = Boolean(c.hasUnreadChat);
                                  const todayCount = (c as any).todayMessagesCount || 0;
                                  if (!hasUnreadChat && todayCount === 0) return null;
                                  return (
                                    <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${todayCount} messages today`}>
-                                     <MessageSquare className={`h-4 w-4 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
+                                     <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
                                      {hasUnreadChat ? (
-                                       <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                       <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                         <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                                        </span>
                                      ) : (
-                                       <span className="absolute -top-1.5 -right-1.5 min-w-3.5 h-3.5 px-0.5 flex items-center justify-center rounded-full bg-slate-200 text-slate-700 text-[8px] font-bold border border-white leading-none">
+                                       <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-slate-200 text-slate-700 text-[8px] font-bold border border-white leading-none">
                                          {todayCount}
                                        </span>
                                      )}
                                    </span>
                                  );
                                })()}
-                             </div></td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
-                          <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"}</td>
-                          <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
+                             </div>
+                          </td>
+                          <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.category}</td>
+                          <td className="px-3.5 py-2 text-[11px] text-foreground font-semibold">{restoration || "—"}</td>
+                          <td className="px-3.5 py-2 text-[10px] text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"}</td>
+                          <td className="px-3.5 py-2">
+                            <div className="scale-90 origin-left">
+                              <StatusBadge status={c.status} />
+                            </div>
+                          </td>
+                          <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
+                          <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
                         </tr>
                       );
                     })
                   )}
                   {!isLoading && filtered.length === 0 && (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-muted-foreground">No cases match your filters</td></tr>
+                    <tr><td colSpan={7} className="px-3.5 py-8 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>

@@ -2,7 +2,7 @@
 
 import { ReactNode, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AppLayout } from "@/src/components/AppLayout"
+import { ClientLayout } from "@/src/components/ClientLayout"
 import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent } from "@/src/components/ui/card"
@@ -19,11 +19,11 @@ type ClaimsResponse = { data: OfferClaimRecord[] }
 const categories: (typeof OFFER_CATEGORIES[number] | "All")[] = ["All", ...OFFER_CATEGORIES]
 
 const categoryEmoji: Record<OfferRecord["category"], ReactNode> = {
-  "Intraoral Scanner": <Camera className="w-14 h-14" />,
-  Materials: <BrickWall className="w-14 h-14" />,
-  Equipment: <Wrench className="w-14 h-14" />,
-  Software: <Code className="w-14 h-14" />,
-  Consumables: <FlaskConical className="w-14 h-14" />,
+  "Intraoral Scanner": <Camera className="w-10 h-10" />,
+  Materials: <BrickWall className="w-10 h-10" />,
+  Equipment: <Wrench className="w-10 h-10" />,
+  Software: <Code className="w-10 h-10" />,
+  Consumables: <FlaskConical className="w-10 h-10" />,
 }
 
 function formatDate(value: string) {
@@ -121,72 +121,73 @@ export default function Offers() {
   }
 
   return (
-    <AppLayout>
-      <div className="space-y-6 animate-fade-in">
+    <ClientLayout>
+      <div className="space-y-4 animate-fade-in">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Partner Offers</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-lg font-bold text-foreground">Partner Offers</h1>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
             Exclusive deals curated by Iconic Dental for our partner labs
           </p>
         </div>
 
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card p-4 rounded-lg border border-border/60 shadow-sm">
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-card p-3 rounded border border-border/50 shadow-sm">
+          <div className="flex flex-wrap gap-1.5">
             {categories.map((category) => (
               <Button
                 key={category}
                 type="button"
                 variant={filter === category ? "default" : "outline"}
                 size="sm"
+                className="h-7 text-xs px-2.5"
                 onClick={() => setFilter(category)}
               >
                 {category}
               </Button>
             ))}
           </div>
-          <div className="w-full md:w-72">
+          <div className="w-full md:w-64">
             <Input
               placeholder="Search by title, brand..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9"
+              className="h-7 text-xs"
             />
           </div>
         </div>
 
         {offersQuery.isLoading || claimsQuery.isLoading ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
-              <Card key={index} className="overflow-hidden shadow-card">
-                <div className="h-32 animate-pulse bg-muted" />
-                <CardContent className="space-y-3 p-5">
-                  <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+              <Card key={index} className="overflow-hidden shadow-card border-border/50">
+                <div className="h-24 animate-pulse bg-muted" />
+                <CardContent className="space-y-2.5 p-3.5">
+                  <div className="h-3.5 w-2/3 animate-pulse rounded bg-muted" />
                   <div className="h-3 w-full animate-pulse rounded bg-muted" />
                   <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
-                  <div className="h-10 w-full animate-pulse rounded bg-muted" />
+                  <div className="h-8 w-full animate-pulse rounded bg-muted" />
                 </CardContent>
               </Card>
             ))}
           </div>
         ) : offersQuery.error ? (
           <Card className="border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/20">
-            <CardContent className="flex flex-col items-center justify-center px-6 py-12 text-center">
-              <AlertCircle className="h-10 w-10 text-red-500" />
-              <h3 className="mt-3 text-sm font-semibold text-foreground">Failed to load offers</h3>
-              <p className="mt-1 text-sm text-muted-foreground">{(offersQuery.error as Error).message}</p>
-              <Button className="mt-4" variant="outline" onClick={() => offersQuery.refetch()}>
+            <CardContent className="flex flex-col items-center justify-center px-4 py-8 text-center">
+              <AlertCircle className="h-8 w-8 text-red-500" />
+              <h3 className="mt-2 text-xs font-semibold text-foreground">Failed to load offers</h3>
+              <p className="mt-1 text-[11px] text-muted-foreground">{(offersQuery.error as Error).message}</p>
+              <Button className="mt-3 h-8 text-xs" variant="outline" onClick={() => offersQuery.refetch()}>
                 Try again
               </Button>
             </CardContent>
           </Card>
         ) : list.length === 0 ? (
           <Card className="border-dashed border-border/60">
-            <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">
-              <Tag className="h-10 w-10 text-muted-foreground" />
-              <h3 className="mt-3 text-sm font-semibold text-foreground">
+            <CardContent className="flex flex-col items-center justify-center px-4 py-12 text-center">
+              <Tag className="h-8 w-8 text-muted-foreground" />
+              <h3 className="mt-2 text-xs font-semibold text-foreground">
                 {search ? "No offers match your search." : filter === "All" ? "No offers available yet" : "No offers match this category"}
               </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {search ? "Try searching for a different keyword." : filter === "All"
                   ? "Check back after the team publishes new partner offers."
                   : "Choose another category to see more offers."}
@@ -194,7 +195,7 @@ export default function Offers() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
             {list.map((offer) => {
               const claimRecord = claimsByOfferId.get(offer.id)
               const claimed = Boolean(claimRecord)
@@ -203,47 +204,47 @@ export default function Offers() {
               return (
                 <Card
                   key={offer.id}
-                  className="overflow-hidden border-border/60 shadow-card transition-shadow hover:shadow-elevated"
+                  className="overflow-hidden border border-border/50 shadow-card transition-shadow hover:shadow-elevated"
                 >
-                  <div className="relative flex h-32 items-center justify-center bg-linear-to-br from-muted to-background text-5xl">
+                  <div className="relative flex h-24 items-center justify-center bg-linear-to-br from-muted to-background text-3xl">
                     {categoryEmoji[offer.category]}
                     {offer.sponsored && (
-                      <Badge className="absolute right-3 top-3 gap-1 bg-warning text-warning-foreground">
-                        <Sparkles className="h-3 w-3" />
+                      <Badge className="absolute right-2 top-2 gap-1 bg-amber-500 text-white hover:bg-amber-600 scale-90 origin-right text-[10px] font-bold py-0.5 px-1.5">
+                        <Sparkles className="h-2.5 w-2.5" />
                         Sponsored
                       </Badge>
                     )}
                   </div>
-                  <CardContent className="space-y-3 p-5">
+                  <CardContent className="space-y-2.5 p-3.5">
                     <div>
-                      <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
                         {offer.brand} | {offer.category}
                       </p>
-                      <h3 className="mt-1 text-base font-semibold text-foreground">{offer.title}</h3>
+                      <h3 className="mt-0.5 text-xs font-bold text-foreground leading-snug">{offer.title}</h3>
                     </div>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">{offer.description}</p>
-                    <div className="flex items-center justify-between border-t border-border pt-2">
-                      <span className="flex items-center gap-1 text-sm font-semibold text-primary">
-                        <Tag className="h-3.5 w-3.5" />
+                    <p className="line-clamp-2 text-[11px] text-muted-foreground leading-normal">{offer.description}</p>
+                    <div className="flex items-center justify-between border-t border-border/50 pt-1.5">
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-primary">
+                        <Tag className="h-3 w-3" />
                         {offer.discount}
                       </span>
-                      <span className="text-xs text-muted-foreground">Valid till {formatDate(offer.validTill)}</span>
+                      <span className="text-[10px] text-muted-foreground">Valid till {formatDate(offer.validTill)}</span>
                     </div>
                     <Button
-                      className="w-full font-medium"
+                      className="w-full h-8 text-xs font-semibold"
                       variant={claimed ? "secondary" : "outline"}
                       disabled={claimed || claimMutation.isPending}
                       onClick={() => handleClaim(offer)}
                     >
                       {claimMutation.isPending && selectedOffer?.id === offer.id ? (
-                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
                       ) : delivered ? (
                         "Delivered"
                       ) : claimed ? (
                         "Claimed"
                       ) : (
                         <>
-                          Claim Offer <ExternalLink className="ml-2 h-3.5 w-3.5" />
+                          Claim Offer <ExternalLink className="ml-1.5 h-3 w-3" />
                         </>
                       )}
                     </Button>
@@ -264,11 +265,11 @@ export default function Offers() {
             <DialogTitle>Processing claim</DialogTitle>
             <DialogDescription>Submitting your offer claim and saving it for the admin dashboard.</DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {selectedOffer ? `Submitting your claim for ${selectedOffer.title}.` : "Submitting your claim."}
           </p>
         </DialogContent>
       </Dialog>
-    </AppLayout>
+    </ClientLayout>
   )
 }
