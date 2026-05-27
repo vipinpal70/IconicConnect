@@ -977,7 +977,7 @@ export default function CasesPage() {
                                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                                        </span>
                                      ) : (
-                                       <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-slate-200 text-slate-700 text-[8px] font-bold border border-white leading-none">
+                                       <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold border border-white leading-none">
                                          {todayCount}
                                        </span>
                                      )}

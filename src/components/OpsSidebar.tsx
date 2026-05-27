@@ -4,12 +4,11 @@ import {
   LayoutDashboard,
   FolderOpen,
   BarChart3,
-  ShieldCheck,
-  Layers,
   LogOut,
   Bell,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Button } from "@/src/components/ui/button";
@@ -24,9 +23,11 @@ import {
   SidebarHeader,
   SidebarFooter,
   useSidebar,
+  SidebarTrigger,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import Logo from "@/public/IconicConnectLogo.png";
 
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -69,21 +70,16 @@ export function OpsSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center shadow-glow">
-            <span className="text-sm font-bold text-white">IC</span>
-          </div>
+    <Sidebar collapsible="icon" className="bg-white lg:bg-transparent">
+      <SidebarHeader className="p-4 border-b border-border bg-white">
+        <div className="flex items-center justify-between gap-3">
           {!collapsed && (
-            <div>
-              <h1 className="text-sm font-semibold text-foreground">Iconic Connect</h1>
-              <p className="text-xs text-muted-foreground">Ops Portal</p>
-            </div>
+            <Image src={Logo} width={100} height={100} alt="Iconic Connect"/>
           )}
+          <SidebarTrigger className="text-muted-foreground" />
         </div>
       </SidebarHeader>
-      <SidebarContent className="px-2 py-3">
+      <SidebarContent className="px-2 py-3 bg-white">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -107,11 +103,13 @@ export function OpsSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t border-border space-y-3">
+      <SidebarFooter className="flex justify-between gap-2 p-4 border-t border-border space-y-3 bg-white">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-[10px] font-bold">
+          {!collapsed && (
+            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-[10px] font-bold">
             {initials}
           </div>
+          )}
           {!collapsed && (
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{profile?.fullName || "Ops User"}</p>
@@ -123,13 +121,13 @@ export function OpsSidebar() {
           variant="ghost"
           size="sm"
           className={cn(
-            "w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-2",
-            collapsed && "justify-center px-0"
+            "w-full justify-end text-red-500 hover:text-red-600 gap-2",
+            collapsed && "justify-start px-0"
           )}
           onClick={handleLogout}
         >
           <LogOut className="h-4 w-4" />
-          {!collapsed && <span className="text-xs font-medium">Log Out</span>}
+          {/* {!collapsed && <span className="text-xs font-medium">Log Out</span>} */}
         </Button>
       </SidebarFooter>
     </Sidebar>

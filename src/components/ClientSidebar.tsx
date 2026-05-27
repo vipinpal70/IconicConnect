@@ -38,12 +38,12 @@ import Image from "next/image"
 const navItems = [
   { title: "Dashboard", url: "/client/dashboard", icon: LayoutDashboard },
   { title: "Cases", url: "/client/cases", icon: FolderOpen },
-  { title: "Notifications", url: "/notifications", icon: Bell },
   { title: "Analytics", url: "/client/analytics", icon: BarChart3 },
-  { title: "Offers", url: "/client/offers", icon: Tag },
-  { title: "Billing", url: "/client/billing", icon: CreditCard },
-  { title: "Support", url: "/client/support", icon: Headset },
   { title: "Tutorials", url: "/client/tutorials", icon: PlayCircle },
+  { title: "Offers", url: "/client/offers", icon: Tag },
+  { title: "Support", url: "/client/support", icon: Headset },
+  { title: "Billing", url: "/client/billing", icon: CreditCard },
+  { title: "Notifications", url: "/notifications", icon: Bell },
   { title: "Preference Forms", url: "/client/preferences", icon: FileText },
   { title: "Profile", url: "/client/profile", icon: UserCircle },
 ];

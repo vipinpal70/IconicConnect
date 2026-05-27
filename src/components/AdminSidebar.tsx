@@ -10,6 +10,7 @@ import {
   Users,
   Bell,
   Headset,
+  ChartBar
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -32,16 +33,18 @@ import { cn } from "@/src/lib/utils";
 import { useEffect, useState } from "react";
 import Image from "next/image"
 import logo from "@/public/IconicConnectLogo.png"
+import { title } from "process";
 
 export function AdminSidebar() {
   const navItems = [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
     { title: "Cases", url: "/admin/cases", icon: ClipboardList },
+    { title: "Analytics", url: "/admin/analytics", icon: ChartBar },
+    { title: "Clients", url: "/admin/clients", icon: Building2 },
+    { title: "Team", url: "/admin/team", icon: Users },
     { title: "Tutorials", url: "/admin/tutorials", icon: PlayCircle },
     { title: "Offers", url: "/admin/offers", icon: Tag },
-    { title: "Clients", url: "/admin/clients", icon: Building2 },
     { title: "Support", url: "/admin/support", icon: Headset },
-    { title: "Team", url: "/admin/team", icon: Users },
     { title: "Notifications", url: "/admin/notifications", icon: Bell },
   ];
 
@@ -153,7 +156,7 @@ export function AdminSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t border-border space-y-3 bg-white">
+      <SidebarFooter className="flex justify-between gap-2 item-center p-4 border-t border-border space-y-3 bg-white">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3 min-w-0">
             {!collapsed && (
@@ -173,17 +176,18 @@ export function AdminSidebar() {
             )}
           </div>
         </div>
+
         <Button
           variant="ghost"
           size="sm"
           className={cn(
-            "justify-end text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-50 gap-3",
-            collapsed && "justify-center px-0"
+            "w-full justify-end text-red-500 hover:text-red-600 gap-2",
+            collapsed && "justify-start px-0"
           )}
           onClick={handleLogout}
         >
-          <LogOut className="h-3 w-3" />
-          {!collapsed && <span className="text-[10px] font-medium">Log Out</span>}
+          <LogOut className="h-4 w-4" />
+          {/* {!collapsed && <span className="text-xs font-medium">Log Out</span>} */}
         </Button>
       </SidebarFooter>
     </Sidebar>

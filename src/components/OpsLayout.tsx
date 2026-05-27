@@ -25,8 +25,8 @@ export function OpsLayout({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex w-full">
         <OpsSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center justify-between border-b border-border bg-card px-4 sticky top-0 z-10">
-            <SidebarTrigger className="text-muted-foreground" />
+          <header className="h-17 flex items-center justify-end border-b border-border bg-white px-4 sticky top-0 z-10">
+            {/* <SidebarTrigger className="text-muted-foreground" /> */}
             <div className="flex items-center gap-2">
               <Link href="/notifications">
                 <Button variant="ghost" size="icon" className="relative h-9 w-9">
