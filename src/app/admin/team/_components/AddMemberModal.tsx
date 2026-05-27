@@ -16,6 +16,7 @@ const ROLES = [
   { id: 'qc', name: 'QC' },
   { id: 'account_manager', name: 'Account Manager' },
   { id: 'designer', name: 'Designer' },
+  { id: 'consultant', name: 'Consultant' },
 ]
 
 interface AddMemberModalProps {
@@ -146,9 +147,9 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
-                  <SelectContent className="bg-green-900 text-white shadow-2xl">
+                  <SelectContent className="bg-[#197554] border border-[#1e8c65] text-white shadow-2xl">
                     {ROLES.map(r => (
-                      <SelectItem key={r.id} value={r.id} className="focus:bg-green-600 opacity-90 focus:text-slate-50">
+                      <SelectItem key={r.id} value={r.id} className="focus:bg-[#2eb87f] opacity-90 focus:text-white cursor-pointer">
                         {r.name}
                       </SelectItem>
                     ))}

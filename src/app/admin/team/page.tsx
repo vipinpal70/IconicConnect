@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger, DropdownMenuSeparator
 } from "@/src/components/ui/dropdown-menu"
 import { Switch } from "@/src/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
@@ -33,11 +34,21 @@ interface Profile {
   userType: string
 }
 
+const FILTER_ROLES = [
+  { id: 'all', name: 'All Roles' },
+  { id: 'admin', name: 'Admin' },
+  { id: 'qc', name: 'QC' },
+  { id: 'account_manager', name: 'Account Manager' },
+  { id: 'designer', name: 'Designer' },
+  { id: 'consultant', name: 'Consultant' },
+]
+
 export default function TeamPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [roleFilter, setRoleFilter] = useState<string>("all")
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [credMember, setCredMember] = useState<Profile | null>(null)
   const [credModalOpen, setCredModalOpen] = useState(false)
@@ -109,9 +120,10 @@ export default function TeamPage() {
       const matchesSearch = (m.fullName?.toLowerCase() || "").includes(search.toLowerCase()) ||
         m.email.toLowerCase().includes(search.toLowerCase())
       const matchesStatus = statusFilter === "all" || m.status === statusFilter
-      return matchesSearch && matchesStatus
+      const matchesRole = roleFilter === "all" || m.role === roleFilter
+      return matchesSearch && matchesStatus && matchesRole
     })
-  }, [members, search, statusFilter])
+  }, [members, search, statusFilter, roleFilter])
 
   const stats = useMemo(() => {
     return {
@@ -198,28 +210,50 @@ export default function TeamPage() {
                   onChange={e => setSearch(e.target.value)}
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={statusFilter === "all" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setStatusFilter("all")}
-                >
-                  All
-                </Button>
-                <Button
-                  variant={statusFilter === "active" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setStatusFilter("active")}
-                >
-                  Active
-                </Button>
-                <Button
-                  variant={statusFilter === "inactive" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setStatusFilter("inactive")}
-                >
-                  Inactive
-                </Button>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-1.5 bg-muted/20 p-1 rounded-lg border border-border/50">
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant={statusFilter === "all" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-8 text-xs font-medium"
+                      onClick={() => setStatusFilter("all")}
+                    >
+                      All Status
+                    </Button>
+                    <Button
+                      variant={statusFilter === "active" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-8 text-xs font-medium"
+                      onClick={() => setStatusFilter("active")}
+                    >
+                      Active
+                    </Button>
+                    <Button
+                      variant={statusFilter === "inactive" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-8 text-xs font-medium"
+                      onClick={() => setStatusFilter("inactive")}
+                    >
+                      Inactive
+                    </Button>
+                  </div>
+
+                  <div className="h-6 w-[1px] bg-border/50 mx-1 hidden sm:block" />
+
+                  <Select value={roleFilter} onValueChange={setRoleFilter}>
+                    <SelectTrigger className="w-[140px] sm:w-[160px] bg-transparent hover:bg-muted/10 border-none h-8 text-xs font-medium focus:ring-0 focus:ring-offset-0">
+                      <SelectValue placeholder="All Roles" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#197554] border border-[#1e8c65] text-white shadow-2xl">
+                      {FILTER_ROLES.map(r => (
+                        <SelectItem key={r.id} value={r.id} className="focus:bg-[#2eb87f] opacity-90 focus:text-white text-xs cursor-pointer">
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </CardHeader>
