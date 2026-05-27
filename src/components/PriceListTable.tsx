@@ -107,7 +107,7 @@ export function PriceListTable({
         {editable && (
           <Table.Column width={120} fixed="right">
             <Table.HeaderCell className="text-right">
-              <div className="flex items-center justify-end">
+              <div className="flex items-center">
                 <Button appearance="ghost" size="sm" onClick={onAddRow} disabled={!onAddRow}>
                   Add row
                 </Button>
@@ -115,7 +115,7 @@ export function PriceListTable({
             </Table.HeaderCell>
             <Table.Cell>
               {(rowData: PriceListRow) => (
-                <div className="flex justify-end">
+                <div className="flex items-center">
                   <Button
                     appearance="ghost"
                     color="red"

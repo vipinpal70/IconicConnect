@@ -120,29 +120,16 @@ export function AdminSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4 border-b border-border">
+    <Sidebar collapsible="icon" className="bg-white lg:bg-transparent">
+      <SidebarHeader className="p-4 border-b border-border bg-white">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-
             <Image src={logo} alt="Iconic Connect" width={100} height={100} />
-
-            {/* {!collapsed && (
-              <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center shadow-glow">
-                <span className="text-sm font-bold text-primary-foreground">IC</span>
-              </div>
-            )} */}
-            {/* {!collapsed && (
-              <div>
-                <h1 className="text-sm font-semibold text-foreground">Iconic Connect</h1>
-                <p className="text-xs text-muted-foreground">Admin Portal</p>
-              </div>
-            )} */}
           </div>
           <SidebarTrigger className="hidden text-muted-foreground shrink-0 md:inline-flex" />
         </div>
       </SidebarHeader>
-      <SidebarContent className="px-2 py-3">
+      <SidebarContent className="px-2 py-3 bg-white">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -166,11 +153,11 @@ export function AdminSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t border-border space-y-3">
+      <SidebarFooter className="p-4 border-t border-border space-y-3 bg-white">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3 min-w-0">
             {!collapsed && (
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-semibold">
+              <div className="w-7 h-7 rounded-sm bg-primary flex items-center justify-center text-white text-xs font-semibold">
                 {(profile?.fullName)?.charAt(0).toUpperCase()}
               </div>
             )}
@@ -179,25 +166,25 @@ export function AdminSidebar() {
                 <p className="text-sm font-medium text-foreground truncate">
                   {loading ? "Loading..." : (profile?.fullName || "-")}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground">
                   {loading ? "Loading role..." : (profile?.role || "-")}
                 </p>
               </div>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "justify-end text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-3",
-              collapsed && "justify-center px-0"
-            )}
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4" />
-            {!collapsed && <span className="text-xs font-medium">Log Out</span>}
-          </Button>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "justify-end text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-50 gap-3",
+            collapsed && "justify-center px-0"
+          )}
+          onClick={handleLogout}
+        >
+          <LogOut className="h-3 w-3" />
+          {!collapsed && <span className="text-[10px] font-medium">Log Out</span>}
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );

@@ -143,55 +143,55 @@ export default function TeamPage() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="space-y-4 animate-in fade-in duration-500">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-              <Users className="w-6 h-6 text-primary" />
+          <div className="space-y-0.5">
+            <h1 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              <Users className="w-4 h-4 text-primary" />
               Team Management
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground">
               Manage organization members, roles, and access controls.
             </p>
           </div>
-          <Button onClick={() => setAddModalOpen(true)} className="gap-2 shadow-glow">
-            <UserPlus className="w-4 h-4" />
+          <Button onClick={() => setAddModalOpen(true)} size="sm" className="gap-1.5 shadow-glow text-xs h-8">
+            <UserPlus className="w-3.5 h-3.5" />
             Add Member
           </Button>
         </div>
 
         {/* Stats Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card className="bg-card/50 border-border/50">
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+            <CardContent className="p-2.5 flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
                 {stats.total}
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Total Members</p>
-                <p className="text-lg font-bold">{stats.total}</p>
+                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Total Members</p>
+                <p className="text-xs font-bold text-slate-800">{stats.total}</p>
               </div>
             </CardContent>
           </Card>
           <Card className="bg-card/50 border-border/50">
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-600 font-bold">
+            <CardContent className="p-2.5 flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-green-500/10 flex items-center justify-center text-green-600 text-xs font-bold">
                 {stats.active}
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Active</p>
-                <p className="text-lg font-bold">{stats.active}</p>
+                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Active</p>
+                <p className="text-xs font-bold text-slate-800">{stats.active}</p>
               </div>
             </CardContent>
           </Card>
           <Card className="bg-card/50 border-border/50">
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-600 font-bold">
+            <CardContent className="p-2.5 flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-600 text-xs font-bold">
                 {stats.inactive}
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Inactive</p>
-                <p className="text-lg font-bold">{stats.inactive}</p>
+                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Inactive</p>
+                <p className="text-xs font-bold text-slate-800">{stats.inactive}</p>
               </div>
             </CardContent>
           </Card>
@@ -199,24 +199,24 @@ export default function TeamPage() {
 
         {/* Filters & Table */}
         <Card className="shadow-card border-border/50 overflow-hidden">
-          <CardHeader className="border-b border-border/50 pb-4">
-            <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <CardHeader className="border-b border-border/50 pb-2">
+            <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
                   placeholder="Search by name or email..."
-                  className="pl-9 bg-muted/30 border-none h-10"
+                  className="pl-8 bg-muted/30 border-none h-8 text-xs"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex flex-wrap items-center gap-1.5 bg-muted/20 p-1 rounded-lg border border-border/50">
-                  <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1 bg-muted/20 p-0.5 rounded-lg border border-border/50">
+                  <div className="flex items-center gap-0.5">
                     <Button
                       variant={statusFilter === "all" ? "secondary" : "ghost"}
                       size="sm"
-                      className="h-8 text-xs font-medium"
+                      className="h-7 px-2.5 text-[11px] font-semibold"
                       onClick={() => setStatusFilter("all")}
                     >
                       All Status
@@ -224,7 +224,7 @@ export default function TeamPage() {
                     <Button
                       variant={statusFilter === "active" ? "secondary" : "ghost"}
                       size="sm"
-                      className="h-8 text-xs font-medium"
+                      className="h-7 px-2.5 text-[11px] font-semibold"
                       onClick={() => setStatusFilter("active")}
                     >
                       Active
@@ -232,17 +232,17 @@ export default function TeamPage() {
                     <Button
                       variant={statusFilter === "inactive" ? "secondary" : "ghost"}
                       size="sm"
-                      className="h-8 text-xs font-medium"
+                      className="h-7 px-2.5 text-[11px] font-semibold"
                       onClick={() => setStatusFilter("inactive")}
                     >
                       Inactive
                     </Button>
                   </div>
 
-                  <div className="h-6 w-[1px] bg-border/50 mx-1 hidden sm:block" />
+                  <div className="h-5 w-[1px] bg-border/50 mx-0.5 hidden sm:block" />
 
                   <Select value={roleFilter} onValueChange={setRoleFilter}>
-                    <SelectTrigger className="w-[140px] sm:w-[160px] bg-transparent hover:bg-muted/10 border-none h-8 text-xs font-medium focus:ring-0 focus:ring-offset-0">
+                    <SelectTrigger className="w-[120px] bg-transparent hover:bg-muted/10 border-none h-7 text-[11px] font-semibold focus:ring-0 focus:ring-offset-0">
                       <SelectValue placeholder="All Roles" />
                     </SelectTrigger>
                     <SelectContent className="bg-[#197554] border border-[#1e8c65] text-white shadow-2xl">
@@ -259,111 +259,112 @@ export default function TeamPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead className="bg-muted/30 border-b border-border/50">
                   <tr>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Member</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
-                    <th className="text-left px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Joined</th>
-                    <th className="text-right px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
+                    <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Member</th>
+                    <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Role</th>
+                    <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Joined</th>
+                    <th className="text-right px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {isLoading ? (
                     [1, 2, 3].map(i => (
                       <tr key={i} className="animate-pulse">
-                        <td className="px-6 py-4"><div className="h-10 w-40 bg-muted rounded" /></td>
-                        <td className="px-6 py-4"><div className="h-6 w-20 bg-muted rounded" /></td>
-                        <td className="px-6 py-4"><div className="h-6 w-16 bg-muted rounded" /></td>
-                        <td className="px-6 py-4"><div className="h-6 w-24 bg-muted rounded" /></td>
-                        <td className="px-6 py-4"><div className="h-8 w-8 ml-auto bg-muted rounded" /></td>
+                        <td className="px-3.5 py-2"><div className="h-8 w-32 bg-muted rounded" /></td>
+                        <td className="px-3.5 py-2"><div className="h-5 w-16 bg-muted rounded" /></td>
+                        <td className="px-3.5 py-2"><div className="h-5 w-12 bg-muted rounded" /></td>
+                        <td className="px-3.5 py-2"><div className="h-5 w-20 bg-muted rounded" /></td>
+                        <td className="px-3.5 py-2"><div className="h-6 w-6 ml-auto bg-muted rounded" /></td>
                       </tr>
                     ))
                   ) : filteredMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-3.5 py-8 text-center text-muted-foreground">
                         No members found matching your criteria.
                       </td>
                     </tr>
                   ) : filteredMembers.map((member) => (
                     <tr key={member.id} className="hover:bg-muted/20 transition-colors group">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs ${member.status === 'active' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                      <td className="px-3.5 py-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] ${member.status === 'active' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
                             {member.fullName?.slice(0, 2).toUpperCase() || '??'}
                           </div>
                           <div>
-                            <p className="font-medium text-foreground group-hover:text-primary transition-colors">
+                            <p className="text-xs font-bold text-slate-800 group-hover:text-primary transition-colors">
                               {member.fullName || 'Unknown'}
                             </p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Mail className="w-3 h-3" />
+                            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                              <Mail className="w-2.5 h-2.5" />
                               {member.email}
                             </p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <Badge variant="outline" className="bg-muted/50 border-border/50 font-medium capitalize">
-                          <Shield className="w-3 h-3 mr-1" />
+                      <td className="px-3.5 py-2">
+                        <Badge variant="outline" className="bg-muted/50 border-border/50 font-bold capitalize text-[10px] px-1.5 py-0">
+                          <Shield className="w-2.5 h-2.5 mr-0.5" />
                           {member.role.replace(/_/g, ' ')}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
+                      <td className="px-3.5 py-2">
+                        <div className="flex items-center gap-1.5">
                           <Switch
+                            className="scale-75 origin-left"
                             checked={member.status === 'active'}
                             onCheckedChange={(val) => statusMutation.mutate({ id: member.id, status: val ? 'active' : 'inactive' })}
                             disabled={statusMutation.isPending}
                           />
-                          <span className={`text-xs font-medium ${member.status === 'active' ? 'text-green-600' : 'text-muted-foreground'}`}>
+                          <span className={`text-[10px] font-semibold ${member.status === 'active' ? 'text-green-600' : 'text-muted-foreground'}`}>
                             {member.status === 'active' ? 'Active' : 'Inactive'}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
+                      <td className="px-3.5 py-2 text-[10px] text-muted-foreground">
+                        <div className="flex items-center gap-0.5">
+                          <Calendar className="w-2.5 h-2.5" />
                           {new Date(member.createdAt).toLocaleDateString()}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-3.5 py-2 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
+                            <Button variant="ghost" size="icon" className="h-6 w-6">
+                              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuContent align="end" className="w-40 text-xs">
                             <DropdownMenuItem asChild>
-                              <Link href={`/admin/team/${member.id}`} className="flex items-center gap-2">
-                                <Edit2 className="w-4 h-4" />
+                              <Link href={`/admin/team/${member.id}`} className="flex items-center gap-1.5 text-xs">
+                                <Edit2 className="w-3.5 h-3.5" />
                                 Edit Profile
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              className="flex items-center gap-2"
+                              className="flex items-center gap-1.5 text-xs"
                               onClick={() => {
                                 setCredMember(member)
                                 setCredModalOpen(true)
                               }}
                             >
-                              <KeyRound className="w-4 h-4" />
+                              <KeyRound className="w-3.5 h-3.5" />
                               Credentials
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               disabled={member.id === currentUser.id}
-                              className="flex items-center gap-2 text-red-500 hover:text-red-600 focus:text-red-600 focus:bg-red-50 disabled:text-muted-foreground disabled:hover:text-muted-foreground disabled:focus:text-muted-foreground disabled:focus:bg-transparent"
+                              className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 focus:text-red-600 focus:bg-red-50 disabled:text-muted-foreground"
                               onClick={() => {
                                 if (member.id !== currentUser.id && confirm(`Permanently delete ${member.fullName || member.email}?`)) {
                                   deleteMutation.mutate(member.id)
                                 }
                               }}
                             >
-                              <Trash2 className="w-4 h-4" />
-                              {member.id === currentUser.id ? 'Delete Disabled For You' : 'Delete Member'}
+                              <Trash2 className="w-3.5 h-3.5" />
+                              {member.id === currentUser.id ? 'Delete Disabled' : 'Delete Member'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

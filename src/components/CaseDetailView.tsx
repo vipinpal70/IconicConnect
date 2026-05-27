@@ -72,10 +72,10 @@ function formatFileSize(size: number | null) {
   return `${(size / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value }: { label: string; value: string | React.ReactNode }) {
   return (
     <div className="flex justify-between gap-2 border-b border-border/40 py-2 last:border-b-0">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
       <span className="text-xs font-medium text-foreground text-right">{value}</span>
     </div>
   )
@@ -285,6 +285,31 @@ export function CaseDetailView({
               <DetailRow label="Case Number" value={caseRecord.caseNumber || caseRecord.id} />
               <DetailRow label="Category" value={caseRecord.category || "—"} />
               <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
+              <DetailRow
+                label="Case Files"
+                value={
+                  files.length === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1 justify-end">
+                      {files.map((file) => (
+                        <a
+                          key={file.id}
+                          href={file.fileUrl}
+                          download={file.fileName}
+                          title={file.fileName}
+                          className="text-[10px] font-medium text-primary underline underline-offset-2 cursor-pointer hover:text-primary/70 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {file.fileName.length > 15
+                            ? `${file.fileName.slice(0, 15)}…`
+                            : file.fileName}
+                        </a>
+                      ))}
+                    </div>
+                  )
+                }
+              />
               <DetailRow label="Model Required" value={modelRequired} />
               <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
               <DetailRow label="Designer" value={caseRecord.designerName || caseRecord.designerId || "—"} />
@@ -425,44 +450,6 @@ export function CaseDetailView({
 
       {/* Full Width Section: Attachments & Case Chat */}
       <div className="space-y-4">
-        {/* Premium Deliverables Card */}
-
-        <Card className="shadow-card">
-          <CardHeader className="py-2.5 px-4 border-b border-border/50">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Paperclip className="h-4 w-4 text-primary" />
-              Case File
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="mt-2 px-4 pb-3 space-y-2">
-            {files.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No files attached to this case.</p>
-            ) : (
-              files.map((file) => (
-                <a
-                  key={file.id}
-                  href={file.fileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between rounded-lg border border-border/50 py-2 px-3 hover:bg-muted/20 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">{file.fileName}</p>
-                    {file.note && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5 whitespace-pre-wrap">
-                        {file.note}
-                      </p>
-                    )}
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {file.fileType || "Unknown type"} · {formatFileSize(file.fileSize)}
-                    </p>
-                  </div>
-                  <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </a>
-              ))
-            )}
-          </CardContent>
-        </Card>
 
         {(caseRecord.outputFile || caseRecord.previewFile) && (
           <Card className="shadow-card border-indigo-100 bg-[linear-gradient(180deg,rgba(243,244,246,0.5),rgba(249,250,251,0.7))]">

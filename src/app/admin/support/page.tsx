@@ -162,21 +162,21 @@ export default function AdminSupportPage() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 animate-fade-in">
-        <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-linear-to-br from-[#1a7554] via-[#126d4c] to-[#116144] p-5 text-white">
+      <div className="space-y-4 animate-fade-in">
+        <div className="relative overflow-hidden rounded-lg border border-border/60 bg-linear-to-br from-[#1a7554] via-[#126d4c] to-[#116144] p-4 text-white">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.2),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.14),transparent_30%)]" />
-          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/80 backdrop-blur">
-                <LifeBuoy className="h-3.5 w-3.5" />
+              <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-0.5 text-[10px] font-medium text-white/80 backdrop-blur">
+                <LifeBuoy className="h-3 w-3" />
                 Admin support desk
               </div>
-              <h1 className="text-white text-2xl font-semibold tracking-tight">Monitor and resolve support tickets</h1>
-              <p className="mt-2 max-w-xl text-xs text-white/75">
+              <h1 className="text-white text-sm font-bold tracking-tight">Monitor and resolve support tickets</h1>
+              <p className="mt-1 max-w-xl text-[11px] text-white/75">
                 Review every lab ticket in one place, move tickets through the workflow, and leave internal notes for the team.
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <Metric label="Open" value={metrics.open} />
               <Metric label="Active" value={metrics.active} />
               <Metric label="Done" value={metrics.resolved} />
@@ -186,24 +186,24 @@ export default function AdminSupportPage() {
 
         {/* Support Tickets Table */}
         <Card className="shadow-card border-border/60">
-          <CardContent className="p-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+          <CardContent className="p-2.5 flex flex-col gap-2 lg:flex-row lg:items-center">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
-                className="pl-9"
+                className="pl-8 h-8 text-xs"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search by ticket number, lab, subject, or message"
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full lg:w-56">
+              <SelectTrigger className="w-full lg:w-48 h-8 text-xs">
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="all" className="text-xs">All statuses</SelectItem>
                 {SUPPORT_TICKET_STATUSES.map((status) => (
-                  <SelectItem key={status} value={status}>
+                  <SelectItem key={status} value={status} className="text-xs">
                     {SUPPORT_TICKET_STATUS_LABELS[status]}
                   </SelectItem>
                 ))}
@@ -211,88 +211,88 @@ export default function AdminSupportPage() {
             </Select>
           </CardContent>
         </Card>
+        
         <Card className="shadow-card border-border/60">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">All tickets</CardTitle>
-            <CardDescription>Tickets are grouped by client lab, so you can quickly see who is waiting on a response.</CardDescription>
+          <CardHeader className="p-3.5 pb-2">
+            <CardTitle className="text-xs font-bold">All tickets</CardTitle>
+            <CardDescription className="text-[11px]">Tickets are grouped by client lab, so you can quickly see who is waiting on a response.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-1180px text-sm">
+              <table className="w-full min-w-1180px text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     {["Ticket", "Client", "Lab", "Subject", "Category", "Priority", "Status", "Updated", "Action"].map((heading) => (
                       <th
                         key={heading}
-                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                        className="px-3.5 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground"
                       >
                         {heading}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border/50">
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, index) => (
                       <tr key={index} className="border-b border-border/50">
-                        <td className="px-4 py-4"><div className="h-4 w-24 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-32 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-40 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-64 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-28 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-20 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-6 w-24 rounded-full bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-28 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-9 w-32 rounded bg-muted" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-16 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-24 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-32 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-48 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-20 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-16 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-5 w-16 rounded-full bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-20 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-7 w-20 rounded bg-muted animate-pulse" /></td>
                       </tr>
                     ))
                   ) : error ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-sm text-red-500">
+                      <td colSpan={9} className="px-3.5 py-8 text-center text-xs text-red-500">
                         {(error as Error).message}
                       </td>
                     </tr>
                   ) : filteredTickets.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={9} className="px-3.5 py-8 text-center text-xs text-muted-foreground">
                         No tickets match your filters.
                       </td>
                     </tr>
                   ) : (
                     filteredTickets.map((ticket) => (
                       <tr key={ticket.id} className="border-b border-border/50 transition-colors hover:bg-muted/20">
-                        <td className="px-4 py-4 font-semibold text-xs">{ticket.ticketNumber}</td>
-                        <td className="px-4 py-4">
+                        <td className="px-3.5 py-2 font-bold text-[11px] text-slate-800">{ticket.ticketNumber}</td>
+                        <td className="px-3.5 py-2">
                           <div>
-                            <p className="font-medium text-xs">{ticket.clientName || "Unknown client"}</p>
-                            {/* <p className="text-xs text-muted-foreground">{ticket.clientEmail || "No email"}</p> */}
+                            <p className="font-bold text-[11px] text-slate-800">{ticket.clientName || "Unknown client"}</p>
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-xs">{ticket.labName || "—"}</td>
-                        <td className="px-4 py-4">
+                        <td className="px-3.5 py-2 text-[11px]">{ticket.labName || "—"}</td>
+                        <td className="px-3.5 py-2">
                           <div className="max-w-[320px]">
-                            <p className="font-medium text-xs">{ticket.subject}</p>
-                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{ticket.message}</p>
+                            <p className="font-semibold text-[11px] text-slate-700">{ticket.subject}</p>
+                            <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{ticket.message}</p>
                             {ticket.adminNotes && (
-                              <p className="mt-2 rounded-lg border border-dashed border-border px-2 py-1 text-xs text-muted-foreground">
+                              <p className="mt-1 rounded border border-dashed border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
                                 Internal note: {ticket.adminNotes}
                               </p>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-xs">{SUPPORT_TICKET_TYPE_LABELS[ticket.category]}</td>
-                        <td className="px-4 py-4 text-xs">{SUPPORT_TICKET_PRIORITY_LABELS[ticket.priority]}</td>
-                        <td className="px-4 py-4">
-                          <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${SUPPORT_TICKET_STATUS_STYLES[ticket.status] || SUPPORT_TICKET_STATUS_STYLES.open}`}>
+                        <td className="px-3.5 py-2 text-[11px]">{SUPPORT_TICKET_TYPE_LABELS[ticket.category]}</td>
+                        <td className="px-3.5 py-2 text-[11px]">{SUPPORT_TICKET_PRIORITY_LABELS[ticket.priority]}</td>
+                        <td className="px-3.5 py-2">
+                          <span className={`inline-flex rounded-full px-2 py-0 text-[10px] font-semibold scale-90 origin-left shrink-0 ${SUPPORT_TICKET_STATUS_STYLES[ticket.status] || SUPPORT_TICKET_STATUS_STYLES.open}`}>
                             {SUPPORT_TICKET_STATUS_LABELS[ticket.status]}
                           </span>
                         </td>
-                        <td className="px-4 py-4 text-xs whitespace-nowrap">
+                        <td className="px-3.5 py-2 text-[10px] text-muted-foreground whitespace-nowrap">
                           {new Date(ticket.updatedAt).toLocaleString()}
                         </td>
-                        <td className="px-4 py-4">
-                          <Button size="sm" variant="outline" className="h-9" onClick={() => handleOpenTicket(ticket)}>
-                            <ArrowUpRight className="mr-2 h-3.5 w-3.5" />
+                        <td className="px-3.5 py-2">
+                          <Button size="sm" variant="outline" className="h-7 text-[10px] px-2" onClick={() => handleOpenTicket(ticket)}>
+                            <ArrowUpRight className="mr-1 h-3 w-3" />
                             Manage
                           </Button>
                         </td>
@@ -307,53 +307,53 @@ export default function AdminSupportPage() {
 
         {/* Callback Requests Table */}
         <Card className="shadow-card border-border/60">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Callback requests</CardTitle>
-            <CardDescription>Clients who asked for a callback with the lab contact details captured at request time.</CardDescription>
+          <CardHeader className="p-3.5 pb-2">
+            <CardTitle className="text-xs font-bold">Callback requests</CardTitle>
+            <CardDescription className="text-[11px]">Clients who asked for a callback with the lab contact details captured at request time.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-980px text-sm">
+              <table className="w-full min-w-980px text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     {["Client", "Lab", "Phone", "Email", "Requested"].map((heading) => (
-                      <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <th key={heading} className="px-3.5 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                         {heading}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border/50">
                   {callbackLoading ? (
                     Array.from({ length: 3 }).map((_, index) => (
                       <tr key={index} className="border-b border-border/50">
-                        <td className="px-4 py-4"><div className="h-4 w-28 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-44 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-28 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-44 rounded bg-muted" /></td>
-                        <td className="px-4 py-4"><div className="h-4 w-32 rounded bg-muted" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-28 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-40 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-28 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-40 rounded bg-muted animate-pulse" /></td>
+                        <td className="px-3.5 py-2"><div className="h-3 w-32 rounded bg-muted animate-pulse" /></td>
                       </tr>
                     ))
                   ) : callbackError ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-sm text-red-500">
+                      <td colSpan={5} className="px-3.5 py-8 text-center text-xs text-red-500">
                         {(callbackError as Error).message}
                       </td>
                     </tr>
                   ) : callbackRequests.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={5} className="px-3.5 py-8 text-center text-xs text-muted-foreground">
                         No callback requests yet.
                       </td>
                     </tr>
                   ) : (
                     callbackRequests.map((request) => (
                       <tr key={request.id} className="border-b border-border/50 transition-colors hover:bg-muted/20">
-                          <td className="px-4 py-4 font-medium text-xs">{request.clientName}</td>
-                        <td className="px-4 py-4 text-xs">{request.labName}</td>
-                        <td className="px-4 py-4 text-xs">{request.phone || "—"}</td>
-                        <td className="px-4 py-4 text-xs">{request.email}</td>
-                        <td className="px-4 py-4 text-xs whitespace-nowrap">
+                        <td className="px-3.5 py-2 font-bold text-[11px] text-slate-800">{request.clientName}</td>
+                        <td className="px-3.5 py-2 text-[11px]">{request.labName}</td>
+                        <td className="px-3.5 py-2 text-[11px]">{request.phone || "—"}</td>
+                        <td className="px-3.5 py-2 text-[11px]">{request.email}</td>
+                        <td className="px-3.5 py-2 text-[10px] text-muted-foreground whitespace-nowrap">
                           {new Date(request.requestedAt).toLocaleString()}
                         </td>
                       </tr>
@@ -371,17 +371,17 @@ export default function AdminSupportPage() {
           {openTicket && (
             <>
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-xl">
-                  <Ticket className="h-5 w-5 text-primary" />
+                <DialogTitle className="flex items-center gap-1.5 text-base font-bold">
+                  <Ticket className="h-4.5 w-4.5 text-primary" />
                   {openTicket.ticketNumber}
                 </DialogTitle>
-                <DialogDescription>
+                <DialogDescription className="text-xs">
                   {openTicket.labName || openTicket.clientName || "Unknown client"} · {SUPPORT_TICKET_TYPE_LABELS[openTicket.category]}
                 </DialogDescription>
               </DialogHeader>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                <div className="space-y-3 rounded bg-muted/20 p-3.5 border border-border/60">
                   <InfoRow label="Client" value={openTicket.clientName || "Unknown"} />
                   <InfoRow label="Lab" value={openTicket.labName || "—"} />
                   <InfoRow label="Email" value={openTicket.clientEmail || "—"} />
@@ -391,15 +391,15 @@ export default function AdminSupportPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label>Status</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Status</Label>
                     <Select value={draftStatus} onValueChange={(value) => setDraftStatus(value as SupportTicketStatus)}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="Update status" />
                       </SelectTrigger>
                       <SelectContent>
                         {SUPPORT_TICKET_STATUSES.map((status) => (
-                          <SelectItem key={status} value={status}>
+                          <SelectItem key={status} value={status} className="text-xs">
                             {SUPPORT_TICKET_STATUS_LABELS[status]}
                           </SelectItem>
                         ))}
@@ -407,10 +407,11 @@ export default function AdminSupportPage() {
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Admin notes</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Admin notes</Label>
                     <Textarea
-                      rows={9}
+                      rows={6}
+                      className="text-xs"
                       value={draftNotes}
                       onChange={(event) => setDraftNotes(event.target.value)}
                       placeholder="Internal notes for the support team..."
@@ -418,20 +419,20 @@ export default function AdminSupportPage() {
                   </div>
 
                   <div className="flex items-center justify-between gap-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${SUPPORT_TICKET_STATUS_STYLES[openTicket.status] || SUPPORT_TICKET_STATUS_STYLES.open}`}>
+                    <span className={`inline-flex rounded-full px-2 py-0 text-[10px] font-semibold scale-90 origin-left shrink-0 ${SUPPORT_TICKET_STATUS_STYLES[openTicket.status] || SUPPORT_TICKET_STATUS_STYLES.open}`}>
                       Current: {SUPPORT_TICKET_STATUS_LABELS[openTicket.status]}
                     </span>
-                    <Button onClick={handleSave} disabled={saving}>
-                      <RefreshCcw className="mr-2 h-4 w-4" />
+                    <Button onClick={handleSave} disabled={saving} size="sm" className="h-8 text-xs px-3">
+                      <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
                       {saving ? "Saving..." : "Save changes"}
                     </Button>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/20 p-4">
-                <Label>Client message</Label>
-                <p className="whitespace-pre-wrap text-sm text-foreground">{openTicket.message}</p>
+              <div className="space-y-1.5 rounded bg-muted/20 p-3.5 border border-border/60">
+                <Label className="text-xs">Client message</Label>
+                <p className="whitespace-pre-wrap text-xs text-foreground leading-normal">{openTicket.message}</p>
               </div>
             </>
           )}
@@ -443,18 +444,18 @@ export default function AdminSupportPage() {
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-left backdrop-blur">
-      <p className="text-xs uppercase tracking-wide text-white/60">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
+    <div className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-left backdrop-blur">
+      <p className="text-[9px] uppercase tracking-wide text-white/60">{label}</p>
+      <p className="mt-0.5 text-sm font-bold text-white">{value}</p>
     </div>
   )
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-medium text-foreground text-right">{value}</span>
+    <div className="flex items-start justify-between gap-4 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-semibold text-slate-700 text-right">{value}</span>
     </div>
   )
 }

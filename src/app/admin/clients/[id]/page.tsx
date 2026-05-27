@@ -90,8 +90,6 @@ export default function ClientProfilePage() {
       notes: item.notes ?? "",
       sortOrder: item.sortOrder,
     }))
-    // The query result seeds the editable draft state for this page.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPriceRows(nextRows)
   }, [priceListQuery.data])
 
@@ -122,9 +120,9 @@ export default function ClientProfilePage() {
       current.map((row) =>
         row.id === id
           ? {
-              ...row,
-              [field]: field === "price" ? Number(value) : value,
-            }
+            ...row,
+            [field]: field === "price" ? Number(value) : value,
+          }
           : row
       )
     )
@@ -170,49 +168,43 @@ export default function ClientProfilePage() {
             <Badge variant="outline" className="capitalize">
               {client?.status || "unknown"}
             </Badge>
-            <Button onClick={addRow} variant="outline" className="gap-2">
-              <Plus className="h-4 w-4" />
-              Add service
-            </Button>
-            <Button onClick={() => saveMutation.mutate(priceRows)} disabled={saveMutation.isPending} className="gap-2 gradient-primary border-none shadow-glow">
-              <Save className="h-4 w-4" />
-              Save price list
-            </Button>
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.05fr_1.4fr]">
+        <div className="flex flex-col gap-4">
           <Card className="shadow-card">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base font-medium">
-                <Building2 className="h-4 w-4 text-primary" />
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                <Building2 className="h-3.5 w-3.5 text-primary" />
                 Client information
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm">
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-2 px-4 pb-4">
               <Info label="Client ID" value={client?.id ?? "Loading..."} />
               <Info label="Lab Name" value={client?.labName || "-"} />
               <Info label="Primary Contact" value={client?.fullName || "-"} />
-              <Info label="Email" value={client?.email || "-"} icon={<Mail className="h-4 w-4" />} />
-              <Info label="Phone" value={client?.phone || "-"} icon={<Phone className="h-4 w-4" />} />
-              <Info label="Location" value={location || "-"} icon={<MapPin className="h-4 w-4" />} />
+              <Info label="Email" value={client?.email || "-"} icon={<Mail className="h-3 w-3" />} />
+              <Info label="Phone" value={client?.phone || "-"} icon={<Phone className="h-3 w-3" />} />
+              <Info label="Location" value={location || "-"} icon={<MapPin className="h-3 w-3" />} />
               <Info label="Postal Code" value={client?.postalCode || "-"} />
               <Info label="Title" value={client?.title || "-"} />
-              <Info label="Role" value={client?.role || "-"} icon={<User className="h-4 w-4" />} />
+              <Info label="Role" value={client?.role || "-"} icon={<User className="h-3 w-3" />} />
               <Info label="User Type" value={client?.userType || "-"} />
-              <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3 flex items-center justify-between">
+
+              <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 flex items-center justify-between col-span-1 sm:col-span-2 md:col-span-1">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/70 flex items-center gap-1.5">
-                    <Layers3 className="h-4 w-4" />
-                    Plan Status
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-primary/70 flex items-center gap-1">
+                    <Layers3 className="h-3 w-3" />
+                    Plan
                   </p>
-                  <p className="mt-1 truncate font-medium text-foreground">
+                  <p className="mt-0.5 truncate text-xs font-semibold text-foreground">
                     {client?.plan || "Trial"}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground font-medium">Trial</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] text-muted-foreground font-medium">Trial</span>
                   <Switch
+                    className="scale-75 origin-right"
                     checked={client?.plan === "Onboarded"}
                     onCheckedChange={async (checked) => {
                       if (!client) return
@@ -234,31 +226,36 @@ export default function ClientProfilePage() {
                       }
                     }}
                   />
-                  <span className="text-xs text-primary font-semibold">Onboarded</span>
+                  <span className="text-[10px] text-primary font-bold">Onboarded</span>
                 </div>
               </div>
+
               <Info label="Onboarded" value={client?.onBoardedAt ? format(new Date(client.onBoardedAt), "PPP") : "-"} />
-              <Info label="Created" value={client?.createdAt ? format(new Date(client.createdAt), "PPP") : "-"} icon={<CalendarDays className="h-4 w-4" />} />
+              <Info label="Created" value={client?.createdAt ? format(new Date(client.createdAt), "PPP") : "-"} icon={<CalendarDays className="h-3 w-3" />} />
               <Info label="Updated" value={client?.updatedAt ? format(new Date(client.updatedAt), "PPP") : "-"} />
               <Info label="Created By" value={client?.createdBy || "-"} />
             </CardContent>
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-base font-medium">
-                <ShieldCheck className="h-4 w-4 text-primary" />
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
                 Price list editor
               </CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Add or update services for this client. The client profile will reflect these changes immediately after save.
+              </p>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <p className="text-sm text-muted-foreground">
-                  Add or update services for this client. The client profile will reflect these changes immediately after save.
-                </p>
-                <Button onClick={addRow} variant="outline" className="gap-2 shrink-0">
-                  <Plus className="h-4 w-4" />
+            <CardContent className="px-4 pb-4">
+              <div className="flex items-center justify-end gap-3 mb-3 px-1">
+                <Button onClick={addRow} variant="outline" size="sm" className="gap-1.5 shrink-0 text-xs h-8">
+                  <Plus className="h-3.5 w-3.5" />
                   Add service
+                </Button>
+                <Button onClick={() => saveMutation.mutate(priceRows)} disabled={saveMutation.isPending} size="sm" className="gap-1.5 gradient-primary border-none shadow-glow text-xs h-8">
+                  <Save className="h-3.5 w-3.5" />
+                  Save price list
                 </Button>
               </div>
 
@@ -269,10 +266,10 @@ export default function ClientProfilePage() {
                 onAddRow={addRow}
                 onRemoveRow={removeRow}
                 emptyState={
-                  <div className="space-y-3">
-                    <p>No services have been added yet.</p>
-                    <Button onClick={addRow} variant="outline" className="gap-2">
-                      <Plus className="h-4 w-4" />
+                  <div className="space-y-2 text-center py-6">
+                    <p className="text-xs text-muted-foreground">No services have been added yet.</p>
+                    <Button onClick={addRow} variant="outline" size="sm" className="gap-1.5 text-xs">
+                      <Plus className="h-3.5 w-3.5" />
                       Add first service
                     </Button>
                   </div>
@@ -288,12 +285,12 @@ export default function ClientProfilePage() {
 
 function Info({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
   return (
-    <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/70 flex items-center gap-1.5">
+    <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-primary/70 flex items-center gap-1">
         {icon}
         {label}
       </p>
-      <p className="mt-1 truncate font-medium text-foreground">{value}</p>
+      <p className="mt-0.5 truncate text-xs font-semibold text-foreground">{value}</p>
     </div>
   )
 }

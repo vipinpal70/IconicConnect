@@ -287,48 +287,48 @@ export default function AdminOffers() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground">Offers</h1>
-            <p className="text-sm text-muted-foreground mt-1">Manage promotional offers shown to client labs</p>
+          <div className="space-y-0.5">
+            <h1 className="text-sm font-bold text-foreground">Offers</h1>
+            <p className="text-xs text-muted-foreground">Manage promotional offers shown to client labs</p>
           </div>
           <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-              <Button className="gap-2" onClick={openCreateDialog}>
-                <Plus className="h-4 w-4" />
+              <Button size="sm" className="gap-1.5 text-xs h-8" onClick={openCreateDialog}>
+                <Plus className="h-3.5 w-3.5" />
                 New Offer
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className="sm:max-w-2xl text-xs">
               <DialogHeader>
-                <DialogTitle>{editingOfferId ? "Edit Offer" : "Create Offer"}</DialogTitle>
-                <DialogDescription>
+                <DialogTitle className="text-sm font-bold">{editingOfferId ? "Edit Offer" : "Create Offer"}</DialogTitle>
+                <DialogDescription className="text-xs">
                   Update offer details and publish promotional campaigns for client labs.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 mt-2">
-                <div className="space-y-2">
-                  <Label>Title</Label>
-                  <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+              <div className="space-y-3.5 mt-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Title</Label>
+                  <Input className="h-8 text-xs" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Brand</Label>
-                    <Input value={draft.brand} onChange={(e) => setDraft({ ...draft, brand: e.target.value })} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Brand</Label>
+                    <Input className="h-8 text-xs" value={draft.brand} onChange={(e) => setDraft({ ...draft, brand: e.target.value })} />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Category</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Category</Label>
                     <Select
                       value={draft.category}
                       onValueChange={(v) => setDraft({ ...draft, category: v as OfferCategory })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
                         {OFFER_CATEGORIES.map((category) => (
-                          <SelectItem key={category} value={category}>
+                          <SelectItem key={category} value={category} className="text-xs">
                             {category}
                           </SelectItem>
                         ))}
@@ -336,54 +336,59 @@ export default function AdminOffers() {
                     </Select>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">Description</Label>
                   <Textarea
+                    rows={4}
+                    className="text-xs"
                     value={draft.description}
                     onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Discount</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Discount</Label>
                     <Input
+                      className="h-8 text-xs"
                       placeholder="e.g. 15% off"
                       value={draft.discount}
                       onChange={(e) => setDraft({ ...draft, discount: e.target.value })}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Valid till</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Valid till</Label>
                     <Input
+                      className="h-8 text-xs"
                       type="date"
                       value={draft.validTill}
                       onChange={(e) => setDraft({ ...draft, validTill: e.target.value })}
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Target client (optional)</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Target client (optional)</Label>
                     <Select
                       value={draft.targetClients[0] ?? "all"}
                       onValueChange={(v) => setDraft({ ...draft, targetClients: v === "all" ? [] : [v] })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="All clients" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All clients</SelectItem>
+                        <SelectItem value="all" className="text-xs">All clients</SelectItem>
                         {clientList.map((client) => (
-                          <SelectItem key={client.id} value={client.company}>
+                          <SelectItem key={client.id} value={client.company} className="text-xs">
                             {client.company}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Target location (optional)</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Target location (optional)</Label>
                     <Input
+                      className="h-8 text-xs"
                       placeholder="e.g. Universal"
                       value={draft.targetLocations[0] ?? ""}
                       onChange={(e) =>
@@ -395,21 +400,22 @@ export default function AdminOffers() {
                     />
                   </div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3">
+                <div className="flex items-center justify-between rounded border border-border/60 px-3.5 py-2">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Sponsored</p>
-                    <p className="text-xs text-muted-foreground">Show a sponsored badge on the client portal card.</p>
+                    <p className="text-xs font-semibold text-foreground">Sponsored</p>
+                    <p className="text-[10px] text-muted-foreground">Show a sponsored badge on the client portal card.</p>
                   </div>
                   <Switch
+                    className="scale-75 origin-right"
                     checked={draft.sponsored}
                     onCheckedChange={(checked) => setDraft({ ...draft, sponsored: checked })}
                   />
                 </div>
-                <Button className="w-full gap-2" onClick={submitOffer} disabled={saveMutation.isPending}>
+                <Button className="w-full h-8 text-xs gap-1.5" onClick={submitOffer} disabled={saveMutation.isPending}>
                   {saveMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-3.5 w-3.5" />
                   )}
                   {editingOfferId ? "Update Offer" : "Publish Offer"}
                 </Button>
@@ -418,13 +424,13 @@ export default function AdminOffers() {
           </Dialog>
         </div>
 
-        <div className="flex items-center gap-4 bg-card p-4 rounded-lg border border-border/50 shadow-sm max-w-sm">
+        <div className="flex items-center gap-4 bg-card p-2 rounded-lg border border-border/50 shadow-sm max-w-xs">
           <div className="flex-1">
             <Input
               placeholder="Search offers by title or brand..."
               value={offerSearch}
               onChange={(e) => setOfferSearch(e.target.value)}
-              className="h-9"
+              className="h-8 text-xs border-none bg-muted/30"
             />
           </div>
         </div>
@@ -432,11 +438,11 @@ export default function AdminOffers() {
         <Card className="shadow-card border-border/50 overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     {["Offer", "Brand", "Category", "Discount", "Targeting", "Valid till", "Active", "Actions"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
+                      <th key={h} className="px-3.5 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                         {h}
                       </th>
                     ))}
@@ -446,74 +452,75 @@ export default function AdminOffers() {
                   {offersQuery.isLoading ? (
                     Array.from({ length: 4 }).map((_, index) => (
                       <tr key={index} className="animate-pulse">
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-48 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-36 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-24 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-16 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-28 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-20 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-24 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-16 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-44 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-28 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-20 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-16 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-12 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-8 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-8 w-16 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-6 w-12 bg-muted rounded" />
                         </td>
                       </tr>
                     ))
                   ) : offersQuery.error ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center">
-                        <div className="flex flex-col items-center gap-2 text-red-500">
-                          <AlertCircle className="h-8 w-8" />
+                      <td colSpan={8} className="px-3.5 py-8 text-center">
+                        <div className="flex flex-col items-center gap-1.5 text-red-500">
+                          <AlertCircle className="h-6 w-6" />
                           <p>{(offersQuery.error as Error).message}</p>
                         </div>
                       </td>
                     </tr>
                   ) : offers.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={8} className="px-3.5 py-8 text-center text-xs text-muted-foreground">
                         {offerSearch ? "No offers match your search." : "No offers published yet."}
                       </td>
                     </tr>
                   ) : (
                     offers.map((offer) => (
                       <tr key={offer.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground">{offer.title}</span>
+                        <td className="px-3.5 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-[11px] text-slate-800">{offer.title}</span>
                             {offer.sponsored && (
-                              <Badge className="gap-1 bg-warning text-warning-foreground">
-                                <Sparkles className="h-3 w-3" />
+                              <Badge className="gap-0.5 bg-warning text-warning-foreground text-[9px] px-1 py-0 border-0 scale-90 origin-left">
+                                <Sparkles className="h-2.5 w-2.5" />
                                 Sponsored
                               </Badge>
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground line-clamp-1">{offer.description}</p>
+                          <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{offer.description}</p>
                         </td>
-                        <td className="px-4 py-4 text-muted-foreground">{offer.brand}</td>
-                        <td className="px-4 py-4 text-muted-foreground">{offer.category}</td>
-                        <td className="px-4 py-4 text-primary font-medium">{offer.discount}</td>
-                        <td className="px-4 py-4 text-xs text-muted-foreground">
+                        <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{offer.brand}</td>
+                        <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{offer.category}</td>
+                        <td className="px-3.5 py-2 text-primary text-[11px] font-bold">{offer.discount}</td>
+                        <td className="px-3.5 py-2 text-[10px] text-muted-foreground">
                           {offer.targetClients.length ? `Client: ${offer.targetClients.join(", ")}` : "All clients"}
                           {offer.targetLocations.length ? ` | ${offer.targetLocations.join(", ")}` : ""}
                         </td>
-                        <td className="px-4 py-4 text-muted-foreground whitespace-nowrap">
+                        <td className="px-3.5 py-2 text-[10px] text-muted-foreground whitespace-nowrap">
                           {formatDate(offer.validTill)}
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-3.5 py-2">
                           <Switch
+                            className="scale-75 origin-left"
                             checked={offer.active !== false}
                             onCheckedChange={(checked) =>
                               toggleActiveMutation.mutate({ id: offer.id, active: checked })
@@ -521,18 +528,19 @@ export default function AdminOffers() {
                             disabled={toggleActiveMutation.isPending}
                           />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => openEditDialog(offer)}>
-                              <Pencil className="h-4 w-4" />
+                        <td className="px-3.5 py-2">
+                          <div className="flex gap-0.5">
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditDialog(offer)}>
+                              <Pencil className="h-3.5 w-3.5 text-slate-700" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="h-6 w-6"
                               onClick={() => remove(offer.id)}
                               disabled={deleteMutation.isPending}
                             >
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
                             </Button>
                           </div>
                         </td>
@@ -545,28 +553,28 @@ export default function AdminOffers() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-card border-border/50 overflow-hidden">
+        <Card className="shadow-card border-border/50 overflow-hidden mt-12">
           <CardContent className="p-0">
-            <div className="border-b border-border/60 px-5 py-4 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">Claimed Offers</h2>
-                <p className="text-sm text-muted-foreground">Client details are shown here when an offer is claimed.</p>
+            <div className="border-b border-border/60 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 pb-2 bg-muted/10">
+              <div className="space-y-0.5">
+                <h2 className="text-xs font-bold text-foreground">Claimed Offers</h2>
+                <p className="text-[10px] text-muted-foreground">Client details are shown here when an offer is claimed.</p>
               </div>
-              <div className="w-full sm:w-72">
+              <div className="w-full sm:w-60">
                 <Input
                   placeholder="Search claims by lab, client, offer..."
                   value={claimSearch}
                   onChange={(e) => setClaimSearch(e.target.value)}
-                  className="h-9"
+                  className="h-7 text-xs"
                 />
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     {["Offer", "Client name", "Lab name", "Email", "Phone", "Claimed at", "Status", "Actions"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
+                      <th key={h} className="px-3.5 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                         {h}
                       </th>
                     ))}
@@ -576,95 +584,95 @@ export default function AdminOffers() {
                   {claimsQuery.isLoading ? (
                     Array.from({ length: 3 }).map((_, index) => (
                       <tr key={index} className="animate-pulse">
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-40 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-32 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-32 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-24 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-36 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-28 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-44 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-32 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-28 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-20 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-28 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-20 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-16 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-3.5 w-12 bg-muted rounded" />
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="h-8 w-16 rounded bg-muted" />
+                        <td className="px-3.5 py-2">
+                          <div className="h-6 w-12 bg-muted rounded" />
                         </td>
                       </tr>
                     ))
                   ) : claimsQuery.error ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center">
-                        <div className="flex flex-col items-center gap-2 text-red-500">
-                          <AlertCircle className="h-8 w-8" />
+                      <td colSpan={8} className="px-3.5 py-8 text-center">
+                        <div className="flex flex-col items-center gap-1.5 text-red-500">
+                          <AlertCircle className="h-6 w-6" />
                           <p>{(claimsQuery.error as Error).message}</p>
                         </div>
                       </td>
                     </tr>
                   ) : claims.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                      <td colSpan={8} className="px-3.5 py-8 text-center text-xs text-muted-foreground">
                         {claimSearch ? "No claimed offers match your search." : "No offers have been claimed yet."}
                       </td>
                     </tr>
                   ) : (
                     claims.map((claim) => (
                       <tr key={claim.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground">{claim.offerTitle}</span>
-                            <Badge variant="secondary" className="text-xs">
+                        <td className="px-3.5 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-[11px] text-slate-800">{claim.offerTitle}</span>
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 font-semibold text-slate-700">
                               {claim.offerBrand}
                             </Badge>
                           </div>
-                          <p className="text-xs text-muted-foreground">{claim.offerDiscount}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{claim.offerDiscount}</p>
                         </td>
-                        <td className="px-4 py-4 text-muted-foreground">{claim.clientName}</td>
-                        <td className="px-4 py-4 text-muted-foreground">{claim.labName}</td>
-                        <td className="px-4 py-4 text-muted-foreground">{claim.email}</td>
-                        <td className="px-4 py-4 text-muted-foreground">{claim.phone}</td>
-                        <td className="px-4 py-4 text-muted-foreground whitespace-nowrap">
+                        <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{claim.clientName}</td>
+                        <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{claim.labName}</td>
+                        <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{claim.email}</td>
+                        <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{claim.phone}</td>
+                        <td className="px-3.5 py-2 text-[10px] text-muted-foreground whitespace-nowrap">
                           {formatDate(claim.claimedAt)}
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-3.5 py-2">
                           <Badge
                             variant={claim.status === "delivered" ? "default" : "secondary"}
                             className={
                               claim.status === "delivered"
-                                ? "bg-emerald-500 hover:bg-emerald-600 text-white border-0"
-                                : "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-0"
+                                ? "bg-emerald-500 hover:bg-emerald-600 text-white border-0 text-[9px] px-1.5 py-0 font-bold"
+                                : "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-0 text-[9px] px-1.5 py-0 font-bold"
                             }
                           >
                             {claim.status === "delivered" ? "Delivered" : "Claimed"}
                           </Badge>
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-3.5 py-2">
                           {claim.status !== "delivered" ? (
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 gap-1.5 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-600 text-emerald-500"
+                              className="h-7 px-2 text-[10px] gap-1 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-600 text-emerald-500 font-bold"
                               onClick={() => deliverMutation.mutate(claim.id)}
                               disabled={deliverMutation.isPending}
                             >
                               {deliverMutation.isPending ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
                                 "Deliver"
                               )}
                             </Button>
                           ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <span className="text-[10px] text-muted-foreground">—</span>
                           )}
                         </td>
                       </tr>

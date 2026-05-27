@@ -167,6 +167,56 @@ export default function ClientPreferencesPage() {
           </Button>
         </div>
 
+        <Card className="shadow-card">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-foreground">Saved Forms</h3>
+                <p className="text-sm text-muted-foreground">Forms are stored under your account and visible to the admin team.</p>
+              </div>
+              <Badge variant="secondary">{loading ? "Loading..." : `${forms.length} form(s)`}</Badge>
+            </div>
+
+            {forms.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No preference forms have been added yet.</p>
+            ) : (
+              <div className="grid gap-4">
+                {forms.map((form) => (
+                  <Card key={form.id} className="border-border/60">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h4 className="font-semibold text-foreground">{form.formName}</h4>
+                          <p className="text-xs text-muted-foreground">Created {new Date(form.createdAt).toLocaleDateString()}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => editForm(form)}>
+                            <PencilLine className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteForm(form.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 text-sm md:grid-cols-2">
+                        <Summary label="Occlusion" value={form.payload.occlusion.defaultValues || "-"} />
+                        <Summary label="Proximal Contacts" value={form.payload.proximalContacts.defaultValues || "-"} />
+                        <Summary label="Distal-most Crown" value={form.payload.distalMostCrownContact.defaultValues || "-"} />
+                        <Summary label="Anatomy" value={form.payload.anatomy.option || "-"} />
+                        <Summary label="Smile Library" value={form.payload.smileLibrary.option || "-"} />
+                        <Summary label="Pontic Type" value={form.payload.ponticType.option || "-"} />
+                        <Summary label="Pontic Distance" value={form.payload.ponticDistanceFromTissue.option || "-"} />
+                        <Summary label="Match Marginal Ridge" value={form.payload.matchMarginalRidge.option || "-"} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="overflow-hidden border-border shadow-sm bg-white">
           <CardContent className="p-0">
             <div className="border-b border-border px-4 py-3">
@@ -320,55 +370,7 @@ export default function ClientPreferencesPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-card">
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-foreground">Saved Forms</h3>
-                <p className="text-sm text-muted-foreground">Forms are stored under your account and visible to the admin team.</p>
-              </div>
-              <Badge variant="secondary">{loading ? "Loading..." : `${forms.length} form(s)`}</Badge>
-            </div>
 
-            {forms.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">No preference forms have been added yet.</p>
-            ) : (
-              <div className="grid gap-4">
-                {forms.map((form) => (
-                  <Card key={form.id} className="border-border/60">
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h4 className="font-semibold text-foreground">{form.formName}</h4>
-                          <p className="text-xs text-muted-foreground">Created {new Date(form.createdAt).toLocaleDateString()}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => editForm(form)}>
-                            <PencilLine className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteForm(form.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-2 text-sm md:grid-cols-2">
-                        <Summary label="Occlusion" value={form.payload.occlusion.defaultValues || "-"} />
-                        <Summary label="Proximal Contacts" value={form.payload.proximalContacts.defaultValues || "-"} />
-                        <Summary label="Distal-most Crown" value={form.payload.distalMostCrownContact.defaultValues || "-"} />
-                        <Summary label="Anatomy" value={form.payload.anatomy.option || "-"} />
-                        <Summary label="Smile Library" value={form.payload.smileLibrary.option || "-"} />
-                        <Summary label="Pontic Type" value={form.payload.ponticType.option || "-"} />
-                        <Summary label="Pontic Distance" value={form.payload.ponticDistanceFromTissue.option || "-"} />
-                        <Summary label="Match Marginal Ridge" value={form.payload.matchMarginalRidge.option || "-"} />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </ClientLayout>
   )

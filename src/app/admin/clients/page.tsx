@@ -72,24 +72,24 @@ export default function AdminClients() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground">Clients</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Review registrations, manage profiles and price lists</p>
+          <div className="space-y-0.5">
+            <h1 className="text-sm font-bold text-foreground">Clients</h1>
+            <p className="text-xs text-muted-foreground">Review registrations, manage profiles and price lists</p>
           </div>
 
-          <Button onClick={() => setOnboardOpen(true)} className="gradient-primary border-none shadow-glow">
-            <Plus className="mr-2 h-4 w-4" />
+          <Button onClick={() => setOnboardOpen(true)} size="sm" className="gradient-primary border-none shadow-glow text-xs h-8">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
             Onboard Client
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {clients?.map((client) => (
             <Card
               key={client.id}
-              className="group cursor-pointer border-border/50 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-glow"
+              className="group cursor-pointer border-border/50 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-sm"
               role="button"
               tabIndex={0}
               onClick={() => router.push(`/admin/clients/${client.id}`)}
@@ -100,61 +100,61 @@ export default function AdminClients() {
                 }
               }}
             >
-              <CardContent className="space-y-4 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm">
-                      {client.labName?.charAt(0) || client.fullName?.charAt(0) || <Building2 className="h-5 w-5" />}
+              <CardContent className="space-y-3 p-3.5">
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">
+                      {client.labName?.charAt(0) || client.fullName?.charAt(0) || <Building2 className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground group-hover:text-primary">{client.labName || "No Lab Name"}</p>
-                      <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{client.id.slice(0, 8)}</p>
+                      <p className="truncate text-xs font-bold text-slate-800 group-hover:text-primary">{client.labName || "No Lab Name"}</p>
+                      <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">{client.id.slice(0, 8)}</p>
                     </div>
                   </div>
-                  <Badge variant="outline" className={statusColor[client.status === "pending" ? "pending" : client.plan] || statusColor.Active}>
+                  <Badge variant="outline" className={`scale-90 origin-right shrink-0 ${statusColor[client.status === "pending" ? "pending" : client.plan] || statusColor.Active}`}>
                     {client.status === "pending" ? "Pending Approval" : client.plan}
                   </Badge>
                 </div>
 
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5 text-primary/60" />
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <MapPin className="h-3 w-3 text-primary/60" />
                     <span className="truncate">{client.city || "No City"}, {client.state || "No State"}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Mail className="h-3.5 w-3.5 text-primary/60" />
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Mail className="h-3 w-3 text-primary/60" />
                     <span className="truncate">{client.email}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Phone className="h-3.5 w-3.5 text-primary/60" />
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Phone className="h-3 w-3 text-primary/60" />
                     <span>{client.phone || "No Phone"}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-border/50 pt-3 text-xs">
+                <div className="flex items-center justify-between border-t border-border/50 pt-2 text-[10px]">
                   <span className="text-muted-foreground">
-                    POC: <span className="font-medium text-foreground">{client.fullName || "-"}</span>
+                    POC: <span className="font-semibold text-slate-700">{client.fullName || "-"}</span>
                   </span>
                   <span className="text-muted-foreground">
-                    Reg: <span className="font-medium text-foreground">{format(new Date(client.createdAt), "MMM dd")}</span>
+                    Reg: <span className="font-semibold text-slate-700">{format(new Date(client.createdAt), "MMM dd")}</span>
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 text-xs text-primary">
-                  <span className="font-medium">Open client profile</span>
-                  <ArrowRight className="h-4 w-4" />
+                <div className="flex items-center justify-between pt-1 text-[10px] text-primary font-bold">
+                  <span>Open client profile</span>
+                  <ArrowRight className="h-3 w-3" />
                 </div>
 
                 {client.status === "pending" && (
                   <Button
-                    className="mt-2 h-8 w-full gap-2 text-xs"
+                    className="mt-1.5 h-7 w-full gap-1.5 text-[10px]"
                     onClick={(event) => {
                       event.stopPropagation()
                       approveMutation.mutate(client.id)
                     }}
                     disabled={approveMutation.isPending}
                   >
-                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <ShieldCheck className="h-3 w-3" />
                     Approve Registration
                   </Button>
                 )}
