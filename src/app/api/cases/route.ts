@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     if (isValidRoleForType('admin_portal', profile.role)) {
       if (!firstCase.clientId) {
-         return NextResponse.json({ error: 'Client ID is required for admins creating a case' }, { status: 400 });
+        return NextResponse.json({ error: 'Client ID is required for admins creating a case' }, { status: 400 });
       }
       clientId = firstCase.clientId;
     } else if (profile.role === 'client') {
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     } else if (profile.role === 'subuser') {
       const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
       if (!subUserRecord.length) {
-         return NextResponse.json({ error: 'Subuser parent client not found' }, { status: 400 });
+        return NextResponse.json({ error: 'Subuser parent client not found' }, { status: 400 });
       }
       clientId = subUserRecord[0].clientId;
       subuserId = profile.id;
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
       } else if (file) {
         // Legacy/Direct fallback upload
         const storagePath = `case_data/${labName}/${caseNumber}/${file.name}`;
-        
+
         const { error: uploadError } = await supabase
           .storage
           .from('case-files')

@@ -79,7 +79,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
         );
         for (const notif of unreadChatNotifs) {
           await fetch(`/api/notifications/${notif.id}`, {
-            method: "PUT",
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ read: true }),
           });

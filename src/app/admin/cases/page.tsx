@@ -41,7 +41,18 @@ type CaseRecord = {
   dueDate: string | null
   createdAt: string
   updatedAt: string
+  todayMessagesCount?: number
 }
+
+function shouldShowChatIcon(caseItem: any, currentUser: any) {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin') return true;
+  if (currentUser.role === 'client' && caseItem.clientId === currentUser.id) return true;
+  if (currentUser.role === 'subuser' && (caseItem.subuserId === currentUser.id || caseItem.clientId === currentUser.createdBy)) return true;
+  if (caseItem.designerId === currentUser.id || caseItem.qcId === currentUser.id || caseItem.accountManagerId === currentUser.id) return true;
+  return false;
+}
+
 
 type ClientRecord = {
   id: string
@@ -478,13 +489,19 @@ export default function AdminCasesPage() {
                               <Link href={`/admin/cases/${caseItem.id}`} className="hover:underline cursor-pointer font-bold text-[11px] text-slate-800">
                                 {caseItem.caseNumber || caseItem.id}
                               </Link>
-                              {hasUnreadChat && (
-                                <span className="relative flex items-center shrink-0 animate-blink" title="New Message">
-                                  <MessageSquare className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                                  <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                                  </span>
+                              {shouldShowChatIcon(caseItem, currentUser) && (hasUnreadChat || (caseItem.todayMessagesCount || 0) > 0) && (
+                                <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${caseItem.todayMessagesCount} messages today`}>
+                                  <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
+                                  {hasUnreadChat ? (
+                                    <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                    </span>
+                                  ) : (
+                                    <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-slate-200 text-slate-700 text-[8px] font-bold border border-white leading-none">
+                                      {caseItem.todayMessagesCount}
+                                    </span>
+                                  )}
                                 </span>
                               )}
                             </div>

@@ -978,15 +978,26 @@ export default function CasesPage() {
                         >
                           <td className="px-6 py-4 text-sm font-medium text-primary"><div className="flex items-center gap-2">
                                <span>{c.caseNumber || c.id}</span>
-                               {notifications.some((n: any) => !n.read && n.type === "chat_message" && n.link?.includes(c.id)) && (
-                                 <span className="relative flex items-center shrink-0 animate-blink" title="New Message">
-                                   <MessageSquare className="h-4 w-4 text-emerald-500 shrink-0" />
-                                   <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                               {(() => {
+                                 const hasUnreadChat = notifications.some((n: any) => !n.read && n.type === "chat_message" && n.link?.includes(c.id));
+                                 const todayCount = (c as any).todayMessagesCount || 0;
+                                 if (!hasUnreadChat && todayCount === 0) return null;
+                                 return (
+                                   <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${todayCount} messages today`}>
+                                     <MessageSquare className={`h-4 w-4 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
+                                     {hasUnreadChat ? (
+                                       <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                       </span>
+                                     ) : (
+                                       <span className="absolute -top-1.5 -right-1.5 min-w-3.5 h-3.5 px-0.5 flex items-center justify-center rounded-full bg-slate-200 text-slate-700 text-[8px] font-bold border border-white leading-none">
+                                         {todayCount}
+                                       </span>
+                                     )}
                                    </span>
-                                 </span>
-                               )}
+                                 );
+                               })()}
                              </div></td>
                           <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
