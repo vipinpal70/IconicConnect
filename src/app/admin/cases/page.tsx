@@ -42,9 +42,16 @@ type CaseRecord = {
   createdAt: string
   updatedAt: string
   todayMessagesCount?: number
+  hasUnreadChat?: boolean
 }
 
-function shouldShowChatIcon(caseItem: any, currentUser: any) {
+type ChatIndicatorUser = {
+  id: string
+  role: string
+  createdBy?: string | null
+} | null | undefined
+
+function shouldShowChatIcon(caseItem: CaseRecord, currentUser: ChatIndicatorUser) {
   if (!currentUser) return false;
   if (currentUser.role === 'admin') return true;
   if (currentUser.role === 'client' && caseItem.clientId === currentUser.id) return true;
@@ -188,6 +195,7 @@ export default function AdminCasesPage() {
       }
       return res.json()
     },
+    refetchInterval: 8000,
   })
 
   // Fetch Client profiles
@@ -229,17 +237,6 @@ export default function AdminCasesPage() {
       return res.json()
     }
   })
-
-  const { data: notifications = [] } = useQuery<any[]>({
-    queryKey: ["unread-notifications"],
-    queryFn: async () => {
-      const res = await fetch("/api/notifications");
-      if (!res.ok) return [];
-      const json = await res.json();
-      return json.data || [];
-    },
-    refetchInterval: 8000,
-  });
 
   // Mappings to translate UUIDs to descriptive names
   const clientsMap = useMemo(() => {
@@ -477,7 +474,7 @@ export default function AdminCasesPage() {
                       const toothSystem = (caseItem.subTypeData?.toothSystem as string) || "USA"
                       const designerName = membersMap.get(caseItem.designerId || "")?.fullName || "—"
                       const isMutating = updatingId === caseItem.id
-                      const hasUnreadChat = notifications.some((n: any) => !n.read && n.type === "chat_message" && n.link?.includes(caseItem.id));
+                      const hasUnreadChat = Boolean(caseItem.hasUnreadChat);
 
                       return (
                         <tr
@@ -489,21 +486,6 @@ export default function AdminCasesPage() {
                               <Link href={`/admin/cases/${caseItem.id}`} className="hover:underline cursor-pointer font-bold text-[11px] text-slate-800">
                                 {caseItem.caseNumber || caseItem.id}
                               </Link>
-                              {shouldShowChatIcon(caseItem, currentUser) && (hasUnreadChat || (caseItem.todayMessagesCount || 0) > 0) && (
-                                <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${caseItem.todayMessagesCount} messages today`}>
-                                  <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
-                                  {hasUnreadChat ? (
-                                    <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
-                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                                    </span>
-                                  ) : (
-                                    <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-slate-200 text-slate-700 text-[8px] font-bold border border-white leading-none">
-                                      {caseItem.todayMessagesCount}
-                                    </span>
-                                  )}
-                                </span>
-                              )}
                             </div>
                           </td>
                           <td className="px-3.5 py-2 text-[11px] text-foreground">{clientDisplayName}</td>
@@ -742,26 +724,45 @@ export default function AdminCasesPage() {
                               )}
 
                               {/* 3. Awaiting client status display (visible to admin/qc, and designer if assigned) */}
-                              {caseItem.status === "submitted_to_client" && 
-                               ((currentUser?.role === "admin" || currentUser?.role === "qc") || caseItem.designerId === currentUser?.id) && (
-                                <span className="text-[10px] text-muted-foreground italic px-1">awaiting client…</span>
-                              )}
+                              {caseItem.status === "submitted_to_client" &&
+                                ((currentUser?.role === "admin" || currentUser?.role === "qc") || caseItem.designerId === currentUser?.id) && (
+                                  <span className="text-[10px] text-muted-foreground italic px-1">awaiting client…</span>
+                                )}
 
                               {/* 4. Completed status display (visible to admin/qc, and designer if assigned) */}
-                              {(caseItem.status === "approved" || caseItem.status === "delivered") && 
-                               ((currentUser?.role === "admin" || currentUser?.role === "qc") || caseItem.designerId === currentUser?.id) && (
-                                <span className="text-[10px] text-green-600 font-bold px-1">Completed</span>
+                              {(caseItem.status === "approved" || caseItem.status === "delivered") &&
+                                ((currentUser?.role === "admin" || currentUser?.role === "qc") || caseItem.designerId === currentUser?.id) && (
+                                  <span className="text-[10px] text-green-600 font-bold px-1">Completed</span>
+                                )}
+
+
+                              {shouldShowChatIcon(caseItem, currentUser) && (hasUnreadChat || (caseItem.todayMessagesCount || 0) > 0) && (
+                                <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${caseItem.todayMessagesCount} messages today`}>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setOpenCase(caseItem)}
+                                    title="Open case · chat & preferences"
+                                    className="h-4 w-4 p-0"
+                                  >
+                                    <MessageSquare className={`h-4 w-4 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
+
+
+                                  </Button>
+                                  {hasUnreadChat ? (
+                                    <span className="absolute -top-0.6 -right-0.6 flex h-1.5 w-1.5">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                    </span>
+                                  ) : (
+                                    <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold border border-white leading-none">
+                                      {caseItem.todayMessagesCount}
+                                    </span>
+                                  )}
+                                </span>
                               )}
 
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setOpenCase(caseItem)}
-                                title="Open case · chat & preferences"
-                                className="h-7 w-7 p-0"
-                              >
-                                <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                              </Button>
+
                             </div>
                           </td>
                         </tr>
@@ -787,7 +788,7 @@ export default function AdminCasesPage() {
                   </div>
                 </DialogTitle>
                 <p className="text-[11px] text-muted-foreground">
-                  {clientsMap.get(openCase.clientId)?.labName || "—"} · {openCase.category} · Patient Ref {openCase.subTypeData?.patientRef as string || "—"} · Due {openCase.dueDate ? new Date(openCase.dueDate).toLocaleDateString() : "—"}
+                  {clientsMap.get(openCase.clientId)?.labName || "—"} · {openCase.category} · Due {openCase.dueDate ? new Date(openCase.dueDate).toLocaleDateString() : "—"}
                 </p>
               </DialogHeader>
 

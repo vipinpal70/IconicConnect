@@ -8,6 +8,7 @@ import { isValidRoleForType } from '@/src/lib/auth/role';
 import { generateCaseId } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
+import { getCasesChatMetadata } from '@/src/lib/chat';
 
 const caseListSelection = {
   id: cases.id,
@@ -224,9 +225,13 @@ export async function GET() {
       });
     }
 
+    const chatMetadata = await getCasesChatMetadata(results.map((r) => r.id), profile.id);
+
     const mappedResults = results.map(r => ({
       ...r,
-      designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null
+      designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
+      todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,
+      hasUnreadChat: chatMetadata.get(r.id)?.hasUnreadChat ?? false,
     }));
 
     return NextResponse.json({ data: mappedResults });

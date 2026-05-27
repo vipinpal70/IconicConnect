@@ -173,28 +173,9 @@ export default function CasesPage() {
 
   const [cases, setCases] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [notifications, setNotifications] = useState<any[]>([]);
 
-  const fetchNotifications = async () => {
-    try {
-      const res = await fetch("/api/notifications");
-      if (res.ok) {
-        const json = await res.json();
-        setNotifications(json.data || []);
-      }
-    } catch (err) {
-      console.error("Error fetching notifications:", err);
-    }
-  };
-
-  useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 8000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchCases = async () => {
-    setIsLoading(true);
+  const fetchCases = async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     try {
       const res = await fetch("/api/cases");
       if (res.ok) {
@@ -207,12 +188,14 @@ export default function CasesPage() {
       console.error("Error fetching cases:", err);
       toast.error("Failed to fetch cases");
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchCases();
+    const interval = setInterval(() => { void fetchCases(false); }, 8000);
+    return () => clearInterval(interval);
   }, []);
 
   const [category, setCategory] = useState<string>("Crown & Bridges");
@@ -979,7 +962,7 @@ export default function CasesPage() {
                           <td className="px-6 py-4 text-sm font-medium text-primary"><div className="flex items-center gap-2">
                                <span>{c.caseNumber || c.id}</span>
                                {(() => {
-                                 const hasUnreadChat = notifications.some((n: any) => !n.read && n.type === "chat_message" && n.link?.includes(c.id));
+                                 const hasUnreadChat = Boolean(c.hasUnreadChat);
                                  const todayCount = (c as any).todayMessagesCount || 0;
                                  if (!hasUnreadChat && todayCount === 0) return null;
                                  return (

@@ -67,30 +67,6 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
     }
   }, [caseId, fetchMessages])
 
-  // Mark chat notifications for this case as read when chat is opened/loaded
-  useEffect(() => {
-    const clearChatNotifications = async () => {
-      try {
-        const notifRes = await fetch("/api/notifications");
-        if (!notifRes.ok) return;
-        const notifJson = await notifRes.json();
-        const unreadChatNotifs = (notifJson.data || []).filter(
-          (n: any) => !n.read && n.type === "chat_message" && n.link?.includes(caseId)
-        );
-        for (const notif of unreadChatNotifs) {
-          await fetch(`/api/notifications/${notif.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ read: true }),
-          });
-        }
-      } catch (err) {
-        console.error("Failed to clear chat notifications", err);
-      }
-    };
-    clearChatNotifications();
-  }, [caseId, messages]);
-
   // Scroll to bottom of the chat container whenever messages load or change
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -224,9 +200,9 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
       return (
         <div className="relative mt-1.5 rounded-md overflow-hidden border border-border/60 bg-muted/20 max-w-200px">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img 
-            src={m.fileUrl} 
-            alt={m.fileName || "Image"} 
+          <img
+            src={m.fileUrl}
+            alt={m.fileName || "Image"}
             className="max-w-full max-h-140px object-cover hover:scale-105 transition-transform duration-200 cursor-pointer"
             onClick={() => window.open(m.fileUrl!, "_blank")}
           />
@@ -291,7 +267,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
                   )}>
                     <div className="flex items-center justify-between gap-4 mb-0.5">
                       <span className={cn(
-                        "text-[9px] font-bold uppercase tracking-wide",
+                        "text-[9px] font-bold capitalize tracking-wide",
                         isAdminColumn ? "text-zinc-200" : "text-emerald-700"
                       )}>
                         {m.senderName} ({m.senderRole === "qc" ? "QC Lead" : m.senderRole})
@@ -303,7 +279,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
                     {renderFilePreview(m)}
 
                     <span className={cn(
-                      "block text-[8px] mt-1 text-right",
+                      "block text-[4px] mt-1 text-right",
                       isAdminColumn ? "text-zinc-300" : "text-muted-foreground"
                     )}>
                       {new Date(m.createdAt).toLocaleDateString()} {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -334,9 +310,9 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
       <div className="flex gap-1.5 p-2 border-t border-border bg-card items-center">
         {side === "lab" && (
           <>
-            <input 
-              type="file" 
-              className="hidden" 
+            <input
+              type="file"
+              className="hidden"
               onChange={handleFileChange}
               id="chat-file-input"
               accept=".png,.jpg,.jpeg,.mp4,.mkv,.avi,.mov,.webm,.pdf,.zip,.doc,.docx"
@@ -363,9 +339,9 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
           className="bg-muted/10 h-8 text-xs"
         />
 
-        <Button 
-          onClick={handleSend} 
-          disabled={!text.trim() || uploading} 
+        <Button
+          onClick={handleSend}
+          disabled={!text.trim() || uploading}
           size="icon"
           className="h-8 w-8 shrink-0"
         >

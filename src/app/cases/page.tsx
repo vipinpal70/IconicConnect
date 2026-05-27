@@ -52,6 +52,7 @@ type ProfileSummary = {
   id: string;
   role: string;
   fullName: string | null;
+  createdBy?: string | null;
 };
 
 type OpsCase = {
@@ -74,9 +75,10 @@ type OpsCase = {
   previewFile?: string | null;
   outputNote?: string | null;
   todayMessagesCount?: number;
+  hasUnreadChat?: boolean;
 };
 
-function shouldShowChatIcon(caseItem: any, currentUser: any) {
+function shouldShowChatIcon(caseItem: OpsCase, currentUser: ProfileSummary | null | undefined) {
   if (!currentUser) return false;
   if (currentUser.role === 'admin') return true;
   if (currentUser.role === 'client' && caseItem.clientId === currentUser.id) return true;
@@ -248,8 +250,8 @@ export default function CasesPage() {
   const [cases, setCases] = useState<OpsCase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchCases = async () => {
-    setIsLoading(true);
+  const fetchCases = async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     try {
       const res = await fetch("/api/cases");
       if (res.ok) {
@@ -262,13 +264,17 @@ export default function CasesPage() {
       console.error("Error fetching cases:", err);
       toast.error("Failed to fetch cases");
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
-    return () => window.clearTimeout(timeoutId);
+    const intervalId = window.setInterval(() => { void fetchCases(false); }, 8000);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -313,17 +319,6 @@ export default function CasesPage() {
       if (!res.ok) return null;
       return res.json();
     },
-  });
-
-  const { data: notifications = [] } = useQuery<any[]>({
-    queryKey: ["unread-notifications"],
-    queryFn: async () => {
-      const res = await fetch("/api/notifications");
-      if (!res.ok) return [];
-      const json = await res.json();
-      return json.data || [];
-    },
-    refetchInterval: 8000,
   });
 
   const handleUpdate = async (
@@ -1145,7 +1140,7 @@ export default function CasesPage() {
                       // QC review actions are blocked if the QC is also
                       // the designer on this case (no self-review).
                       const canDoQcActions = isQc && isQcOnCase && !isDesignerOnCase;
-                      const hasUnreadChat = notifications.some((n: any) => !n.read && n.type === "chat_message" && n.link?.includes(c.id));
+                      const hasUnreadChat = Boolean(c.hasUnreadChat);
 
                       return (
                         <tr

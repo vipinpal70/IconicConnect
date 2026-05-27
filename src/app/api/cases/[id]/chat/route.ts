@@ -3,10 +3,12 @@ import { db } from '@/src/db';
 import { chatMessages } from '@/src/db/schema/chat';
 import { profiles } from '@/src/db/schema/profile';
 import { cases } from '@/src/db/schema/case';
-import { eq, desc } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { createClient } from '@/src/lib/supabase/server';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
+import { notifications } from '@/src/db/schema/notification';
+import { canAccessCaseChat, markCaseChatRead, resolveCaseChatParticipantIds } from '@/src/lib/chat';
 
 export async function GET(
   req: NextRequest,
@@ -34,12 +36,27 @@ export async function GET(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
+    if (!canAccessCaseChat(caseRecord, profile)) {
+      return NextResponse.json({ error: 'Forbidden: You do not have access to this case chat' }, { status: 403 });
+    }
+
     // Load messages sorted by createdAt descending (latest first)
     const messages = await db
       .select()
       .from(chatMessages)
       .where(eq(chatMessages.caseId, caseId))
       .orderBy(desc(chatMessages.createdAt));
+
+    await markCaseChatRead(caseId, profile.id);
+    await db
+      .update(notifications)
+      .set({ read: true, updatedAt: new Date() })
+      .where(and(
+        eq(notifications.userId, profile.id),
+        eq(notifications.type, NotificationType.CHAT_MESSAGE),
+        eq(notifications.link, `/cases/${caseId}`),
+        eq(notifications.read, false),
+      ));
 
     return NextResponse.json({ data: messages });
   } catch (error: unknown) {
@@ -72,6 +89,10 @@ export async function POST(
     const [caseRecord] = await db.select().from(cases).where(eq(cases.id, caseId)).limit(1);
     if (!caseRecord) {
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
+    }
+
+    if (!canAccessCaseChat(caseRecord, profile)) {
+      return NextResponse.json({ error: 'Forbidden: You do not have access to this case chat' }, { status: 403 });
     }
 
     const body = await req.json();
@@ -111,16 +132,14 @@ export async function POST(
       })
       .returning();
 
-    // Trigger Notification for Chat Counterpart
-    try {
-      let targetUserId: string | null = null;
-      if (profile.role === 'client' || profile.role === 'subuser') {
-        targetUserId = caseRecord.designerId || caseRecord.accountManagerId;
-      } else {
-        targetUserId = caseRecord.subuserId || caseRecord.clientId;
-      }
+    await markCaseChatRead(caseId, profile.id);
 
-      if (targetUserId) {
+    // Trigger notifications for all case chat participants except the sender.
+    try {
+      const targetUserIds = (await resolveCaseChatParticipantIds(caseRecord))
+        .filter((targetUserId) => targetUserId !== profile.id);
+
+      await Promise.allSettled(targetUserIds.map((targetUserId) =>
         NotificationService.dispatch({
           type: NotificationType.CHAT_MESSAGE,
           actorUserId: profile.id,
@@ -130,10 +149,11 @@ export async function POST(
           title: `New Message on Case ${caseRecord.caseNumber || 'Update'}`,
           message: `${profile.fullName || 'User'}: ${messageText?.trim() || 'Sent an attachment'}`,
           link: `/cases/${caseId}`,
-        }).catch((err) => console.error('[ChatNotificationTrigger] Failed to dispatch chat notification:', err));
-      }
+          metadata: { caseId, messageId: newMessage.id },
+        })
+      ));
     } catch (e) {
-      console.error('[ChatNotificationTrigger] Error resolving target participant:', e);
+      console.error('[ChatNotificationTrigger] Error resolving target participants:', e);
     }
 
     return NextResponse.json({ data: newMessage });
