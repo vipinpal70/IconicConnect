@@ -766,17 +766,17 @@ export default function CasesPage() {
 
   return (
     <OpsLayout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Cases</h1>
-            <p className="text-sm text-muted-foreground mt-1">{cases.length} lifetime cases · {filtered.length} shown</p>
+            <h1 className="text-lg font-bold text-foreground">Cases</h1>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline"><Download className="h-4 w-4 mr-2" /> Export Excel</Button>
+            <Button variant="outline" size="sm" className="h-8 text-xs font-semibold"><Download className="h-3.5 w-3.5 mr-1.5" /> Export Excel</Button>
             <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
               <DialogTrigger asChild>
-                <Button><Plus className="h-4 w-4 mr-2" />Add New Case</Button>
+                <Button size="sm" className="h-8 text-xs font-semibold"><Plus className="h-3.5 w-3.5 mr-1.5" />Add New Case</Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Submit New Case</DialogTitle></DialogHeader>
@@ -1045,41 +1045,41 @@ export default function CasesPage() {
         </div>
 
         {/* Filters */}
-        <Card className="shadow-card">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex flex-col lg:flex-row gap-3">
+        <Card className="shadow-card border-border/50">
+          <CardContent className="p-3 space-y-2.5">
+            <div className="flex flex-col lg:flex-row gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-9" placeholder="Search cases..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input className="pl-8 h-8 text-xs" placeholder="Search cases..." value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
               <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v)}>
-                <SelectTrigger className="w-full lg:w-56"><SelectValue placeholder="Case type" /></SelectTrigger>
+                <SelectTrigger className="w-full lg:w-48 h-8 text-xs"><SelectValue placeholder="Case type" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Case Types</SelectItem>
                   {Object.keys(CASE_HIERARCHY).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-44" />
-              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-44" />
-              <Button variant="outline" onClick={() => { setSearch(""); setTypeFilter("All"); setStatusFilter("All"); setFrom(""); setTo(""); }}>Clear</Button>
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
+              <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={() => { setSearch(""); setTypeFilter("All"); setStatusFilter("All"); setFrom(""); setTo(""); }}>Clear</Button>
             </div>
-            <div className="flex gap-1.5 flex-wrap">
+            <div className="flex gap-1 flex-wrap pt-0.5">
               {statusFilters.map((s) => (
-                <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" onClick={() => setStatusFilter(s)}>{s}</Button>
+                <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-wider" onClick={() => setStatusFilter(s)}>{s}</Button>
               ))}
             </div>
           </CardContent>
         </Card>
 
         {/* Table */}
-        <Card className="shadow-card">
+        <Card className="shadow-card border-border/50">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {["Case ID", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
-                      <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-6 py-4 uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left text-[10px] font-bold text-muted-foreground px-3.5 py-2 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1088,7 +1088,7 @@ export default function CasesPage() {
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
                         {Array.from({ length: 8 }).map((__, col) => (
-                          <td key={col} className="px-6 py-4"><div className="h-4 bg-muted rounded w-20" /></td>
+                          <td key={col} className="px-3.5 py-2"><div className="h-3 bg-muted rounded w-16" /></td>
                         ))}
                       </tr>
                     ))
@@ -1148,19 +1148,19 @@ export default function CasesPage() {
                           className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
                           onClick={() => router.push(`/cases/${c.id}`)}
                         >
-                          <td className="px-6 py-4 text-sm font-medium text-primary">
-                            <div className="flex items-center gap-2">
+                          <td className="px-3.5 py-1.5 text-[11px] font-bold text-primary">
+                            <div className="flex items-center gap-1.5">
                               <span>{c.caseNumber || c.id}</span>
                               {shouldShowChatIcon(c, currentUser) && (hasUnreadChat || (c.todayMessagesCount || 0) > 0) && (
                                 <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${c.todayMessagesCount} messages today`}>
-                                  <MessageSquare className={`h-4 w-4 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
+                                  <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
                                   {hasUnreadChat ? (
-                                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                    <span className="absolute -top-1 -right-1 flex h-1.5 w-1.5">
                                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                                     </span>
                                   ) : (
-                                    <span className="absolute -top-1.5 -right-1.5 min-w-3.5 h-3.5 px-0.5 flex items-center justify-center rounded-full bg-slate-200 text-slate-700 text-[8px] font-bold border border-white leading-none">
+                                    <span className="absolute -top-1 -right-1 min-w-3.5 h-3 px-0.5 flex items-center justify-center rounded-full bg-slate-200 text-slate-700 text-[8px] font-bold border border-white leading-none">
                                       {c.todayMessagesCount}
                                     </span>
                                   )}
@@ -1168,14 +1168,14 @@ export default function CasesPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.category}</td>
-                          <td className="px-6 py-4 text-sm text-foreground">{restoration || "—"}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSys === "USA" ? "Universal" : toothSys})` : "—"}</td>
-                          <td className="px-6 py-4"><StatusBadge status={c.status} role="internal" /></td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex gap-2 items-center flex-wrap">
+                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.category}</td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-foreground font-semibold">{restoration || "—"}</td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSys === "USA" ? "Universal" : toothSys})` : "—"}</td>
+                          <td className="px-3.5 py-1.5"><StatusBadge status={c.status} role="internal" /></td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex gap-1.5 items-center flex-wrap">
 
                               {/* ── ADMIN BLOCK ─────────────────────────────── */}
                               {isAdmin && (
@@ -1184,8 +1184,8 @@ export default function CasesPage() {
                                     <>
                                       <Button size="sm" variant="outline" disabled={isMutating}
                                         onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
-                                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none font-medium shadow-sm">
-                                        <ShieldCheck className="h-3.5 w-3.5 mr-1" />Validate
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                        <ShieldCheck className="h-3 w-3 mr-1" />Validate
                                       </Button>
                                       <AllocateMenu designers={designers} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
                                     </>
@@ -1199,44 +1199,44 @@ export default function CasesPage() {
                                     ) : (
                                       !c.qcId ? (
                                         <Button size="sm" variant="outline" disabled={isMutating} onClick={() => setAssignQcCaseId(c.id)}
-                                          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium">
-                                          <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                          className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                          <UserPlus className="h-3 w-3 mr-1" /> Assign QC
                                         </Button>
                                       ) : (
                                         <Button size="sm" variant="outline" disabled={isMutating}
                                           onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
-                                          className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
-                                          <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                          className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                          <ClipboardCheck className="h-3 w-3 mr-1" /> Send to QC
                                         </Button>
                                       )
                                     )
                                   )}
                                   {c.status === "internal_qc" && (
-                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                    <div className="flex flex-wrap gap-1 items-center">
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={() => handleUpdate(c.id, { status: "submitted_to_client" }, "Approved QC and sent design to client")}
-                                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">✓ Approve</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
                                       <Button size="sm" variant="destructive" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "reject", c.caseNumber); }}
-                                        className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "feedback", c.caseNumber); }}
-                                        className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
-                                        className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
                                     </div>
                                   )}
                                   {c.status === "client_feedback" && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Sent case back to design")}
-                                      className="h-8 text-xs">Back to designer</Button>
+                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">Back to designer</Button>
                                   )}
                                   {c.status === "on_hold" && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
-                                      <RefreshCw className="h-3.5 w-3.5 mr-1" /> Resume Case
+                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
                                     </Button>
                                   )}
                                 </>
@@ -1261,8 +1261,8 @@ export default function CasesPage() {
                                   {c.status === "scan_received" && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
-                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none font-medium shadow-sm">
-                                      <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Validate
+                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                      <ShieldCheck className="h-3 w-3 mr-1" /> Validate
                                     </Button>
                                   )}
 
@@ -1270,8 +1270,8 @@ export default function CasesPage() {
                                   {!c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { designerId: activeUserId, status: "allocated_to_designer" }, "Allocated case to yourself as designer")}
-                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
-                                      <UserPlus className="h-3.5 w-3.5 mr-1" /> Take as Designer
+                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      <UserPlus className="h-3 w-3 mr-1" /> Take as Designer
                                     </Button>
                                   )}
 
@@ -1279,38 +1279,38 @@ export default function CasesPage() {
                                   {!c.qcId && (c.status === "allocated_to_designer" || c.status === "in_progress" || c.status === "internal_qc") && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { qcId: activeUserId }, "Assigned yourself as QC")}
-                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium">
-                                      <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC to Self
+                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                      <UserPlus className="h-3 w-3 mr-1" /> Assign QC to Self
                                     </Button>
                                   )}
 
                                   {/* QC review actions — only when assigned as QC AND not also the designer */}
                                   {canDoQcActions && c.status === "internal_qc" && (
-                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                    <div className="flex flex-wrap gap-1 items-center">
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={() => handleUpdate(c.id, { status: "submitted_to_client" }, "Approved QC and sent design to client")}
-                                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">✓ Approve</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
                                       <Button size="sm" variant="destructive" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "reject", c.caseNumber); }}
-                                        className="h-8 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "feedback", c.caseNumber); }}
-                                        className="h-8 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
-                                        className="h-8 text-xs font-medium bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
                                     </div>
                                   )}
 
                                   {/* Inform QC that they cannot self-review */}
                                   {isQcOnCase && isDesignerOnCase && c.status === "internal_qc" && (
-                                    <span className="text-xs text-amber-600 italic px-1">Self-review blocked</span>
+                                    <span className="text-[11px] text-amber-600 italic px-1">Self-review blocked</span>
                                   )}
                                   {c.status === "on_hold" && (c.qcId === activeUserId || c.designerId === activeUserId) && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
-                                      <RefreshCw className="h-3.5 w-3.5 mr-1" /> Resume Case
+                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
                                     </Button>
                                   )}
                                 </>
@@ -1331,8 +1331,8 @@ export default function CasesPage() {
                                   {isDesigner && !c.designerId && c.status === "scan_received" && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
-                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
-                                      <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Validate
+                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      <ShieldCheck className="h-3 w-3 mr-1" /> Validate
                                     </Button>
                                   )}
 
@@ -1340,8 +1340,8 @@ export default function CasesPage() {
                                   {isDesigner && !c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { designerId: activeUserId, status: "allocated_to_designer" }, "Allocated case to yourself")}
-                                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
-                                      <UserPlus className="h-3.5 w-3.5 mr-1" /> Allocate to Self
+                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      <UserPlus className="h-3 w-3 mr-1" /> Allocate to Self
                                     </Button>
                                   )}
 
@@ -1350,63 +1350,63 @@ export default function CasesPage() {
                                       {c.status === "on_hold" && (
                                         <Button size="sm" disabled={isMutating}
                                           onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm">
-                                          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Resume Case
+                                          className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                          <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
                                         </Button>
                                       )}
                                       {c.status === "allocated_to_designer" && (
-                                        <div className="flex gap-2 flex-wrap">
+                                        <div className="flex gap-1.5 flex-wrap">
                                           <Button size="sm" disabled={isMutating}
                                             onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Started design work")}
-                                            className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm">
+                                            className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
                                             Start Work
                                           </Button>
                                           <Button size="sm" variant="outline" disabled={isMutating}
                                             onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
-                                            className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
-                                            <Upload className="h-3.5 w-3.5 mr-1" /> Upload Design
+                                            className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                            <Upload className="h-3 w-3 mr-1" /> Upload Design
                                           </Button>
                                           {!c.qcId && (
                                             <Button size="sm" variant="outline" disabled={isMutating}
                                               onClick={() => setAssignQcCaseId(c.id)}
-                                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium">
-                                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                              className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                              <UserPlus className="h-3 w-3 mr-1" /> Assign QC
                                             </Button>
                                           )}
                                         </div>
                                       )}
 
                                       {c.status === "in_progress" && (
-                                        <div className="flex gap-2 flex-wrap">
+                                        <div className="flex gap-1.5 flex-wrap">
                                           <Button size="sm" variant="outline" disabled={isMutating}
                                             onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
-                                            className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
-                                            <Upload className="h-3.5 w-3.5 mr-1" /> Upload Design
+                                            className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                            <Upload className="h-3 w-3 mr-1" /> Upload Design
                                           </Button>
                                           {!c.qcId ? (
                                             <Button size="sm" variant="outline" disabled={isMutating}
                                               onClick={() => setAssignQcCaseId(c.id)}
-                                              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-medium">
-                                              <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign QC
+                                              className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                              <UserPlus className="h-3 w-3 mr-1" /> Assign QC
                                             </Button>
                                           ) : (
                                             <Button size="sm" variant="outline" disabled={isMutating}
                                               onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
-                                              className="h-8 text-xs bg-primary border-primary/50 text-white font-medium hover:bg-zinc-800">
-                                              <ClipboardCheck className="h-3.5 w-3.5 mr-1" /> Send to QC
+                                              className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                              <ClipboardCheck className="h-3 w-3 mr-1" /> Send to QC
                                             </Button>
                                           )}
                                         </div>
                                       )}
 
                                       {c.status === "internal_qc" && (
-                                        <span className="text-xs text-amber-600 italic px-1">In QC Review</span>
+                                        <span className="text-[11px] text-amber-600 italic px-1">In QC Review</span>
                                       )}
 
                                       {c.status === "client_feedback" && (
                                         <Button size="sm" disabled={isMutating}
                                           onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Restarted design to apply feedback")}
-                                          className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm">
+                                          className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
                                           Apply Feedback
                                         </Button>
                                       )}
@@ -1417,14 +1417,14 @@ export default function CasesPage() {
 
                               {/* Read-only states visible to any assigned member */}
                               {c.status === "submitted_to_client" && (isDesignerOnCase || isQcOnCase || isAdmin) && (
-                                <span className="text-xs text-muted-foreground italic px-1">awaiting client…</span>
+                                <span className="text-[11px] text-muted-foreground italic px-1">awaiting client…</span>
                               )}
                               {(c.status === "approved" || c.status === "delivered") && (isDesignerOnCase || isQcOnCase || isAdmin) && (
-                                <span className="text-xs text-green-600 font-semibold px-1">Completed</span>
+                                <span className="text-[11px] text-green-600 font-semibold px-1">Completed</span>
                               )}
 
                               {activeUser && !["admin", "qc", "designer"].includes(activeUserRole) && (
-                                <span className="text-xs text-muted-foreground italic">Read-only</span>
+                                <span className="text-[11px] text-muted-foreground italic">Read-only</span>
                               )}
                             </div>
                           </td>
@@ -1433,7 +1433,7 @@ export default function CasesPage() {
                     })
                   )}
                   {!isLoading && filtered.length === 0 && (
-                    <tr><td colSpan={8} className="px-6 py-12 text-center text-sm text-muted-foreground">No cases match your filters</td></tr>
+                    <tr><td colSpan={8} className="px-3.5 py-6 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
