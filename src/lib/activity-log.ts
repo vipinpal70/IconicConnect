@@ -26,6 +26,7 @@ export function formatActivityActor(actor: Pick<Profile, 'fullName' | 'labName' 
   if (actor.role === 'qc') return `QC${actor.fullName ? ` — ${actor.fullName}` : ''}`
   if (actor.role === 'designer') return actor.fullName || 'Designer'
   if (actor.role === 'account_manager') return actor.fullName || 'Account Manager'
+  if (actor.role === 'consultant') return actor.fullName || 'Consultant'
   return actor.fullName || actor.labName || 'System'
 }
 

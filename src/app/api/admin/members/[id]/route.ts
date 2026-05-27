@@ -9,7 +9,7 @@ import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone';
 
 type MemberUpdateData = {
   fullName?: string
-  role?: 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | 'designer'
+  role?: 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | 'designer' | 'consultant'
   status?: 'pending' | 'active' | 'inactive'
   phone?: string
   title?: string

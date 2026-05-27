@@ -45,7 +45,7 @@ interface NotificationRecord {
 }
 
 interface ProfileRecord {
-  role?: 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | 'designer'
+  role?: 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | 'designer' | 'consultant'
 }
 
 interface NotificationPreferencesRecord {

@@ -122,7 +122,7 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
           <form onSubmit={handleSubmit} className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Full Name</Label>
-              <Input 
+              <Input
                 placeholder="e.g. John Doe"
                 value={formData.fullName}
                 onChange={e => setFormData(p => ({ ...p, fullName: e.target.value }))}
@@ -131,7 +131,7 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
             </div>
             <div className="space-y-2">
               <Label>Email Address</Label>
-              <Input 
+              <Input
                 type="email"
                 placeholder="john@example.com"
                 value={formData.email}
@@ -146,9 +146,9 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-900 text-slate-50 border-slate-800 shadow-2xl">
+                  <SelectContent className="bg-green-900 text-white shadow-2xl">
                     {ROLES.map(r => (
-                      <SelectItem key={r.id} value={r.id} className="focus:bg-slate-800 focus:text-slate-50">
+                      <SelectItem key={r.id} value={r.id} className="focus:bg-green-600 opacity-90 focus:text-slate-50">
                         {r.name}
                       </SelectItem>
                     ))}
@@ -158,7 +158,7 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
               <div className="space-y-2">
                 <Label>Password</Label>
                 <div className="flex gap-2">
-                  <Input 
+                  <Input
                     type="text"
                     placeholder="Password"
                     className="flex-1"

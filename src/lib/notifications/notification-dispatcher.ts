@@ -4,7 +4,7 @@ import { profiles } from '@/src/db/schema/profile'
 import { NotificationType } from './notification-events'
 import { NotificationService } from './notification-service'
 
-type PortalRole = 'admin' | 'qc' | 'account_manager' | 'client' | 'subuser'
+type PortalRole = 'admin' | 'qc' | 'account_manager' | 'client' | 'subuser' | 'consultant'
 
 type DispatchPayload = {
   actorUserId: string
@@ -55,7 +55,7 @@ export async function notifySupportTicketCreated(input: {
   priority: string
   clientName: string
 }) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager', 'consultant'])
 
   return dispatchToUserIds(adminIds, (targetUserId) => ({
     type: NotificationType.SUPPORT_TICKET_CREATED,
@@ -81,7 +81,7 @@ export async function notifyCaseSubmitted(input: {
   category: string
   clientName: string
 }) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager', 'consultant'])
 
   return dispatchToUserIds(adminIds, (targetUserId) => ({
     type: NotificationType.CASE_CREATED,
@@ -209,7 +209,7 @@ export async function notifyCallbackRequestCreated(input: {
   labName: string
   requesterName: string
 }) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager', 'consultant'])
 
   return dispatchToUserIds(adminIds, (targetUserId) => ({
     type: NotificationType.SUPPORT_CALLBACK_REQUESTED,

@@ -10,6 +10,7 @@ import { Button } from "@/src/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Badge } from "@/src/components/ui/badge"
 import { toast } from "sonner"
+import { Switch } from "@/src/components/ui/switch"
 import { ArrowLeft, Building2, Save, Plus, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, Layers3 } from "lucide-react"
 import { PriceListTable, type PriceListRow } from "@/src/components/PriceListTable"
 
@@ -199,7 +200,43 @@ export default function ClientProfilePage() {
               <Info label="Title" value={client?.title || "-"} />
               <Info label="Role" value={client?.role || "-"} icon={<User className="h-4 w-4" />} />
               <Info label="User Type" value={client?.userType || "-"} />
-              <Info label="Plan" value={client?.plan || "-"} icon={<Layers3 className="h-4 w-4" />} />
+              <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/70 flex items-center gap-1.5">
+                    <Layers3 className="h-4 w-4" />
+                    Plan Status
+                  </p>
+                  <p className="mt-1 truncate font-medium text-foreground">
+                    {client?.plan || "Trial"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground font-medium">Trial</span>
+                  <Switch
+                    checked={client?.plan === "Onboarded"}
+                    onCheckedChange={async (checked) => {
+                      if (!client) return
+                      try {
+                        const nextPlan = checked ? "Onboarded" : "Trial"
+                        const res = await fetch(`/api/admin/clients/plan`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ clientId: client.id, plan: nextPlan }),
+                        })
+                        if (!res.ok) {
+                          const payload = await res.json().catch(() => ({}))
+                          throw new Error(payload.error || "Failed to update plan")
+                        }
+                        toast.success(`Plan updated to ${nextPlan}`)
+                        await queryClient.invalidateQueries({ queryKey: ["admin-client", clientId] })
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Failed to update plan")
+                      }
+                    }}
+                  />
+                  <span className="text-xs text-primary font-semibold">Onboarded</span>
+                </div>
+              </div>
               <Info label="Onboarded" value={client?.onBoardedAt ? format(new Date(client.onBoardedAt), "PPP") : "-"} />
               <Info label="Created" value={client?.createdAt ? format(new Date(client.createdAt), "PPP") : "-"} icon={<CalendarDays className="h-4 w-4" />} />
               <Info label="Updated" value={client?.updatedAt ? format(new Date(client.updatedAt), "PPP") : "-"} />

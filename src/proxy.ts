@@ -137,6 +137,7 @@ function getHomeRoute(role: string | undefined, createdBy: string | null | undef
     case 'qc':
     case 'designer':
     case 'account_manager':
+    case 'consultant':
       return '/dashboard'
     default:
       return '/dashboard'
@@ -179,6 +180,7 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     case 'qc':
     case 'designer':
     case 'account_manager':
+    case 'consultant':
       return (
         pathname.startsWith('/dashboard') ||
         pathname.startsWith('/cases') ||
