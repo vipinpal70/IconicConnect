@@ -16,6 +16,7 @@ import { Textarea } from "@/src/components/ui/textarea"
 import { CaseChat } from "@/src/components/CaseChat"
 import { getPreferences } from "@/src/lib/labStore"
 import { HOLD_REASONS } from "@/src/lib/case-utils"
+import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval"
 import { toast } from "sonner"
 import {
   Search,
@@ -99,7 +100,7 @@ const CASE_ACTIONS: Record<
 > = {
   approve: {
     title: "Approve Case",
-    description: "Are you sure you want to approve this case? Click confirm to proceed.",
+    description: "Complete the QC checklist before approving and sending to the client.",
     status: "submitted_to_client",
     successMessage: "Approved QC and sent design to client",
     confirmLabel: "Confirm",
@@ -183,6 +184,7 @@ export default function AdminCasesPage() {
   const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null)
   const [caseActionReason, setCaseActionReason] = useState("")
   const [holdReasonSelect, setHoldReasonSelect] = useState("")
+  const [approveChecklist, setApproveChecklist] = useState<Record<string, boolean>>({})
 
   // Fetch Cases list
   const { data, isLoading, error, refetch } = useQuery<{ data: CaseRecord[] }>({
@@ -336,12 +338,31 @@ export default function AdminCasesPage() {
     setPendingCaseAction({ caseId, action, caseNumber })
     setCaseActionReason("")
     setHoldReasonSelect("")
+    setApproveChecklist({})
+
+    if (action === "approve") {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/cases/${caseId}/approval-checklist`)
+          if (!res.ok) return
+          const payload = await res.json().catch(() => ({}))
+          const values = Array.isArray(payload?.data) ? payload.data : []
+          const selected = new Set(values)
+          setApproveChecklist(
+            Object.fromEntries(QC_CHECKLIST.map((item) => [item, selected.has(item)]))
+          )
+        } catch {
+          // Leave checklist empty if it cannot be loaded.
+        }
+      })()
+    }
   }
 
   const closeCaseActionDialog = () => {
     setPendingCaseAction(null)
     setCaseActionReason("")
     setHoldReasonSelect("")
+    setApproveChecklist({})
   }
 
   const confirmCaseAction = async () => {
@@ -349,7 +370,43 @@ export default function AdminCasesPage() {
     const actionConfig = CASE_ACTIONS[pendingCaseAction.action]
     let reason = caseActionReason.trim()
 
-    if (pendingCaseAction.action === "hold") {
+    if (pendingCaseAction.action === "approve") {
+      const allChecked = QC_CHECKLIST.every((item) => approveChecklist[item])
+      if (!allChecked) {
+        toast.error("Please complete all QC checklist items before approving.")
+        return
+      }
+
+      setUpdatingId(pendingCaseAction.caseId)
+      try {
+        const checkedItems = QC_CHECKLIST.filter((item) => approveChecklist[item])
+        const res = await fetch(`/api/cases/${pendingCaseAction.caseId}/approval-checklist`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ checkedItems }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.error || "Failed to approve case")
+        }
+
+        toast.success(actionConfig.successMessage)
+        refetch()
+        if (openCase && openCase.id === pendingCaseAction.caseId) {
+          const updated = await fetch(`/api/cases/${pendingCaseAction.caseId}`).then(r => r.json()).then(r => r.data)
+          if (updated) setOpenCase(updated)
+        }
+        closeCaseActionDialog()
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Something went wrong"
+        toast.error(msg)
+      } finally {
+        setUpdatingId(null)
+      }
+      return
+    } else if (pendingCaseAction.action === "hold") {
       if (!holdReasonSelect) {
         toast.error("Please select a hold reason.")
         return
@@ -853,7 +910,7 @@ export default function AdminCasesPage() {
       </Dialog>
 
       <Dialog open={!!pendingCaseAction} onOpenChange={(open) => { if (!open) closeCaseActionDialog(); }}>
-        <DialogContent className="sm:max-w-[480px] bg-white text-gray-900 shadow-xl text-xs">
+        <DialogContent className="sm:max-w-[560px] bg-white text-gray-900 shadow-xl text-xs">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
               {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].title : "Case Action"}
@@ -863,12 +920,44 @@ export default function AdminCasesPage() {
               {pendingCaseAction?.caseNumber ? ` Case ${pendingCaseAction.caseNumber}.` : ""}
             </p>
           </DialogHeader>
+          {pendingCaseAction?.action === "approve" && (
+            <div className="grid gap-2.5 py-3 border-t border-b border-gray-200">
+              <p className="text-xs font-semibold text-gray-600">
+                Quality Checklist
+              </p>
+              <div className="grid gap-2">
+                {QC_CHECKLIST.map((item) => {
+                  const itemId = `admin-approve-check-${item.replace(/\s+/g, "-").toLowerCase()}`
+                  return (
+                    <label
+                      key={item}
+                      htmlFor={itemId}
+                      className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-800"
+                    >
+                      <input
+                        id={itemId}
+                        type="checkbox"
+                        checked={!!approveChecklist[item]}
+                        onChange={(e) =>
+                          setApproveChecklist((current) => ({
+                            ...current,
+                            [item]: e.target.checked,
+                          }))
+                        }
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <span className="text-xs font-medium leading-5">{item}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           {pendingCaseAction && CASE_ACTIONS[pendingCaseAction.action].reasonKey && (
             <div className="grid gap-2.5 py-3">
               <Label htmlFor="admin-case-action-reason" className="text-xs font-bold text-gray-700">
                 {CASE_ACTIONS[pendingCaseAction.action].reasonLabel}
-              </Label>
-              {pendingCaseAction.action === "hold" ? (
+              </Label>              {pendingCaseAction.action === "hold" ? (
                 <div className="space-y-2">
                   <Select value={holdReasonSelect} onValueChange={setHoldReasonSelect}>
                     <SelectTrigger className="w-full h-8 text-xs bg-gray-50 border text-gray-900 focus:ring-primary/80">
@@ -919,7 +1008,9 @@ export default function AdminCasesPage() {
                 (pendingCaseAction
                   ? pendingCaseAction.action === "hold"
                     ? !holdReasonSelect || (holdReasonSelect === "Other (please specify)" && !caseActionReason.trim())
-                    : Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim())
+                    : pendingCaseAction.action === "approve"
+                      ? !QC_CHECKLIST.every((item) => approveChecklist[item])
+                      : Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim())
                   : true)
               }
               onClick={confirmCaseAction}

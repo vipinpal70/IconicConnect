@@ -128,7 +128,7 @@ export function ClientSidebar() {
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span className="text-sm">{item.title}</span>}
+                      {!collapsed && <span className="text-xs">{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -140,12 +140,12 @@ export function ClientSidebar() {
       <SidebarFooter className="p-4 border-t border-border space-y-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-semibold">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white text-xs font-semibold">
               {profile?.lab_name?.charAt(0)}
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{profile?.lab_name}</p>
+                <p className="text-xs font-medium text-foreground truncate">{profile?.lab_name}</p>
                 <p className="text-xs text-muted-foreground">{profile?.full_name}</p>
               </div>
             )}

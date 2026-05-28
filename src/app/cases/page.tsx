@@ -18,6 +18,7 @@ import { Textarea } from "@/src/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
+import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval";
 
 interface BulkRow {
   fileName: string;
@@ -88,7 +89,7 @@ function shouldShowChatIcon(caseItem: OpsCase, currentUser: ProfileSummary | nul
 }
 
 
-type CaseActionType = "reject" | "feedback" | "hold";
+type CaseActionType = "approve" | "reject" | "feedback" | "hold";
 
 type CaseActionDialogState = {
   caseId: string;
@@ -108,6 +109,13 @@ const CASE_ACTIONS: Record<
     confirmLabel: string;
   }
 > = {
+  approve: {
+    title: "Approve Case",
+    description: "Complete the QC checklist before approving and sending to the client.",
+    status: "submitted_to_client",
+    successMessage: "Approved QC and sent design to client",
+    confirmLabel: "Approve",
+  },
   reject: {
     title: "Reject Case",
     description: "Add the reason before sending the case back to the designer.",
@@ -283,6 +291,7 @@ export default function CasesPage() {
   const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null);
   const [caseActionReason, setCaseActionReason] = useState("");
   const [holdReasonSelect, setHoldReasonSelect] = useState("");
+  const [approveChecklist, setApproveChecklist] = useState<Record<string, boolean>>({});
   const [designUploadCaseId, setDesignUploadCaseId] = useState<string | null>(null);
   const [designUploadCaseNumber, setDesignUploadCaseNumber] = useState<string | null>(null);
   const [designUploadClientId, setDesignUploadClientId] = useState<string | null>(null);
@@ -356,12 +365,31 @@ export default function CasesPage() {
     setPendingCaseAction({ caseId, action, caseNumber });
     setCaseActionReason("");
     setHoldReasonSelect("");
+    setApproveChecklist({});
+
+    if (action === "approve") {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/cases/${caseId}/approval-checklist`);
+          if (!res.ok) return;
+          const payload = await res.json().catch(() => ({}));
+          const values = Array.isArray(payload?.data) ? payload.data : [];
+          const selected = new Set(values);
+          setApproveChecklist(
+            Object.fromEntries(QC_CHECKLIST.map((item) => [item, selected.has(item)]))
+          );
+        } catch {
+          // Leave checklist empty if it cannot be loaded.
+        }
+      })();
+    }
   };
 
   const closeCaseActionDialog = () => {
     setPendingCaseAction(null);
     setCaseActionReason("");
     setHoldReasonSelect("");
+    setApproveChecklist({});
   };
 
   const confirmCaseAction = async () => {
@@ -369,7 +397,36 @@ export default function CasesPage() {
     const actionConfig = CASE_ACTIONS[pendingCaseAction.action];
     let reason = caseActionReason.trim();
 
-    if (pendingCaseAction.action === "hold") {
+    if (pendingCaseAction.action === "approve") {
+      const allChecked = QC_CHECKLIST.every((item) => approveChecklist[item]);
+      if (!allChecked) {
+        toast.error("Please complete all QC checklist items before approving.");
+        return;
+      }
+
+      setUpdatingId(pendingCaseAction.caseId);
+      try {
+        const checkedItems = QC_CHECKLIST.filter((item) => approveChecklist[item]);
+        const res = await fetch(`/api/cases/${pendingCaseAction.caseId}/approval-checklist`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ checkedItems }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to approve case");
+        }
+        toast.success(actionConfig.successMessage);
+        fetchCases();
+        closeCaseActionDialog();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to approve case";
+        toast.error(msg);
+      } finally {
+        setUpdatingId(null);
+      }
+      return;
+    } else if (pendingCaseAction.action === "hold") {
       if (!holdReasonSelect) {
         toast.error("Please select a hold reason.");
         return;
@@ -1214,7 +1271,7 @@ export default function CasesPage() {
                                   {c.status === "internal_qc" && (
                                     <div className="flex flex-wrap gap-1 items-center">
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
-                                        onClick={() => handleUpdate(c.id, { status: "submitted_to_client" }, "Approved QC and sent design to client")}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "approve", c.caseNumber); }}
                                         className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
                                       <Button size="sm" variant="destructive" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "reject", c.caseNumber); }}
@@ -1288,7 +1345,7 @@ export default function CasesPage() {
                                   {canDoQcActions && c.status === "internal_qc" && (
                                     <div className="flex flex-wrap gap-1 items-center">
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
-                                        onClick={() => handleUpdate(c.id, { status: "submitted_to_client" }, "Approved QC and sent design to client")}
+                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "approve", c.caseNumber); }}
                                         className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
                                       <Button size="sm" variant="destructive" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "reject", c.caseNumber); }}
@@ -1444,7 +1501,7 @@ export default function CasesPage() {
 
       {/* Case Action Dialog (reject / feedback / hold) */}
       <Dialog open={!!pendingCaseAction} onOpenChange={(open) => { if (!open) closeCaseActionDialog(); }}>
-        <DialogContent className="sm:max-w-[480px] bg-primary border-primary/50 text-white shadow-xl">
+        <DialogContent className="sm:max-w-[560px] bg-primary border-primary/50 text-white shadow-xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
               {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].title : "Case Action"}
@@ -1454,6 +1511,39 @@ export default function CasesPage() {
               {pendingCaseAction?.caseNumber ? ` Case ${pendingCaseAction.caseNumber}.` : ""}
             </p>
           </DialogHeader>
+          {pendingCaseAction?.action === "approve" && (
+            <div className="grid gap-2.5 py-3 border-t border-b border-white/10">
+              <p className="text-xs font-semibold text-zinc-300">
+                Quality Checklist
+              </p>
+              <div className="grid gap-2">
+                {QC_CHECKLIST.map((item) => {
+                  const itemId = `qc-approve-check-${item.replace(/\s+/g, "-").toLowerCase()}`
+                  return (
+                    <label
+                      key={item}
+                      htmlFor={itemId}
+                      className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-white"
+                    >
+                      <input
+                        id={itemId}
+                        type="checkbox"
+                        checked={!!approveChecklist[item]}
+                        onChange={(e) =>
+                          setApproveChecklist((current) => ({
+                            ...current,
+                            [item]: e.target.checked,
+                          }))
+                        }
+                        className="mt-0.5 h-4 w-4 rounded border-white/30 text-emerald-500 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs font-medium leading-5">{item}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           {pendingCaseAction && CASE_ACTIONS[pendingCaseAction.action].reasonKey && (
             <div className="grid gap-3 py-4">
               <Label htmlFor="case-action-reason" className="text-sm font-semibold text-zinc-200">
@@ -1504,7 +1594,9 @@ export default function CasesPage() {
                 (pendingCaseAction
                   ? pendingCaseAction.action === "hold"
                     ? !holdReasonSelect || (holdReasonSelect === "Other (please specify)" && !caseActionReason.trim())
-                    : Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim())
+                    : pendingCaseAction.action === "approve"
+                      ? !QC_CHECKLIST.every((item) => approveChecklist[item])
+                      : Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim())
                   : true)
               }
               onClick={confirmCaseAction}

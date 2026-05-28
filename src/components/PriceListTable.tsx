@@ -44,8 +44,8 @@ export function PriceListTable({
         bordered
         cellBordered
         hover
-        rowHeight={60}
-        headerHeight={44}
+        rowHeight={45}
+        headerHeight={38}
       >
         <Table.Column flexGrow={2} minWidth={220}>
           <Table.HeaderCell>Service</Table.HeaderCell>
@@ -59,7 +59,7 @@ export function PriceListTable({
                   size="sm"
                 />
               ) : (
-                <span className="font-medium text-foreground">{rowData.serviceName}</span>
+                <span className="font-medium text-[12px]">{rowData.serviceName}</span>
               )
             }
           </Table.Cell>
@@ -80,7 +80,7 @@ export function PriceListTable({
                   className="w-full"
                 />
               ) : (
-                <span className="font-medium text-foreground">${rowData.price.toFixed(2)}</span>
+                <span className="font-medium text-[12px]">${rowData.price.toFixed(2)}</span>
               )
             }
           </Table.Cell>

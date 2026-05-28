@@ -118,6 +118,7 @@ export const cases = pgTable('cases', {
   cancelReason: text('cancel_reason'),
   feedbackReason: text('feedback_reason'),
   rejectReason: text('reject_reason'),
+  approvalChecklist: jsonb('approval_checklist').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
 
   // Assignments (Operational Roles)
   designerId: uuid('designer_id').references(() => profiles.id),

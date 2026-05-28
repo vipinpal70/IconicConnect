@@ -164,14 +164,14 @@ export default function ProfilePage() {
         <Card className="shadow-card overflow-hidden border-border/50">
           <div className="gradient-primary h-14" />
           <CardContent className="pt-0 -mt-8 px-4 pb-3.5 flex justify-between items-center">
-            <div className="flex items-end justify-between flex-wrap gap-3 pt-3">
+            <div className="flex items-end justify-between flex-wrap gap-3 pt-6">
               <div className="flex items-end gap-3">
                 <div className="w-14 h-14 rounded-lg bg-gray-200 border-2 border-gray-300 shadow-card flex items-center justify-center">
                   <Building2 className="h-6 w-6 text-primary" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-base font-bold text-foreground">{displayProfile.company}</h1>
+                    <h1 className="text-base font-semibold text-foreground">{displayProfile.company}</h1>
                     <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border border-green-200 scale-90 origin-left">{displayProfile.status}</Badge>
                   </div>
                   <p className="text-[11px] text-muted-foreground">Onboarded {displayProfile.onboardedAt} · ID {displayProfile.id}</p>
@@ -192,7 +192,7 @@ export default function ProfilePage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card className="shadow-card lg:col-span-1 border-border/50">
-            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Company Details</CardTitle></CardHeader>
+            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Company Details</CardTitle></CardHeader>
             <CardContent className="p-3.5 space-y-3">
               <Detail icon={<Building2 className="h-3.5 w-3.5" />} label="Company" value={displayProfile.company} />
               <Detail icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={displayProfile.location} />
@@ -207,23 +207,23 @@ export default function ProfilePage() {
 
           <Card className="shadow-card lg:col-span-2 border-border/50">
             <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-2">
                 <FileText className="h-3.5 w-3.5 text-primary" /> Allocated Price List
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-3.5">
+            <CardContent className="p-3">
               <PriceListTable
                 items={priceList}
                 emptyState="No custom price list has been assigned yet."
               />
-              <p className="text-[10px] text-muted-foreground mt-2 italic">Price list updates made by the admin team are shown here automatically.</p>
+              <p className="text-[10px] text-muted-foreground mt-2 italic">Price list updates made by our team are shown here automatically.</p>
             </CardContent>
           </Card>
         </div>
 
         <Card className="shadow-card border-border/50">
           <CardHeader className="py-2 px-4 flex flex-row items-center justify-between bg-muted/20 border-b border-border/50">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-2">
               <Users className="h-3.5 w-3.5 text-primary" /> Users & Credentials
             </CardTitle>
             <Dialog open={userOpen} onOpenChange={setUserOpen}>
@@ -305,8 +305,8 @@ export default function ProfilePage() {
 function Detail({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string | number }) {
   return (
     <div>
-      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 leading-none">{icon}{label}</p>
-      <p className="text-[11px] font-semibold text-foreground mt-0.5">{value || "—"}</p>
+      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1 leading-none">{icon}{label}</p>
+      <p className="text-[12px] font-normal text-foreground mt-1">{value || "—"}</p>
     </div>
   );
 }

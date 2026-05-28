@@ -147,7 +147,7 @@ export function AdminSidebar() {
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span className="text-sm">{item.title}</span>}
+                      {!collapsed && <span className="text-xs">{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -160,13 +160,13 @@ export function AdminSidebar() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3 min-w-0">
             {!collapsed && (
-              <div className="w-7 h-7 rounded-sm bg-primary flex items-center justify-center text-white text-xs font-semibold">
+              <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-white text-xs font-semibold">
                 {(profile?.fullName)?.charAt(0).toUpperCase()}
               </div>
             )}
             {!collapsed && (
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
+                <p className="text-xs font-medium text-foreground truncate">
                   {loading ? "Loading..." : (profile?.fullName || "-")}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
