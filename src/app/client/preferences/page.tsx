@@ -157,9 +157,8 @@ export default function ClientPreferencesPage() {
       <div className="mx-auto max-w-5xl space-y-4 animate-fade-in">
         <div className="flex flex-col gap-1.5 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Client</p>
-            <h1 className="text-lg font-bold text-foreground">{headerName}</h1>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Create, edit, and manage multiple preference forms linked to your account.</p>
+            <h1 className="text-xl font-semibold text-foreground">{headerName}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Create, edit, and manage multiple preference forms linked to your account.</p>
           </div>
           <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs w-fit" onClick={() => { setDraft(emptyForm()); setEditingId(null) }}>
             <Plus className="h-3.5 w-3.5" />
@@ -171,7 +170,7 @@ export default function ClientPreferencesPage() {
           <CardContent className="p-3.5 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Saved Forms</h3>
+                <h3 className="text-sm font-semibold text-muted-foreground">Saved Forms</h3>
                 <p className="text-[11px] text-muted-foreground">Forms are stored under your account and visible to the admin team.</p>
               </div>
               <Badge variant="secondary" className="text-[10px] scale-95">{loading ? "Loading..." : `${forms.length} form(s)`}</Badge>
@@ -220,7 +219,7 @@ export default function ClientPreferencesPage() {
         <Card className="overflow-hidden border-border/50 shadow-sm bg-white">
           <CardContent className="p-0">
             <div className="border-b border-border/50 px-4 py-2.5 bg-muted/20">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Contour Form</h2>
+              <h2 className="text-sm font-semibold text-muted-foreground">Full Contour Form</h2>
               <p className="text-[10px] text-muted-foreground">
                 {editingId ? "Editing preference form" : "Add a new preference form"}
               </p>
@@ -393,7 +392,7 @@ export default function ClientPreferencesPage() {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</Label>
+      <Label className="text-xs font-semibold text-muted-foreground">{label}</Label>
       {children}
     </div>
   )
@@ -431,7 +430,7 @@ function ChoiceRow<T extends string>({
 function Summary({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded border border-border/50 bg-muted/20 px-2.5 py-1.5">
-      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-[9px] font-bold tracking-wider text-muted-foreground">{label}</p>
       <p className="truncate text-[11px] text-foreground font-semibold mt-0.5">{value}</p>
     </div>
   )

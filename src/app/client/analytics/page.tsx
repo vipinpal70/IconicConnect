@@ -54,8 +54,8 @@ export default function AnalyticsPage() {
     <ClientLayout>
       <div className="space-y-4 animate-fade-in">
         <div>
-          <h1 className="text-lg font-bold text-foreground">Analytics & Reports</h1>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Performance, delivery and billing insights for your account</p>
+          <h1 className="text-xl font-semibold text-foreground">Analytics & Reports</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Performance, delivery and billing insights for your account</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

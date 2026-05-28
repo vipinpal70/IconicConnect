@@ -122,8 +122,8 @@ export default function ClientTutorialsPage() {
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Tutorials</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h1 className="text-xl font-semibold text-foreground">Tutorials</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
               Browse and play every tutorial published by the team.
             </p>
           </div>
@@ -133,15 +133,18 @@ export default function ClientTutorialsPage() {
           </div>
         </div>
 
-        <Card className="shadow-card border-border/60">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-4">
+        {/* <Card className="shadow-card border-border/60 rounded-lg"> */}
+          <div className="flex md:flex-row md:items-center justify-between gap-3 bg-card p-2 rounded border border-border/50 shadow-sm mb-4">
+            <div className="flex justify-between gap-4">
+
+              {/* filter btn */}
               <div className="flex flex-wrap gap-2">
                 {categories.map((category) => (
                   <Button
                     key={category}
                     type="button"
                     size="sm"
+                    className="h-7 text-xs px-2.5"
                     variant={categoryFilter === category ? "default" : "outline"}
                     onClick={() => setCategoryFilter(category)}
                   >
@@ -149,18 +152,21 @@ export default function ClientTutorialsPage() {
                   </Button>
                 ))}
               </div>
-              <div className="relative max-w-md">
+
+            </div>
+            {/* search bar */}
+              <div className="relative max-w-md flex">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  className="pl-9"
+                  className="pl-9 text-xs"
                   placeholder="Search tutorials"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
               </div>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+
+        {/* </Card> */}
 
         {tutorialsQuery.isLoading ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

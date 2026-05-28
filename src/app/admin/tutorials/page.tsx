@@ -117,10 +117,10 @@ function TutorialCard({
         <div className="space-y-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <Badge variant="secondary" className="mb-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0">
+              <Badge variant="secondary" className="mb-1 text-[9px] font-semibold  uppercase tracking-wider px-1.5 py-0">
                 {tutorial.category}
               </Badge>
-              <h3 className="line-clamp-1 text-xs font-bold text-slate-800">{tutorial.title}</h3>
+              <h3 className="line-clamp-1 text-xs font-semibold  text-slate-800">{tutorial.title}</h3>
               <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground leading-normal">{tutorial.description}</p>
             </div>
           </div>
@@ -258,7 +258,7 @@ export default function AdminTutorialsPage() {
       <div className="space-y-4 animate-in fade-in duration-500">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-0.5">
-            <h1 className="text-sm font-bold text-foreground">Tutorials</h1>
+            <h1 className="text-lg font-semibold text-foreground">Tutorials</h1>
             <p className="text-xs text-muted-foreground">
               Upload tutorials, preview them live, and manage what the client portal shows.
             </p>
@@ -272,7 +272,7 @@ export default function AdminTutorialsPage() {
         <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
           <Card className="shadow-card border-border/60 text-xs">
             <CardHeader className="p-3.5 pb-2 border-b border-border/60 space-y-0.5">
-              <CardTitle className="text-xs font-bold">Add Tutorial</CardTitle>
+              <CardTitle className="text-xs font-semibold ">Add Tutorial</CardTitle>
               <p className="text-[11px] text-muted-foreground">Paste a YouTube video ID and publish it to both portals.</p>
             </CardHeader>
             <CardContent className="p-3.5">
@@ -367,7 +367,7 @@ export default function AdminTutorialsPage() {
 
           <Card className="shadow-card border-border/60 overflow-hidden text-xs">
             <CardHeader className="p-3.5 pb-2 border-b border-border/60 space-y-0.5">
-              <CardTitle className="text-xs font-bold">Live Preview</CardTitle>
+              <CardTitle className="text-xs font-semibold ">Live Preview</CardTitle>
               <p className="text-[11px] text-muted-foreground">This is the exact embedded player users will see.</p>
             </CardHeader>
             <CardContent className="p-0">
@@ -386,7 +386,7 @@ export default function AdminTutorialsPage() {
                       <Video className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="font-bold text-foreground">No preview yet</p>
+                      <p className="font-semibold  text-foreground">No preview yet</p>
                       <p className="text-xs text-muted-foreground">
                         Add a valid YouTube video ID to render the embed here.
                       </p>
@@ -396,15 +396,15 @@ export default function AdminTutorialsPage() {
               </div>
               <div className="grid gap-3 border-t border-border/60 p-3.5 sm:grid-cols-2">
                 <div>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Title</p>
+                  <p className="text-[9px] font-semibold  uppercase tracking-wider text-muted-foreground">Title</p>
                   <p className="mt-0.5 text-[11px] font-semibold text-slate-800">{form.title.trim() || "Untitled tutorial"}</p>
                 </div>
                 <div>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Video ID</p>
+                  <p className="text-[9px] font-semibold  uppercase tracking-wider text-muted-foreground">Video ID</p>
                   <p className="mt-0.5 break-all text-[11px] font-semibold text-slate-800">{liveVideoId || "Waiting for a valid ID"}</p>
                 </div>
                 <div className="sm:col-span-2">
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Description</p>
+                  <p className="text-[9px] font-semibold  uppercase tracking-wider text-muted-foreground">Description</p>
                   <p className="mt-0.5 line-clamp-3 text-[11px] text-muted-foreground leading-normal">
                     {form.description.trim() || "Add a description to help clients understand the tutorial."}
                   </p>
@@ -417,7 +417,7 @@ export default function AdminTutorialsPage() {
         <Card className="shadow-card border-border/60">
           <CardHeader className="p-3.5 pb-2 border-b border-border/60 gap-3 sm:flex-row sm:items-center sm:justify-between space-y-0">
             <div className="space-y-0.5">
-              <CardTitle className="text-xs font-bold">Uploaded Tutorials</CardTitle>
+              <CardTitle className="text-xs font-semibold ">Uploaded Tutorials</CardTitle>
               <p className="text-[11px] text-muted-foreground">Delete or preview any tutorial at any time.</p>
             </div>
             <div className="relative w-full sm:w-64">
@@ -451,7 +451,7 @@ export default function AdminTutorialsPage() {
             ) : tutorialsQuery.error ? (
               <div className="flex flex-col items-center justify-center rounded border border-dashed border-red-200 bg-red-50 px-4 py-8 text-center dark:border-red-900/60 dark:bg-red-950/20 text-xs">
                 <AlertCircle className="h-8 w-8 text-red-500" />
-                <h3 className="mt-2 text-xs font-bold text-foreground">Failed to load tutorials</h3>
+                <h3 className="mt-2 text-xs font-semibold  text-foreground">Failed to load tutorials</h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {(tutorialsQuery.error as Error).message}
                 </p>
@@ -462,7 +462,7 @@ export default function AdminTutorialsPage() {
             ) : filteredTutorials.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded border border-dashed border-border/60 px-4 py-8 text-center text-xs">
                 <Video className="h-8 w-8 text-muted-foreground" />
-                <h3 className="mt-2 text-xs font-bold text-foreground">
+                <h3 className="mt-2 text-xs font-semibold  text-foreground">
                   {search ? "No tutorials match your search" : "No tutorials uploaded yet"}
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground leading-normal max-w-xs">
@@ -494,7 +494,7 @@ export default function AdminTutorialsPage() {
         <Dialog open={Boolean(previewTutorial)} onOpenChange={(open) => !open && setPreviewTutorial(null)}>
           <DialogContent className="max-w-4xl text-xs">
             <DialogHeader>
-              <DialogTitle className="text-sm font-bold">{previewTutorial?.title}</DialogTitle>
+              <DialogTitle className="text-sm font-semibold ">{previewTutorial?.title}</DialogTitle>
             </DialogHeader>
             {previewTutorial && (
               <div className="space-y-3">

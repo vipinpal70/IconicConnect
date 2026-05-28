@@ -163,21 +163,20 @@ export default function AdminSupportPage() {
   return (
     <AdminLayout>
       <div className="space-y-4 animate-fade-in">
-        <div className="relative overflow-hidden rounded-lg border border-border/60 bg-linear-to-br from-[#1a7554] via-[#126d4c] to-[#116144] p-4 text-white">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.2),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.14),transparent_30%)]" />
+        <div className="relative overflow-hidden rounded-lg border border-border/60 bg-primary p-4 text-white">
           <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
               <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-0.5 text-[10px] font-medium text-white/80 backdrop-blur">
                 <LifeBuoy className="h-3 w-3" />
                 Admin support desk
               </div>
-              <h1 className="text-white text-sm font-bold tracking-tight">Monitor and resolve support tickets</h1>
+              <h1 className="text-white text-md font-semibold">Monitor and resolve support tickets</h1>
               <p className="mt-1 max-w-xl text-[11px] text-white/75">
                 Review every lab ticket in one place, move tickets through the workflow, and leave internal notes for the team.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <Metric label="Open" value={metrics.open} />
+              <Metric label="Open" value={metrics.open}/>
               <Metric label="Active" value={metrics.active} />
               <Metric label="Done" value={metrics.resolved} />
             </div>
@@ -214,7 +213,7 @@ export default function AdminSupportPage() {
         
         <Card className="shadow-card border-border/60">
           <CardHeader className="p-3.5 pb-2">
-            <CardTitle className="text-xs font-bold">All tickets</CardTitle>
+            <CardTitle className="text-sm font-semibold">All tickets</CardTitle>
             <CardDescription className="text-[11px]">Tickets are grouped by client lab, so you can quickly see who is waiting on a response.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
@@ -225,7 +224,7 @@ export default function AdminSupportPage() {
                     {["Ticket", "Client", "Lab", "Subject", "Category", "Priority", "Status", "Updated", "Action"].map((heading) => (
                       <th
                         key={heading}
-                        className="px-3.5 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground"
+                        className="px-3.5 py-2 text-left text-xs font-semibold  text-muted-foreground"
                       >
                         {heading}
                       </th>
@@ -262,10 +261,10 @@ export default function AdminSupportPage() {
                   ) : (
                     filteredTickets.map((ticket) => (
                       <tr key={ticket.id} className="border-b border-border/50 transition-colors hover:bg-muted/20">
-                        <td className="px-3.5 py-2 font-bold text-[11px] text-slate-800">{ticket.ticketNumber}</td>
+                        <td className="px-3.5 py-2 font-semibold text-[11px] text-black">{ticket.ticketNumber}</td>
                         <td className="px-3.5 py-2">
                           <div>
-                            <p className="font-bold text-[11px] text-slate-800">{ticket.clientName || "Unknown client"}</p>
+                            <p className="font-semibold text-[11px] text-black">{ticket.clientName || "Unknown client"}</p>
                           </div>
                         </td>
                         <td className="px-3.5 py-2 text-[11px]">{ticket.labName || "—"}</td>
@@ -308,7 +307,7 @@ export default function AdminSupportPage() {
         {/* Callback Requests Table */}
         <Card className="shadow-card border-border/60">
           <CardHeader className="p-3.5 pb-2">
-            <CardTitle className="text-xs font-bold">Callback requests</CardTitle>
+            <CardTitle className="text-sm font-semibold">Callback requests</CardTitle>
             <CardDescription className="text-[11px]">Clients who asked for a callback with the lab contact details captured at request time.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
@@ -317,7 +316,7 @@ export default function AdminSupportPage() {
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     {["Client", "Lab", "Phone", "Email", "Requested"].map((heading) => (
-                      <th key={heading} className="px-3.5 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                      <th key={heading} className="px-3.5 py-2 text-left text-xs font-semibold  text-muted-foreground">
                         {heading}
                       </th>
                     ))}
@@ -349,7 +348,7 @@ export default function AdminSupportPage() {
                   ) : (
                     callbackRequests.map((request) => (
                       <tr key={request.id} className="border-b border-border/50 transition-colors hover:bg-muted/20">
-                        <td className="px-3.5 py-2 font-bold text-[11px] text-slate-800">{request.clientName}</td>
+                        <td className="px-3.5 py-2 font-semibold text-[11px] text-black">{request.clientName}</td>
                         <td className="px-3.5 py-2 text-[11px]">{request.labName}</td>
                         <td className="px-3.5 py-2 text-[11px]">{request.phone || "—"}</td>
                         <td className="px-3.5 py-2 text-[11px]">{request.email}</td>

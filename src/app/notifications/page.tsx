@@ -378,10 +378,10 @@ export default function NotificationsPage() {
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
                 <div>
-                  <h1 className="text-sm font-bold tracking-tight text-slate-900 flex items-center gap-1.5">
+                  <h1 className="text-xl font-semibold text-foreground flex items-center gap-1.5">
                     Notification Center
                     {unreadCount > 0 && (
-                      <Badge className="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-2 py-0 text-[9px] font-bold">
+                      <Badge className="bg-rose-500 hover:bg-rose-600 text-white rounded-full px-2 py-0 text-[9px] font-semibold">
                         {unreadCount} Unread
                       </Badge>
                     )}
@@ -439,7 +439,7 @@ export default function NotificationsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                    <h2 className="text-xs font-bold text-slate-900">Client Activities & Live Feedback</h2>
+                    <h2 className="text-xs font-semibold text-slate-900">Client Activities & Live Feedback</h2>
                   </div>
                   <Badge variant="outline" className="bg-white border-slate-200 text-slate-500 text-[10px] py-0 px-1.5">
                     {clientNotifications.length} alerts
@@ -473,7 +473,7 @@ export default function NotificationsPage() {
                             
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-1.5 mb-0.5">
-                                <h4 className={`text-xs font-bold truncate ${notif.read ? 'text-slate-500' : 'text-slate-900'}`}>
+                                <h4 className={`text-xs font-semibold truncate ${notif.read ? 'text-slate-500' : 'text-slate-900'}`}>
                                   {notif.title}
                                 </h4>
                                 <span className="text-[10px] text-slate-400 whitespace-nowrap">
@@ -487,7 +487,7 @@ export default function NotificationsPage() {
                               {notif.link && (
                                 <a 
                                   href={notif.link}
-                                  className="inline-flex items-center gap-0.5 text-[10px] font-bold text-[#00786f] mt-1.5 hover:underline"
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#00786f] mt-1.5 hover:underline"
                                 >
                                   Open details <ArrowRight className="w-2.5 h-2.5" />
                                 </a>
@@ -530,7 +530,7 @@ export default function NotificationsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-teal-500" />
-                    <h2 className="text-xs font-bold text-slate-900">Internal Operations & Case Flow</h2>
+                    <h2 className="text-xs font-semibold text-slate-900">Internal Operations & Case Flow</h2>
                   </div>
                   <Badge variant="outline" className="bg-white border-slate-200 text-slate-500 text-[10px] py-0 px-1.5">
                     {internalNotifications.length} alerts
@@ -564,7 +564,7 @@ export default function NotificationsPage() {
                             
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-1.5 mb-0.5">
-                                <h4 className={`text-xs font-bold truncate ${notif.read ? 'text-slate-500' : 'text-slate-900'}`}>
+                                <h4 className={`text-xs font-semibold truncate ${notif.read ? 'text-slate-500' : 'text-slate-900'}`}>
                                   {notif.title}
                                 </h4>
                                 <span className="text-[10px] text-slate-400 whitespace-nowrap">
@@ -578,7 +578,7 @@ export default function NotificationsPage() {
                               {notif.link && (
                                 <a 
                                   href={notif.link}
-                                  className="inline-flex items-center gap-0.5 text-[10px] font-bold text-[#00786f] mt-1.5 hover:underline"
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#00786f] mt-1.5 hover:underline"
                                 >
                                   Open details <ArrowRight className="w-2.5 h-2.5" />
                                 </a>
@@ -623,7 +623,7 @@ export default function NotificationsPage() {
             <div className="max-w-3xl mx-auto space-y-4">
               <Card className="bg-white border-slate-100 shadow-sm rounded-lg overflow-hidden">
                 <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-4">
-                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
                     <Sliders className="w-4 h-4 text-[#00786f]" /> Delivery Channels & Alerts
                   </CardTitle>
                   <CardDescription className="text-slate-500 text-[11px]">
@@ -638,7 +638,7 @@ export default function NotificationsPage() {
                       {/* Master Channels Section */}
                       <div className="p-4 bg-slate-50/20 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="space-y-0.5">
-                          <h4 className="text-xs font-bold text-slate-800">Master Switches</h4>
+                          <h4 className="text-xs font-semibold text-slate-800">Master Switches</h4>
                           <p className="text-[11px] text-slate-500">Enable or disable delivery methods globally across all alert categories.</p>
                         </div>
                         <div className="flex items-center gap-6">
@@ -676,8 +676,7 @@ export default function NotificationsPage() {
                       {PREFERENCE_MAPPINGS.map((item) => (
                         <div key={item.key} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/10 transition-colors">
                           <div className="space-y-0.5 max-w-md">
-                            <span className="text-[9px] font-bold text-[#00786f] uppercase tracking-wider">Channel Configuration</span>
-                            <h4 className="text-xs font-bold text-slate-800">{item.label}</h4>
+                            <h4 className="text-xs font-semibold text-slate-800">{item.label}</h4>
                             <p className="text-[11px] text-slate-500 leading-normal">{item.description}</p>
                           </div>
                           

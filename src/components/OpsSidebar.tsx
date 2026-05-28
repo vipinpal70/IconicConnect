@@ -32,7 +32,6 @@ import Logo from "@/public/IconicConnectLogo.png";
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "All Cases", url: "/cases", icon: FolderOpen },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Notifications", url: "/notifications", icon: Bell },
 ];
 
@@ -89,12 +88,12 @@ export function OpsSidebar() {
                     <Link
                       href={item.url}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         pathname === item.url && "bg-accent text-accent-foreground font-medium"
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span className="text-sm">{item.title}</span>}
+                      {!collapsed && <span className="text-xs">{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -106,13 +105,13 @@ export function OpsSidebar() {
       <SidebarFooter className="flex justify-between gap-2 p-4 border-t border-border space-y-3 bg-white">
         <div className="flex items-center gap-3">
           {!collapsed && (
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-[10px] font-bold">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white text-[10px] font-bold">
             {initials}
           </div>
           )}
           {!collapsed && (
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{profile?.fullName || "Ops User"}</p>
+            <div className="min-w-0 mb-0">
+              <p className="text-xs font-medium text-foreground truncate">{profile?.fullName || "Ops User"}</p>
               <p className="text-xs text-muted-foreground capitalize">{profile?.role?.replace('_', ' ') || "Internal Member"}</p>
             </div>
           )}
@@ -121,7 +120,7 @@ export function OpsSidebar() {
           variant="ghost"
           size="sm"
           className={cn(
-            "w-full justify-end text-red-500 hover:text-red-600 gap-2",
+            "justify-end text-red-500 hover:text-red-600 gap-2",
             collapsed && "justify-start px-0"
           )}
           onClick={handleLogout}

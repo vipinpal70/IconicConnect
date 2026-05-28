@@ -193,8 +193,8 @@ export default function ClientProfilePage() {
 
               <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 flex items-center justify-between col-span-1 sm:col-span-2 md:col-span-1">
                 <div>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-primary/70 flex items-center gap-1">
-                    <Layers3 className="h-3 w-3" />
+                  <p className="text-xs font-semibold text-primary/70 flex items-center gap-1">
+                    {/* <Layers3 className="h-3 w-3" /> */}
                     Plan
                   </p>
                   <p className="mt-0.5 truncate text-xs font-semibold text-foreground">
@@ -286,8 +286,8 @@ export default function ClientProfilePage() {
 function Info({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-      <p className="text-[9px] font-bold uppercase tracking-wider text-primary/70 flex items-center gap-1">
-        {icon}
+      <p className="text-xs font-semibold text-primary/70 flex items-center gap-1">
+        {/* {icon} */}
         {label}
       </p>
       <p className="mt-0.5 truncate text-xs font-semibold text-foreground">{value}</p>

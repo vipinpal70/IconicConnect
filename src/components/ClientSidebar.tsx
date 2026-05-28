@@ -99,14 +99,9 @@ export function ClientSidebar() {
       <SidebarHeader className="p-4 border-b border-border">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            {/* <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center shadow-glow">
-              <span className="text-sm font-bold text-primary-foreground">IC</span>
-            </div> */}
             {!collapsed && (
               <div>
                 <Image src={logo} alt="Iconic Connect" width={100} height={100} />
-                {/* <h1 className="text-sm font-semibold text-foreground">Iconic Connect</h1> */}
-                {/* <p className="text-xs text-muted-foreground">Lab Portal</p> */}
               </div>
             )}
           </div>
@@ -123,7 +118,7 @@ export function ClientSidebar() {
                     <Link
                       href={item.url}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         pathname === item.url && "bg-accent text-accent-foreground font-medium"
                       )}
                     >
@@ -154,7 +149,7 @@ export function ClientSidebar() {
             variant="ghost"
             size="sm"
             className={cn(
-              "w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50/20 dark:hover:bg-red-950/20 gap-2",
+              "justify-end text-red-500 hover:text-red-600 hover:bg-red-50 gap-2",
               collapsed && "justify-center px-0"
             )}
             onClick={handleLogout}

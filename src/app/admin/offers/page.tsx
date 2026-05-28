@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/src/components/ui/switch"
 import { Textarea } from "@/src/components/ui/textarea"
 import { clients as clientList } from "@/src/components/demoData"
-import { AlertCircle, Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
+import { AlertCircle, Loader2, Pencil, Plus, Search, Sparkles, Trash2 } from "lucide-react"
 import { OFFER_CATEGORIES, type OfferCategory, type OfferClaimRecord, type OfferRecord } from "@/src/lib/offers"
 
 type OffersResponse = { data: OfferRecord[] }
@@ -290,7 +290,7 @@ export default function AdminOffers() {
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="space-y-0.5">
-            <h1 className="text-sm font-bold text-foreground">Offers</h1>
+            <h1 className="text-lg font-semibold text-foreground">Offers</h1>
             <p className="text-xs text-muted-foreground">Manage promotional offers shown to client labs</p>
           </div>
           <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -302,7 +302,7 @@ export default function AdminOffers() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl text-xs">
               <DialogHeader>
-                <DialogTitle className="text-sm font-bold">{editingOfferId ? "Edit Offer" : "Create Offer"}</DialogTitle>
+                <DialogTitle className="text-sm font-semibold ">{editingOfferId ? "Edit Offer" : "Create Offer"}</DialogTitle>
                 <DialogDescription className="text-xs">
                   Update offer details and publish promotional campaigns for client labs.
                 </DialogDescription>
@@ -424,7 +424,8 @@ export default function AdminOffers() {
           </Dialog>
         </div>
 
-        <div className="flex items-center gap-4 bg-card p-2 rounded-lg border border-border/50 shadow-sm max-w-xs">
+        <div className="flex items-center bg-card rounded-lg border border-border/50 shadow-sm max-w-xs">
+          <Search className="w-4 h-4 ml-2 text-muted-foreground"/>
           <div className="flex-1">
             <Input
               placeholder="Search offers by title or brand..."
@@ -442,7 +443,7 @@ export default function AdminOffers() {
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     {["Offer", "Brand", "Category", "Discount", "Targeting", "Valid till", "Active", "Actions"].map((h) => (
-                      <th key={h} className="px-3.5 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      <th key={h} className="px-3.5 py-2 text-left text-xs font-semibold text-muted-foreground">
                         {h}
                       </th>
                     ))}
@@ -498,7 +499,7 @@ export default function AdminOffers() {
                       <tr key={offer.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                         <td className="px-3.5 py-2">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-[11px] text-slate-800">{offer.title}</span>
+                            <span className="font-semibold  text-[11px] text-slate-800">{offer.title}</span>
                             {offer.sponsored && (
                               <Badge className="gap-0.5 bg-warning text-warning-foreground text-[9px] px-1 py-0 border-0 scale-90 origin-left">
                                 <Sparkles className="h-2.5 w-2.5" />
@@ -510,7 +511,7 @@ export default function AdminOffers() {
                         </td>
                         <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{offer.brand}</td>
                         <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{offer.category}</td>
-                        <td className="px-3.5 py-2 text-primary text-[11px] font-bold">{offer.discount}</td>
+                        <td className="px-3.5 py-2 text-primary text-[11px] font-semibold ">{offer.discount}</td>
                         <td className="px-3.5 py-2 text-[10px] text-muted-foreground">
                           {offer.targetClients.length ? `Client: ${offer.targetClients.join(", ")}` : "All clients"}
                           {offer.targetLocations.length ? ` | ${offer.targetLocations.join(", ")}` : ""}
@@ -557,7 +558,7 @@ export default function AdminOffers() {
           <CardContent className="p-0">
             <div className="border-b border-border/60 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 pb-2 bg-muted/10">
               <div className="space-y-0.5">
-                <h2 className="text-xs font-bold text-foreground">Claimed Offers</h2>
+                <h2 className="text-xs font-semibold  text-foreground">Claimed Offers</h2>
                 <p className="text-[10px] text-muted-foreground">Client details are shown here when an offer is claimed.</p>
               </div>
               <div className="w-full sm:w-60">
@@ -573,8 +574,8 @@ export default function AdminOffers() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["Offer", "Client name", "Lab name", "Email", "Phone", "Claimed at", "Status", "Actions"].map((h) => (
-                      <th key={h} className="px-3.5 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                    {["Offer", "Name", "Lab name", "Email", "Phone", "Claimed on", "Status", "Actions"].map((h) => (
+                      <th key={h} className="px-3.5 py-2 text-left text-xs font-semibold text-muted-foreground">
                         {h}
                       </th>
                     ))}
@@ -630,7 +631,7 @@ export default function AdminOffers() {
                       <tr key={claim.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                         <td className="px-3.5 py-2">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-[11px] text-slate-800">{claim.offerTitle}</span>
+                            <span className="font-semibold  text-[11px] text-slate-800">{claim.offerTitle}</span>
                             <Badge variant="secondary" className="text-[9px] px-1 py-0 font-semibold text-slate-700">
                               {claim.offerBrand}
                             </Badge>
@@ -645,23 +646,22 @@ export default function AdminOffers() {
                           {formatDate(claim.claimedAt)}
                         </td>
                         <td className="px-3.5 py-2">
-                          <Badge
-                            variant={claim.status === "delivered" ? "default" : "secondary"}
+                          <span
                             className={
                               claim.status === "delivered"
-                                ? "bg-emerald-500 hover:bg-emerald-600 text-white border-0 text-[9px] px-1.5 py-0 font-bold"
-                                : "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-0 text-[9px] px-1.5 py-0 font-bold"
+                                ? "text-emerald-500 text-[10px] font-semibold"
+                                : "text-amber-500 text-[10px] font-semibold "
                             }
                           >
                             {claim.status === "delivered" ? "Delivered" : "Claimed"}
-                          </Badge>
+                          </span>
                         </td>
                         <td className="px-3.5 py-2">
                           {claim.status !== "delivered" ? (
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-7 px-2 text-[10px] gap-1 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-600 text-emerald-500 font-bold"
+                              className="h-7 px-2 text-[10px] gap-1 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-600 text-emerald-500 font-semibold "
                               onClick={() => deliverMutation.mutate(claim.id)}
                               disabled={deliverMutation.isPending}
                             >

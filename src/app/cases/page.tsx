@@ -826,8 +826,8 @@ export default function CasesPage() {
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-lg font-bold text-foreground">Cases</h1>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
+            <h1 className="text-xl font-semibold text-foreground">Cases</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" className="h-8 text-xs font-semibold"><Download className="h-3.5 w-3.5 mr-1.5" /> Export Excel</Button>
@@ -879,7 +879,7 @@ export default function CasesPage() {
                                 <p className="text-xs text-muted-foreground">
                                   ({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)
                                 </p>
-                                <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
+                                <span className="inline-flex items-center text-[10px] font-semibold  text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
                                   ✓ Uploaded
                                 </span>
                               </div>
@@ -1122,7 +1122,7 @@ export default function CasesPage() {
             </div>
             <div className="flex gap-1 flex-wrap pt-0.5">
               {statusFilters.map((s) => (
-                <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" className="h-7 px-2.5 text-[10px] font-bold uppercase tracking-wider" onClick={() => setStatusFilter(s)}>{s}</Button>
+                <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" className="h-7 px-2.5 text-xs font-normal" onClick={() => setStatusFilter(s)}>{s}</Button>
               ))}
             </div>
           </CardContent>
@@ -1136,7 +1136,7 @@ export default function CasesPage() {
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {["Case ID", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
-                      <th key={h} className="text-left text-[10px] font-bold text-muted-foreground px-3.5 py-2 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      <th key={h} className="text-left text-xs font-semibold  text-muted-foreground px-3.5 py-2 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1202,10 +1202,10 @@ export default function CasesPage() {
                       return (
                         <tr
                           key={c.id}
-                          className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
+                          className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-[10px]" : "border-l-transparent"}`}
                           onClick={() => router.push(`/cases/${c.id}`)}
                         >
-                          <td className="px-3.5 py-1.5 text-[11px] font-bold text-primary">
+                          <td className="px-3.5 py-1.5 text-[11px] font-semibold  text-primary">
                             <div className="flex items-center gap-1.5">
                               <span>{c.caseNumber || c.id}</span>
                               {shouldShowChatIcon(c, currentUser) && (hasUnreadChat || (c.todayMessagesCount || 0) > 0) && (
@@ -1217,7 +1217,7 @@ export default function CasesPage() {
                                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                                     </span>
                                   ) : (
-                                    <span className="absolute -top-1 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold border border-white leading-none">
+                                    <span className="absolute -top-1 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-semibold  border border-white leading-none">
                                       {c.todayMessagesCount}
                                     </span>
                                   )}
@@ -1241,7 +1241,7 @@ export default function CasesPage() {
                                     <>
                                       <Button size="sm" variant="outline" disabled={isMutating}
                                         onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
                                         <ShieldCheck className="h-3 w-3 mr-1" />Validate
                                       </Button>
                                       <AllocateMenu designers={designers} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
@@ -1256,13 +1256,13 @@ export default function CasesPage() {
                                     ) : (
                                       !c.qcId ? (
                                         <Button size="sm" variant="outline" disabled={isMutating} onClick={() => setAssignQcCaseId(c.id)}
-                                          className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                          className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
                                           <UserPlus className="h-3 w-3 mr-1" /> Assign QC
                                         </Button>
                                       ) : (
                                         <Button size="sm" variant="outline" disabled={isMutating}
                                           onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
-                                          className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                          className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
                                           <ClipboardCheck className="h-3 w-3 mr-1" /> Send to QC
                                         </Button>
                                       )
@@ -1272,27 +1272,27 @@ export default function CasesPage() {
                                     <div className="flex flex-wrap gap-1 items-center">
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "approve", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
                                       <Button size="sm" variant="destructive" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "reject", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "feedback", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
                                     </div>
                                   )}
                                   {c.status === "client_feedback" && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Sent case back to design")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">Back to designer</Button>
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider">Back to designer</Button>
                                   )}
                                   {c.status === "on_hold" && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                       <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
                                     </Button>
                                   )}
@@ -1318,7 +1318,7 @@ export default function CasesPage() {
                                   {c.status === "scan_received" && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
                                       <ShieldCheck className="h-3 w-3 mr-1" /> Validate
                                     </Button>
                                   )}
@@ -1327,7 +1327,7 @@ export default function CasesPage() {
                                   {!c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { designerId: activeUserId, status: "allocated_to_designer" }, "Allocated case to yourself as designer")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                       <UserPlus className="h-3 w-3 mr-1" /> Take as Designer
                                     </Button>
                                   )}
@@ -1336,7 +1336,7 @@ export default function CasesPage() {
                                   {!c.qcId && (c.status === "allocated_to_designer" || c.status === "in_progress" || c.status === "internal_qc") && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { qcId: activeUserId }, "Assigned yourself as QC")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
                                       <UserPlus className="h-3 w-3 mr-1" /> Assign QC to Self
                                     </Button>
                                   )}
@@ -1346,16 +1346,16 @@ export default function CasesPage() {
                                     <div className="flex flex-wrap gap-1 items-center">
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "approve", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
                                       <Button size="sm" variant="destructive" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "reject", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-red-600 hover:bg-red-700 shadow-sm">✗ Reject</Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "feedback", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
                                     </div>
                                   )}
 
@@ -1366,7 +1366,7 @@ export default function CasesPage() {
                                   {c.status === "on_hold" && (c.qcId === activeUserId || c.designerId === activeUserId) && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                       <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
                                     </Button>
                                   )}
@@ -1388,7 +1388,7 @@ export default function CasesPage() {
                                   {isDesigner && !c.designerId && c.status === "scan_received" && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                       <ShieldCheck className="h-3 w-3 mr-1" /> Validate
                                     </Button>
                                   )}
@@ -1397,7 +1397,7 @@ export default function CasesPage() {
                                   {isDesigner && !c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { designerId: activeUserId, status: "allocated_to_designer" }, "Allocated case to yourself")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                       <UserPlus className="h-3 w-3 mr-1" /> Allocate to Self
                                     </Button>
                                   )}
@@ -1407,7 +1407,7 @@ export default function CasesPage() {
                                       {c.status === "on_hold" && (
                                         <Button size="sm" disabled={isMutating}
                                           onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                          className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                          className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                           <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
                                         </Button>
                                       )}
@@ -1415,18 +1415,18 @@ export default function CasesPage() {
                                         <div className="flex gap-1.5 flex-wrap">
                                           <Button size="sm" disabled={isMutating}
                                             onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Started design work")}
-                                            className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+                                            className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
                                             Start Work
                                           </Button>
                                           <Button size="sm" variant="outline" disabled={isMutating}
                                             onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
-                                            className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                            className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
                                             <Upload className="h-3 w-3 mr-1" /> Upload Design
                                           </Button>
                                           {!c.qcId && (
                                             <Button size="sm" variant="outline" disabled={isMutating}
                                               onClick={() => setAssignQcCaseId(c.id)}
-                                              className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                              className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
                                               <UserPlus className="h-3 w-3 mr-1" /> Assign QC
                                             </Button>
                                           )}
@@ -1437,19 +1437,19 @@ export default function CasesPage() {
                                         <div className="flex gap-1.5 flex-wrap">
                                           <Button size="sm" variant="outline" disabled={isMutating}
                                             onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
-                                            className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                            className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
                                             <Upload className="h-3 w-3 mr-1" /> Upload Design
                                           </Button>
                                           {!c.qcId ? (
                                             <Button size="sm" variant="outline" disabled={isMutating}
                                               onClick={() => setAssignQcCaseId(c.id)}
-                                              className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
+                                              className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
                                               <UserPlus className="h-3 w-3 mr-1" /> Assign QC
                                             </Button>
                                           ) : (
                                             <Button size="sm" variant="outline" disabled={isMutating}
                                               onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
-                                              className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                              className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
                                               <ClipboardCheck className="h-3 w-3 mr-1" /> Send to QC
                                             </Button>
                                           )}
@@ -1463,7 +1463,7 @@ export default function CasesPage() {
                                       {c.status === "client_feedback" && (
                                         <Button size="sm" disabled={isMutating}
                                           onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Restarted design to apply feedback")}
-                                          className="h-7 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+                                          className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
                                           Apply Feedback
                                         </Button>
                                       )}
@@ -1503,7 +1503,7 @@ export default function CasesPage() {
       <Dialog open={!!pendingCaseAction} onOpenChange={(open) => { if (!open) closeCaseActionDialog(); }}>
         <DialogContent className="sm:max-w-[560px] bg-primary border-primary/50 text-white shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+            <DialogTitle className="text-xl font-semibold  text-white flex items-center gap-2">
               {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].title : "Case Action"}
             </DialogTitle>
             <p className="text-xs text-zinc-300">
@@ -1672,7 +1672,7 @@ export default function CasesPage() {
       <Dialog open={!!assignQcCaseId} onOpenChange={(o) => { if (!o) { setAssignQcCaseId(null); setSelectedQcId(""); } }}>
         <DialogContent className="sm:max-w-[425px] bg-primary border-primary/50 text-white shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+            <DialogTitle className="text-xl font-semibold  text-white flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-emerald-500" /> Assign QC Lead
             </DialogTitle>
             <p className="text-xs text-zinc-300">Select an active Quality Control team member to allocate to this case.</p>

@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line
+  PieChart, Pie, Cell
 } from "recharts";
 import { Button } from "@/src/components/ui/button";
 
@@ -77,7 +77,7 @@ export default function ClientDashboard() {
       <div className="space-y-4 animate-fade-in">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold text-foreground">Welcome back, PrecisionDent Lab</h1>
+            <h1 className="text-lg font-semibold text-foreground">Welcome back, PrecisionDent Lab</h1>
             <p className="text-[11px] text-muted-foreground mt-0.5">Operational performance for your design pipeline</p>
           </div>
           <Button onClick={() => router.push("/client/cases")} size="sm" className="h-8 text-xs gradient-primary border-none shadow-glow">
@@ -96,8 +96,8 @@ export default function ClientDashboard() {
               <CardContent className="p-3.5">
                 <div className="flex items-start justify-between gap-1.5">
                   <div>
-                    <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{k.label}</p>
-                    <p className="text-2xl font-black text-foreground mt-0.5">{k.value}</p>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase">{k.label}</p>
+                    <p className="text-2xl font-semibold text-foreground mt-0.5">{k.value}</p>
                   </div>
                   <div className={`p-1.5 rounded-lg ${k.bg} ${k.color} shadow-sm shrink-0`}><k.icon className="h-3.5 w-3.5" /></div>
                 </div>
@@ -110,8 +110,8 @@ export default function ClientDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card className="lg:col-span-2 shadow-card border-border/50">
             <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Case Volume Trends</CardTitle>
-              <div className="flex items-center gap-1 text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Case Volume Trends</CardTitle>
+              <div className="flex items-center gap-1 text-[9px] font-medium text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
                 <TrendingUp className="h-2.5 w-2.5" /> +12% vs last month
               </div>
             </CardHeader>
@@ -132,7 +132,7 @@ export default function ClientDashboard() {
 
           <Card className="shadow-card border-border/50">
             <CardHeader className="py-2.5 px-4">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Design Breakdown</CardTitle>
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Design Breakdown</CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-3 flex flex-col items-center">
               <div className="h-[150px] w-full">
@@ -152,7 +152,7 @@ export default function ClientDashboard() {
                       <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: d.color }} />
                       <span className="text-muted-foreground">{d.name}</span>
                     </div>
-                    <span className="font-bold text-foreground">{d.value}%</span>
+                    <span className="font-semibold text-foreground">{d.value}%</span>
                   </div>
                 ))}
               </div>
@@ -164,14 +164,14 @@ export default function ClientDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card className="shadow-card border-border/50">
             <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Active Design Queue</CardTitle>
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Active Design Queue</CardTitle>
               <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2 text-primary" onClick={() => router.push("/client/cases")}>View All</Button>
             </CardHeader>
             <CardContent className="px-4 pb-3 space-y-0.5">
               {recentCases.map((c) => (
                 <div key={c.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0 cursor-pointer hover:bg-muted/30 -mx-1 px-2 rounded transition-colors" onClick={() => router.push(`/client/cases/${c.id}`)}>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-foreground">{c.id} · {c.restoration}</p>
+                    <p className="text-xs font-medium text-foreground">{c.id} · {c.restoration}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{c.caseType} · Patient {c.patientRef}</p>
                   </div>
                   <div className="scale-90 origin-right">
@@ -184,7 +184,7 @@ export default function ClientDashboard() {
 
           <Card className="shadow-card border-border/50">
             <CardHeader className="py-2.5 px-4">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Activity Timeline</CardTitle>
+              <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Activity Timeline</CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-3 space-y-3 pt-1">
               {activityFeed.slice(0, 4).map((a) => (
@@ -193,8 +193,8 @@ export default function ClientDashboard() {
                     <TrendingUp className="h-3.5 w-3.5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-medium text-foreground leading-tight">{a.message}</p>
-                    <p className="text-[9px] text-muted-foreground mt-0.5">{a.time}</p>
+                    <p className="text-xs font-medium text-foreground leading-tight">{a.message}</p>
+                    <p className="text-[10px] text-muted-foreground">{a.time}</p>
                   </div>
                 </div>
               ))}

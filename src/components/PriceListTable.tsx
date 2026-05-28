@@ -37,7 +37,7 @@ export function PriceListTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+    <div className="overflow-hidden shadow-sm p-2">
       <Table
         data={items}
         autoHeight

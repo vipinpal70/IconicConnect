@@ -554,8 +554,8 @@ export default function CasesPage() {
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-lg font-bold text-foreground">Cases</h1>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
+            <h1 className="text-xl font-semibold text-foreground">Cases</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" className="h-8 text-xs">
@@ -923,7 +923,7 @@ export default function CasesPage() {
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {["Case ID", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt"].map((h) => (
-                      <th key={h} className="text-left text-[10px] font-bold text-muted-foreground px-3.5 py-2 uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-3.5 py-2">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -963,7 +963,7 @@ export default function CasesPage() {
                         >
                           <td className="px-3.5 py-2">
                              <div className="flex items-center gap-1.5">
-                               <span className="font-bold text-[11px] text-slate-800">{c.caseNumber || c.id}</span>
+                               <span className="font-semibold text-[11px] text-slate-800">{c.caseNumber || c.id}</span>
                                {(() => {
                                  const hasUnreadChat = Boolean(c.hasUnreadChat);
                                  const todayCount = (c as any).todayMessagesCount || 0;

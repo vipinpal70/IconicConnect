@@ -142,7 +142,7 @@ export function AdminSidebar() {
                     <Link
                       href={item.url}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
                         pathname === item.url && "bg-accent text-accent-foreground font-medium"
                       )}
                     >
@@ -157,10 +157,10 @@ export function AdminSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="flex justify-between gap-2 item-center p-4 border-t border-border space-y-3 bg-white">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 mb-0">
           <div className="flex items-center gap-3 min-w-0">
             {!collapsed && (
-              <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-white text-xs font-semibold">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white text-xs font-semibold">
                 {(profile?.fullName)?.charAt(0).toUpperCase()}
               </div>
             )}
@@ -181,7 +181,7 @@ export function AdminSidebar() {
           variant="ghost"
           size="sm"
           className={cn(
-            "w-full justify-end text-red-500 hover:text-red-600 gap-2",
+            "justify-end text-red-500 hover:text-red-600 gap-2",
             collapsed && "justify-start px-0"
           )}
           onClick={handleLogout}

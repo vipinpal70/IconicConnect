@@ -452,10 +452,10 @@ export function CaseDetailView({
       <div className="space-y-4">
 
         {(caseRecord.outputFile || caseRecord.previewFile) && (
-          <Card className="shadow-card border-indigo-100 bg-[linear-gradient(180deg,rgba(243,244,246,0.5),rgba(249,250,251,0.7))]">
+          <Card className="shadow-card bg-white">
             <CardHeader className="py-2.5 px-4 border-b border-border/50">
-              <CardTitle className="text-sm font-semibold text-indigo-900 flex items-center gap-2">
-                <FileText className="h-4 w-4 text-indigo-600" />
+              <CardTitle className="text-sm font-semibold text-black flex items-center gap-2">
+                {/* <FileText className="h-4 w-4" /> */}
                 Design Deliverables
               </CardTitle>
             </CardHeader>
@@ -464,7 +464,7 @@ export function CaseDetailView({
                 {caseRecord.outputFile && (
                   <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
                     <div>
-                      <h4 className="text-sm font-semibold text-indigo-950">Final Design File</h4>
+                      <h4 className="text-sm font-semibold text-gray-900">Final Design File</h4>
                       {caseRecord.outputNote ? (
                         <p className="text-xs text-indigo-900 mt-1.5 bg-indigo-50/50 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
                           {caseRecord.outputNote}
@@ -475,7 +475,7 @@ export function CaseDetailView({
                     </div>
                     <div className="mt-4">
                       <a href={caseRecord.outputFile} download target="_blank" rel="noreferrer" className="w-full block">
-                        <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium">
+                        <Button size="sm" className="w-full bg-primary hover:bg-primary/80 text-white gap-2 font-medium">
                           <Download className="h-4 w-4" /> Download Design
                         </Button>
                       </a>

@@ -10,7 +10,8 @@ import { Badge } from "@/src/components/ui/badge"
 import { Input } from "@/src/components/ui/input"
 import {
   Users, UserPlus, Search, Mail, Shield,
-  MoreHorizontal, KeyRound, Edit2, Trash2, Calendar
+  MoreHorizontal, KeyRound, Edit2, Trash2, Calendar, Check, CircleAlert ,
+  User
 } from "lucide-react"
 import { AddMemberModal } from "./_components/AddMemberModal"
 import { CredentialsModal } from "./_components/CredentialsModal"
@@ -146,8 +147,7 @@ export default function TeamPage() {
       <div className="space-y-4 animate-in fade-in duration-500">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-0.5">
-            <h1 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-              <Users className="w-4 h-4 text-primary" />
+            <h1 className="text-lg font-semibold text-foreground flex items-center gap-1.5">
               Team Management
             </h1>
             <p className="text-xs text-muted-foreground">
@@ -164,34 +164,34 @@ export default function TeamPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card className="bg-card/50 border-border/50">
             <CardContent className="p-2.5 flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
-                {stats.total}
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold ">
+                <User className="w-4 h-4"/>
               </div>
               <div>
                 <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Total Members</p>
-                <p className="text-xs font-bold text-slate-800">{stats.total}</p>
+                <p className="text-xs font-semibold  text-slate-800">{stats.total}</p>
               </div>
             </CardContent>
           </Card>
           <Card className="bg-card/50 border-border/50">
             <CardContent className="p-2.5 flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-green-500/10 flex items-center justify-center text-green-600 text-xs font-bold">
-                {stats.active}
+              <div className="w-7 h-7 rounded-full bg-green-500/10 flex items-center justify-center text-green-600 text-xs font-semibold ">
+                <Check className="w-4 h-4"/>
               </div>
               <div>
                 <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Active</p>
-                <p className="text-xs font-bold text-slate-800">{stats.active}</p>
+                <p className="text-xs font-semibold  text-slate-800">{stats.active}</p>
               </div>
             </CardContent>
           </Card>
           <Card className="bg-card/50 border-border/50">
             <CardContent className="p-2.5 flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-600 text-xs font-bold">
-                {stats.inactive}
+              <div className="w-7 h-7 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-600 text-xs font-semibold ">
+                <CircleAlert className="w-4 h-4"/>
               </div>
               <div>
                 <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">Inactive</p>
-                <p className="text-xs font-bold text-slate-800">{stats.inactive}</p>
+                <p className="text-xs font-semibold  text-slate-800">{stats.inactive}</p>
               </div>
             </CardContent>
           </Card>
@@ -262,11 +262,11 @@ export default function TeamPage() {
               <table className="w-full text-xs">
                 <thead className="bg-muted/30 border-b border-border/50">
                   <tr>
-                    <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Member</th>
-                    <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Role</th>
-                    <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Status</th>
-                    <th className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Joined</th>
-                    <th className="text-right px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
+                    <th className="text-left px-3.5 py-2 text-[10px] font-semibold  text-muted-foreground uppercase tracking-wider">Member</th>
+                    <th className="text-left px-3.5 py-2 text-[10px] font-semibold  text-muted-foreground uppercase tracking-wider">Role</th>
+                    <th className="text-left px-3.5 py-2 text-[10px] font-semibold  text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th className="text-left px-3.5 py-2 text-[10px] font-semibold  text-muted-foreground uppercase tracking-wider">Joined</th>
+                    <th className="text-right px-3.5 py-2 text-[10px] font-semibold  text-muted-foreground uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
@@ -290,11 +290,11 @@ export default function TeamPage() {
                     <tr key={member.id} className="hover:bg-muted/20 transition-colors group">
                       <td className="px-3.5 py-2">
                         <div className="flex items-center gap-2">
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] ${member.status === 'active' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center font-semibold  text-[10px] ${member.status === 'active' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
                             {member.fullName?.slice(0, 2).toUpperCase() || '??'}
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-slate-800 group-hover:text-primary transition-colors">
+                            <p className="text-xs font-semibold  text-slate-800 group-hover:text-primary transition-colors">
                               {member.fullName || 'Unknown'}
                             </p>
                             <p className="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -305,7 +305,7 @@ export default function TeamPage() {
                         </div>
                       </td>
                       <td className="px-3.5 py-2">
-                        <Badge variant="outline" className="bg-muted/50 border-border/50 font-bold capitalize text-[10px] px-1.5 py-0">
+                        <Badge variant="outline" className="bg-muted/50 border-border/50 font-semibold  capitalize text-[10px] px-1.5 py-0">
                           <Shield className="w-2.5 h-2.5 mr-0.5" />
                           {member.role.replace(/_/g, ' ')}
                         </Badge>

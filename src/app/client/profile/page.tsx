@@ -14,7 +14,7 @@ import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
 import { PriceListTable, type PriceListRow } from "@/src/components/PriceListTable"
 import {
   Building2, Mail, Phone, MapPin, FileText, Plus, Eye, EyeOff,
-  Users, KeyRound, Trash2, Settings
+  Users, KeyRound, Trash2, Settings, User
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -174,7 +174,7 @@ export default function ProfilePage() {
                     <h1 className="text-base font-semibold text-foreground">{displayProfile.company}</h1>
                     <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border border-green-200 scale-90 origin-left">{displayProfile.status}</Badge>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">Onboarded {displayProfile.onboardedAt} · ID {displayProfile.id}</p>
+                  <p className="text-[11px] text-muted-foreground">Onboarded {displayProfile.onboardedAt}</p>
                 </div>
               </div>
             </div>
@@ -196,12 +196,12 @@ export default function ProfilePage() {
             <CardContent className="p-3.5 space-y-3">
               <Detail icon={<Building2 className="h-3.5 w-3.5" />} label="Company" value={displayProfile.company} />
               <Detail icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={displayProfile.location} />
-              <Detail icon={<Mail className="h-3.5 w-3.5" />} label="POC email" value={displayProfile.email} />
-              <Detail icon={<Phone className="h-3.5 w-3.5" />} label="POC phone" value={displayProfile.phone} />
-              <Detail label="Primary POC" value={displayProfile.poc} />
-              {profile?.userType !== 'admin_portal' && (
-                <Detail label="Monthly volume" value={`~${lab.monthlyVolume} cases / month`} />
-              )}
+              <Detail icon={<Mail className="h-3.5 w-3.5" />} label="POC Email" value={displayProfile.email} />
+              <Detail icon={<Phone className="h-3.5 w-3.5" />} label="POC Phone" value={displayProfile.phone} />
+              <Detail icon={<User className="h-3.5 w-3.5" />} label="Primary POC" value={displayProfile.poc} />
+              {/* {profile?.userType !== 'admin_portal' && (
+                <Detail label="Monthly Volume" value={`~${lab.monthlyVolume} cases / month`} />
+              )} */}
             </CardContent>
           </Card>
 
@@ -259,7 +259,7 @@ export default function ProfilePage() {
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {["Name", "Username", "Email", "Role", "Password", ""].map((h) => (
-                      <th key={h} className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left px-3.5 py-2 text-xs font-semibold text-muted-foreground">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -305,7 +305,7 @@ export default function ProfilePage() {
 function Detail({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string | number }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1 leading-none">{icon}{label}</p>
+      <p className="text-[10px] font-semibold text-muted-foreground tracking-wide flex items-center gap-1 leading-none">{icon}{label}</p>
       <p className="text-[12px] font-normal text-foreground mt-1">{value || "—"}</p>
     </div>
   );

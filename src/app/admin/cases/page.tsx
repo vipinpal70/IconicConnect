@@ -441,7 +441,7 @@ export default function AdminCasesPage() {
     <AdminLayout>
       <div className="space-y-4 animate-fade-in text-xs">
         <div className="space-y-0.5">
-          <h1 className="text-sm font-bold text-foreground">Cases — Review & Allocation</h1>
+          <h1 className="text-xl font-semibold text-foreground">Cases — Review & Allocation</h1>
           <p className="text-xs text-muted-foreground">Triage incoming cases, allocate to designers and route through QC</p>
         </div>
 
@@ -491,7 +491,7 @@ export default function AdminCasesPage() {
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     {["Case", "Client", "Type/Teeth", "Status", "Designer", "Created At", "Actions"].map((heading) => (
-                      <th key={heading} className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      <th key={heading} className="text-left px-3.5 py-2 text-xs font-semibold text-muted-foreground">
                         {heading}
                       </th>
                     ))}
@@ -540,14 +540,14 @@ export default function AdminCasesPage() {
                         >
                           <td className="px-3.5 py-2">
                             <div className="flex items-center gap-1.5">
-                              <Link href={`/admin/cases/${caseItem.id}`} className="hover:underline cursor-pointer font-bold text-[11px] text-slate-800">
+                              <Link href={`/admin/cases/${caseItem.id}`} className="hover:underline cursor-pointer font-semibold text-xs text-black">
                                 {caseItem.caseNumber || caseItem.id}
                               </Link>
                             </div>
                           </td>
                           <td className="px-3.5 py-2 text-[11px] text-foreground">{clientDisplayName}</td>
                           <td className="px-3.5 py-2">
-                            <p className="font-bold text-[11px] text-slate-800">{restoration || "—"}</p>
+                            <p className="font-semibold text-[11px] text-black">{restoration || "—"}</p>
                             <p className="text-[10px] text-muted-foreground mt-0.5">
                               {caseItem.category} · {teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"}
                             </p>

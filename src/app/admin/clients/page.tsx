@@ -75,7 +75,7 @@ export default function AdminClients() {
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-0.5">
-            <h1 className="text-sm font-bold text-foreground">Clients</h1>
+            <h1 className="text-xl font-semibold text-foreground">Clients</h1>
             <p className="text-xs text-muted-foreground">Review registrations, manage profiles and price lists</p>
           </div>
 
@@ -103,11 +103,11 @@ export default function AdminClients() {
               <CardContent className="space-y-3 p-3.5">
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-semibold  text-primary-foreground shadow-sm">
                       {client.labName?.charAt(0) || client.fullName?.charAt(0) || <Building2 className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-bold text-slate-800 group-hover:text-primary">{client.labName || "No Lab Name"}</p>
+                      <p className="truncate text-xs font-semibold  text-slate-800 group-hover:text-primary">{client.labName || "No Lab Name"}</p>
                       <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">{client.id.slice(0, 8)}</p>
                     </div>
                   </div>
@@ -117,15 +117,15 @@ export default function AdminClients() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <MapPin className="h-3 w-3 text-primary/60" />
                     <span className="truncate">{client.city || "No City"}, {client.state || "No State"}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Mail className="h-3 w-3 text-primary/60" />
                     <span className="truncate">{client.email}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Phone className="h-3 w-3 text-primary/60" />
                     <span>{client.phone || "No Phone"}</span>
                   </div>
@@ -140,7 +140,7 @@ export default function AdminClients() {
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between pt-1 text-[10px] text-primary font-bold">
+                <div className="flex items-center justify-between pt-1 text-[10px] text-primary font-semibold ">
                   <span>Open client profile</span>
                   <ArrowRight className="h-3 w-3" />
                 </div>

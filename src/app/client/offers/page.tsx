@@ -124,8 +124,8 @@ export default function Offers() {
     <ClientLayout>
       <div className="space-y-4 animate-fade-in">
         <div>
-          <h1 className="text-lg font-bold text-foreground">Partner Offers</h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
+          <h1 className="text-xl font-semibold text-foreground">Partner Offers</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Exclusive deals curated by Iconic Dental for our partner labs
           </p>
         </div>
@@ -209,7 +209,7 @@ export default function Offers() {
                   <div className="relative flex h-24 items-center justify-center bg-linear-to-br from-muted to-background text-3xl">
                     {categoryEmoji[offer.category]}
                     {offer.sponsored && (
-                      <Badge className="absolute right-2 top-2 gap-1 bg-amber-500 text-white hover:bg-amber-600 scale-90 origin-right text-[10px] font-bold py-0.5 px-1.5">
+                      <Badge className="absolute right-2 top-2 gap-1 bg-amber-500 text-white hover:bg-amber-600 scale-90 origin-right text-[10px] font-semibold py-0.5 px-1.5">
                         <Sparkles className="h-2.5 w-2.5" />
                         Sponsored
                       </Badge>
@@ -217,14 +217,14 @@ export default function Offers() {
                   </div>
                   <CardContent className="space-y-2.5 p-3.5">
                     <div>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
                         {offer.brand} | {offer.category}
                       </p>
-                      <h3 className="mt-0.5 text-xs font-bold text-foreground leading-snug">{offer.title}</h3>
+                      <h3 className="mt-0.5 text-xs font-semibold text-foreground leading-snug">{offer.title}</h3>
                     </div>
                     <p className="line-clamp-2 text-[11px] text-muted-foreground leading-normal">{offer.description}</p>
                     <div className="flex items-center justify-between border-t border-border/50 pt-1.5">
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-primary">
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-primary">
                         <Tag className="h-3 w-3" />
                         {offer.discount}
                       </span>

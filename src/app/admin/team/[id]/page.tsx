@@ -189,11 +189,11 @@ function MemberDetailForm({
         <Card className="border-border/50 shadow-card">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center text-center">
-              <div className={`w-24 h-24 rounded-2xl flex items-center justify-center font-bold text-2xl mb-4 ${formData.status === 'active' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+              <div className={`w-24 h-24 rounded-2xl flex items-center justify-center font-semibold  text-lg mb-4 ${formData.status === 'active' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
                 {formData.fullName?.slice(0, 2).toUpperCase() || '??'}
               </div>
-              <h2 className="text-xl font-bold">{formData.fullName || 'Unknown Member'}</h2>
-              <p className="text-sm text-muted-foreground mt-1">{formData.email}</p>
+              <h2 className="text-lg font-medium ">{formData.fullName || 'Unknown Member'}</h2>
+              <p className="text-xs text-muted-foreground mt-1">{formData.email}</p>
               <div className="flex items-center gap-2 mt-4">
                 <Badge variant={formData.status === 'active' ? 'default' : 'secondary'} className={formData.status === 'active' ? 'bg-green-500/10 text-green-600 hover:bg-green-500/20' : ''}>
                   {formData.status === 'active' ? <CheckCircle2 className="w-3 h-3 mr-1" /> : <AlertCircle className="w-3 h-3 mr-1" />}
@@ -207,11 +207,11 @@ function MemberDetailForm({
             </div>
 
             <div className="mt-8 space-y-4 pt-6 border-t border-border/50">
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground flex items-center gap-2"><Calendar className="w-4 h-4" /> Joined</span>
                 <span className="font-medium">{new Date(member.createdAt).toLocaleDateString()}</span>
               </div>
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground flex items-center gap-2"><User className="w-4 h-4" /> User Type</span>
                 <span className="font-medium capitalize">{formData.userType.replace(/_/g, ' ')}</span>
               </div>
@@ -225,10 +225,10 @@ function MemberDetailForm({
           <CardHeader>
             <div className="flex items-center justify-between gap-4">
               <div>
-                <CardTitle>Profile Details</CardTitle>
-                <CardDescription>Update member personal information and organization settings.</CardDescription>
+                <CardTitle className="text-lg">Profile Details</CardTitle>
+                <CardDescription className="text-xs">Update member personal information and organization settings.</CardDescription>
               </div>
-              <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+              <Button onClick={handleSave} disabled={isSaving} className="gap-2 text-xs font-medium">
                 {isSaving ? 'Saving...' : <><Save className="w-4 h-4" /> Save Changes</>}
               </Button>
             </div>
@@ -236,40 +236,36 @@ function MemberDetailForm({
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label>Full Name</Label>
+                <Label className="text-xs">Full Name</Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input className="pl-9" value={formData.fullName} onChange={e => setFormData(p => ({ ...p, fullName: e.target.value }))} />
+                  <Input className="text-xs" value={formData.fullName} onChange={e => setFormData(p => ({ ...p, fullName: e.target.value }))} />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Email Address</Label>
+                <Label className="text-xs">Email Address</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input className="pl-9" value={formData.email} readOnly />
+                  <Input className="text-xs" value={formData.email} readOnly />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Job Title</Label>
+                <Label className="text-xs">Job Title</Label>
                 <div className="relative">
-                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input className="pl-9" placeholder="e.g. Senior QC" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} />
+                  <Input className="text-xs" placeholder="e.g. Senior QC" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Phone Number</Label>
+                <Label className="text-xs">Phone Number</Label>
                 <div className="flex gap-2">
-                  <select value={countryCode} onChange={e => setCountryCode(e.target.value)} className="px-3 border border-input rounded-md bg-background text-sm max-w-[190px]">
+                  <select value={countryCode} onChange={e => setCountryCode(e.target.value)} className="px-3 border border-input rounded-md bg-background text-[10px] max-w-[80px]">
                     {COUNTRY_CODES.map((entry) => (
-                      <option key={`${entry.code}-${entry.label}`} value={entry.code}>
+                      <option className="text-xs" key={`${entry.code}-${entry.label}`} value={entry.code}>
                         {entry.code} {entry.label}
                       </option>
                     ))}
                   </select>
                   <div className="relative flex-1">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      className="pl-9"
+                      className="text-xs"
                       placeholder={countryCode === '+91' ? '10 digit mobile number' : 'Phone number'}
                       value={formData.phone}
                       inputMode="numeric"
@@ -278,24 +274,24 @@ function MemberDetailForm({
                     />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground">
                   {countryCode === '+91' ? 'Enter exactly 10 digits.' : 'Digits only.'}
                 </p>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-border/50">
-              <h3 className="text-sm font-semibold mb-4">Organization Settings</h3>
+            <div className="pt-2 border-t border-border/50">
+              <h3 className="text-xs font-semibold mb-4">Organization Settings</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Role</Label>
+                  <Label className="text-xs">Role</Label>
                   <Select onValueChange={handleRoleChange} value={formData.role} disabled={currentUserRole !== 'admin'}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full text-xs">
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-900 text-slate-50 border-slate-800 shadow-2xl">
+                    <SelectContent className="bg-[#197554] border border-[#1e8c65] text-white shadow-2xl text-xs">
                       {ROLES.map(r => (
-                        <SelectItem key={r.id} value={r.id} className="focus:bg-slate-800 focus:text-slate-50">
+                        <SelectItem key={r.id} value={r.id} className="focus:bg-[#2eb87f] opacity-90 focus:text-white text-xs cursor-pointer">
                           {r.name}
                         </SelectItem>
                       ))}
@@ -303,31 +299,17 @@ function MemberDetailForm({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Status</Label>
+                  <Label className="text-xs">Status</Label>
                   <Select onValueChange={val => setFormData(p => ({ ...p, status: val }))} value={formData.status} disabled={currentUserRole !== 'admin'}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full text-xs">
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-900 text-slate-50 border-slate-800 shadow-2xl">
-                      <SelectItem value="active" className="focus:bg-slate-800 focus:text-slate-50">Active</SelectItem>
-                      <SelectItem value="inactive" className="focus:bg-slate-800 focus:text-slate-50">Inactive</SelectItem>
+                    <SelectContent className="bg-[#197554] border border-[#1e8c65] text-white shadow-2xl text-xs">
+                      <SelectItem value="active" className="focus:bg-[#2eb87f] opacity-90 focus:text-white text-xs cursor-pointer">Active</SelectItem>
+                      <SelectItem value="inactive" className="focus:bg-[#2eb87f] opacity-90 focus:text-white text-xs cursor-pointer">Inactive</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-card border-dashed bg-muted/20">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white rounded-xl shadow-sm border border-border/50">
-                <Shield className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <h4 className="font-semibold">Security & Access</h4>
-                <p className="text-sm text-muted-foreground">The user has access based on the assigned role. Changing the role will immediately update their permissions.</p>
               </div>
             </div>
           </CardContent>

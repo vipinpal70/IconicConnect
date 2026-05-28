@@ -86,8 +86,8 @@ export default function Dashboard() {
     <OpsLayout>
       <div className="space-y-6 animate-fade-in">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Welcome back, PrecisionDent Lab</h1>
-          <p className="text-muted-foreground text-sm mt-1">Here's how your design pipeline is doing today</p>
+          <h1 className="text-xl font-semibold text-foreground">Welcome back, PrecisionDent Lab</h1>
+          <p className="text-muted-foreground text-xs mt-1">Here's how your design pipeline is doing today</p>
         </div>
 
         {/* KPI Cards */}

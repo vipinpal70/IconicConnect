@@ -128,15 +128,14 @@ export default function ClientSupportPage() {
   return (
     <ClientLayout>
       <div className="space-y-4 animate-fade-in">
-        <div className="relative overflow-hidden rounded border border-border/50 bg-linear-to-br from-[#1a7554] via-[#126d4c] to-[#116144] p-4 text-white shadow-xl">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.18),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.14),transparent_30%)]" />
+        <div className="relative overflow-hidden rounded-lg border border-border/50 bg-primary p-4 text-white shadow-xl">
           <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <div className="mb-2 inline-flex items-center gap-1.5 rounded border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur scale-95 origin-left">
+              <div className="mb-2 inline-flex items-center gap-1.5 rounded border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold  text-white backdrop-blur scale-95 origin-left">
                 <LifeBuoy className="h-3 w-3" />
                 Live support center
               </div>
-              <h1 className="text-white text-lg font-bold tracking-tight">Raise and track support tickets</h1>
+              <h1 className="text-white text-md font-semibold">Raise and track support tickets</h1>
               <p className="mt-0.5 max-w-xl text-[11px] text-white/75">
                 Submit an issue, follow progress, and keep every conversation tied to your lab account.
               </p>
@@ -152,7 +151,7 @@ export default function ClientSupportPage() {
         <div className="grid gap-3.5 xl:grid-cols-3">
           <Card className="xl:col-span-2 shadow-card border-border/50">
             <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50">
-              <CardTitle className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
                 <Ticket className="h-3.5 w-3.5 text-primary" />
                 New ticket
               </CardTitle>
@@ -161,7 +160,7 @@ export default function ClientSupportPage() {
             <CardContent className="p-4 space-y-3.5">
               <div className="grid gap-3.5 md:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category</Label>
+                  <Label className="text-xs font-semibold text-muted-foreground">Category</Label>
                   <Select value={category} onValueChange={(value) => setCategory(value as SupportTicketType)}>
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="Select category" />
@@ -176,7 +175,7 @@ export default function ClientSupportPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Priority</Label>
+                  <Label className="text-xs font-semibold text-muted-foreground">Priority</Label>
                   <Select value={priority} onValueChange={(value) => setPriority(value as SupportTicketPriority)}>
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="Select priority" />
@@ -193,7 +192,7 @@ export default function ClientSupportPage() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Subject</Label>
+                <Label className="text-xs font-semibold text-muted-foreground">Subject</Label>
                 <Input
                   className="h-8 text-xs"
                   value={subject}
@@ -203,7 +202,7 @@ export default function ClientSupportPage() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Message</Label>
+                <Label className="text-xs font-semibold text-muted-foreground">Message</Label>
                 <Textarea
                   className="text-xs"
                   value={message}
@@ -228,7 +227,7 @@ export default function ClientSupportPage() {
                 <div className="flex h-9 w-9 items-center justify-center rounded bg-linear-to-br from-[#2c926d] to-[#248763] text-white shadow-md">
                   <Headset className="h-4 w-4" />
                 </div>
-                <h3 className="mt-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Request a callback</h3>
+                <h3 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Request a callback</h3>
                 <p className="mt-1.5 text-[11px] text-muted-foreground leading-normal">
                   Ask the team to call you back and we&apos;ll notify the internal support desk with your lab details.
                 </p>
@@ -247,7 +246,7 @@ export default function ClientSupportPage() {
 
         <Card className="shadow-card border-border/50">
           <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Your tickets</CardTitle>
+            <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Your tickets</CardTitle>
             <p className="text-[10px] text-muted-foreground mt-0.5">Track ticket progress and read the latest admin notes.</p>
           </CardHeader>
           <CardContent className="p-0">
@@ -258,7 +257,7 @@ export default function ClientSupportPage() {
                     {["Ticket", "Subject", "Category", "Priority", "Status", "Updated"].map((heading) => (
                       <th
                         key={heading}
-                        className="px-3.5 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-wider"
+                        className="px-3.5 py-2 text-left text-xs font-semibold text-muted-foreground"
                       >
                         {heading}
                       </th>
@@ -292,7 +291,7 @@ export default function ClientSupportPage() {
                   ) : (
                     tickets.map((ticket) => (
                       <tr key={ticket.id} className="border-b border-border/50 transition-colors hover:bg-muted/10">
-                        <td className="px-3.5 py-2 font-bold text-primary text-[11px] whitespace-nowrap">
+                        <td className="px-3.5 py-2 font-semibold  text-primary text-[11px] whitespace-nowrap">
                           {ticket.ticketNumber}
                         </td>
                         <td className="px-3.5 py-2">
@@ -301,7 +300,7 @@ export default function ClientSupportPage() {
                             <p className="mt-0.5 line-clamp-2 text-[10px] text-muted-foreground leading-normal">{ticket.message}</p>
                             {ticket.adminNotes && (
                               <p className="mt-1.5 rounded border border-dashed border-border/50 px-2 py-0.5 text-[9px] text-muted-foreground leading-normal bg-muted/20">
-                                <span className="font-bold text-foreground">Admin:</span> {ticket.adminNotes}
+                                <span className="font-semibold  text-foreground">Admin:</span> {ticket.adminNotes}
                               </p>
                             )}
                           </div>
@@ -309,7 +308,7 @@ export default function ClientSupportPage() {
                         <td className="px-3.5 py-2 text-muted-foreground text-[11px]">{SUPPORT_TICKET_TYPE_LABELS[ticket.category]}</td>
                         <td className="px-3.5 py-2 text-muted-foreground text-[11px]">{SUPPORT_TICKET_PRIORITY_LABELS[ticket.priority]}</td>
                         <td className="px-3.5 py-2">
-                          <span className={`inline-flex rounded text-[10px] font-bold py-0.5 px-1.5 scale-95 origin-left ${SUPPORT_TICKET_STATUS_STYLES[ticket.status] || SUPPORT_TICKET_STATUS_STYLES.open}`}>
+                          <span className={`inline-flex rounded text-[10px] font-semibold  py-0.5 px-1.5 scale-95 origin-left ${SUPPORT_TICKET_STATUS_STYLES[ticket.status] || SUPPORT_TICKET_STATUS_STYLES.open}`}>
                             {SUPPORT_TICKET_STATUS_LABELS[ticket.status]}
                           </span>
                         </td>
@@ -332,7 +331,7 @@ export default function ClientSupportPage() {
 function Metric({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded border border-white/15 bg-white/10 px-3 py-1.5 text-left backdrop-blur shrink-0 min-w-16">
-      <p className="text-[9px] font-bold uppercase tracking-wider text-white/60 leading-none">{label}</p>
+      <p className="text-[9px] font-semibold  uppercase tracking-wider text-white/60 leading-none">{label}</p>
       <p className="mt-0.5 text-base font-black text-white leading-none">{value}</p>
     </div>
   )

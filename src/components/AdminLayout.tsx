@@ -38,7 +38,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-6 bg-gray-50">
+          <main className="flex-1 overflow-auto p-6 bg-white">
             {children}
           </main>
         </div>
