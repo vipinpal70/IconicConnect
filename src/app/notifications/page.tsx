@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Bell, Check, Trash2, Settings, UserPlus, 
@@ -79,10 +80,20 @@ function NotificationsLayout({
 }
 
 export default function NotificationsPage() {
+  const router = useRouter()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'dashboard' | 'preferences'>('dashboard')
   const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
+
+  const handleOpenDetails = async (notif: NotificationRecord) => {
+    if (!notif.read) {
+      await updateNotificationMutation.mutateAsync({ id: notif.id, read: true })
+    }
+    if (notif.link) {
+      router.push(notif.link)
+    }
+  }
 
   // Fetch logged-in user profile to determine correct portal layout wrapper
   useEffect(() => {
@@ -446,7 +457,7 @@ export default function NotificationsPage() {
                   </Badge>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 overflow-y-auto max-h-[480px] pr-1 scrollbar-thin">
                   {isLoading ? (
                     <div className="bg-white rounded-lg border border-slate-100 p-8 text-center text-slate-500 text-xs shadow-sm">
                       Loading client events...
@@ -485,12 +496,12 @@ export default function NotificationsPage() {
                               </p>
                               
                               {notif.link && (
-                                <a 
-                                  href={notif.link}
-                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#00786f] mt-1.5 hover:underline"
+                                <button 
+                                  onClick={() => handleOpenDetails(notif)}
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#00786f] mt-1.5 hover:underline bg-transparent border-none cursor-pointer"
                                 >
                                   Open details <ArrowRight className="w-2.5 h-2.5" />
-                                </a>
+                                </button>
                               )}
                             </div>
 
@@ -537,7 +548,7 @@ export default function NotificationsPage() {
                   </Badge>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 overflow-y-auto max-h-[480px] pr-1 scrollbar-thin">
                   {isLoading ? (
                     <div className="bg-white rounded-lg border border-slate-100 p-8 text-center text-slate-500 text-xs shadow-sm">
                       Loading internal events...
@@ -576,12 +587,12 @@ export default function NotificationsPage() {
                               </p>
                               
                               {notif.link && (
-                                <a 
-                                  href={notif.link}
-                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#00786f] mt-1.5 hover:underline"
+                                <button 
+                                  onClick={() => handleOpenDetails(notif)}
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#00786f] mt-1.5 hover:underline bg-transparent border-none cursor-pointer"
                                 >
                                   Open details <ArrowRight className="w-2.5 h-2.5" />
-                                </a>
+                                </button>
                               )}
                             </div>
 
