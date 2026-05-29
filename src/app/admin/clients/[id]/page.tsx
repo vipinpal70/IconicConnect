@@ -38,6 +38,7 @@ type ClientProfile = {
 type PriceListItemRecord = {
   id: string
   serviceName: string
+  subCategory: string
   price: number
   notes: string | null
   sortOrder: number
@@ -47,6 +48,7 @@ function createBlankRow(): PriceListRow {
   return {
     id: crypto.randomUUID(),
     serviceName: "",
+    subCategory: "",
     price: 0,
     notes: "",
     sortOrder: 0,
@@ -86,6 +88,7 @@ export default function ClientProfilePage() {
     const nextRows = (priceListQuery.data ?? []).map((item) => ({
       id: item.id,
       serviceName: item.serviceName,
+      subCategory: item.subCategory ?? "",
       price: item.price,
       notes: item.notes ?? "",
       sortOrder: item.sortOrder,
@@ -115,7 +118,7 @@ export default function ClientProfilePage() {
     },
   })
 
-  const updateRow = (id: string, field: "serviceName" | "price" | "notes", value: string | number) => {
+  const updateRow = (id: string, field: "serviceName" | "subCategory" | "price" | "notes", value: string | number) => {
     setPriceRows((current) =>
       current.map((row) =>
         row.id === id

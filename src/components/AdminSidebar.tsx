@@ -10,7 +10,8 @@ import {
   Users,
   Bell,
   Headset,
-  ChartBar
+  CreditCard ,
+  BarChart3
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -33,14 +34,14 @@ import { cn } from "@/src/lib/utils";
 import { useEffect, useState } from "react";
 import Image from "next/image"
 import logo from "@/public/IconicConnectLogo.png"
-import { title } from "process";
 
 export function AdminSidebar() {
   const navItems = [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
     { title: "Cases", url: "/admin/cases", icon: ClipboardList },
-    { title: "Analytics", url: "/admin/analytics", icon: ChartBar },
+    { title: "Analytics", url: "/admin/analytics", icon: BarChart3},
     { title: "Clients", url: "/admin/clients", icon: Building2 },
+    { title: "Billing", url: "/admin/billing", icon: CreditCard },
     { title: "Team", url: "/admin/team", icon: Users },
     { title: "Tutorials", url: "/admin/tutorials", icon: PlayCircle },
     { title: "Offers", url: "/admin/offers", icon: Tag },

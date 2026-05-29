@@ -39,6 +39,7 @@ interface Profile {
 type ClientPriceListItem = {
   id: string
   serviceName: string
+  subCategory: string
   price: number
   notes: string | null
   sortOrder: number
@@ -58,19 +59,12 @@ const mockLab = {
   preferences: "Prefer digital impressions via iTero.",
 };
 
-const defaultPriceList: PriceListRow[] = [
-  { id: "default-1", serviceName: "Crown & Bridge", price: 35, notes: null, sortOrder: 0 },
-  { id: "default-2", serviceName: "Implants", price: 65, notes: null, sortOrder: 1 },
-  { id: "default-3", serviceName: "Removables", price: 45, notes: null, sortOrder: 2 },
-  { id: "default-4", serviceName: "Orthodontics", price: 120, notes: null, sortOrder: 3 },
-]
-
 export default function ProfilePage() {
   const lab = mockLab;
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [priceList, setPriceList] = useState<PriceListRow[]>(defaultPriceList)
+  const [priceList, setPriceList] = useState<PriceListRow[]>([])
 
   // fetch profile data from the api route and set it to the profile state
   useEffect(() => {
@@ -96,6 +90,7 @@ export default function ProfilePage() {
               items.map((item: ClientPriceListItem, index: number) => ({
                 id: item.id,
                 serviceName: item.serviceName,
+                subCategory: item.subCategory ?? "",
                 price: Number(item.price) || 0,
                 notes: item.notes || null,
                 sortOrder: typeof item.sortOrder === "number" ? item.sortOrder : index,
@@ -199,9 +194,6 @@ export default function ProfilePage() {
               <Detail icon={<Mail className="h-3.5 w-3.5" />} label="POC Email" value={displayProfile.email} />
               <Detail icon={<Phone className="h-3.5 w-3.5" />} label="POC Phone" value={displayProfile.phone} />
               <Detail icon={<User className="h-3.5 w-3.5" />} label="Primary POC" value={displayProfile.poc} />
-              {/* {profile?.userType !== 'admin_portal' && (
-                <Detail label="Monthly Volume" value={`~${lab.monthlyVolume} cases / month`} />
-              )} */}
             </CardContent>
           </Card>
 

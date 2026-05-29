@@ -90,6 +90,7 @@ export async function PUT(
           normalized.map((item, index) => ({
             clientId: id,
             serviceName: item.serviceName,
+            subCategory: item.subCategory,
             price: item.price,
             notes: item.notes,
             sortOrder: Number.isFinite(item.sortOrder) ? item.sortOrder : index,

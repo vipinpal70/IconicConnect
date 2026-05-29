@@ -162,6 +162,13 @@
       "when": 1779864000000,
       "tag": "0022_case_approval_checklist",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780048672247,
+      "tag": "0023_add_sub_category_to_client_price_list",
+      "breakpoints": true
     }
   ]
 }

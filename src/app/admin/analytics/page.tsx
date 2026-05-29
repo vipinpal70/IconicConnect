@@ -1,6 +1,6 @@
 "use client"
 
-import { OpsLayout } from "@/src/components/OpsLayout";
+import { AdminLayout } from "@/src/components/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { cases, invoices, caseTypes } from "@/src/data/demoData";
 import {
@@ -51,20 +51,20 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <OpsLayout>
+    <AdminLayout>
       <div className="space-y-4 animate-fade-in">
         <div>
-          <h1 className="text-lg font-bold text-foreground">Analytics & Reports</h1>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Performance, delivery and billing insights for your account</p>
+          <h1 className="text-lg font-semibold text-foreground">Analytics & Reports</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Performance, delivery and billing insights for your account</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {kpis.map((k) => (
             <Card key={k.label} className="shadow-card border-border/50">
               <CardContent className="p-3.5">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{k.label}</p>
-                <p className="text-xl font-black text-foreground mt-0.5">{k.value}</p>
-                <p className={`text-[10px] mt-0.5 ${k.positive ? "text-green-600 font-bold" : "text-muted-foreground"}`}>{k.sub}</p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{k.label}</p>
+                <p className="text-xl font-semibold text-foreground mt-0.5">{k.value}</p>
+                <p className={`text-[10px] mt-0.5 ${k.positive ? "text-green-600 font-semibold" : "text-muted-foreground"}`}>{k.sub}</p>
               </CardContent>
             </Card>
           ))}
@@ -72,7 +72,7 @@ export default function AnalyticsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
           <Card className="shadow-card border-border/50">
-            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Average TAT Trend</CardTitle></CardHeader>
+            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Average TAT Trend</CardTitle></CardHeader>
             <CardContent className="p-3.5">
               <div className="h-[160px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -89,7 +89,7 @@ export default function AnalyticsPage() {
           </Card>
 
           <Card className="shadow-card border-border/50">
-            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Case Delivery Status</CardTitle></CardHeader>
+            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Case Delivery Status</CardTitle></CardHeader>
             <CardContent className="p-3 flex flex-col items-center justify-between">
               <div className="h-[120px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -115,7 +115,7 @@ export default function AnalyticsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
           <Card className="shadow-card border-border/50">
-            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Monthly Billing Summary</CardTitle></CardHeader>
+            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Billing Summary</CardTitle></CardHeader>
             <CardContent className="p-3.5">
               <div className="h-[160px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -132,7 +132,7 @@ export default function AnalyticsPage() {
           </Card>
 
           <Card className="shadow-card border-border/50">
-            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Case Mix by Type</CardTitle></CardHeader>
+            <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Case Mix by Type</CardTitle></CardHeader>
             <CardContent className="p-3.5">
               <div className="h-[160px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -152,13 +152,13 @@ export default function AnalyticsPage() {
         </div>
 
         <Card className="shadow-card border-border/50">
-          <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">On-Hold Reasons (last 90 days)</CardTitle></CardHeader>
+          <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">On-Hold Reasons (last 90 days)</CardTitle></CardHeader>
           <CardContent className="p-3">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
               {onHoldReasons.map((r) => (
                 <div key={r.reason} className="rounded bg-muted/20 px-3 py-2 border border-border/50">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{r.reason}</p>
-                  <p className="text-lg font-black text-foreground mt-0.5">{r.count}</p>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{r.reason}</p>
+                  <p className="text-lg font-semibold text-foreground mt-0.5">{r.count}</p>
                 </div>
               ))}
             </div>
@@ -166,26 +166,26 @@ export default function AnalyticsPage() {
         </Card>
 
         <Card className="shadow-card border-border/50">
-          <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recent Invoices</CardTitle></CardHeader>
+          <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50"><CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Invoices</CardTitle></CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {["Invoice", "Period", "Cases", "Amount", "Status"].map((h) => (
-                      <th key={h} className="text-left px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left px-3.5 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {invoices.slice(0, 5).map((i) => (
                     <tr key={i.id} className="hover:bg-muted/10 transition-colors">
-                      <td className="px-3.5 py-1.5 text-[11px] font-bold text-primary">{i.id}</td>
+                      <td className="px-3.5 py-1.5 text-[11px] font-semibold text-primary">{i.id}</td>
                       <td className="px-3.5 py-1.5 text-[11px] text-foreground">{i.month}</td>
                       <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground">{i.caseCount}</td>
                       <td className="px-3.5 py-1.5 text-[11px] font-semibold text-foreground">${i.amount.toLocaleString()}</td>
                       <td className="px-3.5 py-1.5">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 scale-95 origin-left">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700 scale-95 origin-left">
                           {i.status}
                         </span>
                       </td>
@@ -197,6 +197,6 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-    </OpsLayout>
+    </AdminLayout>
   );
 }

@@ -5,6 +5,7 @@ import { profiles, subUsers } from '@/src/db/schema/profile'
 export interface PriceListItemInput {
   id?: string
   serviceName?: string
+  subCategory?: string
   price?: number | string
   notes?: string | null
   sortOrder?: number
@@ -25,6 +26,7 @@ export function normalizePriceListItems(items: PriceListItemInput[]) {
 
       return {
         serviceName,
+        subCategory: (item.subCategory ?? '').trim(),
         price: Math.max(0, Math.round(priceValue as number)),
         notes: item.notes?.trim() || null,
         sortOrder: Number.isFinite(item.sortOrder ?? NaN) ? (item.sortOrder as number) : index,

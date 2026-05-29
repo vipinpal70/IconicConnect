@@ -1,11 +1,12 @@
 "use client"
 
-import { Button, Input, NumberInput, Table } from 'rsuite'
+import { Button, Input, NumberInput, Table, Tooltip, Whisper } from 'rsuite'
 import type { ReactNode } from 'react'
 
 export interface PriceListRow {
   id: string
   serviceName: string
+  subCategory: string
   price: number
   notes: string | null
   sortOrder: number
@@ -14,10 +15,118 @@ export interface PriceListRow {
 type Props = {
   items: PriceListRow[]
   editable?: boolean
-  onChangeRow?: (id: string, field: 'serviceName' | 'price' | 'notes', value: string | number) => void
+  onChangeRow?: (id: string, field: 'serviceName' | 'subCategory' | 'price' | 'notes', value: string | number) => void
   onAddRow?: () => void
   onRemoveRow?: (id: string) => void
   emptyState?: ReactNode
+}
+
+const { Column, HeaderCell, Cell } = Table
+
+function ServiceNameCell({ rowData, editable, onChangeRow, ...rest }: any) {
+  return (
+    <Cell {...rest}>
+      {editable ? (
+        <Input
+          value={rowData.serviceName}
+          onChange={(value) => onChangeRow?.(rowData.id, 'serviceName', value)}
+          placeholder="Category name"
+          size="sm"
+        />
+      ) : (
+        <span className="font-medium text-[12px]">{rowData.serviceName}</span>
+      )}
+    </Cell>
+  )
+}
+
+function SubCategoryCell({ rowData, editable, onChangeRow, ...rest }: any) {
+  return (
+    <Cell {...rest}>
+      {editable ? (
+        <Input
+          value={rowData.subCategory ?? ''}
+          onChange={(value) => onChangeRow?.(rowData.id, 'subCategory', value)}
+          placeholder="Sub category name"
+          size="sm"
+        />
+      ) : (
+        <span className="font-medium text-[12px]">{rowData.subCategory || '—'}</span>
+      )}
+    </Cell>
+  )
+}
+
+function PriceCell({ rowData, editable, onChangeRow, ...rest }: any) {
+  return (
+    <Cell {...rest}>
+      {editable ? (
+        <NumberInput
+          value={rowData.price}
+          onChange={(value) => onChangeRow?.(rowData.id, 'price', Number(value ?? 0))}
+          prefix="$"
+          min={0}
+          step={1}
+          size="sm"
+          className="w-full"
+        />
+      ) : (
+        <span className="font-medium text-[12px]">${Number(rowData.price).toFixed(2)}</span>
+      )}
+    </Cell>
+  )
+}
+
+function NotesCell({ rowData, editable, onChangeRow, ...rest }: any) {
+  const text = rowData.notes || ''
+  return (
+    <Cell {...rest}>
+      {editable ? (
+        <Input
+          value={text}
+          onChange={(value) => onChangeRow?.(rowData.id, 'notes', value)}
+          placeholder="Optional notes"
+          size="sm"
+        />
+      ) : text ? (
+        <Whisper
+          placement="topStart"
+          trigger="hover"
+          speaker={
+            <Tooltip style={{ maxWidth: 320 }}>
+              {text}
+            </Tooltip>
+          }
+        >
+          <span
+            className="text-[12px] text-muted-foreground cursor-default block truncate"
+            style={{ maxWidth: '100%' }}
+          >
+            {text}
+          </span>
+        </Whisper>
+      ) : (
+        <span className="text-[12px] text-muted-foreground">—</span>
+      )}
+    </Cell>
+  )
+}
+
+function RemoveCell({ rowData, onRemoveRow, ...rest }: any) {
+  return (
+    <Cell {...rest}>
+      <div className="flex items-center">
+        <Button
+          appearance="ghost"
+          color="red"
+          size="sm"
+          onClick={() => onRemoveRow?.(rowData.id)}
+        >
+          Remove
+        </Button>
+      </div>
+    </Cell>
+  )
 }
 
 export function PriceListTable({
@@ -37,99 +146,46 @@ export function PriceListTable({
   }
 
   return (
-    <div className="overflow-hidden shadow-sm p-2">
-      <Table
-        data={items}
-        autoHeight
-        bordered
-        cellBordered
-        hover
-        rowHeight={45}
-        headerHeight={38}
-      >
-        <Table.Column flexGrow={2} minWidth={220}>
-          <Table.HeaderCell>Service</Table.HeaderCell>
-          <Table.Cell>
-            {(rowData: PriceListRow) =>
-              editable ? (
-                <Input
-                  value={rowData.serviceName}
-                  onChange={(value) => onChangeRow?.(rowData.id, 'serviceName', value)}
-                  placeholder="Service name"
-                  size="sm"
-                />
-              ) : (
-                <span className="font-medium text-[12px]">{rowData.serviceName}</span>
-              )
-            }
-          </Table.Cell>
-        </Table.Column>
+    <Table
+      data={items}
+      autoHeight
+      cellBordered
+      hover
+      rowHeight={45}
+      headerHeight={38}
+    >
+      <Column flexGrow={1} minWidth={140}>
+        <HeaderCell>Category</HeaderCell>
+        <ServiceNameCell editable={editable} onChangeRow={onChangeRow} />
+      </Column>
 
-        <Table.Column width={180}>
-          <Table.HeaderCell>Price</Table.HeaderCell>
-          <Table.Cell>
-            {(rowData: PriceListRow) =>
-              editable ? (
-                <NumberInput
-                  value={rowData.price}
-                  onChange={(value) => onChangeRow?.(rowData.id, 'price', Number(value ?? 0))}
-                  prefix="$"
-                  min={0}
-                  step={1}
-                  size="sm"
-                  className="w-full"
-                />
-              ) : (
-                <span className="font-medium text-[12px]">${rowData.price.toFixed(2)}</span>
-              )
-            }
-          </Table.Cell>
-        </Table.Column>
+      <Column flexGrow={1} minWidth={140}>
+        <HeaderCell>Sub Category</HeaderCell>
+        <SubCategoryCell editable={editable} onChangeRow={onChangeRow} />
+      </Column>
 
-        <Table.Column flexGrow={2} minWidth={220}>
-          <Table.HeaderCell>Notes</Table.HeaderCell>
-          <Table.Cell>
-            {(rowData: PriceListRow) =>
-              editable ? (
-                <Input
-                  value={rowData.notes ?? ''}
-                  onChange={(value) => onChangeRow?.(rowData.id, 'notes', value)}
-                  placeholder="Optional notes"
-                  size="sm"
-                />
-              ) : (
-                <span className="text-sm text-muted-foreground">{rowData.notes || '-'}</span>
-              )
-            }
-          </Table.Cell>
-        </Table.Column>
+      <Column width={110}>
+        <HeaderCell>Price</HeaderCell>
+        <PriceCell editable={editable} onChangeRow={onChangeRow} />
+      </Column>
 
-        {editable && (
-          <Table.Column width={120} fixed="right">
-            <Table.HeaderCell className="text-right">
-              <div className="flex items-center">
-                <Button appearance="ghost" size="sm" onClick={onAddRow} disabled={!onAddRow}>
-                  Add row
-                </Button>
-              </div>
-            </Table.HeaderCell>
-            <Table.Cell>
-              {(rowData: PriceListRow) => (
-                <div className="flex items-center">
-                  <Button
-                    appearance="ghost"
-                    color="red"
-                    size="sm"
-                    onClick={() => onRemoveRow?.(rowData.id)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              )}
-            </Table.Cell>
-          </Table.Column>
-        )}
-      </Table>
-    </div>
+      <Column flexGrow={2} minWidth={180}>
+        <HeaderCell>Notes</HeaderCell>
+        <NotesCell editable={editable} onChangeRow={onChangeRow} />
+      </Column>
+
+      {editable && (
+        <Column width={100} fixed="right">
+          <HeaderCell>
+            <div className="flex items-center">
+              <Button appearance="ghost" size="sm" onClick={onAddRow} disabled={!onAddRow}>
+                Add row
+              </Button>
+            </div>
+          </HeaderCell>
+          <RemoveCell onRemoveRow={onRemoveRow} />
+        </Column>
+      )}
+    </Table>
   )
 }

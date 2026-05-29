@@ -9,6 +9,7 @@ export const clientPriceListItems = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' })
       .notNull(),
     serviceName: varchar('service_name', { length: 200 }).notNull(),
+    subCategory: varchar('sub_category', {length:200}).notNull(),
     price: integer('price').notNull(),
     notes: text('notes'),
     sortOrder: integer('sort_order').default(0).notNull(),
