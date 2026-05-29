@@ -1,5 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { db } from '@/src/db'
+import { profiles } from '@/src/db/schema/profile'
+import { eq } from 'drizzle-orm'
 
 // Simple in-memory rate limiter (Fixed window)
 // Note: This is instance-specific. For distributed rate limiting, use Redis.
@@ -22,7 +25,7 @@ function isRateLimited(key: string): boolean {
   return record.count > RATE_LIMIT
 }
 
-export default async function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -83,16 +86,21 @@ export default async function proxy(request: NextRequest) {
   }
 
   if (user && !isPublicApi) {
-    // Fetch profile to get role and parent client ID
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('user_role, created_by, user_status')
-      .eq('id', user.id)
-      .single()
+    // Fetch profile to get role and parent client ID via Drizzle ORM
+    const profileResult = await db
+      .select({
+        role: profiles.role,
+        createdBy: profiles.createdBy,
+        status: profiles.status,
+      })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1)
 
-    const role = profile?.user_role
-    const createdBy = profile?.created_by
-    const status = profile?.user_status
+    const profile = profileResult[0]
+    const role = profile?.role
+    const createdBy = profile?.createdBy
+    const status = profile?.status
 
     // Allow password recovery routes even when a session already exists.
     // Other auth pages should still redirect authenticated users away.
@@ -200,3 +208,5 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
+
+export default proxy
