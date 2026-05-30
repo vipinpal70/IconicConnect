@@ -83,9 +83,9 @@ export const activityFeed = [
 ];
 
 export const invoices = [
-  { id: "INV-2024-05", month: "May 2024", caseCount: 18, amount: 1240, status: "Paid" },
-  { id: "INV-2024-04", month: "April 2024", caseCount: 42, amount: 2980, status: "Paid" },
-  { id: "INV-2024-03", month: "March 2024", caseCount: 35, amount: 2640, status: "Paid" },
-  { id: "INV-2024-02", month: "February 2024", caseCount: 31, amount: 2310, status: "Paid" },
-  { id: "INV-2024-01", month: "January 2024", caseCount: 28, amount: 2080, status: "Paid" },
+  { id: "INV-2024-05", client: "PrecisionDent Lab", month: "May 2024", caseCount: 18, amount: 1240, status: "Paid" },
+  { id: "INV-2024-04", client: "PrecisionDent Lab", month: "April 2024", caseCount: 42, amount: 2980, status: "Paid" },
+  { id: "INV-2024-03", client: "SmileCraft Labs", month: "March 2024", caseCount: 35, amount: 2640, status: "Paid" },
+  { id: "INV-2024-02", client: "ImplantPro Lab", month: "February 2024", caseCount: 31, amount: 2310, status: "Pending" },
+  { id: "INV-2024-01", client: "AestheticEdge Lab", month: "January 2024", caseCount: 28, amount: 2080, status: "Overdue" },
 ];

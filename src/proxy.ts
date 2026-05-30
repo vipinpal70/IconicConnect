@@ -180,7 +180,15 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
 
   switch (role) {
     case 'admin':
-      return pathname.startsWith('/admin') || pathname.startsWith('/api/admin') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers') || pathname.startsWith('/api/preference-forms')
+      return (
+        pathname.startsWith('/admin') ||
+        pathname.startsWith('/api/admin') ||
+        pathname.startsWith('/api/billing') ||
+        pathname.startsWith('/api/service-pricing') ||
+        pathname.startsWith('/api/tutorials') ||
+        pathname.startsWith('/api/offers') ||
+        pathname.startsWith('/api/preference-forms')
+      )
     case 'client':
       return pathname.startsWith('/client') || pathname.startsWith('/api/client') || pathname.startsWith('/api/support') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers') || pathname.startsWith('/client/preferences') || pathname.startsWith('/api/preference-forms')
     case 'subuser':
