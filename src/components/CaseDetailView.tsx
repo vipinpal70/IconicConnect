@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
 import { HOLD_REASONS } from "@/src/lib/case-utils"
+import { Eye } from "lucide-react"
 
 type CaseRecord = {
   id: string
@@ -554,7 +555,7 @@ export function CaseDetailView({
                     <div>
                       <h4 className="text-sm font-semibold text-gray-900">Final Design File</h4>
                       {caseRecord.outputNote ? (
-                        <p className="text-xs text-indigo-900 mt-1.5 bg-indigo-50/50 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
+                        <p className="text-xs text-primary mt-1.5 bg-primary/10 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
                           {caseRecord.outputNote}
                         </p>
                       ) : (
@@ -582,9 +583,10 @@ export function CaseDetailView({
                         size="sm"
                         variant="outline"
                         onClick={() => setShowPreview(!showPreview)}
-                        className="w-full border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-medium gap-2"
+                        className="w-full border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
                       >
-                        👁️ {showPreview ? "Hide Preview" : "Show 3D Preview"}
+                          <Eye className="w-4 h-4"/>
+                         {showPreview ? "Hide Preview" : "Show Preview"}
                       </Button>
                     </div>
                   </div>

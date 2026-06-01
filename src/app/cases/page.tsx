@@ -524,13 +524,17 @@ export default function CasesPage() {
       }
 
       // 3. Link them to the case database structure
+      const currentCase = cases.find((c) => c.id === designUploadCaseId);
+      const isFeedbackUpload = currentCase?.status === "client_feedback";
+
       const patch = {
         outputFile: outputUrl,
         previewFile: previewUrl,
         outputNote: designUploadNote.trim(),
+        ...(isFeedbackUpload ? { status: "in_progress" } : {}),
       };
 
-      const updated = await handleUpdate(designUploadCaseId, patch, "Design output and preview files uploaded successfully");
+      const updated = await handleUpdate(designUploadCaseId, patch, isFeedbackUpload ? "New design uploaded · case back in progress" : "Design output and preview files uploaded successfully");
       if (updated) {
         // Log design note as file/note attachment if note is provided
         try {
@@ -1285,9 +1289,16 @@ export default function CasesPage() {
                                     </div>
                                   )}
                                   {c.status === "client_feedback" && (
-                                    <Button size="sm" variant="outline" disabled={isMutating}
-                                      onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Sent case back to design")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider">Back to designer</Button>
+                                    <>
+                                      <Button size="sm" variant="outline" disabled={isMutating}
+                                        onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Sent case back to design")}
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider">Back to designer</Button>
+                                      <Button size="sm" variant="outline" disabled={isMutating}
+                                        onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-sm">
+                                        <Upload className="h-3 w-3 mr-1" /> Upload & Apply
+                                      </Button>
+                                    </>
                                   )}
                                   {c.status === "on_hold" && (
                                     <Button size="sm" disabled={isMutating}
@@ -1416,12 +1427,12 @@ export default function CasesPage() {
                                     </Button>
                                   )}
 
-                                  {/* If case has client feedback, show Apply Feedback */}
+                                  {/* If case has client feedback, show Upload Design + Apply Feedback */}
                                   {isDesignerOnCase && c.status === "client_feedback" && (
                                     <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Restarted design to apply feedback")}
+                                      onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
                                       className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
-                                      Apply Feedback
+                                      <Upload className="h-3 w-3 mr-1" /> Upload & Apply
                                     </Button>
                                   )}
 
@@ -1630,8 +1641,8 @@ export default function CasesPage() {
       <Dialog open={!!designUploadCaseId} onOpenChange={(open) => { if (!open) closeDesignUploadDialog(); }}>
         <DialogContent className="sm:max-w-[520px] bg-white border-gray-200 text-black shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-medium text-black flex items-center gap-2">
-              <Upload className="h-5 w-5 text-emerald-500" /> Upload Design
+            <DialogTitle className="text-lg font-medium text-black flex items-center gap-2">
+               Upload Design
             </DialogTitle>
             <p className="text-xs text-gray-700">
               Add the design notes and upload the case design file{designUploadCaseNumber ? ` for case ${designUploadCaseNumber}.` : "."}
@@ -1642,13 +1653,13 @@ export default function CasesPage() {
               <Label htmlFor="design-note" className="text-sm font-semibold text-gray-700">Case Note</Label>
               <Textarea id="design-note" value={designUploadNote} onChange={(e) => setDesignUploadNote(e.target.value)}
                 placeholder="Add case design notes..."
-                className="min-h-[120px] bg-gray-100 border-gray-200 text-gray-900 placeholder:text-zinc-400 focus-visible:ring-emerald-500" />
+                className="min-h-[120px] bg-gray-100 border-gray-200 text-gray-900 placeholder:text-zinc-400" />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="design-file" className="text-sm font-semibold text-gray-700">Case File</Label>
               <Input id="design-file" ref={designUploadInputRef} type="file"
                 onChange={(e) => setDesignUploadFile(e.target.files?.[0] || null)}
-                className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-emerald-600 file:border-none file:rounded-md file:px-3 file:py-2" />
+                className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-emerald-600 file:border-none file:rounded-md file:px-2 file:py-2" />
               {designUploadFile && <p className="text-xs text-gray-900">Selected: {designUploadFile.name}</p>}
             </div>
             <div className="grid gap-2 mt-1">

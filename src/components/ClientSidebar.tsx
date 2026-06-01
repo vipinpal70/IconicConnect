@@ -158,7 +158,7 @@ export function ClientSidebar() {
             size="sm"
             className={cn(
               "justify-end text-red-500 hover:text-red-600 hover:bg-red-50 gap-2",
-              collapsed && "justify-center px-0"
+              collapsed && "justify-end px-0"
             )}
             onClick={handleLogout}
           >

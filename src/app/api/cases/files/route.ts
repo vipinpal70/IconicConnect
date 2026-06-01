@@ -69,6 +69,12 @@ export async function GET(req: NextRequest) {
     const stats = statSync(filePath);
     const fileStream = createReadStream(filePath);
 
+    // Detect content type for proper browser rendering
+    const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+    const isHtml = ext === '.html' || ext === '.htm';
+    const contentType = isHtml ? 'text/html; charset=utf-8' : 'application/octet-stream';
+    const disposition = isHtml ? `inline; filename="${encodeURIComponent(fileName)}"` : `attachment; filename="${encodeURIComponent(fileName)}"`;
+
     // Convert fileReadStream to a Web readable stream so Next.js can send it
     const webStream = new ReadableStream({
       start(controller) {
@@ -81,13 +87,19 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    return new Response(webStream, {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'Content-Length': stats.size.toString(),
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
-      },
-    });
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+      'Content-Length': stats.size.toString(),
+      'Content-Disposition': disposition,
+    };
+
+    // Allow HTML files to be embedded in iframes
+    if (isHtml) {
+      headers['X-Frame-Options'] = 'SAMEORIGIN';
+      headers['Content-Security-Policy'] = "frame-ancestors 'self'";
+    }
+
+    return new Response(webStream, { headers });
   } catch (error: any) {
     console.error('File serve route error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
