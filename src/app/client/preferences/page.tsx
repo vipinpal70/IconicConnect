@@ -19,6 +19,7 @@ import {
 } from "@/src/lib/preference-forms"
 import type { PreferenceFormPayload, PreferenceFormRecord } from "@/src/lib/preference-forms"
 import { Plus, PencilLine, Trash2 } from "lucide-react"
+import { preferenceForms } from "@/src/db/schema"
 
 type Profile = {
   id: string
@@ -160,7 +161,16 @@ export default function ClientPreferencesPage() {
             <h1 className="text-xl font-semibold text-foreground">{headerName}</h1>
             <p className="text-xs text-muted-foreground mt-0.5">Create, edit, and manage multiple preference forms linked to your account.</p>
           </div>
-          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs w-fit" onClick={() => { setDraft(emptyForm()); setEditingId(null) }}>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-1.5 h-8 text-xs w-fit" 
+            onClick={() => {
+              setDraft(emptyForm())
+              setEditingId(null)
+              document.getElementById("preference-form")?.scrollIntoView({ behavior: "smooth" })
+            }}
+          >
             <Plus className="h-3.5 w-3.5" />
             New Form
           </Button>
@@ -216,7 +226,7 @@ export default function ClientPreferencesPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-border/50 shadow-sm bg-white">
+        <Card id="preference-form" className="overflow-hidden border-border/50 shadow-sm bg-white">
           <CardContent className="p-0">
             <div className="border-b border-border/50 px-4 py-2.5 bg-muted/20">
               <h2 className="text-sm font-semibold text-muted-foreground">Full Contour Form</h2>

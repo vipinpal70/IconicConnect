@@ -267,7 +267,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
                   )}>
                     <div className="flex items-center justify-between gap-4 mb-0.5">
                       <span className={cn(
-                        "text-[9px] font-bold capitalize tracking-wide",
+                        "text-[9px] font-semibold capitalize tracking-wide",
                         isAdminColumn ? "text-zinc-200" : "text-emerald-700"
                       )}>
                         {m.senderName} ({m.senderRole === "qc" ? "QC Lead" : m.senderRole})
@@ -279,10 +279,10 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
                     {renderFilePreview(m)}
 
                     <span className={cn(
-                      "block text-[4px] mt-1 text-right",
+                      "block text-[8px] mt-1 text-right",
                       isAdminColumn ? "text-zinc-300" : "text-muted-foreground"
                     )}>
-                      {new Date(m.createdAt).toLocaleDateString()} {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(m.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
                 </div>

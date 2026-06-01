@@ -11,8 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { Badge } from "@/src/components/ui/badge"
 import { toast } from "sonner"
 import { Switch } from "@/src/components/ui/switch"
-import { ArrowLeft, Building2, Save, Plus, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, Layers3 } from "lucide-react"
+import { ArrowLeft, Building2, Save, Plus, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp } from "lucide-react"
 import { PriceListTable, type PriceListRow } from "@/src/components/PriceListTable"
+import type { PreferenceFormRecord } from "@/src/lib/preference-forms"
 
 type ClientProfile = {
   id: string
@@ -149,6 +150,17 @@ export default function ClientProfilePage() {
     )
   }
 
+  const prefFormsQuery = useQuery<PreferenceFormRecord[]>({
+    queryKey: ["admin-client-pref-forms", clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const res = await fetch(`/api/preference-forms?clientId=${clientId}`)
+      if (!res.ok) throw new Error("Failed to load preference forms")
+      const json = await res.json()
+      return json.data ?? []
+    },
+  })
+
   const client = clientQuery.data
   const location = [client?.city, client?.state, client?.country].filter(Boolean).join(", ")
 
@@ -280,6 +292,37 @@ export default function ClientProfilePage() {
               />
             </CardContent>
           </Card>
+
+          {/* Preference Forms */}
+          <Card className="shadow-card">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  Preference Forms
+                </CardTitle>
+                <Badge variant="secondary" className="text-[10px]">
+                  {prefFormsQuery.isLoading ? "Loading..." : `${prefFormsQuery.data?.length ?? 0} form(s)`}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Preference forms submitted by this client.
+              </p>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {prefFormsQuery.isLoading ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">Loading...</p>
+              ) : !prefFormsQuery.data?.length ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">No preference forms submitted yet.</p>
+              ) : (
+                <div className="grid gap-3">
+                  {prefFormsQuery.data.map((form) => (
+                    <PrefFormCard key={form.id} form={form} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </AdminLayout>
@@ -294,6 +337,56 @@ function Info({ label, value, icon }: { label: string; value: string; icon?: Rea
         {label}
       </p>
       <p className="mt-0.5 truncate text-xs font-semibold text-foreground">{value}</p>
+    </div>
+  )
+}
+
+function PrefFormCard({ form }: { form: PreferenceFormRecord }) {
+  const [expanded, setExpanded] = useState(false)
+  const p = form.payload
+
+  const rows: { label: string; value: string; comment?: string }[] = [
+    { label: "Occlusion", value: p.occlusion.defaultValues || "—", comment: p.occlusion.comments },
+    { label: "Proximal Contacts", value: p.proximalContacts.defaultValues || "—", comment: p.proximalContacts.comments },
+    { label: "Distal-most Crown Contact", value: p.distalMostCrownContact.defaultValues || "—", comment: p.distalMostCrownContact.comments },
+    { label: "Anatomy", value: p.anatomy.option || "—", comment: p.anatomy.comments },
+    { label: "Smile Library", value: [p.smileLibrary.option, p.smileLibrary.libraryName].filter(Boolean).join(" · ") || "—", comment: p.smileLibrary.comments },
+    { label: "Pontic Type", value: p.ponticType.option || "—", comment: p.ponticType.comments },
+    { label: "Pontic Distance", value: [p.ponticDistanceFromTissue.option, p.ponticDistanceFromTissue.distanceMm ? `${p.ponticDistanceFromTissue.distanceMm}mm` : ""].filter(Boolean).join(" · ") || "—", comment: p.ponticDistanceFromTissue.comments },
+    { label: "Match Marginal Ridge", value: p.matchMarginalRidge.option || "—", comment: p.matchMarginalRidge.comments },
+  ]
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-muted/[0.02] overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-muted/20 transition-colors text-left"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div>
+          <p className="text-xs font-semibold text-foreground">{form.formName}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            Submitted {new Date(form.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          </p>
+        </div>
+        {expanded
+          ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        }
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border/50 px-3.5 py-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {rows.map(({ label, value, comment }) => (
+            <div key={label} className="rounded border border-border/40 bg-muted/20 px-2.5 py-2">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+              <p className="text-[11px] font-semibold text-foreground mt-0.5">{value}</p>
+              {comment && (
+                <p className="text-[10px] text-muted-foreground mt-0.5 italic">{comment}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
