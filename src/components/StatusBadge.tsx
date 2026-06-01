@@ -15,6 +15,7 @@ export function StatusBadge({ status, role = "client" }: { status: string; role?
     client_feedback: "bg-red-50 text-red-700 border border-red-100",
     approved: "bg-green-50 text-green-700 border border-green-200",
     delivered: "bg-green-100 text-green-800 border border-green-200",
+    change_requested: "bg-orange-50 text-orange-700 border border-orange-100 font-semibold shadow-sm",
 
     // Fallback/Demo labels
     Submitted: "bg-secondary text-secondary-foreground",

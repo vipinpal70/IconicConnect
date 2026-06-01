@@ -193,6 +193,12 @@ export async function PUT(
           if (current !== 'submitted_to_client') {
             return NextResponse.json({ error: 'Forbidden: Cannot approve case unless it is in Client Review status' }, { status: 400 });
           }
+        }
+        // 5. Request change during Client Review
+        else if (target === 'change_requested') {
+          if (current !== 'submitted_to_client') {
+            return NextResponse.json({ error: 'Forbidden: Cannot request changes unless the case is in Client Review status' }, { status: 400 });
+          }
         } else {
           return NextResponse.json({ error: `Forbidden: Client/Subusers cannot transition status from ${current} to ${target}` }, { status: 403 });
         }
@@ -284,6 +290,10 @@ export async function PUT(
             updateData.status = target;
           } else if (target === 'client_feedback' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;
+          } else if (target === 'client_feedback' && current === 'change_requested' && caseRecord.qcId === profile.id) {
+            updateData.status = target;
+          } else if (target === 'submitted_to_client' && current === 'change_requested' && caseRecord.qcId === profile.id) {
+            updateData.status = target;
           } else {
             return NextResponse.json({ error: `Forbidden: QC cannot transition status from ${current} to ${target}` }, { status: 403 });
           }
@@ -343,7 +353,7 @@ export async function PUT(
           if (target) {
             if (target === 'scan_verified' && current === 'scan_received') {
               updateData.status = target;
-            } else if (target === 'in_progress' && current === 'allocated_to_designer') {
+            } else if (target === 'in_progress' && (current === 'allocated_to_designer' || current === 'client_feedback')) {
               updateData.status = target;
             } else if (target === 'scan_received' && current === 'on_hold' && caseRecord.designerId === profile.id) {
               updateData.status = target;

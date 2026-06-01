@@ -23,6 +23,8 @@ export const caseStatusEnum = pgEnum('case_status', [
   'client_feedback',         // 9. Client feedback / rejected
   'approved',                // 10. Approved
   'delivered',               // 11. Delivered
+  'cancelled',               // 12. Cancelled
+  'change_requested',        // 13. Change requested
 ])
 
 export const CASE_LIFECYCLE_STEPS = [
@@ -49,6 +51,8 @@ export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
   on_hold: 'In Validation',
   approved: 'Completed',
   delivered: 'Completed',
+  cancelled: 'Completed',
+  change_requested: 'Pending Client Approval',
 }
 
 export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
@@ -63,6 +67,8 @@ export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[numbe
   on_hold: 'On Hold',
   approved: 'Case Approved',
   delivered: 'Completed',
+  cancelled: 'Cancelled',
+  change_requested: 'Change Requested',
 }
 
 export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
@@ -77,6 +83,8 @@ export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[num
   on_hold: 'On Hold',
   approved: 'Approved',
   delivered: 'Delivered',
+  cancelled: 'Cancelled',
+  change_requested: 'Change Requested',
 }
 
 /**

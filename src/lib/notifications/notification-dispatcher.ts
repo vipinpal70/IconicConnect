@@ -138,6 +138,12 @@ export async function notifyCaseStatusChanged(input: {
     message = input.clientName
       ? `${input.clientName}'s case ${input.caseNumber} has been cancelled.`
       : `Your case ${input.caseNumber} has been cancelled.`
+  } else if (statusKey === 'change_requested') {
+    type = NotificationType.CASE_FEEDBACK
+    title = `Case ${input.caseNumber} change requested`
+    message = input.clientName
+      ? `${input.clientName}'s case ${input.caseNumber} has requested changes.`
+      : `Changes have been requested on case ${input.caseNumber}.`
   }
 
   return NotificationService.dispatch({

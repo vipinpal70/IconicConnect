@@ -176,6 +176,20 @@
       "when": 1780290323360,
       "tag": "0024_nostalgic_gunslinger",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780290323361,
+      "tag": "0025_add_cancelled_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780290323362,
+      "tag": "0026_add_change_requested_status",
+      "breakpoints": true
     }
   ]
 }

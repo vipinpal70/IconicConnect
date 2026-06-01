@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
           redirectUrl = '/client/dashboard'
           break
         case 'subuser':
-          redirectUrl = `/client/${profile.created_by}/subuser`
+          redirectUrl = '/client/dashboard'
           break
         case 'qc':
         case 'designer':

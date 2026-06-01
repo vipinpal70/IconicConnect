@@ -154,6 +154,8 @@ export function CaseDetailView({
   const [isHoldDialogOpen, setIsHoldDialogOpen] = useState(false)
   const [holdReasonSelect, setHoldReasonSelect] = useState("")
   const [holdCustomReason, setHoldCustomReason] = useState("")
+  const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false)
+  const [changeNotes, setChangeNotes] = useState("")
 
   const handleStatusChange = async (targetStatus: string, holdReason?: string) => {
     if (targetStatus === "on_hold" && !holdReason) {
@@ -201,9 +203,41 @@ export function CaseDetailView({
     void handleStatusChange("on_hold", finalReason)
   }
 
+  const handleConfirmChangeRequest = async () => {
+    if (!changeNotes.trim()) {
+      toast.error("Please describe the changes you are requesting.")
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "change_requested" }),
+      })
+      if (res.ok) {
+        await fetch(`/api/cases/${caseId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageText: `[CHANGE REQUEST]: ${changeNotes.trim()}` }),
+        })
+        toast.success("Change request submitted successfully!")
+        setIsChangeDialogOpen(false)
+        setChangeNotes("")
+        router.refresh()
+      } else {
+        const err = await res.json()
+        toast.error(err.error || "Failed to submit change request")
+      }
+    } catch {
+      toast.error("Failed to submit change request")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleRequestChanges = () => {
-    chatRef.current?.scrollIntoView({ behavior: "smooth" })
-    toast.info("Please scroll down to type your specific feedback inside Case Chat.")
+    setIsChangeDialogOpen(true)
   }
 
   const { data: caseResponse, isLoading, error } = useQuery<{ data: CaseRecord }>({
@@ -439,6 +473,37 @@ export function CaseDetailView({
               </div>
             </CardContent>
           )}
+          {chatSide === "admin" && (
+            <CardContent className="py-3 px-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-2">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Internal Actions</p>
+              <div className="flex flex-col gap-2">
+                {caseRecord.status === "change_requested" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+                      disabled={isSubmitting}
+                      onClick={() => handleStatusChange("client_feedback")}
+                    >
+                      ✓ Accept Request
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs font-medium text-red-600 border-red-200 hover:bg-red-50"
+                      disabled={isSubmitting}
+                      onClick={() => handleStatusChange("submitted_to_client")}
+                    >
+                      ✗ Decline Request
+                    </Button>
+                  </div>
+                )}
+                {caseRecord.status !== "change_requested" && (
+                  <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
+                )}
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {/* Activity Timeline Card */}
@@ -474,7 +539,7 @@ export function CaseDetailView({
       {/* Full Width Section: Attachments & Case Chat */}
       <div className="space-y-4">
 
-        {(caseRecord.outputFile || caseRecord.previewFile) && (
+        {(chatSide === "admin" || ["submitted_to_client", "approved", "delivered"].includes(caseRecord.status)) && (caseRecord.outputFile || caseRecord.previewFile) && (
           <Card className="shadow-card bg-white">
             <CardHeader className="py-2.5 px-4 border-b border-border/50">
               <CardTitle className="text-sm font-semibold text-black flex items-center gap-2">
@@ -630,6 +695,53 @@ export function CaseDetailView({
               className="text-white bg-emerald-600 hover:bg-emerald-700 font-normal rounded-md"
             >
               Confirm
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Changes dialog */}
+      <Dialog open={isChangeDialogOpen} onOpenChange={(open) => { if (!open) setIsChangeDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-[500px] bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
+              ✗ Request Design Changes
+            </DialogTitle>
+            <p className="text-xs text-gray-500">
+              Describe the adjustments you want the designer to make to your design.
+            </p>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="detail-change-notes" className="text-sm font-semibold text-gray-700">
+                Change Requirements / Notes
+              </Label>
+              <Textarea
+                id="detail-change-notes"
+                value={changeNotes}
+                onChange={(e) => setChangeNotes(e.target.value)}
+                placeholder="Specify what modifications are needed (e.g. adjust margins, change thickness, adapt occlusion)..."
+                className="min-h-[140px] bg-gray-50 border border-gray-300 text-gray-900 placeholder:text-gray-400 focus-visible:ring-emerald-500 rounded-md"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsChangeDialogOpen(false)}
+              className="text-gray-700 border-gray-300 font-normal hover:bg-gray-100"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmChangeRequest}
+              disabled={isSubmitting || !changeNotes.trim()}
+              className="text-white bg-emerald-600 hover:bg-emerald-700 font-normal rounded-md"
+            >
+              Submit Request
             </Button>
           </div>
         </DialogContent>

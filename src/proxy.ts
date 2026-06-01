@@ -104,11 +104,14 @@ export async function proxy(request: NextRequest) {
 
     // Allow password recovery routes even when a session already exists.
     // Other auth pages should still redirect authenticated users away.
+    const isLegacySubuserPath = pathname.match(/^\/client\/[^/]+\/subuser(\/.*)?$/)
+
     if (
       (isAuthPage && !isRecoveryAuthPage) ||
       pathname === '/' ||
       pathname === '/admin' ||
-      pathname === '/client'
+      pathname === '/client' ||
+      isLegacySubuserPath
     ) {
       return NextResponse.redirect(new URL(getHomeRoute(role, createdBy), request.url))
     }

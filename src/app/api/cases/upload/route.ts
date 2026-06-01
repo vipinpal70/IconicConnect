@@ -47,10 +47,11 @@ export async function POST(req: NextRequest) {
       '.zip',
       '.dme',
       '.doc', '.docx',
-      '.txt'
+      '.txt',
+      '.html', '.htm'
     ];
     if (!allowedExtensions.includes(ext)) {
-      return NextResponse.json({ error: 'Unsupported file type. Allowed: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DME, DOC, DOCX, TXT' }, { status: 400 });
+      return NextResponse.json({ error: 'Unsupported file type. Allowed: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DME, DOC, DOCX, TXT, HTML' }, { status: 400 });
     }
 
     let clientId: string | undefined;

@@ -25,7 +25,8 @@ import {
   ClipboardCheck,
   MessageSquare,
   FileText,
-  RefreshCw
+  RefreshCw,
+  Upload
 } from "lucide-react"
 
 type CaseRecord = {
@@ -44,6 +45,9 @@ type CaseRecord = {
   updatedAt: string
   todayMessagesCount?: number
   hasUnreadChat?: boolean
+  outputFile?: string | null
+  previewFile?: string | null
+  outputNote?: string | null
 }
 
 type ChatIndicatorUser = {
@@ -147,6 +151,7 @@ const statusFilters = [
   "client_feedback",
   "approved",
   "delivered",
+  "change_requested",
 ]
 
 const STATUS_LABELS: Record<string, string> = {
@@ -161,6 +166,7 @@ const STATUS_LABELS: Record<string, string> = {
   client_feedback: "Client Feedback",
   approved: "Approved",
   delivered: "Delivered",
+  change_requested: "Change Requested",
 }
 
 function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
@@ -694,90 +700,107 @@ export default function AdminCasesPage() {
 
                               {/* 2. Designer actions */}
                               {currentUser?.role === "designer" && (
-                                <>
-                                  {/* Allocate to Self for unallocated cases */}
-                                  {!caseItem.designerId && (caseItem.status === "scan_received" || caseItem.status === "scan_verified") && (
-                                    <Button
-                                      size="sm"
-                                      disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { designerId: currentUser.id, status: "allocated_to_designer" }, `Allocated case to yourself`)}
-                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
-                                    >
-                                      <UserPlus className="h-3 w-3 mr-0.5" /> Allocate to Self
-                                    </Button>
-                                  )}
+                                 <>
+                                   {/* If case is on hold, show Resume */}
+                                   {caseItem.designerId === currentUser?.id && caseItem.status === "on_hold" && (
+                                     <Button size="sm" disabled={isMutating}
+                                       onClick={() => handleUpdate(caseItem.id, { status: "scan_received" }, "Case resumed to active queue")}
+                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
+                                       <RefreshCw className="h-3 w-3 mr-0.5" /> Resume Case
+                                     </Button>
+                                   )}
 
-                                  {/* Actions on assigned cases */}
-                                  {caseItem.designerId === currentUser?.id && (
-                                    <>
-                                      {caseItem.status === "allocated_to_designer" && (
-                                        <div className="flex gap-1.5">
-                                          <Button
-                                            size="sm"
-                                            disabled={isMutating}
-                                            onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Started design work`)}
-                                            className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm"
-                                          >
-                                            Start Work
-                                          </Button>
-                                          {!caseItem.qcId && (
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              disabled={isMutating}
-                                              onClick={() => setAssignQcCaseId(caseItem.id)}
-                                              className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold"
-                                            >
-                                              <UserPlus className="h-3 w-3 mr-0.5" /> Assign QC
-                                            </Button>
-                                          )}
-                                        </div>
-                                      )}
+                                   {/* If case has client feedback, show Apply Feedback */}
+                                   {caseItem.designerId === currentUser?.id && caseItem.status === "client_feedback" && (
+                                     <Button size="sm" disabled={isMutating}
+                                       onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Restarted design to apply feedback")}
+                                       className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
+                                       Apply Feedback
+                                     </Button>
+                                   )}
 
-                                      {caseItem.status === "in_progress" && (
-                                        <>
-                                          {!caseItem.qcId ? (
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              disabled={isMutating}
-                                              onClick={() => setAssignQcCaseId(caseItem.id)}
-                                              className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold"
-                                            >
-                                              <UserPlus className="h-3 w-3 mr-0.5" /> Assign QC
-                                            </Button>
-                                          ) : (
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              disabled={isMutating}
-                                              onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
-                                              className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800"
-                                            >
-                                              <ClipboardCheck className="h-3 w-3 mr-0.5" /> Send to QC
-                                            </Button>
-                                          )}
-                                        </>
-                                      )}
+                                   {/* Step 1: Validate (if scan received and no designer is allocated yet) */}
+                                   {!caseItem.designerId && caseItem.status === "scan_received" && (
+                                     <Button size="sm" disabled={isMutating}
+                                       onClick={() => handleUpdate(caseItem.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
+                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
+                                       <ShieldCheck className="h-3 w-3 mr-0.5" /> Validate
+                                     </Button>
+                                   )}
 
-                                      {/* Status display indicators */}
-                                      {caseItem.status === "internal_qc" && (
-                                        <span className="text-[10px] text-amber-600 italic px-1">In QC Review</span>
-                                      )}
+                                   {/* Step 2: Allocate to Self (if scan is verified and no designer is allocated yet) */}
+                                   {!caseItem.designerId && caseItem.status === "scan_verified" && (
+                                     <Button size="sm" disabled={isMutating}
+                                       onClick={() => handleUpdate(caseItem.id, { designerId: currentUser.id, status: "allocated_to_designer" }, "Allocated case to yourself")}
+                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
+                                       <UserPlus className="h-3 w-3 mr-0.5" /> Allocate to Self
+                                     </Button>
+                                   )}
 
-                                      {caseItem.status === "client_feedback" && (
-                                        <Button
-                                          size="sm"
-                                          disabled={isMutating}
-                                          onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Restarted design to apply feedback`)}
-                                          className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm"
-                                        >
-                                          Apply Feedback
-                                        </Button>
-                                      )}
-                                    </>
-                                  )}
-                                </>
+                                   {/* Step 3: Start Work (if allocated to designer and status is allocated_to_designer) */}
+                                   {caseItem.designerId === currentUser?.id && caseItem.status === "allocated_to_designer" && (
+                                     <Button size="sm" disabled={isMutating}
+                                       onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Started design work")}
+                                       className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
+                                       Start Work
+                                     </Button>
+                                   )}
+
+                                   {/* Step 4: Upload Design (if in progress and no design files are uploaded yet) */}
+                                   {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && !caseItem.outputFile && (
+                                     <Button size="sm" variant="outline" disabled={isMutating}
+                                       onClick={() => toast.info("Please use your main /cases queue dashboard to upload design files.")}
+                                       className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800">
+                                       <Upload className="h-3 w-3 mr-0.5" /> Upload Design
+                                     </Button>
+                                   )}
+
+                                   {/* Step 5a: Assign QC (if in progress, design is uploaded, and no QC assigned yet) */}
+                                   {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && caseItem.outputFile && !caseItem.qcId && (
+                                     <Button size="sm" variant="outline" disabled={isMutating}
+                                       onClick={() => setAssignQcCaseId(caseItem.id)}
+                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold">
+                                       <UserPlus className="h-3 w-3 mr-0.5" /> Assign QC
+                                     </Button>
+                                   )}
+
+                                   {/* Step 5b: Send to QC (if in progress, design is uploaded, and QC is assigned) */}
+                                   {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && caseItem.outputFile && caseItem.qcId && (
+                                     <Button size="sm" variant="outline" disabled={isMutating}
+                                       onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
+                                       className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800">
+                                       <ClipboardCheck className="h-3 w-3 mr-0.5" /> Send to QC
+                                     </Button>
+                                   )}
+
+                                   {/* If in internal_qc review, show status */}
+                                   {caseItem.designerId === currentUser?.id && caseItem.status === "internal_qc" && (
+                                     <span className="text-[10px] text-amber-600 italic px-1">In QC Review</span>
+                                   )}
+                                 </>
+                               )}
+
+                              {/* 3b. Change requested actions for admin/qc */}
+                              {caseItem.status === "change_requested" && (currentUser?.role === "admin" || currentUser?.role === "qc") && (
+                                <div className="flex gap-1.5">
+                                  <Button
+                                    size="sm"
+                                    disabled={isMutating}
+                                    onClick={() => handleUpdate(caseItem.id, { status: "client_feedback" }, "Accepted change request")}
+                                    className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+                                  >
+                                    Accept Request
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={isMutating}
+                                    onClick={() => handleUpdate(caseItem.id, { status: "submitted_to_client" }, "Declined change request")}
+                                    className="h-7 text-[10px] px-2.5 text-red-600 border-red-200 hover:bg-red-50 font-bold shadow-sm"
+                                  >
+                                    Decline Request
+                                  </Button>
+                                </div>
                               )}
 
                               {/* 3. Awaiting client status display (visible to admin/qc, and designer if assigned) */}
@@ -807,9 +830,9 @@ export default function AdminCasesPage() {
 
                                   </Button>
                                   {hasUnreadChat ? (
-                                    <span className="absolute -top-0.6 -right-0.6 flex h-1.5 w-1.5">
+                                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                                     </span>
                                   ) : (
                                     <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold border border-white leading-none">
