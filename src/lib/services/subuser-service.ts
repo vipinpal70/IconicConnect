@@ -6,7 +6,7 @@ import { NotificationService } from '@/src/lib/notifications/notification-servic
 import { NotificationType } from '@/src/lib/notifications/notification-events'
 
 export class SubUserService {
-  constructor(private subUserRepo: ISubUserRepository) {}
+  constructor(private subUserRepo: ISubUserRepository) { }
 
   async getSubUsers(clientId: string): Promise<Profile[]> {
     return this.subUserRepo.listByClientId(clientId)
