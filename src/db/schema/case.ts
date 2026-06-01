@@ -131,6 +131,9 @@ export const cases = pgTable('cases', {
   outputFile: text('output_file'),
   previewFile: text('preview_file'),
   outputNote: text('output_note'),
+  preferredTeethLibrary: varchar('preferred_teeth_library', { length: 50 }).default('default').notNull(),
+  teethLibraryFileUrl: text('teeth_library_file_url'),
+  teethLibraryFileName: varchar('teeth_library_file_name', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

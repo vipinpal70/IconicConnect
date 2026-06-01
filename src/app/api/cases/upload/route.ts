@@ -45,11 +45,12 @@ export async function POST(req: NextRequest) {
       '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.flv', '.3gp', '.mpeg', '.mpg',
       '.pdf',
       '.zip',
+      '.dme',
       '.doc', '.docx',
       '.txt'
     ];
     if (!allowedExtensions.includes(ext)) {
-      return NextResponse.json({ error: 'Unsupported file type. Allowed: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DOC, DOCX, TXT' }, { status: 400 });
+      return NextResponse.json({ error: 'Unsupported file type. Allowed: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DME, DOC, DOCX, TXT' }, { status: 400 });
     }
 
     let clientId: string | undefined;

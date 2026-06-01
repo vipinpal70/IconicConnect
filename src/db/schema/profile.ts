@@ -61,6 +61,7 @@ export const profiles = pgTable('profiles', {
 
   // Subuser / team member: who created them
   createdBy: uuid('created_by'),               // parent user's id
+  password: varchar('password', { length: 255 }),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

@@ -34,6 +34,9 @@ type CaseRecord = {
   outputFile?: string | null
   previewFile?: string | null
   outputNote?: string | null
+  preferredTeethLibrary?: string | null
+  teethLibraryFileUrl?: string | null
+  teethLibraryFileName?: string | null
 }
 
 type CaseFile = {
@@ -312,6 +315,26 @@ export function CaseDetailView({
               />
               <DetailRow label="Model Required" value={modelRequired} />
               <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
+              <DetailRow
+                label="Preferred Teeth Library"
+                value={
+                  caseRecord.preferredTeethLibrary === "other" ? (
+                    caseRecord.teethLibraryFileUrl ? (
+                      <a
+                        href={caseRecord.teethLibraryFileUrl}
+                        download={caseRecord.teethLibraryFileName || "teeth_library"}
+                        className="text-primary hover:text-primary/70 underline underline-offset-2 font-medium"
+                      >
+                        {caseRecord.teethLibraryFileName || "Other Teeth Library (Download)"}
+                      </a>
+                    ) : (
+                      "Other Teeth Library"
+                    )
+                  ) : (
+                    "Default Teeth Library"
+                  )
+                }
+              />
               <DetailRow label="Designer" value={caseRecord.designerName || caseRecord.designerId || "—"} />
               <DetailRow label="QC" value={caseRecord.qcName || caseRecord.qcId || "—"} />
               <DetailRow label="Account Manager" value={caseRecord.accountManagerName || caseRecord.accountManagerId || "—"} />

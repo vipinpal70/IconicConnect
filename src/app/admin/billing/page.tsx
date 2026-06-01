@@ -86,13 +86,92 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<InvoiceOverview[]>([]);
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ClientProfile | { id: "all"; labName: "All Clients"; fullName: "All Clients" }>({ id: "all", labName: "All Clients", fullName: "All Clients" });
 
   const [generatedInvoice, setGeneratedInvoice] = useState<GeneratedInvoice | null>(null);
+
+  // Candidate Cases for Selection
+  const [candidateCases, setCandidateCases] = useState<DetailedInvoiceCase[]>([]);
+  const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set());
+  const [isFetchingCases, setIsFetchingCases] = useState(false);
+  const [rawFetchedData, setRawFetchedData] = useState<any | null>(null);
+
+  // Toggle selection for a single case
+  const handleToggleCase = (caseId: string) => {
+    setSelectedCaseIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(caseId)) {
+        next.delete(caseId);
+      } else {
+        next.add(caseId);
+      }
+      return next;
+    });
+  };
+
+  // Toggle "Select All"
+  const handleToggleSelectAll = () => {
+    if (selectedCaseIds.size === candidateCases.length) {
+      setSelectedCaseIds(new Set());
+    } else {
+      setSelectedCaseIds(new Set(candidateCases.map((c) => c.id)));
+    }
+  };
+
+  // Change selected client and clear all current billing/dates data
+  const handleSelectClient = (client: any) => {
+    setSelectedClient(client);
+    setStartDate("");
+    setEndDate("");
+    setCandidateCases([]);
+    setSelectedCaseIds(new Set());
+    setRawFetchedData(null);
+  };
+
+  // Automated fetching of eligible cases when client or dates change
+  useEffect(() => {
+    async function fetchCases() {
+      if (!startDate || !endDate) {
+        setCandidateCases([]);
+        setSelectedCaseIds(new Set());
+        setRawFetchedData(null);
+        return;
+      }
+      if (new Date(startDate) > new Date(endDate)) {
+        return;
+      }
+
+      setIsFetchingCases(true);
+      try {
+        const url = `/api/billing/clients/${selectedClient.id}?startDate=${startDate}&endDate=${endDate}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error("Failed to fetch cases");
+        }
+        const data = await res.json();
+        setRawFetchedData(data);
+
+        // Filter for approved and delivered status only
+        const eligible = (data.cases || []).filter(
+          (c: DetailedInvoiceCase) => c.status === "approved" || c.status === "delivered"
+        );
+
+        setCandidateCases(eligible);
+        setSelectedCaseIds(new Set(eligible.map((c: DetailedInvoiceCase) => c.id)));
+      } catch (err) {
+        console.error("Error fetching cases:", err);
+        toast.error("Failed to load eligible cases for selection.");
+      } finally {
+        setIsFetchingCases(false);
+      }
+    }
+
+    fetchCases();
+  }, [selectedClient.id, startDate, endDate]);
 
   // Editable Form States
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -105,7 +184,7 @@ export default function BillingPage() {
   const [clientEmail, setClientEmail] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [clientAddress, setClientAddress] = useState("");
-  
+
   const [invoiceCases, setInvoiceCases] = useState<DetailedInvoiceCase[]>([]);
   const [invoiceTotalPrice, setInvoiceTotalPrice] = useState(0);
 
@@ -152,10 +231,10 @@ export default function BillingPage() {
   const getCaseDetailsLabel = (caseItem: DetailedInvoiceCase) => {
     const data = caseItem.subTypeData || {};
     if (data._customDescription) return data._customDescription;
-    
+
     const category = caseItem.category;
     if (!category) return "—";
-    
+
     const normalized = category.toLowerCase().trim();
     if (normalized === "crown & bridge" || normalized === "crown & bridges") {
       return `Crown & Bridge: ${data.sub_category || data.subCategory || data.caseType || "Crown"}`;
@@ -193,52 +272,57 @@ export default function BillingPage() {
       invoiceData.client.postalCode,
       invoiceData.client.country
     ].filter(Boolean).join(", ");
-    
+
     setInvoiceNumber(invId);
     setInvoiceDate(new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }));
     setBillingPeriod(`${start} to ${end}`);
-    
+
     setClientLabName(labName);
     setClientContactName(invoiceData.client.fullName || "");
     setClientEmail(invoiceData.client.email || "");
     setClientPhone(invoiceData.client.phone || "");
     setClientAddress(addressString || "No address on file");
-    
+
     const casesWithDetails = invoiceData.cases.map((c: any) => ({
       ...c,
       description: getCaseDetailsLabel(c)
     }));
     setInvoiceCases(casesWithDetails);
     setInvoiceTotalPrice(invoiceData.totalPrice);
-    
+
     setGeneratedInvoice(invoiceData);
   };
 
-  // Generate Invoice Action
-  const handleGenerateInvoice = async () => {
-    if (!startDate || !endDate) {
-      toast.error("Please select both a start and end date.");
+  // Get Invoice Action (filters case lists strictly to user selected cases)
+  const handleGetInvoice = () => {
+    if (!rawFetchedData) {
+      toast.error("No case data loaded.");
       return;
     }
-    if (new Date(startDate) > new Date(endDate)) {
-      toast.error("Start date must be before end date.");
+    if (selectedCaseIds.size === 0) {
+      toast.error("Please select at least one case to bill.");
       return;
     }
-    
+
     setIsGenerating(true);
     try {
-      const url = `/api/billing/clients/${selectedClient.id}?startDate=${startDate}&endDate=${endDate}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error("Failed to generate invoice");
-      }
-      
-      const invoiceData = await res.json();
-      
-      // Initialize form variables
+      // Filter cases strictly to the selected ones
+      const selectedCases = rawFetchedData.cases.filter((c: DetailedInvoiceCase) =>
+        selectedCaseIds.has(c.id)
+      );
+
+      // Recalculate total price for selected cases
+      const totalPrice = selectedCases.reduce((sum: number, c: DetailedInvoiceCase) => sum + c.price, 0);
+
+      const filteredInvoiceData = {
+        ...rawFetchedData,
+        cases: selectedCases,
+        totalPrice
+      };
+
       const tempInvId = `INV-${Date.now().toString().slice(-6)}`;
-      initializeInvoiceForm(invoiceData, tempInvId, startDate, endDate);
-      
+      initializeInvoiceForm(filteredInvoiceData, tempInvId, startDate, endDate);
+
       toast.success("Invoice template loaded into editor");
     } catch (err) {
       console.error(err);
@@ -262,7 +346,7 @@ export default function BillingPage() {
       if (!res.ok) {
         throw new Error("Failed to fetch detailed summary");
       }
-      
+
       const data = await res.json();
       initializeInvoiceForm(data, invoice.id, start, end);
     } catch (err) {
@@ -282,7 +366,7 @@ export default function BillingPage() {
       price: numeric
     };
     setInvoiceCases(updated);
-    
+
     // Recalculate totalPrice
     const newTotal = updated.reduce((sum, c) => sum + c.price, 0);
     setInvoiceTotalPrice(newTotal);
@@ -300,10 +384,10 @@ export default function BillingPage() {
   // Save Invoice changes in-memory back to the main list
   const handleSaveInvoice = () => {
     toast.success(`Invoice ${invoiceNumber} saved successfully`);
-    
+
     // Update local overview invoices state in-memory
     const exists = invoices.some(inv => inv.id === invoiceNumber);
-    
+
     if (exists) {
       const updated = invoices.map(inv => {
         if (inv.id === invoiceNumber) {
@@ -329,7 +413,7 @@ export default function BillingPage() {
       };
       setInvoices([newInvoice, ...invoices]);
     }
-    
+
     setGeneratedInvoice(null);
   };
 
@@ -338,7 +422,7 @@ export default function BillingPage() {
     return (
       <AdminLayout>
         <div className="space-y-4 max-w-4xl mx-auto print:p-0">
-          
+
           {/* Action buttons (hidden in print) */}
           <div className="flex justify-between items-center print:hidden">
             <Button
@@ -374,7 +458,7 @@ export default function BillingPage() {
           {/* Standard Printable & Editable Invoice Form */}
           <Card id="printable-invoice-area" className="border-border/50 shadow-card bg-white text-gray-900 dark:bg-white dark:text-gray-900">
             <CardContent className="p-8 space-y-6">
-              
+
               {/* Header */}
               <div className="flex justify-between items-start border-b border-gray-200 pb-6">
                 <div>
@@ -570,7 +654,7 @@ export default function BillingPage() {
   return (
     <AdminLayout>
       <div className="space-y-4 animate-fade-in">
-        
+
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -588,7 +672,7 @@ export default function BillingPage() {
             <DropdownMenuContent align="end" className="min-w-[180px]">
               <DropdownMenuItem
                 className="text-xs"
-                onSelect={() => setSelectedClient({ id: "all", labName: "All Clients", fullName: "All Clients" })}
+                onSelect={() => handleSelectClient({ id: "all", labName: "All Clients", fullName: "All Clients" })}
               >
                 All Clients
               </DropdownMenuItem>
@@ -596,7 +680,7 @@ export default function BillingPage() {
                 <DropdownMenuItem
                   key={client.id}
                   className="text-xs"
-                  onSelect={() => setSelectedClient(client)}
+                  onSelect={() => handleSelectClient(client)}
                 >
                   {client.labName || client.fullName || client.email}
                 </DropdownMenuItem>
@@ -688,17 +772,108 @@ export default function BillingPage() {
                   className="h-8 text-xs"
                 />
               </div>
-              <Button
-                onClick={handleGenerateInvoice}
-                disabled={isGenerating || loading}
-                className="h-8 text-xs px-4 shrink-0"
-              >
-                <Receipt className="h-3.5 w-3.5 mr-1.5" />
-                {isGenerating ? "Generating..." : "Generate Invoice"}
-              </Button>
             </div>
           </CardContent>
         </Card>
+
+        {/* Select Cases to Invoice Card */}
+        {startDate && endDate && (
+          <Card className="shadow-card border-border/50 animate-fade-in">
+            <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Select Cases to Invoice
+                </CardTitle>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Select the approved or delivered cases to be added to the invoice
+                </p>
+              </div>
+              {candidateCases.length > 0 && (
+                <div className="text-[11px] font-medium text-muted-foreground">
+                  {selectedCaseIds.size} of {candidateCases.length} cases selected
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {isFetchingCases ? (
+                <div className="py-8 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  Loading eligible cases...
+                </div>
+              ) : candidateCases.length === 0 ? (
+                <div className="py-8 text-center text-xs text-muted-foreground">
+                  No approved or delivered cases found for {selectedClient.labName || selectedClient.fullName} in this period.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="border border-border rounded-md overflow-hidden max-h-[300px] overflow-y-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="bg-muted/50 border-b border-border text-muted-foreground font-semibold uppercase tracking-wider text-[9px]">
+                          <th className="p-3 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedCaseIds.size === candidateCases.length}
+                              onChange={handleToggleSelectAll}
+                              className="rounded border-input text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
+                            />
+                          </th>
+                          <th className="p-3">Case Number</th>
+                          <th className="p-3">Description</th>
+                          <th className="p-3">Date Created</th>
+                          <th className="p-3">Status</th>
+                          <th className="p-3 text-right">Price</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border text-foreground">
+                        {candidateCases.map((c) => (
+                          <tr key={c.id} className="hover:bg-muted/20 transition-colors">
+                            <td className="p-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedCaseIds.has(c.id)}
+                                onChange={() => handleToggleCase(c.id)}
+                                className="rounded border-input text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-3 font-medium">{c.caseNumber || c.id.slice(0, 8)}</td>
+                            <td className="p-3">{getCaseDetailsLabel(c)}</td>
+                            <td className="p-3">{new Date(c.createdAt).toLocaleDateString()}</td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold scale-95 origin-left inline-flex capitalize ${c.status === "delivered"
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                }`}>
+                                {c.status.replace("_", " ")}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right font-medium">${c.price.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-border">
+                    <div className="text-[11px] text-muted-foreground font-medium">
+                      Selected Total: <span className="font-semibold text-foreground">${candidateCases
+                        .filter(c => selectedCaseIds.has(c.id))
+                        .reduce((sum, c) => sum + c.price, 0)
+                        .toFixed(2)}</span>
+                    </div>
+                    <Button
+                      onClick={handleGetInvoice}
+                      disabled={isGenerating || selectedCaseIds.size === 0}
+                      className="h-8 text-xs px-4"
+                    >
+                      <Receipt className="h-3.5 w-3.5 mr-1.5" />
+                      {isGenerating ? "Getting..." : "Get Invoice"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Invoices List */}
         <Card className="shadow-card border-border/50">
@@ -736,10 +911,10 @@ export default function BillingPage() {
                           </span>
                         </td>
                         <td className="px-3.5 py-2 flex gap-1 justify-end items-center">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-7 w-7" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
                             title="View summary"
                             onClick={() => handleViewInvoiceSummary(inv)}
                           >

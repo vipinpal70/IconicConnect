@@ -139,9 +139,8 @@ function getHomeRoute(role: string | undefined, createdBy: string | null | undef
     case 'admin':
       return '/admin/dashboard'
     case 'client':
-      return '/client/dashboard'
     case 'subuser':
-      return `/client/${createdBy}/subuser`
+      return '/client/dashboard'
     case 'qc':
     case 'designer':
     case 'account_manager':
@@ -192,7 +191,15 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     case 'client':
       return pathname.startsWith('/client') || pathname.startsWith('/api/client') || pathname.startsWith('/api/support') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers') || pathname.startsWith('/client/preferences') || pathname.startsWith('/api/preference-forms')
     case 'subuser':
-      return pathname.startsWith(`/client/${createdBy}/subuser`) || pathname.startsWith(`/api/client/${createdBy}/subuser`) || pathname.startsWith('/api/support') || pathname.startsWith('/api/tutorials') || pathname.startsWith('/api/offers') || pathname.startsWith('/client/preferences') || pathname.startsWith('/api/preference-forms')
+      return (
+        (pathname.startsWith('/client') && !pathname.startsWith('/client/billing')) ||
+        (pathname.startsWith('/api/client') && !pathname.startsWith('/api/client/billing')) ||
+        pathname.startsWith('/api/support') ||
+        pathname.startsWith('/api/tutorials') ||
+        pathname.startsWith('/api/offers') ||
+        pathname.startsWith('/client/preferences') ||
+        pathname.startsWith('/api/preference-forms')
+      )
     case 'qc':
     case 'designer':
     case 'account_manager':

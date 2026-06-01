@@ -51,6 +51,7 @@ const navItems = [
 type Profile = {
   full_name: string;
   lab_name: string;
+  role: string;
 }
 
 async function getProfileData(): Promise<Profile | null> {
@@ -112,22 +113,29 @@ export function ClientSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <Link
-                      href={item.url}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg text-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
-                        pathname === item.url && "bg-accent text-accent-foreground font-medium"
-                      )}
-                    >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span className="text-xs">{item.title}</span>}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {navItems
+                .filter((item) => {
+                  if (profile?.role === "subuser") {
+                    return item.title !== "Billing" && item.title !== "Preference Forms";
+                  }
+                  return true;
+                })
+                .map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <Link
+                        href={item.url}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2 rounded-lg text-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+                          pathname === item.url && "bg-accent text-accent-foreground font-medium"
+                        )}
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!collapsed && <span className="text-xs">{item.title}</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

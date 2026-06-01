@@ -285,7 +285,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div className="space-y-2"><Label>Email</Label><Input type="email" value={userDraft.email ?? ""} onChange={(e) => setUserDraft({ ...userDraft, email: e.target.value })} /></div>
-                  <div className="space-y-2"><Label>Temporary Password <span className="text-muted-foreground font-normal">(optional)</span></Label><Input value={userDraft.password ?? ""} onChange={(e) => setUserDraft({ ...userDraft, password: e.target.value })} /></div>
+                  <div className="space-y-2"><Label>Password</Label><Input type="password" minLength={6} placeholder="Minimum 6 characters" value={userDraft.password ?? ""} onChange={(e) => setUserDraft({ ...userDraft, password: e.target.value })} /></div>
                 </div>
                 <DialogFooter className="mt-6"><Button onClick={addUser} className="w-full sm:w-auto">Create user</Button></DialogFooter>
               </DialogContent>

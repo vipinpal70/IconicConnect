@@ -30,6 +30,9 @@ const caseListSelection = {
   updatedAt: cases.updatedAt,
   outputFile: cases.outputFile,
   previewFile: cases.previewFile,
+  preferredTeethLibrary: cases.preferredTeethLibrary,
+  teethLibraryFileUrl: cases.teethLibraryFileUrl,
+  teethLibraryFileName: cases.teethLibraryFileName,
 };
 
 function getErrorMessage(error: unknown) {
@@ -111,6 +114,9 @@ export async function POST(req: NextRequest) {
         dueDate: caseData.dueDate ? new Date(caseData.dueDate) : null,
         category: caseData.category,
         subTypeData: caseData.subTypeData,
+        preferredTeethLibrary: caseData.preferredTeethLibrary || 'default',
+        teethLibraryFileUrl: caseData.teethLibraryFileUrl || null,
+        teethLibraryFileName: caseData.teethLibraryFileName || null,
       };
 
       const insertedCase = await db.insert(cases).values(newCase).returning().then(res => res[0]);

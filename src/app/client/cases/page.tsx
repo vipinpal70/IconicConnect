@@ -11,7 +11,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileBox, RefreshCw, MessageSquare } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -102,6 +102,22 @@ const validateFile = (file: File): { isValid: boolean; error?: string } => {
 
   if (!allowedExtensions.includes(ext)) {
     return { isValid: false, error: `File type "${ext}" is not supported. Allowed formats: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DOC, DOCX, TXT` };
+  }
+
+  return { isValid: true };
+};
+
+const validateTeethLibraryFile = (file: File): { isValid: boolean; error?: string } => {
+  const maxLimit = 2 * 1024 * 1024 * 1024; // 2GB
+  if (file.size > maxLimit) {
+    return { isValid: false, error: `Teeth library file size exceeds the 2GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` };
+  }
+
+  const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+  const allowedExtensions = ['.dme', '.zip'];
+
+  if (!allowedExtensions.includes(ext)) {
+    return { isValid: false, error: `File type "${ext}" is not supported. Only .dme or .zip files are allowed for custom teeth libraries.` };
   }
 
   return { isValid: true };
@@ -217,6 +233,17 @@ export default function CasesPage() {
   const [generatedCaseId, setGeneratedCaseId] = useState<string>("");
   const [labName, setLabName] = useState<string>("Client");
 
+  const [preferredTeethLibrary, setPreferredTeethLibrary] = useState<string>("default");
+  const [isLibraryUploading, setIsLibraryUploading] = useState(false);
+  const [libraryUploadProgress, setLibraryUploadProgress] = useState(0);
+  const [uploadedLibraryFile, setUploadedLibraryFile] = useState<{
+    fileUrl: string;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+  } | null>(null);
+  const libraryFileRef = useRef<HTMLInputElement>(null);
+
   // Refs for replacement triggering
   const singleFileRef = useRef<HTMLInputElement>(null);
   const bulkRowFileRef = useRef<HTMLInputElement>(null);
@@ -279,6 +306,35 @@ export default function CasesPage() {
         console.error('Immediate upload error:', err);
         setIsUploading(false);
         setUploadProgress(0);
+      }
+    );
+  };
+
+  const handleLibraryFileSelect = async (file: File) => {
+    const check = validateTeethLibraryFile(file);
+    if (!check.isValid) {
+      window.alert(check.error);
+      return;
+    }
+
+    setIsLibraryUploading(true);
+    setLibraryUploadProgress(0);
+
+    uploadFileWithXHR(
+      file,
+      labName,
+      (progress) => {
+        setLibraryUploadProgress(progress);
+      },
+      (res) => {
+        setLibraryUploadProgress(100);
+        setUploadedLibraryFile(res);
+        setTimeout(() => setIsLibraryUploading(false), 500);
+      },
+      (err) => {
+        console.error('Library upload error:', err);
+        setIsLibraryUploading(false);
+        setLibraryUploadProgress(0);
       }
     );
   };
@@ -396,6 +452,11 @@ export default function CasesPage() {
       return;
     }
 
+    if (preferredTeethLibrary === "other" && !uploadedLibraryFile) {
+      toast.error("Please upload your custom teeth library file.");
+      return;
+    }
+
     const formData = new FormData();
     const caseData = {
       category,
@@ -408,6 +469,9 @@ export default function CasesPage() {
       },
       caseNumber: generatedCaseId,
       uploadedFile,
+      preferredTeethLibrary,
+      teethLibraryFileUrl: uploadedLibraryFile?.fileUrl || null,
+      teethLibraryFileName: uploadedLibraryFile?.fileName || null,
     };
 
     formData.append('cases', JSON.stringify(caseData));
@@ -429,6 +493,8 @@ export default function CasesPage() {
         setSingleFile(null);
         setUploadedFileUrl(null);
         setUploadedFile(null);
+        setPreferredTeethLibrary("default");
+        setUploadedLibraryFile(null);
         // Regenerate for next time
         setGeneratedCaseId(generateCaseId("Crown & Bridges"));
         fetchCases();
@@ -565,7 +631,7 @@ export default function CasesPage() {
               <DialogTrigger asChild>
                 <Button size="sm" className="h-8 text-xs"><Plus className="h-3.5 w-3.5 mr-1.5" />Add New Case</Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="sm:max-w-3xl" style={{ maxHeight: "85vh", overflowY: "auto" }}>
                 <DialogHeader>
                   <DialogTitle>Submit New Case</DialogTitle>
                 </DialogHeader>
@@ -602,7 +668,7 @@ export default function CasesPage() {
                         <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
-                              <FileBox className="h-5 w-5" />
+                              <FileArchive className="h-5 w-5" />
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
@@ -720,6 +786,111 @@ export default function CasesPage() {
                     </div>
 
                     <div className="space-y-2">
+                      <Label>Preferred Teeth Library</Label>
+                      <Select value={preferredTeethLibrary} onValueChange={setPreferredTeethLibrary}>
+                        <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900">
+                          <SelectValue placeholder="Select Preferred Teeth Library" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-emerald-800 text-white">
+                          <SelectItem value="default" className="focus:bg-emerald-700 focus:text-white">Default Teeth Library</SelectItem>
+                          <SelectItem value="other" className="focus:bg-emerald-700 focus:text-white">Other Teeth Library</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {preferredTeethLibrary === "other" && (
+                      <div className="space-y-2">
+                        <Label>Teeth Library File (.dme or .zip, max 2GB)</Label>
+                        <input
+                          ref={libraryFileRef}
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleLibraryFileSelect(file);
+                          }}
+                        />
+                        {isLibraryUploading ? (
+                          <div className="border-2 border-dashed rounded-lg p-6 text-center border-emerald-500 bg-emerald-50/10">
+                            <div className="space-y-2">
+                              <Upload className="h-6 w-6 mx-auto text-emerald-600 animate-pulse" />
+                              <p className="text-sm font-medium text-foreground">Uploading Teeth Library... {libraryUploadProgress}%</p>
+                              <div className="w-full bg-muted rounded-full h-1.5 max-w-xs mx-auto">
+                                <div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${libraryUploadProgress}%` }}></div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : uploadedLibraryFile ? (
+                          <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
+                                <FileArchive className="h-5 w-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+                                  {uploadedLibraryFile.fileName}
+                                </p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <p className="text-xs text-muted-foreground">
+                                    ({(uploadedLibraryFile.fileSize / 1024 / 1024).toFixed(2)} MB)
+                                  </p>
+                                  <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
+                                    ✓ Uploaded
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  libraryFileRef.current?.click();
+                                }}
+                                className="h-9 text-xs flex items-center gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-600 hover:text-white bg-white font-medium"
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" /> Replace
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  await handleDeleteUploadedFile(uploadedLibraryFile.fileName);
+                                  setUploadedLibraryFile(null);
+                                }}
+                                className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleLibraryFileSelect(file);
+                              }}
+                            />
+                            <div>
+                              <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+                              <p className="text-sm font-medium text-foreground">Click to upload Custom Teeth Library</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">ZIP or DME (Max 2GB)</p>
+                            </div>
+                          </label>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
                       <Label>Additional Notes</Label>
                       <Textarea placeholder="Special instructions, shade reference, occlusion notes…" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
@@ -766,7 +937,7 @@ export default function CasesPage() {
                               <CardContent className="p-4 space-y-3">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                                    <FileBox className="h-4 w-4 text-emerald-600 shrink-0" />
+                                    <FileArchive className="h-4 w-4 text-emerald-600 shrink-0" />
                                     <p className="text-sm font-medium text-foreground truncate">{row.fileName}</p>
                                     {row.uploadedUrl && <span className="text-emerald-600 text-xs flex items-center font-semibold ml-1">✓ Uploaded</span>}
                                     <Button

@@ -65,6 +65,7 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [priceList, setPriceList] = useState<PriceListRow[]>([])
+  const [users, setUsers] = useState<LabUser[]>([]);
 
   // fetch profile data from the api route and set it to the profile state
   useEffect(() => {
@@ -98,6 +99,13 @@ export default function ProfilePage() {
             );
           }
         }
+
+        // Fetch actual sub-users
+        const subusersRes = await fetch("/api/client/subusers");
+        if (subusersRes.ok) {
+          const subusersJson = await subusersRes.json();
+          setUsers(subusersJson.data || []);
+        }
       } catch (err) {
         console.error("Error fetching profile:", err);
       }
@@ -118,37 +126,62 @@ export default function ProfilePage() {
   };
 
   // Users
-  const [users, setUsers] = useState<LabUser[]>(() => getUsers(lab.id));
   const [showPwd, setShowPwd] = useState<Record<string, boolean>>({});
   const [userOpen, setUserOpen] = useState(false);
   const [userDraft, setUserDraft] = useState<Partial<LabUser>>({ role: "Coordinator" });
 
-  const addUser = () => {
+  const addUser = async () => {
     if (!userDraft.name || !userDraft.username || !userDraft.email) {
       return;
     }
-    const u: LabUser = {
-      id: `U${Date.now()}`,
-      name: userDraft.name!,
-      username: userDraft.username!,
-      email: userDraft.email!,
-      role: (userDraft.role as LabUser["role"]) ?? "Coordinator",
-      password: userDraft.password || `Welcome@${Math.floor(1000 + Math.random() * 9000)}`,
-    };
-    const next = [...users, u];
-    setUsers(next);
-    if (profile?.id) {
-      saveUsers(profile.id, next);
+
+    try {
+      const response = await fetch("/api/client/subusers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: userDraft.name,
+          username: userDraft.username,
+          email: userDraft.email,
+          role: userDraft.role || "Coordinator",
+          password: userDraft.password,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create user");
+      }
+
+      const createdData = await response.json();
+      const u = createdData.data;
+
+      setUsers((prev) => [...prev, u]);
+      setUserDraft({ role: "Coordinator" });
+      setUserOpen(false);
+    } catch (err: any) {
+      console.error("Error creating user:", err);
+      alert(err.message || "Failed to create user");
     }
-    setUserDraft({ role: "Coordinator" });
-    setUserOpen(false);
   };
 
-  const removeUser = (id: string) => {
-    const next = users.filter((u) => u.id !== id);
-    setUsers(next);
-    if (profile?.id) {
-      saveUsers(profile.id, next);
+  const removeUser = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this user?")) return;
+
+    try {
+      const response = await fetch(`/api/client/subusers/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete user");
+      }
+
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+    } catch (err: any) {
+      console.error("Error removing user:", err);
+      alert(err.message || "Failed to remove user");
     }
   };
 
@@ -239,7 +272,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div className="space-y-2"><Label>Email</Label><Input type="email" value={userDraft.email ?? ""} onChange={(e) => setUserDraft({ ...userDraft, email: e.target.value })} /></div>
-                  <div className="space-y-2"><Label>Temporary Password <span className="text-muted-foreground font-normal">(optional)</span></Label><Input value={userDraft.password ?? ""} onChange={(e) => setUserDraft({ ...userDraft, password: e.target.value })} /></div>
+                  <div className="space-y-2"><Label>Password</Label><Input type="password" minLength={6} placeholder="Minimum 6 characters" value={userDraft.password ?? ""} onChange={(e) => setUserDraft({ ...userDraft, password: e.target.value })} /></div>
                 </div>
                 <DialogFooter className="mt-6"><Button onClick={addUser} className="w-full sm:w-auto">Create user</Button></DialogFooter>
               </DialogContent>

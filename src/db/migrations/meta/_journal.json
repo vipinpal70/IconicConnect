@@ -169,6 +169,13 @@
       "when": 1780048672247,
       "tag": "0023_add_sub_category_to_client_price_list",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780290323360,
+      "tag": "0024_nostalgic_gunslinger",
+      "breakpoints": true
     }
   ]
 }
