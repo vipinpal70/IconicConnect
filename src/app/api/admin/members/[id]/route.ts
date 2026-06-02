@@ -123,28 +123,16 @@ export async function PATCH(
     // Check for approval (status changed from pending/inactive to active)
     if (isAdmin && status === 'active' && existingProfile?.status !== 'active') {
       try {
-        // 1. Queue Email
-        const { queueEmail } = await import('@/src/lib/queue/jobs');
-        await queueEmail({
-          to: existingProfile.email,
-          subject: 'Your IconicConnect Account has been Approved!',
-          type: 'approval',
-          html: `
-            <h1>Account Approved!</h1>
-            <p>Hello ${existingProfile.fullName || existingProfile.email},</p>
-            <p>Great news! Your IconicConnect account has been approved and is now active.</p>
-            <p>You can now log in and access all features of the portal.</p>
-            <p><strong>Login URL:</strong> http://localhost:3000/auth/sign-in</p>
-          `
-        });
-
-        // 2. Create In-app Notification
-        const { notifications } = await import('@/src/db/schema/notification');
-        await db.insert(notifications).values({
-          userId: id,
+        const { NotificationService } = await import('@/src/lib/notifications/notification-service');
+        const { NotificationType } = await import('@/src/lib/notifications/notification-events');
+        await NotificationService.dispatch({
+          type: NotificationType.WELCOME,
+          actorUserId: user.id,
+          targetUserId: id,
           title: 'Account Approved',
-          message: 'Your account has been approved. Welcome to IconicConnect!',
-          type: 'approval',
+          message: `Hello ${existingProfile.fullName || existingProfile.email}, your IconicConnect account has been approved and is now active.`,
+          link: '/dashboard',
+          metadata: { role: existingProfile.role },
         });
       } catch (queueError) {
         console.error('Failed to process approval notifications:', queueError);

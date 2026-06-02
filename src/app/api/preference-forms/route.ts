@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { desc, eq } from "drizzle-orm"
 import { db } from "@/src/db"
-import { profiles } from "@/src/db/schema/profile"
+import { profiles, subUsers } from "@/src/db/schema/profile"
 import { preferenceForms } from "@/src/db/schema/preference-form"
 import { createClient } from "@/src/lib/supabase/server"
 import { clonePreferenceFormPayload, type PreferenceFormPayload } from "@/src/lib/preference-forms"
+import { logActivity } from "@/src/lib/activity-log"
 
 async function getRequestContext(clientId?: string | null) {
   const supabase = await createClient()
@@ -21,13 +22,26 @@ async function getRequestContext(clientId?: string | null) {
   }
 
   const isAdmin = profile.role === "admin"
-  const resolvedClientId = clientId || profile.id
 
+  if (profile.role === "subuser") {
+    const [subUserRecord] = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1)
+    if (!subUserRecord) {
+      return { error: NextResponse.json({ error: "Sub-user parent client not found" }, { status: 400 }) }
+    }
+    const parentClientId = subUserRecord.clientId
+    const resolvedClientId = clientId || parentClientId
+    if (!isAdmin && resolvedClientId !== parentClientId) {
+      return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+    }
+    return { profile, isAdmin, resolvedClientId, ownerClientId: parentClientId }
+  }
+
+  const resolvedClientId = clientId || profile.id
   if (!isAdmin && resolvedClientId !== profile.id) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
   }
 
-  return { profile, isAdmin, resolvedClientId }
+  return { profile, isAdmin, resolvedClientId, ownerClientId: profile.id }
 }
 
 export async function GET(req: NextRequest) {
@@ -79,13 +93,20 @@ export async function POST(req: NextRequest) {
       .insert(preferenceForms)
       .values({
         id: crypto.randomUUID(),
-        clientId: context.profile.id,
+        clientId: context.ownerClientId,
         formName,
         payload,
+        createdBy: context.profile.id,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .returning()
+
+    await logActivity({
+      actor: context.profile,
+      action: 'preference_form.created',
+      details: { formId: inserted[0].id, formName, clientId: context.ownerClientId },
+    }).catch((err) => console.error('[preference_form.created logActivity]', err))
 
     return NextResponse.json({ data: inserted[0] }, { status: 201 })
   } catch (error) {

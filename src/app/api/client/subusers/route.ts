@@ -5,6 +5,7 @@ import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 import { SubUserRepository } from '@/src/lib/repositories/subuser-repository'
 import { SubUserService } from '@/src/lib/services/subuser-service'
+import { logActivity } from '@/src/lib/activity-log'
 
 // Initialize repo and service
 const repo = new SubUserRepository()
@@ -94,6 +95,12 @@ export async function POST(req: NextRequest) {
       role: newSubUser.title || 'Coordinator',
       password: newSubUser.password || '••••••••',
     }
+
+    await logActivity({
+      actor: profile,
+      action: 'subuser.created',
+      details: { subuserId: newSubUser.id, email: newSubUser.email, fullName: newSubUser.fullName, role },
+    }).catch((err) => console.error('[subuser.created logActivity]', err))
 
     return NextResponse.json({ data: formatted }, { status: 201 })
   } catch (error) {

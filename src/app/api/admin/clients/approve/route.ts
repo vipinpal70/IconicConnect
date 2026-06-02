@@ -3,6 +3,9 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 import { createClient } from '@/src/lib/supabase/server'
+import { NotificationService } from '@/src/lib/notifications/notification-service'
+import { NotificationType } from '@/src/lib/notifications/notification-events'
+import { logActivity } from '@/src/lib/activity-log'
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,34 +38,26 @@ export async function POST(req: NextRequest) {
       .set({ status: 'active', updatedAt: new Date() })
       .where(eq(profiles.id, clientId))
 
-    // Queue Notifications
+    // Notify client via preference-aware service
     try {
-      // 1. Email Notification
-      const { queueEmail } = await import('@/src/lib/queue/jobs');
-      await queueEmail({
-        to: clientProfile.email,
-        subject: 'Your IconicConnect Account has been Approved!',
-        type: 'approval',
-        html: `
-          <h1>Account Approved!</h1>
-          <p>Hello ${clientProfile.fullName || clientProfile.email},</p>
-          <p>Great news! Your IconicConnect account has been approved and is now active.</p>
-          <p>You can now log in and access all features of the portal.</p>
-          <p><strong>Login URL:</strong> http://localhost:3000/auth/sign-in</p>
-        `
-      });
-
-      // 2. In-app Notification
-      const { notifications } = await import('@/src/db/schema/notification');
-      await db.insert(notifications).values({
-        userId: clientId,
+      await NotificationService.dispatch({
+        type: NotificationType.WELCOME,
+        actorUserId: user.id,
+        targetUserId: clientId,
         title: 'Account Approved',
-        message: 'Your account has been approved. Welcome to IconicConnect!',
-        type: 'approval',
+        message: `Hello ${clientProfile.fullName || clientProfile.email}, your IconicConnect account has been approved and is now active.`,
+        link: '/client/dashboard',
+        metadata: { clientId },
       });
     } catch (notifyError) {
       console.error('Failed to send approval notifications:', notifyError);
     }
+
+    await logActivity({
+      actor: adminProfile,
+      action: 'client.approved',
+      details: { clientId, email: clientProfile.email, fullName: clientProfile.fullName },
+    }).catch((err) => console.error('[client.approved logActivity]', err))
 
     return NextResponse.json({ success: true })
   } catch (err) {

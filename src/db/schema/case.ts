@@ -25,6 +25,7 @@ export const caseStatusEnum = pgEnum('case_status', [
   'delivered',               // 11. Delivered
   'cancelled',               // 12. Cancelled
   'change_requested',        // 13. Change requested
+  'client_reject',           // 14. Client rejected case
 ])
 
 export const CASE_LIFECYCLE_STEPS = [
@@ -53,6 +54,7 @@ export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
   delivered: 'Completed',
   cancelled: 'Completed',
   change_requested: 'Pending Client Approval',
+  client_reject: 'Completed',
 }
 
 export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
@@ -69,6 +71,7 @@ export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[numbe
   delivered: 'Completed',
   cancelled: 'Cancelled',
   change_requested: 'Change Requested',
+  client_reject: 'Rejected',
 }
 
 export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
@@ -85,6 +88,7 @@ export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[num
   delivered: 'Delivered',
   cancelled: 'Cancelled',
   change_requested: 'Change Requested',
+  client_reject: 'Rejected',
 }
 
 /**
@@ -113,6 +117,7 @@ export const cases = pgTable('cases', {
   // Ownership
   clientId: uuid('client_id').references(() => profiles.id).notNull(),
   subuserId: uuid('subuser_id').references(() => profiles.id),
+  createdBy: varchar('created_by', { length: 255 }),
 
   caseNumber: varchar('case_number', { length: 50 }).unique(),
 
@@ -126,6 +131,7 @@ export const cases = pgTable('cases', {
   cancelReason: text('cancel_reason'),
   feedbackReason: text('feedback_reason'),
   rejectReason: text('reject_reason'),
+  clientMassage: text('client_massage'),
   approvalChecklist: jsonb('approval_checklist').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
 
   // Assignments (Operational Roles)

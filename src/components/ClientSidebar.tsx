@@ -116,7 +116,7 @@ export function ClientSidebar() {
               {navItems
                 .filter((item) => {
                   if (profile?.role === "subuser") {
-                    return item.title !== "Billing" && item.title !== "Preference Forms";
+                    return item.title !== "Billing";
                   }
                   return true;
                 })

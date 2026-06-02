@@ -11,6 +11,7 @@ export const preferenceForms = pgTable(
       .notNull(),
     formName: varchar("form_name", { length: 150 }).notNull(),
     payload: jsonb("payload").$type<PreferenceFormPayload>().notNull(),
+    createdBy: uuid("created_by").references(() => profiles.id),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

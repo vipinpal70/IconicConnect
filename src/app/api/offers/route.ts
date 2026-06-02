@@ -7,6 +7,7 @@ import { createClient } from "@/src/lib/supabase/server"
 import { notifyOfferCreated } from "@/src/lib/notifications/notification-dispatcher"
 import { isValidRoleForType } from "@/src/lib/auth/role"
 import { isOfferCategory } from "@/src/lib/offers"
+import { logActivity } from "@/src/lib/activity-log"
 
 type OfferInput = {
   id?: string
@@ -123,6 +124,12 @@ async function updateOffer(req: NextRequest) {
     .where(eq(offers.id, id))
     .returning()
 
+  await logActivity({
+    actor: userContext.profile,
+    action: 'offer.updated',
+    details: { offerId: id, title, brand, category, sponsored, active },
+  }).catch((err) => console.error('[offer.updated logActivity]', err))
+
   return NextResponse.json({ data: updated })
 }
 
@@ -209,6 +216,7 @@ export async function POST(req: NextRequest) {
         active,
         targetClients,
         targetLocations,
+        createdBy: userContext.user.id,
       })
       .returning()
 
@@ -220,6 +228,12 @@ export async function POST(req: NextRequest) {
       discount: inserted.discount,
       category: inserted.category,
     })
+
+    await logActivity({
+      actor: userContext.profile,
+      action: 'offer.created',
+      details: { offerId: inserted.id, title: inserted.title, brand: inserted.brand, category: inserted.category },
+    }).catch((err) => console.error('[offer.created logActivity]', err))
 
     return NextResponse.json({ data: inserted }, { status: 201 })
   } catch (error) {
@@ -256,6 +270,12 @@ export async function DELETE(req: NextRequest) {
     if (!deleted.length) {
       return NextResponse.json({ error: "Offer not found" }, { status: 404 })
     }
+
+    await logActivity({
+      actor: userContext.profile,
+      action: 'offer.deleted',
+      details: { offerId: id },
+    }).catch((err) => console.error('[offer.deleted logActivity]', err))
 
     return NextResponse.json({ data: deleted[0] })
   } catch (error) {

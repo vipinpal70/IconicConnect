@@ -27,6 +27,9 @@ type CaseUpdateData = {
   | 'client_feedback'
   | 'approved'
   | 'delivered'
+  | 'cancelled'
+  | 'change_requested'
+  | 'client_reject'
   designerId?: string | null
   qcId?: string | null
   accountManagerId?: string | null
@@ -34,6 +37,7 @@ type CaseUpdateData = {
   cancelReason?: string | null
   feedbackReason?: string | null
   rejectReason?: string | null
+  clientMassage?: string | null
   outputFile?: string | null
   previewFile?: string | null
   outputNote?: string | null
@@ -144,6 +148,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
+    if (caseRecord.status === 'client_reject') {
+      return NextResponse.json({ error: 'Forbidden: This case has been rejected and cannot be modified.' }, { status: 400 });
+    }
+
     const body = await req.json();
     const updateData: CaseUpdateData = {};
 
@@ -199,6 +207,12 @@ export async function PUT(
           if (current !== 'submitted_to_client') {
             return NextResponse.json({ error: 'Forbidden: Cannot request changes unless the case is in Client Review status' }, { status: 400 });
           }
+        }
+        // 6. Reject case during Client Review
+        else if (target === 'client_reject') {
+          if (current !== 'submitted_to_client') {
+            return NextResponse.json({ error: 'Forbidden: Cannot reject case unless it is in Client Review status' }, { status: 400 });
+          }
         } else {
           return NextResponse.json({ error: `Forbidden: Client/Subusers cannot transition status from ${current} to ${target}` }, { status: 403 });
         }
@@ -218,6 +232,10 @@ export async function PUT(
 
         const nextCancelReason = appendCaseReason(caseRecord.cancelReason, body.cancelReason);
         if (nextCancelReason !== undefined) updateData.cancelReason = nextCancelReason;
+      }
+
+      if (body.clientMassage !== undefined) {
+        updateData.clientMassage = body.clientMassage;
       }
     } else if (isValidRoleForType('admin_portal', profile.role)) {
       if (profile.role === 'admin') {
@@ -243,6 +261,8 @@ export async function PUT(
 
         const nextRejectReason = appendCaseReason(caseRecord.rejectReason, body.rejectReason);
         if (nextRejectReason !== undefined) updateData.rejectReason = nextRejectReason;
+
+        if (body.clientMassage !== undefined) updateData.clientMassage = body.clientMassage;
       } else if (profile.role === 'qc') {
         const current = caseRecord.status;
         const target = body.status;
@@ -314,6 +334,7 @@ export async function PUT(
         if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
         if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
         if (body.outputNote !== undefined) updateData.outputNote = body.outputNote;
+        if (body.clientMassage !== undefined) updateData.clientMassage = body.clientMassage;
       } else if (profile.role === 'designer') {
         const current = caseRecord.status;
         const target = body.status;
@@ -494,6 +515,7 @@ export async function PUT(
           cancelReason: caseRecord.cancelReason,
           feedbackReason: caseRecord.feedbackReason,
           rejectReason: caseRecord.rejectReason,
+          clientMassage: caseRecord.clientMassage,
         },
         changes: {
           caseNumber: updateData.caseNumber,
@@ -508,6 +530,7 @@ export async function PUT(
           cancelReason: updateData.cancelReason,
           feedbackReason: updateData.feedbackReason,
           rejectReason: updateData.rejectReason,
+          clientMassage: updateData.clientMassage,
         },
       },
     });

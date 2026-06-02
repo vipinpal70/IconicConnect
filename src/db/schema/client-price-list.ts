@@ -13,6 +13,7 @@ export const clientPriceListItems = pgTable(
     price: integer('price').notNull(),
     notes: text('notes'),
     sortOrder: integer('sort_order').default(0).notNull(),
+    createdBy: uuid('created_by').references(() => profiles.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

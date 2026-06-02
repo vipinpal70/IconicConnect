@@ -241,7 +241,10 @@ export default function BillingPage() {
     }
     if (normalized === "implant" || normalized === "implants") {
       const subCat = data.sub_category || data.subCategory || data.caseType1 || "Ti-Base";
-      const type = data.type || data.caseType2 || "Crown";
+      const type = data.type || data.caseType2 || "None";
+      if (!type || type.toLowerCase() === "none") {
+        return `Implant: ${subCat}`;
+      }
       return `Implant: ${subCat} (${type})`;
     }
     if (normalized === "appliances" || normalized === "appliance") {

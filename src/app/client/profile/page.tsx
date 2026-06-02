@@ -207,14 +207,16 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <Button
-              size="sm"
-              className="bg-primary text-primary-foreground hover:bg-[#238c67] mb-2 h-8 text-xs font-semibold"
-              onClick={() => router.push("/client/preferences")}
-            >
-              <Settings className="h-3.5 w-3.5 mr-1" />
-              Preferences
-            </Button>
+            {profile?.role !== "subuser" && (
+              <Button
+                size="sm"
+                className="bg-primary text-primary-foreground hover:bg-[#238c67] mb-2 h-8 text-xs font-semibold"
+                onClick={() => router.push("/client/preferences")}
+              >
+                <Settings className="h-3.5 w-3.5 mr-1" />
+                Preferences
+              </Button>
+            )}
           </CardContent>
         </Card>
 
@@ -246,6 +248,7 @@ export default function ProfilePage() {
           </Card>
         </div>
 
+        {profile?.role !== "subuser" && (
         <Card className="shadow-card border-border/50">
           <CardHeader className="py-2 px-4 flex flex-row items-center justify-between bg-muted/20 border-b border-border/50">
             <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-2">
@@ -322,6 +325,7 @@ export default function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
     </ClientLayout>
   );

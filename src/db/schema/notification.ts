@@ -66,6 +66,24 @@ export const notificationPreferences = pgTable('notification_preferences', {
   chatMessageEmail: boolean('chat_message_email').default(true).notNull(),
   chatMessageInApp: boolean('chat_message_in_app').default(true).notNull(),
 
+  caseCreatedEmail: boolean('case_created_email').default(true).notNull(),
+  caseCreatedInApp: boolean('case_created_in_app').default(true).notNull(),
+
+  offerCreatedEmail: boolean('offer_created_email').default(true).notNull(),
+  offerCreatedInApp: boolean('offer_created_in_app').default(true).notNull(),
+
+  tutorialCreatedEmail: boolean('tutorial_created_email').default(true).notNull(),
+  tutorialCreatedInApp: boolean('tutorial_created_in_app').default(true).notNull(),
+
+  supportTicketCreatedEmail: boolean('support_ticket_created_email').default(true).notNull(),
+  supportTicketCreatedInApp: boolean('support_ticket_created_in_app').default(true).notNull(),
+
+  supportTicketUpdatedEmail: boolean('support_ticket_updated_email').default(true).notNull(),
+  supportTicketUpdatedInApp: boolean('support_ticket_updated_in_app').default(true).notNull(),
+
+  supportCallbackEmail: boolean('support_callback_email').default(true).notNull(),
+  supportCallbackInApp: boolean('support_callback_in_app').default(true).notNull(),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

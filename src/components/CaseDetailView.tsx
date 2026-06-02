@@ -38,6 +38,7 @@ type CaseRecord = {
   preferredTeethLibrary?: string | null
   teethLibraryFileUrl?: string | null
   teethLibraryFileName?: string | null
+  clientMassage?: string | null
 }
 
 type CaseFile = {
@@ -63,7 +64,7 @@ function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
   if (!subTypeData) return "—"
 
   const values = Object.entries(subTypeData)
-    .filter(([key, value]) => key !== "teeth" && key !== "toothSystem" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value)
+    .filter(([key, value]) => key !== "teeth" && key !== "crownBridgeTeeth" && key !== "toothSystem" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value && value.toLowerCase() !== "none")
     .map(([, value]) => value as string)
 
   return values.length ? values.join(" - ") : "—"
@@ -157,6 +158,8 @@ export function CaseDetailView({
   const [holdCustomReason, setHoldCustomReason] = useState("")
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false)
   const [changeNotes, setChangeNotes] = useState("")
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
+  const [rejectNotes, setRejectNotes] = useState("")
 
   const handleStatusChange = async (targetStatus: string, holdReason?: string) => {
     if (targetStatus === "on_hold" && !holdReason) {
@@ -214,7 +217,10 @@ export function CaseDetailView({
       const res = await fetch(`/api/cases/${caseId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "change_requested" }),
+        body: JSON.stringify({
+          status: "change_requested",
+          clientMassage: changeNotes.trim()
+        }),
       })
       if (res.ok) {
         await fetch(`/api/cases/${caseId}/chat`, {
@@ -239,6 +245,46 @@ export function CaseDetailView({
 
   const handleRequestChanges = () => {
     setIsChangeDialogOpen(true)
+  }
+
+  const handleConfirmReject = async () => {
+    if (!rejectNotes.trim()) {
+      toast.error("Please describe the reason for rejecting the case.")
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "client_reject",
+          clientMassage: rejectNotes.trim()
+        }),
+      })
+      if (res.ok) {
+        await fetch(`/api/cases/${caseId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageText: `[CASE REJECTED]: ${rejectNotes.trim()}` }),
+        })
+        toast.success("Case rejected successfully.")
+        setIsRejectDialogOpen(false)
+        setRejectNotes("")
+        router.refresh()
+      } else {
+        const err = await res.json()
+        toast.error(err.error || "Failed to reject case")
+      }
+    } catch {
+      toast.error("Failed to reject case")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleRejectCase = () => {
+    setIsRejectDialogOpen(true)
   }
 
   const { data: caseResponse, isLoading, error } = useQuery<{ data: CaseRecord }>({
@@ -287,6 +333,7 @@ export function CaseDetailView({
 
   const subTypeData = caseRecord.subTypeData || {}
   const teeth = Array.isArray(subTypeData.teeth) ? (subTypeData.teeth as number[]) : []
+  const crownBridgeTeeth = Array.isArray(subTypeData.crownBridgeTeeth) ? (subTypeData.crownBridgeTeeth as number[]) : []
   const toothSystem = typeof subTypeData.toothSystem === "string" ? subTypeData.toothSystem : "USA"
   const notes = typeof subTypeData.notes === "string" ? subTypeData.notes : "—"
   const modelRequired = typeof subTypeData.modelRequired === "string" ? subTypeData.modelRequired : "—"
@@ -309,6 +356,19 @@ export function CaseDetailView({
           <StatusBadge status={caseRecord.status} role={chatSide === "admin" ? "internal" : "client"} />
         </div>
       </div>
+
+      {caseRecord.clientMassage && (
+        <div className={`p-4 rounded-lg border text-xs font-medium flex flex-col gap-1 ${
+          caseRecord.status === "client_reject"
+            ? "bg-red-50 border-red-200 text-red-800"
+            : "bg-amber-50 border-amber-200 text-amber-800"
+        }`}>
+          <span className="font-semibold flex items-center gap-1.5">
+            {caseRecord.status === "client_reject" ? "✗ Rejection Reason" : "ℹ Requested Changes"}
+          </span>
+          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.clientMassage}</p>
+        </div>
+      )}
 
       <LifecycleStrip status={caseRecord.status} />
 
@@ -349,7 +409,16 @@ export function CaseDetailView({
                 }
               />
               <DetailRow label="Model Required" value={modelRequired} />
-              <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
+              {caseRecord.category === "Implant" ? (
+                <>
+                  <DetailRow label="Implant Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
+                  {crownBridgeTeeth.length > 0 && (
+                    <DetailRow label="Crown & Bridge Teeth" value={`#${crownBridgeTeeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})`} />
+                  )}
+                </>
+              ) : (
+                <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
+              )}
               <DetailRow
                 label="Preferred Teeth Library"
                 value={
@@ -449,26 +518,41 @@ export function CaseDetailView({
                   </div>
                 )}
                 {caseRecord.status === "submitted_to_client" && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-2">
                     <Button
                       size="sm"
-                      className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+                      className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white w-full"
                       disabled={isSubmitting}
                       onClick={() => handleStatusChange("approved")}
                     >
                       ✓ Approve Case
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs font-medium text-red-600 border-red-200 hover:bg-red-50"
-                      onClick={handleRequestChanges}
-                    >
-                      ✗ Request Changes
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs font-medium text-amber-700 border-amber-200 hover:bg-amber-50"
+                        onClick={handleRequestChanges}
+                      >
+                        ✗ Request Changes
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs font-medium text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={handleRejectCase}
+                      >
+                        🚫 Reject Case
+                      </Button>
+                    </div>
                   </div>
                 )}
-                {!["scan_received", "scan_not_verified", "scan_verified", "on_hold", "submitted_to_client"].includes(caseRecord.status) && (
+                {caseRecord.status === "client_reject" && (
+                  <p className="text-xs text-red-600 font-semibold text-center py-1 bg-red-50 border border-red-100 rounded-md">
+                    ✗ This case has been rejected.
+                  </p>
+                )}
+                {!["scan_received", "scan_not_verified", "scan_verified", "on_hold", "submitted_to_client", "client_reject"].includes(caseRecord.status) && (
                   <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
                 )}
               </div>
@@ -499,7 +583,12 @@ export function CaseDetailView({
                     </Button>
                   </div>
                 )}
-                {caseRecord.status !== "change_requested" && (
+                {caseRecord.status === "client_reject" && (
+                  <p className="text-xs text-red-600 font-semibold text-center py-1 bg-red-50 border border-red-100 rounded-md">
+                    ✗ This case has been rejected by the client.
+                  </p>
+                )}
+                {caseRecord.status !== "change_requested" && caseRecord.status !== "client_reject" && (
                   <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
                 )}
               </div>
@@ -629,6 +718,7 @@ export function CaseDetailView({
                 side={chatSide}
                 className="border-none rounded-none"
                 heightClass="h-[500px]"
+                disabled={caseRecord.status === "client_reject"}
               />
             </CardContent>
           </Card>
@@ -744,6 +834,53 @@ export function CaseDetailView({
               className="text-white bg-emerald-600 hover:bg-emerald-700 font-normal rounded-md"
             >
               Submit Request
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Case dialog */}
+      <Dialog open={isRejectDialogOpen} onOpenChange={(open) => { if (!open) setIsRejectDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-[500px] bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
+              🚫 Reject Case Design
+            </DialogTitle>
+            <p className="text-xs text-gray-500">
+              Please specify the reason for rejecting this case. This will permanently reject the case and halt all work.
+            </p>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="detail-reject-notes" className="text-sm font-semibold text-gray-700">
+                Rejection Reason / Notes
+              </Label>
+              <Textarea
+                id="detail-reject-notes"
+                value={rejectNotes}
+                onChange={(e) => setRejectNotes(e.target.value)}
+                placeholder="Describe why you are rejecting this design..."
+                className="min-h-[140px] bg-gray-50 border border-gray-300 text-gray-900 placeholder:text-gray-400 focus-visible:ring-red-500 rounded-md"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsRejectDialogOpen(false)}
+              className="text-gray-700 border-gray-300 font-normal hover:bg-gray-100"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmReject}
+              disabled={isSubmitting || !rejectNotes.trim()}
+              className="text-white bg-red-600 hover:bg-red-700 font-normal rounded-md"
+            >
+              Confirm Rejection
             </Button>
           </div>
         </DialogContent>

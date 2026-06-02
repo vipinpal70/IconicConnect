@@ -14,10 +14,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/ta
 import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
 import { CaseChat } from "@/src/components/CaseChat"
-import { getPreferences } from "@/src/lib/labStore"
 import { HOLD_REASONS } from "@/src/lib/case-utils"
+import type { PreferenceFormRecord, PreferenceFormPayload } from "@/src/lib/preference-forms"
 import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval"
 import { toast } from "sonner"
+import { AddCaseDialog } from "@/src/components/AddCaseDialog"
 import {
   Search,
   ShieldCheck,
@@ -26,7 +27,8 @@ import {
   MessageSquare,
   FileText,
   RefreshCw,
-  Upload
+  Upload,
+  Plus
 } from "lucide-react"
 
 type CaseRecord = {
@@ -180,6 +182,7 @@ function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
 }
 
 export default function AdminCasesPage() {
+  const [isAddOpen, setIsAddOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
   const [clientFilter, setClientFilter] = useState("All")
@@ -441,14 +444,34 @@ export default function AdminCasesPage() {
 
   // Onboarding Preference forms details
   const clientProfile = openCase ? clientsData?.find((c) => c.id === openCase.clientId) : null
-  const prefs = openCase ? getPreferences(openCase.clientId) : []
+
+  const { data: prefFormsData, isLoading: prefFormsLoading } = useQuery<{ data: PreferenceFormRecord[] }>({
+    queryKey: ["preference-forms", openCase?.clientId],
+    queryFn: async () => {
+      const res = await fetch(`/api/preference-forms?clientId=${openCase!.clientId}`)
+      if (!res.ok) return { data: [] }
+      return res.json()
+    },
+    enabled: !!openCase?.clientId,
+    staleTime: 30_000,
+  })
+  const clientPreferenceForms = prefFormsData?.data ?? []
 
   return (
     <AdminLayout>
       <div className="space-y-4 animate-fade-in text-xs">
-        <div className="space-y-0.5">
-          <h1 className="text-xl font-semibold text-foreground">Cases — Review & Allocation</h1>
-          <p className="text-xs text-muted-foreground">Triage incoming cases, allocate to designers and route through QC</p>
+        <div className="flex justify-between items-center">
+          <div className="space-y-0.5">
+            <h1 className="text-xl font-semibold text-foreground">Cases — Review & Allocation</h1>
+            <p className="text-xs text-muted-foreground">Triage incoming cases, allocate to designers and route through QC</p>
+          </div>
+          <Button
+            size="sm"
+            className="h-8 text-xs bg-emerald-800 text-white hover:bg-emerald-900 flex items-center gap-1.5"
+            onClick={() => setIsAddOpen(true)}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add New Case
+          </Button>
         </div>
 
         <Card className="shadow-card border-border/50">
@@ -554,9 +577,21 @@ export default function AdminCasesPage() {
                           <td className="px-3.5 py-2 text-[11px] text-foreground">{clientDisplayName}</td>
                           <td className="px-3.5 py-2">
                             <p className="font-semibold text-[11px] text-black">{restoration || "—"}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              {caseItem.category} · {teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"}
-                            </p>
+                            {caseItem.category === "Implant" ? (
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                <span>Imp: {teeth.length ? `#${teeth.join(", #")}` : "—"}</span>
+                                {(() => {
+                                  const cbTeeth = (caseItem.subTypeData?.crownBridgeTeeth as number[]) || [];
+                                  return cbTeeth.length > 0 && (
+                                    <span className="ml-2">| C&B: #{cbTeeth.join(", #")}</span>
+                                  );
+                                })()}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                {caseItem.category} · {teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"}
+                              </p>
+                            )}
                           </td>
                           <td className="px-3.5 py-2">
                             <div className="scale-90 origin-left">
@@ -700,85 +735,85 @@ export default function AdminCasesPage() {
 
                               {/* 2. Designer actions */}
                               {currentUser?.role === "designer" && (
-                                 <>
-                                   {/* If case is on hold, show Resume */}
-                                   {caseItem.designerId === currentUser?.id && caseItem.status === "on_hold" && (
-                                     <Button size="sm" disabled={isMutating}
-                                       onClick={() => handleUpdate(caseItem.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
-                                       <RefreshCw className="h-3 w-3 mr-0.5" /> Resume Case
-                                     </Button>
-                                   )}
+                                <>
+                                  {/* If case is on hold, show Resume */}
+                                  {caseItem.designerId === currentUser?.id && caseItem.status === "on_hold" && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(caseItem.id, { status: "scan_received" }, "Case resumed to active queue")}
+                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
+                                      <RefreshCw className="h-3 w-3 mr-0.5" /> Resume Case
+                                    </Button>
+                                  )}
 
-                                   {/* If case has client feedback, show Apply Feedback */}
-                                   {caseItem.designerId === currentUser?.id && caseItem.status === "client_feedback" && (
-                                     <Button size="sm" disabled={isMutating}
-                                       onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Restarted design to apply feedback")}
-                                       className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
-                                       Apply Feedback
-                                     </Button>
-                                   )}
+                                  {/* If case has client feedback, show Apply Feedback */}
+                                  {caseItem.designerId === currentUser?.id && caseItem.status === "client_feedback" && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Restarted design to apply feedback")}
+                                      className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
+                                      Apply Feedback
+                                    </Button>
+                                  )}
 
-                                   {/* Step 1: Validate (if scan received and no designer is allocated yet) */}
-                                   {!caseItem.designerId && caseItem.status === "scan_received" && (
-                                     <Button size="sm" disabled={isMutating}
-                                       onClick={() => handleUpdate(caseItem.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
-                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
-                                       <ShieldCheck className="h-3 w-3 mr-0.5" /> Validate
-                                     </Button>
-                                   )}
+                                  {/* Step 1: Validate (if scan received and no designer is allocated yet) */}
+                                  {!caseItem.designerId && caseItem.status === "scan_received" && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(caseItem.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
+                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
+                                      <ShieldCheck className="h-3 w-3 mr-0.5" /> Validate
+                                    </Button>
+                                  )}
 
-                                   {/* Step 2: Allocate to Self (if scan is verified and no designer is allocated yet) */}
-                                   {!caseItem.designerId && caseItem.status === "scan_verified" && (
-                                     <Button size="sm" disabled={isMutating}
-                                       onClick={() => handleUpdate(caseItem.id, { designerId: currentUser.id, status: "allocated_to_designer" }, "Allocated case to yourself")}
-                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
-                                       <UserPlus className="h-3 w-3 mr-0.5" /> Allocate to Self
-                                     </Button>
-                                   )}
+                                  {/* Step 2: Allocate to Self (if scan is verified and no designer is allocated yet) */}
+                                  {!caseItem.designerId && caseItem.status === "scan_verified" && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(caseItem.id, { designerId: currentUser.id, status: "allocated_to_designer" }, "Allocated case to yourself")}
+                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
+                                      <UserPlus className="h-3 w-3 mr-0.5" /> Allocate to Self
+                                    </Button>
+                                  )}
 
-                                   {/* Step 3: Start Work (if allocated to designer and status is allocated_to_designer) */}
-                                   {caseItem.designerId === currentUser?.id && caseItem.status === "allocated_to_designer" && (
-                                     <Button size="sm" disabled={isMutating}
-                                       onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Started design work")}
-                                       className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
-                                       Start Work
-                                     </Button>
-                                   )}
+                                  {/* Step 3: Start Work (if allocated to designer and status is allocated_to_designer) */}
+                                  {caseItem.designerId === currentUser?.id && caseItem.status === "allocated_to_designer" && (
+                                    <Button size="sm" disabled={isMutating}
+                                      onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Started design work")}
+                                      className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
+                                      Start Work
+                                    </Button>
+                                  )}
 
-                                   {/* Step 4: Upload Design (if in progress and no design files are uploaded yet) */}
-                                   {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && !caseItem.outputFile && (
-                                     <Button size="sm" variant="outline" disabled={isMutating}
-                                       onClick={() => toast.info("Please use your main /cases queue dashboard to upload design files.")}
-                                       className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800">
-                                       <Upload className="h-3 w-3 mr-0.5" /> Upload Design
-                                     </Button>
-                                   )}
+                                  {/* Step 4: Upload Design (if in progress and no design files are uploaded yet) */}
+                                  {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && !caseItem.outputFile && (
+                                    <Button size="sm" variant="outline" disabled={isMutating}
+                                      onClick={() => toast.info("Please use your main /cases queue dashboard to upload design files.")}
+                                      className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800">
+                                      <Upload className="h-3 w-3 mr-0.5" /> Upload Design
+                                    </Button>
+                                  )}
 
-                                   {/* Step 5a: Assign QC (if in progress, design is uploaded, and no QC assigned yet) */}
-                                   {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && caseItem.outputFile && !caseItem.qcId && (
-                                     <Button size="sm" variant="outline" disabled={isMutating}
-                                       onClick={() => setAssignQcCaseId(caseItem.id)}
-                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold">
-                                       <UserPlus className="h-3 w-3 mr-0.5" /> Assign QC
-                                     </Button>
-                                   )}
+                                  {/* Step 5a: Assign QC (if in progress, design is uploaded, and no QC assigned yet) */}
+                                  {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && caseItem.outputFile && !caseItem.qcId && (
+                                    <Button size="sm" variant="outline" disabled={isMutating}
+                                      onClick={() => setAssignQcCaseId(caseItem.id)}
+                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold">
+                                      <UserPlus className="h-3 w-3 mr-0.5" /> Assign QC
+                                    </Button>
+                                  )}
 
-                                   {/* Step 5b: Send to QC (if in progress, design is uploaded, and QC is assigned) */}
-                                   {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && caseItem.outputFile && caseItem.qcId && (
-                                     <Button size="sm" variant="outline" disabled={isMutating}
-                                       onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
-                                       className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800">
-                                       <ClipboardCheck className="h-3 w-3 mr-0.5" /> Send to QC
-                                     </Button>
-                                   )}
+                                  {/* Step 5b: Send to QC (if in progress, design is uploaded, and QC is assigned) */}
+                                  {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && caseItem.outputFile && caseItem.qcId && (
+                                    <Button size="sm" variant="outline" disabled={isMutating}
+                                      onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
+                                      className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800">
+                                      <ClipboardCheck className="h-3 w-3 mr-0.5" /> Send to QC
+                                    </Button>
+                                  )}
 
-                                   {/* If in internal_qc review, show status */}
-                                   {caseItem.designerId === currentUser?.id && caseItem.status === "internal_qc" && (
-                                     <span className="text-[10px] text-amber-600 italic px-1">In QC Review</span>
-                                   )}
-                                 </>
-                               )}
+                                  {/* If in internal_qc review, show status */}
+                                  {caseItem.designerId === currentUser?.id && caseItem.status === "internal_qc" && (
+                                    <span className="text-[10px] text-amber-600 italic px-1">In QC Review</span>
+                                  )}
+                                </>
+                              )}
 
                               {/* 3b. Change requested actions for admin/qc */}
                               {caseItem.status === "change_requested" && (currentUser?.role === "admin" || currentUser?.role === "qc") && (
@@ -888,21 +923,14 @@ export default function AdminCasesPage() {
                 </TabsContent>
 
                 <TabsContent value="prefs" className="mt-3 space-y-2 text-xs">
-                  {!clientProfile && <p className="text-xs text-muted-foreground">Lab profile not found.</p>}
-                  {clientProfile && prefs.length === 0 && (
+                  {prefFormsLoading && (
+                    <p className="text-xs text-muted-foreground">Loading preference forms…</p>
+                  )}
+                  {!prefFormsLoading && clientProfile && clientPreferenceForms.length === 0 && (
                     <p className="text-xs text-muted-foreground">{clientProfile.labName || clientProfile.fullName} has not added any preference forms yet.</p>
                   )}
-                  {prefs.map((p) => (
-                    <Card key={p.id} className="shadow-card">
-                      <CardContent className="p-3">
-                        <div className="flex items-start justify-between mb-0.5">
-                          <p className="font-semibold text-foreground">{p.title}</p>
-                          <span className="text-[10px] text-muted-foreground">{p.category}</span>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground mb-1.5">added {p.createdAt}</p>
-                        <p className="text-xs text-foreground whitespace-pre-wrap">{p.body}</p>
-                      </CardContent>
-                    </Card>
+                  {!prefFormsLoading && clientPreferenceForms.map((form) => (
+                    <PreferenceFormCard key={form.id} form={form} />
                   ))}
                   {clientProfile && (
                     <div className="p-3 bg-muted/20 border rounded-lg space-y-1">
@@ -918,7 +946,16 @@ export default function AdminCasesPage() {
                   <Row k="Designer" v={membersMap.get(openCase.designerId || "")?.fullName || "Not allocated"} />
                   <Row k="QC Lead" v={membersMap.get(openCase.qcId || "")?.fullName || "—"} />
                   <Row k="Model required" v={openCase.subTypeData?.modelRequired ? "Yes" : "No"} />
-                  <Row k="Teeth" v={((openCase.subTypeData?.teeth as number[]) || []).length ? `#${((openCase.subTypeData?.teeth as number[]) || []).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})` : "—"} />
+                  {openCase.category === "Implant" ? (
+                    <>
+                      <Row k="Implant Teeth" v={((openCase.subTypeData?.teeth as number[]) || []).length ? `#${((openCase.subTypeData?.teeth as number[]) || []).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})` : "—"} />
+                      {Array.isArray(openCase.subTypeData?.crownBridgeTeeth) && (openCase.subTypeData.crownBridgeTeeth as number[]).length > 0 && (
+                        <Row k="Crown & Bridge Teeth" v={`#${(openCase.subTypeData.crownBridgeTeeth as number[]).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})`} />
+                      )}
+                    </>
+                  ) : (
+                    <Row k="Teeth" v={((openCase.subTypeData?.teeth as number[]) || []).length ? `#${((openCase.subTypeData?.teeth as number[]) || []).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})` : "—"} />
+                  )}
                   <Row k="Submitted" v={new Date(openCase.createdAt).toLocaleString()} />
                   <Row k="Last update" v={new Date(openCase.updatedAt).toLocaleString()} />
                   <div className="pt-1.5 border-t border-border mt-2">
@@ -1108,6 +1145,14 @@ export default function AdminCasesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AddCaseDialog
+        open={isAddOpen}
+        onOpenChange={setIsAddOpen}
+        role="admin"
+        clients={clientsData}
+        onSuccess={() => refetch()}
+      />
     </AdminLayout>
   )
 }
@@ -1150,5 +1195,94 @@ function AllocateMenu({
         )}
       </SelectContent>
     </Select>
+  )
+}
+
+function PreferenceFormCard({ form }: { form: PreferenceFormRecord }) {
+  const p = form.payload
+
+  const sections: { label: string; lines: string[] }[] = []
+
+  if (p.occlusion?.defaultValues || p.occlusion?.comments) {
+    const lines: string[] = []
+    if (p.occlusion.defaultValues) lines.push(`Default: ${p.occlusion.defaultValues}`)
+    if (p.occlusion.comments) lines.push(`Notes: ${p.occlusion.comments}`)
+    sections.push({ label: "Occlusion", lines })
+  }
+
+  if (p.proximalContacts?.defaultValues || p.proximalContacts?.comments) {
+    const lines: string[] = []
+    if (p.proximalContacts.defaultValues) lines.push(`Default: ${p.proximalContacts.defaultValues}`)
+    if (p.proximalContacts.comments) lines.push(`Notes: ${p.proximalContacts.comments}`)
+    sections.push({ label: "Proximal Contacts", lines })
+  }
+
+  if (p.distalMostCrownContact?.defaultValues || p.distalMostCrownContact?.comments) {
+    const lines: string[] = []
+    if (p.distalMostCrownContact.defaultValues) lines.push(`Default: ${p.distalMostCrownContact.defaultValues}`)
+    if (p.distalMostCrownContact.comments) lines.push(`Notes: ${p.distalMostCrownContact.comments}`)
+    sections.push({ label: "Distal-Most Crown Contact", lines })
+  }
+
+  if (p.anatomy?.option || p.anatomy?.comments) {
+    const lines: string[] = []
+    if (p.anatomy.option) lines.push(`Option: ${p.anatomy.option}`)
+    if (p.anatomy.comments) lines.push(`Notes: ${p.anatomy.comments}`)
+    sections.push({ label: "Anatomy", lines })
+  }
+
+  if (p.smileLibrary?.option || p.smileLibrary?.libraryName || p.smileLibrary?.comments) {
+    const lines: string[] = []
+    if (p.smileLibrary.option) lines.push(`Option: ${p.smileLibrary.option}`)
+    if (p.smileLibrary.libraryName) lines.push(`Library: ${p.smileLibrary.libraryName}`)
+    if (p.smileLibrary.comments) lines.push(`Notes: ${p.smileLibrary.comments}`)
+    sections.push({ label: "Smile Library", lines })
+  }
+
+  if (p.ponticType?.option || p.ponticType?.comments) {
+    const lines: string[] = []
+    if (p.ponticType.option) lines.push(`Option: ${p.ponticType.option}`)
+    if (p.ponticType.comments) lines.push(`Notes: ${p.ponticType.comments}`)
+    sections.push({ label: "Pontic Type", lines })
+  }
+
+  if (p.ponticDistanceFromTissue?.option || p.ponticDistanceFromTissue?.distanceMm || p.ponticDistanceFromTissue?.comments) {
+    const lines: string[] = []
+    if (p.ponticDistanceFromTissue.option) lines.push(`Option: ${p.ponticDistanceFromTissue.option}`)
+    if (p.ponticDistanceFromTissue.distanceMm) lines.push(`Distance: ${p.ponticDistanceFromTissue.distanceMm} mm`)
+    if (p.ponticDistanceFromTissue.comments) lines.push(`Notes: ${p.ponticDistanceFromTissue.comments}`)
+    sections.push({ label: "Pontic Distance from Tissue", lines })
+  }
+
+  if (p.matchMarginalRidge?.option || p.matchMarginalRidge?.comments) {
+    const lines: string[] = []
+    if (p.matchMarginalRidge.option) lines.push(`Option: ${p.matchMarginalRidge.option}`)
+    if (p.matchMarginalRidge.comments) lines.push(`Notes: ${p.matchMarginalRidge.comments}`)
+    sections.push({ label: "Match Marginal Ridge", lines })
+  }
+
+  return (
+    <Card className="shadow-card">
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-start justify-between">
+          <p className="font-semibold text-foreground text-xs">{form.formName}</p>
+          <span className="text-[10px] text-muted-foreground">{new Date(form.createdAt).toLocaleDateString()}</span>
+        </div>
+        {sections.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground">No preferences filled in.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {sections.map((s) => (
+              <div key={s.label} className="text-[10px]">
+                <p className="font-medium text-foreground/80 mb-0.5">{s.label}</p>
+                {s.lines.map((line, i) => (
+                  <p key={i} className="text-muted-foreground pl-2">{line}</p>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

@@ -5,6 +5,7 @@ import { profiles } from '@/src/db/schema/profile'
 import { clientPriceListItems } from '@/src/db/schema/client-price-list'
 import { createClient } from '@/src/lib/supabase/server'
 import { normalizePriceListItems, type PriceListItemInput } from '@/src/lib/client-price-list'
+import { logActivity } from '@/src/lib/activity-log'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -94,10 +95,17 @@ export async function PUT(
             price: item.price,
             notes: item.notes,
             sortOrder: Number.isFinite(item.sortOrder) ? item.sortOrder : index,
+            createdBy: auth.profile.id,
           }))
         )
         .returning()
     })
+
+    await logActivity({
+      actor: auth.profile,
+      action: 'price_list.updated',
+      details: { clientId: id, itemCount: rows.length },
+    }).catch((err) => console.error('[price_list.updated logActivity]', err))
 
     return NextResponse.json({ data: rows })
   } catch (error) {

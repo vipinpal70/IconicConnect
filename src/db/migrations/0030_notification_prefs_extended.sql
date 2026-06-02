@@ -1,0 +1,12 @@
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "case_created_email" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "case_created_in_app" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "offer_created_email" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "offer_created_in_app" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "tutorial_created_email" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "tutorial_created_in_app" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "support_ticket_created_email" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "support_ticket_created_in_app" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "support_ticket_updated_email" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "support_ticket_updated_in_app" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "support_callback_email" boolean NOT NULL DEFAULT true;
+ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "support_callback_in_app" boolean NOT NULL DEFAULT true;

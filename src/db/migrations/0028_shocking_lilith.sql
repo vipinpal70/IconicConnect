@@ -1,0 +1,10 @@
+ALTER TYPE "public"."case_status" ADD VALUE IF NOT EXISTS 'cancelled';
+ALTER TYPE "public"."case_status" ADD VALUE IF NOT EXISTS 'change_requested';
+ALTER TYPE "public"."case_status" ADD VALUE IF NOT EXISTS 'client_reject';
+ALTER TABLE "profiles" ADD COLUMN IF NOT EXISTS "password" varchar(255);
+ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "created_by" varchar(255);
+ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "client_massage" text;
+ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "preferred_teeth_library" varchar(50) DEFAULT 'default';
+ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "teeth_library_file_url" text;
+ALTER TABLE "cases" ADD COLUMN IF NOT EXISTS "teeth_library_file_name" varchar(255);
+ALTER TABLE "profiles" DROP COLUMN IF EXISTS "temp_password";
