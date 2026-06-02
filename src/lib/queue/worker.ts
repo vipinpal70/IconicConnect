@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { connection } from './client';
+import { createWorkerConnection } from './client';
 import { resend } from '../resend';
 import { runCleanup } from './cleanup-task';
 
@@ -15,33 +15,33 @@ let worker: Worker | null = null;
 if (process.env.NODE_ENV === 'production') {
   worker = createWorker();
 } else {
-  // In development, prevent multiple instances from starting due to HMR
+  // Prevent multiple worker instances across HMR reloads in development.
+  // Store both the worker and its dedicated connection in global so they survive reloads.
   if (!(global as any).emailWorker) {
-    (global as any).emailWorker = createWorker();
+    (global as any).emailWorkerConnection = createWorkerConnection();
+    (global as any).emailWorker = createWorker((global as any).emailWorkerConnection);
   }
   worker = (global as any).emailWorker;
 
   if (!(global as any).cleanupInterval) {
-    // Run cleanup once in development on server startup
     setTimeout(() => {
       runCleanup().catch(console.error);
     }, 5000);
 
-    // Schedule cleanup to run every 1 hour in development
     (global as any).cleanupInterval = setInterval(() => {
       runCleanup().catch(console.error);
     }, 60 * 60 * 1000);
   }
 }
 
-function createWorker() {
+function createWorker(conn = createWorkerConnection()) {
   const newWorker = new Worker<EmailJobData>(
     'email-queue',
     async (job: Job<EmailJobData>) => {
       const { to, subject, html } = job.data;
-      
+
       console.log(`[Worker] Processing job ${job.id} for ${to}`);
-      
+
       try {
         const fromEmail = process.env.EMAIL_FROM || 'onboarding@resend.dev';
         const { data, error } = await resend.emails.send({
@@ -62,13 +62,13 @@ function createWorker() {
       }
     },
     {
-      connection,
+      connection: conn,
       removeOnComplete: {
-        age: 24 * 3600,
+        age: 3600,   // 1 hour
         count: 1000,
       },
       removeOnFail: {
-        age: 24 * 3600,
+        age: 3600,   // 1 hour
         count: 5000,
       },
     }
@@ -76,7 +76,8 @@ function createWorker() {
 
   newWorker.on('completed', (job) => console.log(`[Worker] Job ${job.id} done`));
   newWorker.on('failed', (job, err) => console.error(`[Worker] Job ${job?.id} failed: ${err.message}`));
-  
+  newWorker.on('error', (err) => console.error('[Worker] Worker error:', err.message));
+
   console.log('[Worker] Email worker initialized');
   return newWorker;
 }
