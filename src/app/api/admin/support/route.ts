@@ -22,7 +22,7 @@ async function requireAdmin() {
     return { error: NextResponse.json({ error: 'Profile not found' }, { status: 404 }) }
   }
 
-  if (!['admin', 'qc', 'account_manager', 'consultant'].includes(profile.role)) {
+  if (!['admin', 'qc', 'account_manager', 'consultant', 'designer'].includes(profile.role)) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 

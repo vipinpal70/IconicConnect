@@ -5,8 +5,10 @@ import { supabaseAdmin } from '@/src/lib/supabase/admin';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, desc } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
-
 import { isValidRoleForType } from '@/src/lib/auth/role';
+import { NotificationService } from '@/src/lib/notifications/notification-service';
+import { NotificationType } from '@/src/lib/notifications/notification-events';
+import { queueEmail } from '@/src/lib/queue/jobs';
 
 // Helper to check if current user is admin
 async function isAdmin() {
@@ -107,40 +109,38 @@ export async function POST(req: NextRequest) {
       status: 'active',
     });
 
-    // 2.5 Trigger Welcome Notification
-    try {
-      const { NotificationService } = await import('@/src/lib/notifications/notification-service');
-      const { NotificationType } = await import('@/src/lib/notifications/notification-events');
+    // 2.5 Trigger Welcome in-app notification
+    NotificationService.dispatch({
+      type: NotificationType.WELCOME,
+      actorUserId: user.id,
+      targetUserId: authData.user.id,
+      title: 'Welcome to the Team!',
+      message: `Welcome to the IconicConnect team, ${fullName || email}! You have been onboarded as ${role.replace(/_/g, ' ')}.`,
+      link: '/dashboard',
+      metadata: { role },
+    }).catch((err) => console.error('[member.created] Failed to send welcome notification:', err));
 
-      await NotificationService.dispatch({
-        type: NotificationType.WELCOME,
-        actorUserId: user.id,
-        targetUserId: authData.user.id,
-        title: 'Welcome to the Team!',
-        message: `Welcome to the IconicConnect team, ${fullName || email}! We are thrilled to have you onboard as our new ${role.replace('_', ' ')}.`,
-        link: '/dashboard',
-        metadata: { role }
-      });
-    } catch (notifyError) {
-      console.error('Failed to send welcome notification:', notifyError);
-    }
-
-    // 3. Send email with credentials via Queue
-    const { queueEmail } = await import('@/src/lib/queue/jobs');
+    // 3. Send credentials email
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     await queueEmail({
       to: email,
-      subject: 'Your IconicConnect Credentials',
+      subject: 'Your IconicConnect Login Credentials',
       type: 'credentials',
       html: `
-        <h1>Your Account is Ready</h1>
-        <p>Hello ${fullName || email},</p>
-        <p>An account has been created for you on IconicConnect.</p>
-        <p><strong>Login URL:</strong> http://localhost:3000/auth/sign-in</p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Password:</strong> ${password}</p>
-        <p>Please change your password after your first login.</p>
-      `
-    });
+        <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px;">
+          <h2 style="color:#065f46;margin-bottom:4px;">Your Account is Ready</h2>
+          <p style="color:#6b7280;font-size:14px;margin-top:0;">Welcome to IconicConnect</p>
+          <p style="color:#111827;">Hello <strong>${fullName || email}</strong>,</p>
+          <p style="color:#374151;">An account has been created for you on IconicConnect as <strong>${role.replace(/_/g, ' ')}</strong>. Use the credentials below to sign in.</p>
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0;">
+            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Login URL:</strong> <a href="${appUrl}/auth/sign-in" style="color:#059669;">${appUrl}/auth/sign-in</a></p>
+            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${email}</p>
+            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Password:</strong> <code style="background:#e5e7eb;padding:2px 6px;border-radius:4px;">${password}</code></p>
+          </div>
+          <p style="color:#6b7280;font-size:13px;">Please change your password after your first login.</p>
+        </div>
+      `,
+    }).catch((err) => console.error('[member.created] Failed to queue credentials email:', err));
 
     await logActivity({
       actor: actorProfile,
