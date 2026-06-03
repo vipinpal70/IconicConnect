@@ -208,28 +208,28 @@
     {
       "idx": 29,
       "version": "7",
-      "when": 1748822400000,
+      "when": 1780390000000,
       "tag": "0029_add_created_by_to_tables",
       "breakpoints": true
     },
     {
       "idx": 30,
       "version": "7",
-      "when": 1748822500000,
+      "when": 1780400000000,
       "tag": "0030_notification_prefs_extended",
       "breakpoints": true
     },
     {
       "idx": 31,
       "version": "7",
-      "when": 1748900000000,
+      "when": 1780410000000,
       "tag": "0031_price_list_catalog",
       "breakpoints": true
     },
     {
       "idx": 32,
       "version": "7",
-      "when": 1748990000000,
+      "when": 1780420000000,
       "tag": "0032_ensure_price_list_catalog",
       "breakpoints": true
     }
