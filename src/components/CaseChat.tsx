@@ -26,9 +26,10 @@ interface Props {
   side: "lab" | "admin"
   className?: string
   heightClass?: string
+  disabled?: boolean
 }
 
-export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }: Props) {
+export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", disabled }: Props) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null)
   const [text, setText] = useState("")
   const [uploading, setUploading] = useState(false)
@@ -307,47 +308,53 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]" }:
         </div>
       )}
 
-      <div className="flex gap-1.5 p-2 border-t border-border bg-card items-center">
-        {side === "lab" && (
-          <>
-            <input
-              type="file"
-              className="hidden"
-              onChange={handleFileChange}
-              id="chat-file-input"
-              accept=".png,.jpg,.jpeg,.mp4,.mkv,.avi,.mov,.webm,.pdf,.zip,.doc,.docx"
-            />
-            <Button
-              size="icon"
-              variant="outline"
-              disabled={uploading}
-              onClick={() => document.getElementById("chat-file-input")?.click()}
-              title="Attach media files (images, video, zip, pdf, docs upto 500MB)"
-              className="h-8 w-8 shrink-0 border-border hover:bg-muted"
-            >
-              <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
-          </>
-        )}
+      {disabled ? (
+        <div className="p-3 text-center text-xs text-red-600 bg-red-50 border-t border-red-100 font-medium">
+          🚫 Chat is disabled because this case has been rejected.
+        </div>
+      ) : (
+        <div className="flex gap-1.5 p-2 border-t border-border bg-card items-center">
+          {side === "lab" && (
+            <>
+              <input
+                type="file"
+                className="hidden"
+                onChange={handleFileChange}
+                id="chat-file-input"
+                accept=".png,.jpg,.jpeg,.mp4,.mkv,.avi,.mov,.webm,.pdf,.zip,.doc,.docx"
+              />
+              <Button
+                size="icon"
+                variant="outline"
+                disabled={uploading}
+                onClick={() => document.getElementById("chat-file-input")?.click()}
+                title="Attach media files (images, video, zip, pdf, docs upto 500MB)"
+                className="h-8 w-8 shrink-0 border-border hover:bg-muted"
+              >
+                <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            </>
+          )}
 
-        <Input
-          placeholder="Type a message…"
-          value={text}
-          disabled={uploading}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          className="bg-muted/10 h-8 text-xs"
-        />
+          <Input
+            placeholder="Type a message…"
+            value={text}
+            disabled={uploading}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            className="bg-muted/10 h-8 text-xs"
+          />
 
-        <Button
-          onClick={handleSend}
-          disabled={!text.trim() || uploading}
-          size="icon"
-          className="h-8 w-8 shrink-0"
-        >
-          <Send className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+          <Button
+            onClick={handleSend}
+            disabled={!text.trim() || uploading}
+            size="icon"
+            className="h-8 w-8 shrink-0"
+          >
+            <Send className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

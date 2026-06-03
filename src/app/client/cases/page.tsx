@@ -25,7 +25,7 @@ interface BulkRow {
   fileName: string;
   file: File;
   category: string;
-  subTypeData: Record<string, string>;
+  subTypeData: Record<string, any>;
   modelRequired: "yes" | "no";
   teeth: number[];
   toothSystem: "USA" | "FDI";
@@ -131,20 +131,31 @@ const statusFilters: (CaseStatus | "All")[] = [
 
 const hasAllRequiredCaseFields = (
   category: string,
-  subTypeData: Record<string, string>,
+  subTypeData: Record<string, any>,
   notes: string,
   teeth: number[],
-  uploadedFile: unknown
+  uploadedFile: unknown,
+  crownBridgeTeeth?: number[]
 ) => {
   const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
-  const allDynamicFieldsSelected = fields.every((field) => Boolean(subTypeData[field.name]))
+  const allDynamicFieldsSelected = fields.every((field: any) => field.optional || Boolean(subTypeData[field.name]))
 
-  return Boolean(
+  let isValid = Boolean(
     category &&
     uploadedFile &&
     allDynamicFieldsSelected &&
     teeth.length > 0
-  )
+  );
+
+  if (category === "Implant") {
+    const cbType = subTypeData.caseType2;
+    if (cbType && cbType !== "None") {
+      const cbTeeth = crownBridgeTeeth || subTypeData.crownBridgeTeeth;
+      isValid = isValid && Boolean(cbTeeth && cbTeeth.length > 0);
+    }
+  }
+
+  return isValid;
 }
 
 const CASE_HIERARCHY = {
@@ -173,8 +184,8 @@ const CASE_HIERARCHY = {
   },
   "Implant": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["crown", "bridge", "coping", "screw retained", "in-lay", "on-lay"] }
+      { name: "caseType1", label: "Sub Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
+      { name: "caseType2", label: "Crown & Bridge type", type: "select", options: ["None", "Crown", "Bridge"], optional: true }
     ]
   }
 };
@@ -216,9 +227,10 @@ export default function CasesPage() {
   }, []);
 
   const [category, setCategory] = useState<string>("Crown & Bridges");
-  const [subTypeData, setSubTypeData] = useState<Record<string, string>>({});
+  const [subTypeData, setSubTypeData] = useState<Record<string, any>>({});
   const [modelRequired, setModelRequired] = useState("no");
   const [teeth, setTeeth] = useState<number[]>([]);
+  const [crownBridgeTeeth, setCrownBridgeTeeth] = useState<number[]>([]);
   const [toothSystem, setToothSystem] = useState<"USA" | "FDI">("USA");
   const [notes, setNotes] = useState("");
   const [singleFile, setSingleFile] = useState<File | null>(null);
@@ -409,7 +421,7 @@ export default function CasesPage() {
       const friendlyRestoration = (
         c.subTypeData
           ? Object.entries(c.subTypeData)
-            .filter(([k, v]) => k !== 'teeth' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
+            .filter(([k, v]) => k !== 'teeth' && k !== 'crownBridgeTeeth' && k !== 'toothSystem' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v && v.toLowerCase() !== 'none')
             .map(([_, v]) => v)
             .join(" - ")
           : c.category || ""
@@ -448,7 +460,7 @@ export default function CasesPage() {
   }, [cases, search, statusFilter, typeFilter, from, to]);
 
   const handleSubmit = async () => {
-    if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile)) {
+    if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile, crownBridgeTeeth)) {
       toast.error("Please complete all fields, select teeth, and upload a file.");
       return;
     }
@@ -467,6 +479,7 @@ export default function CasesPage() {
         teeth,
         toothSystem,
         notes,
+        ...(category === "Implant" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
       },
       caseNumber: generatedCaseId,
       uploadedFile,
@@ -488,6 +501,7 @@ export default function CasesPage() {
         setUploadOpen(false);
         setNotes("");
         setTeeth([]);
+        setCrownBridgeTeeth([]);
         setModelRequired("no");
         setCategory("Crown & Bridges");
         setSubTypeData({});
@@ -738,142 +752,70 @@ export default function CasesPage() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Category</Label>
-                        <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData({}); }}>
-                          <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
-                          <SelectContent className="bg-emerald-800 text-white">
-                            {Object.keys(CASE_HIERARCHY).map((cat) => (
-                              <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
-                                {cat}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Model Required?</Label>
-                        <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-2">
-                          <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes" /><Label htmlFor="m-yes" className="font-normal">Yes</Label></div>
-                          <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no" /><Label htmlFor="m-no" className="font-normal">No</Label></div>
-                        </RadioGroup>
-                      </div>
-                    </div>
+                    {category === "Implant" ? (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Category</Label>
+                          <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
+                            <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
+                            <SelectContent className="bg-emerald-800 text-white">
+                              {Object.keys(CASE_HIERARCHY).map((cat) => (
+                                <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
+                                  {cat}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                    {/* Dynamic Fields */}
-                    {CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
-                      <div className="space-y-2" key={field.name}>
-                        <Label>{field.label}</Label>
-                        <Select
-                          value={subTypeData[field.name] || ""}
-                          onValueChange={(v) => setSubTypeData({ ...subTypeData, [field.name]: v })}
-                        >
-                          <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
-                          <SelectContent className="bg-emerald-800 text-white">
-                            {field.options.map((opt) => (
-                              <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                {opt}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
+                        <div className="space-y-2">
+                          <Label>Sub Type 1</Label>
+                          <Select
+                            value={subTypeData["caseType1"] || ""}
+                            onValueChange={(v) => setSubTypeData({ ...subTypeData, caseType1: v })}
+                          >
+                            <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Sub Type 1" /></SelectTrigger>
+                            <SelectContent className="bg-emerald-800 text-white">
+                              {CASE_HIERARCHY["Implant"].fields[0].options.map((opt) => (
+                                <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                  {opt}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                    <div className="space-y-2">
-                      <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
-                      <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
-                    </div>
+                        <div className="space-y-2">
+                          <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                          <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                        </div>
 
-                    <div className="space-y-2">
-                      <Label>Preferred Teeth Library</Label>
-                      <Select value={preferredTeethLibrary} onValueChange={setPreferredTeethLibrary}>
-                        <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900">
-                          <SelectValue placeholder="Select Preferred Teeth Library" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-emerald-800 text-white">
-                          <SelectItem value="default" className="focus:bg-emerald-700 focus:text-white">Default Teeth Library</SelectItem>
-                          <SelectItem value="other" className="focus:bg-emerald-700 focus:text-white">Other Teeth Library</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                        <div className="space-y-2">
+                          <Label>Model Required?</Label>
+                          <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-2">
+                            <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes" /><Label htmlFor="m-yes" className="font-normal">Yes</Label></div>
+                            <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no" /><Label htmlFor="m-no" className="font-normal">No</Label></div>
+                          </RadioGroup>
+                        </div>
 
-                    {preferredTeethLibrary === "other" && (
-                      <div className="space-y-2">
-                        <Label>Teeth Library File (.dme or .zip, max 2GB)</Label>
-                        <input
-                          ref={libraryFileRef}
-                          type="file"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleLibraryFileSelect(file);
-                          }}
-                        />
-                        {isLibraryUploading ? (
-                          <div className="border-2 border-dashed rounded-lg p-6 text-center border-emerald-500 bg-emerald-50/10">
-                            <div className="space-y-2">
-                              <Upload className="h-6 w-6 mx-auto text-emerald-600 animate-pulse" />
-                              <p className="text-sm font-medium text-foreground">Uploading Teeth Library... {libraryUploadProgress}%</p>
-                              <div className="w-full bg-muted rounded-full h-1.5 max-w-xs mx-auto">
-                                <div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${libraryUploadProgress}%` }}></div>
-                              </div>
-                            </div>
-                          </div>
-                        ) : uploadedLibraryFile ? (
-                          <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
-                                <FileArchive className="h-5 w-5" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
-                                  {uploadedLibraryFile.fileName}
-                                </p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <p className="text-xs text-muted-foreground">
-                                    ({(uploadedLibraryFile.fileSize / 1024 / 1024).toFixed(2)} MB)
-                                  </p>
-                                  <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
-                                    ✓ Uploaded
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex gap-2 shrink-0">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  libraryFileRef.current?.click();
-                                }}
-                                className="h-9 text-xs flex items-center gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-600 hover:text-white bg-white font-medium"
-                              >
-                                <RefreshCw className="h-3.5 w-3.5" /> Replace
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={async (e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  await handleDeleteUploadedFile(uploadedLibraryFile.fileName);
-                                  setUploadedLibraryFile(null);
-                                }}
-                                className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                        <div className="space-y-2">
+                          <Label>Preferred Teeth Library</Label>
+                          <Select value={preferredTeethLibrary} onValueChange={setPreferredTeethLibrary}>
+                            <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900">
+                              <SelectValue placeholder="Select Preferred Teeth Library" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-emerald-800 text-white">
+                              <SelectItem value="default" className="focus:bg-emerald-700 focus:text-white">Default Teeth Library</SelectItem>
+                              <SelectItem value="other" className="focus:bg-emerald-700 focus:text-white">Other Teeth Library</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {preferredTeethLibrary === "other" && (
+                          <div className="space-y-2">
+                            <Label>Teeth Library File (.dme or .zip, max 2GB)</Label>
                             <input
+                              ref={libraryFileRef}
                               type="file"
                               className="hidden"
                               onChange={(e) => {
@@ -881,14 +823,268 @@ export default function CasesPage() {
                                 if (file) handleLibraryFileSelect(file);
                               }}
                             />
-                            <div>
-                              <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
-                              <p className="text-sm font-medium text-foreground">Click to upload Custom Teeth Library</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">ZIP or DME (Max 2GB)</p>
-                            </div>
-                          </label>
+                            {isLibraryUploading ? (
+                              <div className="border-2 border-dashed rounded-lg p-6 text-center border-emerald-500 bg-emerald-50/10">
+                                <div className="space-y-2">
+                                  <Upload className="h-6 w-6 mx-auto text-emerald-600 animate-pulse" />
+                                  <p className="text-sm font-medium text-foreground">Uploading Teeth Library... {libraryUploadProgress}%</p>
+                                  <div className="w-full bg-muted rounded-full h-1.5 max-w-xs mx-auto">
+                                    <div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${libraryUploadProgress}%` }}></div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : uploadedLibraryFile ? (
+                              <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
+                                    <FileArchive className="h-5 w-5" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+                                      {uploadedLibraryFile.fileName}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <p className="text-xs text-muted-foreground">
+                                        ({(uploadedLibraryFile.fileSize / 1024 / 1024).toFixed(2)} MB)
+                                      </p>
+                                      <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
+                                        ✓ Uploaded
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 shrink-0">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      libraryFileRef.current?.click();
+                                    }}
+                                    className="h-9 text-xs flex items-center gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-600 hover:text-white bg-white font-medium"
+                                  >
+                                    <RefreshCw className="h-3.5 w-3.5" /> Replace
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={async (e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      await handleDeleteUploadedFile(uploadedLibraryFile.fileName);
+                                      setUploadedLibraryFile(null);
+                                    }}
+                                    className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleLibraryFileSelect(file);
+                                  }}
+                                />
+                                <div>
+                                  <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+                                  <p className="text-sm font-medium text-foreground">Click to upload Custom Teeth Library</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">ZIP or DME (Max 2GB)</p>
+                                </div>
+                              </label>
+                            )}
+                          </div>
                         )}
-                      </div>
+
+                        <div className="space-y-2">
+                          <Label>Crown & Bridge type (optional)</Label>
+                          <Select
+                            value={subTypeData["caseType2"] || "None"}
+                            onValueChange={(v) => {
+                              setSubTypeData({ ...subTypeData, caseType2: v });
+                              if (v === "None") setCrownBridgeTeeth([]);
+                            }}
+                          >
+                            <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Crown & Bridge type" /></SelectTrigger>
+                            <SelectContent className="bg-emerald-800 text-white">
+                              {CASE_HIERARCHY["Implant"].fields[1].options.map((opt) => (
+                                <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                  {opt}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {subTypeData.caseType2 && subTypeData.caseType2 !== "None" && (
+                          <div className="space-y-2">
+                            <Label>Teeth for Crown & Bridge Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                            <ToothChart selected={crownBridgeTeeth} onChange={setCrownBridgeTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Category</Label>
+                            <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
+                              <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
+                              <SelectContent className="bg-emerald-800 text-white">
+                                {Object.keys(CASE_HIERARCHY).map((cat) => (
+                                  <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
+                                    {cat}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Model Required?</Label>
+                            <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-2">
+                              <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes" /><Label htmlFor="m-yes" className="font-normal">Yes</Label></div>
+                              <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no" /><Label htmlFor="m-no" className="font-normal">No</Label></div>
+                            </RadioGroup>
+                          </div>
+                        </div>
+
+                        {/* Dynamic Fields */}
+                        {CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
+                          <div className="space-y-2" key={field.name}>
+                            <Label>{field.label}</Label>
+                            <Select
+                              value={subTypeData[field.name] || ""}
+                              onValueChange={(v) => setSubTypeData({ ...subTypeData, [field.name]: v })}
+                            >
+                              <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+                              <SelectContent className="bg-emerald-800 text-white">
+                                {field.options.map((opt) => (
+                                  <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+
+                        <div className="space-y-2">
+                          <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                          <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Preferred Teeth Library</Label>
+                          <Select value={preferredTeethLibrary} onValueChange={setPreferredTeethLibrary}>
+                            <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900">
+                              <SelectValue placeholder="Select Preferred Teeth Library" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-emerald-800 text-white">
+                              <SelectItem value="default" className="focus:bg-emerald-700 focus:text-white">Default Teeth Library</SelectItem>
+                              <SelectItem value="other" className="focus:bg-emerald-700 focus:text-white">Other Teeth Library</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {preferredTeethLibrary === "other" && (
+                          <div className="space-y-2">
+                            <Label>Teeth Library File (.dme or .zip, max 2GB)</Label>
+                            <input
+                              ref={libraryFileRef}
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleLibraryFileSelect(file);
+                              }}
+                            />
+                            {isLibraryUploading ? (
+                              <div className="border-2 border-dashed rounded-lg p-6 text-center border-emerald-500 bg-emerald-50/10">
+                                <div className="space-y-2">
+                                  <Upload className="h-6 w-6 mx-auto text-emerald-600 animate-pulse" />
+                                  <p className="text-sm font-medium text-foreground">Uploading Teeth Library... {libraryUploadProgress}%</p>
+                                  <div className="w-full bg-muted rounded-full h-1.5 max-w-xs mx-auto">
+                                    <div className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${libraryUploadProgress}%` }}></div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : uploadedLibraryFile ? (
+                              <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
+                                    <FileArchive className="h-5 w-5" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+                                      {uploadedLibraryFile.fileName}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <p className="text-xs text-muted-foreground">
+                                        ({(uploadedLibraryFile.fileSize / 1024 / 1024).toFixed(2)} MB)
+                                      </p>
+                                      <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
+                                        ✓ Uploaded
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 shrink-0">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      libraryFileRef.current?.click();
+                                    }}
+                                    className="h-9 text-xs flex items-center gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-600 hover:text-white bg-white font-medium"
+                                  >
+                                    <RefreshCw className="h-3.5 w-3.5" /> Replace
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={async (e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      await handleDeleteUploadedFile(uploadedLibraryFile.fileName);
+                                      setUploadedLibraryFile(null);
+                                    }}
+                                    className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleLibraryFileSelect(file);
+                                  }}
+                                />
+                                <div>
+                                  <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+                                  <p className="text-sm font-medium text-foreground">Click to upload Custom Teeth Library</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">ZIP or DME (Max 2GB)</p>
+                                </div>
+                              </label>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
 
                     <div className="space-y-2">
@@ -985,7 +1181,7 @@ export default function CasesPage() {
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1">
                                     <Label className="text-xs">Category</Label>
-                                    <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: {} })}>
+                                    <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: v === "Implant" ? { caseType2: "None" } : {} })}>
                                       <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                                       <SelectContent className="bg-emerald-800 text-white">
                                         {Object.keys(CASE_HIERARCHY).map((cat) => (
@@ -1006,25 +1202,88 @@ export default function CasesPage() {
                                 </div>
 
                                 {/* Dynamic Fields */}
-                                {CASE_HIERARCHY[row.category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
-                                  <div className="space-y-1" key={field.name}>
-                                    <Label className="text-xs">{field.label}</Label>
-                                    <Select
-                                      value={row.subTypeData[field.name] || ""}
-                                      onValueChange={(v) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, [field.name]: v } })}
-                                    >
-                                      <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
-                                      <SelectContent className="bg-emerald-800 text-white">
-                                        {field.options.map((opt) => (
-                                          <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                            {opt}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                ))}
-                                <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} system={row.toothSystem} onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })} />
+                                {row.category === "Implant" ? (
+                                  <>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Sub Type 1</Label>
+                                      <Select
+                                        value={row.subTypeData["caseType1"] || ""}
+                                        onValueChange={(v) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, caseType1: v } })}
+                                      >
+                                        <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Sub Type 1" /></SelectTrigger>
+                                        <SelectContent className="bg-emerald-800 text-white">
+                                          {CASE_HIERARCHY["Implant"].fields[0].options.map((opt) => (
+                                            <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                              {opt}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Teeth for Implant ({row.toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                                      <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} system={row.toothSystem} onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })} />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Crown & Bridge type (optional)</Label>
+                                      <Select
+                                        value={row.subTypeData["caseType2"] || "None"}
+                                        onValueChange={(v) => {
+                                          const nextSubTypeData: Record<string, any> = { ...row.subTypeData, caseType2: v };
+                                          if (v === "None") {
+                                            delete nextSubTypeData.crownBridgeTeeth;
+                                          }
+                                          updateBulkRow(i, { subTypeData: nextSubTypeData });
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Crown & Bridge type" /></SelectTrigger>
+                                        <SelectContent className="bg-emerald-800 text-white">
+                                          {CASE_HIERARCHY["Implant"].fields[1].options.map((opt) => (
+                                            <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                              {opt}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    {row.subTypeData.caseType2 && row.subTypeData.caseType2 !== "None" && (
+                                      <div className="space-y-1">
+                                        <Label className="text-xs">Teeth for Crown & Bridge ({row.toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                                        <ToothChart
+                                          selected={row.subTypeData.crownBridgeTeeth || []}
+                                          onChange={(t) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, crownBridgeTeeth: t } })}
+                                          system={row.toothSystem}
+                                          onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })}
+                                        />
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {CASE_HIERARCHY[row.category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
+                                      <div className="space-y-1" key={field.name}>
+                                        <Label className="text-xs">{field.label}</Label>
+                                        <Select
+                                          value={row.subTypeData[field.name] || ""}
+                                          onValueChange={(v) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, [field.name]: v } })}
+                                        >
+                                          <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+                                          <SelectContent className="bg-emerald-800 text-white">
+                                            {field.options.map((opt) => (
+                                              <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                                {opt}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    ))}
+                                    <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} system={row.toothSystem} onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })} />
+                                  </>
+                                )}
                                 <Textarea
                                   value={row.notes}
                                   onChange={(e) => updateBulkRow(i, { notes: e.target.value })}
@@ -1114,53 +1373,67 @@ export default function CasesPage() {
                     ))
                   ) : (
                     filtered.map((c) => {
-                       const toothNumbers = c.subTypeData?.teeth || [];
-                       const toothSystem = c.subTypeData?.toothSystem || "USA";
-                       const restoration = c.subTypeData
+                      const toothNumbers = c.subTypeData?.teeth || [];
+                      const toothSystem = c.subTypeData?.toothSystem || "USA";
+                      const restoration = c.subTypeData
                         ? Object.entries(c.subTypeData)
-                          .filter(([k, v]) => k !== 'teeth' && k !== 'toothSystem' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v)
+                          .filter(([k, v]) => k !== 'teeth' && k !== 'crownBridgeTeeth' && k !== 'toothSystem' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v && v.toLowerCase() !== 'none')
                           .map(([, v]) => v)
                           .join(" - ")
                         : c.category || "—";
 
-                       const createdAtFormatted = c.createdAt
+                      const createdAtFormatted = c.createdAt
                         ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                         : "—";
 
-                       return (
+                      return (
                         <tr
                           key={c.id}
                           className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
                           onClick={() => router.push(`/client/cases/${c.id}`)}
                         >
                           <td className="px-3.5 py-2">
-                             <div className="flex items-center gap-1.5">
-                               <span className="font-semibold text-[11px] text-slate-800">{c.caseNumber || c.id}</span>
-                               {(() => {
-                                 const hasUnreadChat = Boolean(c.hasUnreadChat);
-                                 const todayCount = (c as any).todayMessagesCount || 0;
-                                 if (!hasUnreadChat && todayCount === 0) return null;
-                                 return (
-                                   <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${todayCount} messages today`}>
-                                     <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
-                                     {hasUnreadChat ? (
-                                       <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                                       </span>
-                                     ) : (
-                                       <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold border border-white leading-none">
-                                         {todayCount}
-                                       </span>
-                                     )}
-                                   </span>
-                                 );
-                               })()}
-                             </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-[11px] text-slate-800">{c.caseNumber || c.id}</span>
+                              {(() => {
+                                const hasUnreadChat = Boolean(c.hasUnreadChat);
+                                const todayCount = (c as any).todayMessagesCount || 0;
+                                if (!hasUnreadChat && todayCount === 0) return null;
+                                return (
+                                  <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${todayCount} messages today`}>
+                                    <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
+                                    {hasUnreadChat ? (
+                                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                      </span>
+                                    ) : (
+                                      <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold border border-white leading-none">
+                                        {todayCount}
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </td>
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-3.5 py-2 text-[11px] text-foreground font-semibold">{restoration || "—"}</td>
-                          <td className="px-3.5 py-2 text-[10px] text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"}</td>
+                          <td className="px-3.5 py-2 text-[10px] text-muted-foreground">
+                            {c.category === "Implant" ? (
+                              <div className="flex flex-col">
+                                <span>Imp: {toothNumbers.length ? `#${toothNumbers.join(", #")}` : "—"}</span>
+                                {(() => {
+                                  const cbToothNumbers = c.subTypeData?.crownBridgeTeeth || [];
+                                  return cbToothNumbers.length > 0 && (
+                                    <span>C&B: #{cbToothNumbers.join(", #")}</span>
+                                  );
+                                })()}
+                              </div>
+                            ) : (
+                              toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"
+                            )}
+                          </td>
                           <td className="px-3.5 py-2">
                             <div className="scale-90 origin-left">
                               <StatusBadge status={c.status} />

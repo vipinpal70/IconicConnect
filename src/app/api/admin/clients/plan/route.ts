@@ -3,6 +3,7 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 import { createClient } from '@/src/lib/supabase/server'
+import { logActivity } from '@/src/lib/activity-log'
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,6 +60,12 @@ export async function POST(req: NextRequest) {
     await db.update(profiles)
       .set(updateData)
       .where(eq(profiles.id, clientId))
+
+    await logActivity({
+      actor: adminProfile,
+      action: 'client.plan_updated',
+      details: { clientId, plan },
+    }).catch((err) => console.error('[client.plan_updated logActivity]', err))
 
     return NextResponse.json({ success: true })
   } catch (err) {

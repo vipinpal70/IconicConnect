@@ -3,9 +3,10 @@
 import {
   LayoutDashboard,
   FolderOpen,
-  BarChart3,
   LogOut,
   Bell,
+  Headset,
+  UserCircle,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -33,6 +34,8 @@ const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "All Cases", url: "/cases", icon: FolderOpen },
   { title: "Notifications", url: "/notifications", icon: Bell },
+  { title: "Support", url: "/support", icon: Headset },
+  { title: "Profile", url: "/profile", icon: UserCircle },
 ];
 
 export function OpsSidebar() {

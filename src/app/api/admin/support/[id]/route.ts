@@ -6,6 +6,7 @@ import { supportTickets } from '@/src/db/schema/support-ticket'
 import { createClient } from '@/src/lib/supabase/server'
 import { notifySupportTicketUpdated } from '@/src/lib/notifications/notification-dispatcher'
 import { SUPPORT_TICKET_STATUSES } from '@/src/lib/support-tickets'
+import { logActivity } from '@/src/lib/activity-log'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -82,6 +83,18 @@ export async function PATCH(
         adminNotes: updateData.adminNotes ?? ticket.adminNotes ?? null,
       })
     }
+
+    await logActivity({
+      actor: auth.profile,
+      action: 'support_ticket.updated',
+      details: {
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        previousStatus: ticket.status,
+        status: status ?? ticket.status,
+        adminNotes: updateData.adminNotes ?? null,
+      },
+    }).catch((err) => console.error('[admin support_ticket.updated logActivity]', err))
 
     return NextResponse.json({ data: updated })
   } catch (error) {

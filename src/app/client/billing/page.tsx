@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ClientLayout } from "@/src/components/ClientLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
@@ -14,6 +16,17 @@ const statusColor: Record<string, string> = {
 };
 
 export default function BillingPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((p) => {
+        if (p?.role === "subuser") router.replace("/client/dashboard");
+      })
+      .catch(() => {});
+  }, [router]);
+
   const totalSpend = invoices.reduce((s, i) => s + i.amount, 0);
   const paid = invoices.filter((i) => i.status === "Paid").length;
   const pending = invoices.filter((i) => i.status === "Pending").length;

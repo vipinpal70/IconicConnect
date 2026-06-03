@@ -8,6 +8,7 @@ export const supportCallbackRequests = pgTable('support_callback_requests', {
   labName: varchar('lab_name', { length: 150 }).notNull(),
   phone: varchar('phone', { length: 20 }),
   email: varchar('email', { length: 255 }).notNull(),
+  createdBy: uuid('created_by').references(() => profiles.id),
   requestedAt: timestamp('requested_at').defaultNow().notNull(),
 }, (table) => {
   return {

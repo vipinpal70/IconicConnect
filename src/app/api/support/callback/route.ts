@@ -5,6 +5,7 @@ import { profiles, subUsers } from '@/src/db/schema/profile'
 import { supportCallbackRequests } from '@/src/db/schema/support-callback-request'
 import { createClient } from '@/src/lib/supabase/server'
 import { notifyCallbackRequestCreated } from '@/src/lib/notifications/notification-dispatcher'
+import { logActivity } from '@/src/lib/activity-log'
 
 async function getClientContext() {
   const supabase = await createClient()
@@ -56,6 +57,7 @@ export async function POST() {
       labName,
       phone: clientProfile?.phone || null,
       email: clientProfile?.email || requester,
+      createdBy: profile.id,
     }).returning()
 
     const dispatchResult = await notifyCallbackRequestCreated({
@@ -66,6 +68,12 @@ export async function POST() {
       labName,
       requesterName: requester,
     })
+
+    await logActivity({
+      actor: profile,
+      action: 'support_callback.created',
+      details: { requestId: request.id, clientId, clientName, labName },
+    }).catch((err) => console.error('[support_callback.created logActivity]', err))
 
     return NextResponse.json({ data: { notifiedCount: dispatchResult.succeeded } })
   } catch (error) {

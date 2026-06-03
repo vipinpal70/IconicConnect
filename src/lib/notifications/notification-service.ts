@@ -47,6 +47,18 @@ export class NotificationService {
           caseReminderInApp: true,
           chatMessageEmail: true,
           chatMessageInApp: true,
+          caseCreatedEmail: true,
+          caseCreatedInApp: true,
+          offerCreatedEmail: true,
+          offerCreatedInApp: true,
+          tutorialCreatedEmail: true,
+          tutorialCreatedInApp: true,
+          supportTicketCreatedEmail: true,
+          supportTicketCreatedInApp: true,
+          supportTicketUpdatedEmail: true,
+          supportTicketUpdatedInApp: true,
+          supportCallbackEmail: true,
+          supportCallbackInApp: true,
         })
         .returning();
       return newPrefs;
@@ -151,6 +163,14 @@ export class NotificationService {
       case NotificationType.CASE_CANCEL: return prefs.caseCancelEmail;
       case NotificationType.CASE_REMINDER: return prefs.caseReminderEmail;
       case NotificationType.CHAT_MESSAGE: return prefs.chatMessageEmail;
+      case NotificationType.CASE_CREATED: return prefs.caseCreatedEmail;
+      case NotificationType.OFFER_CREATED: return prefs.offerCreatedEmail;
+      case NotificationType.TUTORIAL_CREATED: return prefs.tutorialCreatedEmail;
+      case NotificationType.SUPPORT_TICKET_CREATED: return prefs.supportTicketCreatedEmail;
+      case NotificationType.SUPPORT_TICKET_UPDATED:
+      case NotificationType.SUPPORT_TICKET_RESOLVED:
+      case NotificationType.SUPPORT_TICKET_CLOSED: return prefs.supportTicketUpdatedEmail;
+      case NotificationType.SUPPORT_CALLBACK_REQUESTED: return prefs.supportCallbackEmail;
       default: return true;
     }
   }
@@ -166,6 +186,14 @@ export class NotificationService {
       case NotificationType.CASE_CANCEL: return prefs.caseCancelInApp;
       case NotificationType.CASE_REMINDER: return prefs.caseReminderInApp;
       case NotificationType.CHAT_MESSAGE: return prefs.chatMessageInApp;
+      case NotificationType.CASE_CREATED: return prefs.caseCreatedInApp;
+      case NotificationType.OFFER_CREATED: return prefs.offerCreatedInApp;
+      case NotificationType.TUTORIAL_CREATED: return prefs.tutorialCreatedInApp;
+      case NotificationType.SUPPORT_TICKET_CREATED: return prefs.supportTicketCreatedInApp;
+      case NotificationType.SUPPORT_TICKET_UPDATED:
+      case NotificationType.SUPPORT_TICKET_RESOLVED:
+      case NotificationType.SUPPORT_TICKET_CLOSED: return prefs.supportTicketUpdatedInApp;
+      case NotificationType.SUPPORT_CALLBACK_REQUESTED: return prefs.supportCallbackInApp;
       default: return true;
     }
   }

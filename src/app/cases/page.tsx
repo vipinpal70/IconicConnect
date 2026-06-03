@@ -704,7 +704,7 @@ export default function CasesPage() {
       const friendlyRestoration = (
         c.subTypeData
           ? Object.entries(c.subTypeData)
-            .filter(([k, v]) => k !== "teeth" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v)
+            .filter(([k, v]) => k !== "teeth" && k !== "crownBridgeTeeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v && v.toLowerCase() !== "none")
             .map(([, v]) => v).join(" - ")
           : c.category || ""
       ).toLowerCase();
@@ -1159,7 +1159,7 @@ export default function CasesPage() {
                       const toothSys = c.subTypeData?.toothSystem || "USA";
                       const restoration = c.subTypeData
                         ? Object.entries(c.subTypeData)
-                          .filter(([k, v]) => k !== "teeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v)
+                          .filter(([k, v]) => k !== "teeth" && k !== "crownBridgeTeeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v && v.toLowerCase() !== "none")
                           .map(([, v]) => v).join(" - ")
                         : c.category || "—";
                       const createdAtFormatted = c.createdAt
@@ -1231,7 +1231,21 @@ export default function CasesPage() {
                           </td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-3.5 py-1.5 text-[11px] text-foreground font-semibold">{restoration || "—"}</td>
-                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground">{toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSys === "USA" ? "Universal" : toothSys})` : "—"}</td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground">
+                            {c.category === "Implant" ? (
+                              <div className="flex flex-col">
+                                <span>Imp: {toothNumbers.length ? `#${toothNumbers.join(", #")}` : "—"}</span>
+                                {(() => {
+                                  const cbToothNumbers = Array.isArray((c.subTypeData as any)?.crownBridgeTeeth) ? ((c.subTypeData as any).crownBridgeTeeth as number[]) : [];
+                                  return cbToothNumbers.length > 0 && (
+                                    <span>C&B: #{cbToothNumbers.join(", #")}</span>
+                                  );
+                                })()}
+                              </div>
+                            ) : (
+                              toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSys === "USA" ? "Universal" : toothSys})` : "—"
+                            )}
+                          </td>
                           <td className="px-3.5 py-1.5"><StatusBadge status={c.status} role="internal" /></td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
 import { db } from "@/src/db"
 import { preferenceForms } from "@/src/db/schema/preference-form"
-import { profiles } from "@/src/db/schema/profile"
+import { profiles, subUsers } from "@/src/db/schema/profile"
 import { createClient } from "@/src/lib/supabase/server"
 import { clonePreferenceFormPayload, type PreferenceFormPayload } from "@/src/lib/preference-forms"
+import { logActivity } from "@/src/lib/activity-log"
 
 async function getRequestContext() {
   const supabase = await createClient()
@@ -20,7 +21,15 @@ async function getRequestContext() {
     return { error: NextResponse.json({ error: "Profile not found" }, { status: 404 }) }
   }
 
-  return { profile }
+  if (profile.role === "subuser") {
+    const [subUserRecord] = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1)
+    if (!subUserRecord) {
+      return { error: NextResponse.json({ error: "Sub-user parent client not found" }, { status: 400 }) }
+    }
+    return { profile, ownerClientId: subUserRecord.clientId }
+  }
+
+  return { profile, ownerClientId: profile.id }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -45,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Preference form not found" }, { status: 404 })
     }
 
-    if (form.clientId !== context.profile.id && context.profile.role !== "admin") {
+    if (form.clientId !== context.ownerClientId && context.profile.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -65,6 +74,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       })
       .where(eq(preferenceForms.id, id))
       .returning()
+
+    await logActivity({
+      actor: context.profile,
+      action: 'preference_form.updated',
+      details: { formId: id, formName: updateData.formName ?? form.formName },
+    }).catch((err) => console.error('[preference_form.updated logActivity]', err))
 
     return NextResponse.json({ data: updated[0] })
   } catch (error) {
@@ -94,7 +109,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Preference form not found" }, { status: 404 })
     }
 
-    if (form.clientId !== context.profile.id && context.profile.role !== "admin") {
+    if (form.clientId !== context.ownerClientId && context.profile.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -102,6 +117,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       .delete(preferenceForms)
       .where(eq(preferenceForms.id, id))
       .returning()
+
+    await logActivity({
+      actor: context.profile,
+      action: 'preference_form.deleted',
+      details: { formId: id, formName: form.formName },
+    }).catch((err) => console.error('[preference_form.deleted logActivity]', err))
 
     return NextResponse.json({ data: deleted[0] })
   } catch (error) {

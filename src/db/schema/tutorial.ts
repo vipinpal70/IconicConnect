@@ -1,4 +1,5 @@
 import { pgTable, uuid, varchar, text, timestamp, index } from "drizzle-orm/pg-core"
+import { profiles } from "./profile"
 
 export const tutorials = pgTable("tutorials", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -6,6 +7,7 @@ export const tutorials = pgTable("tutorials", {
   category: varchar("category", { length: 40 }).notNull().default("Getting Started"),
   description: text("description").notNull(),
   youtubeVideoId: varchar("youtube_video_id", { length: 32 }).notNull(),
+  createdBy: uuid("created_by").references(() => profiles.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => {

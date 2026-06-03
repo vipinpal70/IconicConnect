@@ -31,13 +31,25 @@ export function formatActivityActor(actor: Pick<Profile, 'fullName' | 'labName' 
 }
 
 export function formatActivityLabel(action: string, details: ActivityDetails) {
-  if (action === 'case.created') {
-    return 'Case submitted by client'
-  }
-
-  if (action === 'case.file_uploaded') {
-    return 'Case file uploaded'
-  }
+  if (action === 'case.created') return 'Case submitted by client'
+  if (action === 'case.file_uploaded') return 'Case file uploaded'
+  if (action === 'offer.created') return 'Offer created'
+  if (action === 'offer.updated') return 'Offer updated'
+  if (action === 'offer.deleted') return 'Offer deleted'
+  if (action === 'tutorial.created') return 'Tutorial created'
+  if (action === 'tutorial.deleted') return 'Tutorial deleted'
+  if (action === 'support_ticket.created') return 'Support ticket submitted'
+  if (action === 'support_ticket.updated') return 'Support ticket updated'
+  if (action === 'support_callback.created') return 'Callback requested'
+  if (action === 'preference_form.created') return 'Preference form created'
+  if (action === 'preference_form.updated') return 'Preference form updated'
+  if (action === 'preference_form.deleted') return 'Preference form deleted'
+  if (action === 'client.approved') return 'Client account approved'
+  if (action === 'client.plan_updated') return 'Client plan updated'
+  if (action === 'price_list.updated') return 'Price list updated'
+  if (action === 'subuser.created') return 'Sub-user created'
+  if (action === 'subuser.updated') return 'Sub-user updated'
+  if (action === 'subuser.deleted') return 'Sub-user deleted'
 
   if (action === 'case.updated') {
     const changes = (details?.changes as Record<string, unknown> | undefined) || {}

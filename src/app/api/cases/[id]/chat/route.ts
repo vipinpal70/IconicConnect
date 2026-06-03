@@ -95,6 +95,10 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden: You do not have access to this case chat' }, { status: 403 });
     }
 
+    if (caseRecord.status === 'client_reject') {
+      return NextResponse.json({ error: 'Forbidden: Chat is disabled because this case has been rejected' }, { status: 400 });
+    }
+
     const body = await req.json();
     const { messageText, fileUrl, fileName, fileType, fileSize } = body;
 

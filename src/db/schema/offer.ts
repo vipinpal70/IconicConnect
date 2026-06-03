@@ -15,6 +15,7 @@ export const offers = pgTable(
     targetLocations: jsonb("target_locations").$type<string[]>().notNull().default([]),
     sponsored: boolean("sponsored").default(false).notNull(),
     active: boolean("active").default(true).notNull(),
+    createdBy: uuid("created_by").references(() => profiles.id),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

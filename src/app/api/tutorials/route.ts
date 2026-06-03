@@ -6,6 +6,7 @@ import { profiles } from "@/src/db/schema/profile"
 import { createClient } from "@/src/lib/supabase/server"
 import { notifyTutorialCreated } from "@/src/lib/notifications/notification-dispatcher"
 import { isValidRoleForType } from "@/src/lib/auth/role"
+import { logActivity } from "@/src/lib/activity-log"
 import {
   extractYouTubeVideoId,
   isTutorialCategory,
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
         category,
         description,
         youtubeVideoId,
+        createdBy: admin.user.id,
       })
       .returning()
 
@@ -107,6 +109,12 @@ export async function POST(req: NextRequest) {
       category: inserted.category,
       description: inserted.description,
     })
+
+    await logActivity({
+      actor: admin.profile!,
+      action: 'tutorial.created',
+      details: { tutorialId: inserted.id, title: inserted.title, category: inserted.category },
+    }).catch((err) => console.error('[tutorial.created logActivity]', err))
 
     return NextResponse.json({ data: inserted }, { status: 201 })
   } catch (error) {
@@ -142,6 +150,12 @@ export async function DELETE(req: NextRequest) {
     if (!deleted.length) {
       return NextResponse.json({ error: "Tutorial not found" }, { status: 404 })
     }
+
+    await logActivity({
+      actor: admin.profile!,
+      action: 'tutorial.deleted',
+      details: { tutorialId: id },
+    }).catch((err) => console.error('[tutorial.deleted logActivity]', err))
 
     return NextResponse.json({ data: deleted[0] })
   } catch (error) {

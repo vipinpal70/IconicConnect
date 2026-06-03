@@ -6,6 +6,7 @@ import { supportTickets } from '@/src/db/schema/support-ticket'
 import { createClient } from '@/src/lib/supabase/server'
 import { notifySupportTicketCreated } from '@/src/lib/notifications/notification-dispatcher'
 import { SUPPORT_TICKET_PRIORITIES, SUPPORT_TICKET_TYPES, isClientSupportStatus } from '@/src/lib/support-tickets'
+import { logActivity } from '@/src/lib/activity-log'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error'
@@ -127,6 +128,7 @@ export async function POST(req: NextRequest) {
       category: category as (typeof SUPPORT_TICKET_TYPES)[number],
       priority: priority as (typeof SUPPORT_TICKET_PRIORITIES)[number],
       status: 'open',
+      createdBy: profile.id,
     }).returning()
 
     await notifySupportTicketCreated({
@@ -138,6 +140,12 @@ export async function POST(req: NextRequest) {
       priority: ticket.priority,
       clientName: profile.labName || profile.fullName || profile.email || 'Client',
     })
+
+    await logActivity({
+      actor: profile,
+      action: 'support_ticket.created',
+      details: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber, subject, category, priority },
+    }).catch((err) => console.error('[support_ticket.created logActivity]', err))
 
     return NextResponse.json({ data: ticket }, { status: 201 })
   } catch (error) {
@@ -185,6 +193,12 @@ export async function PATCH(req: NextRequest) {
       updatedAt: new Date(),
       resolvedAt: status === 'resolved' || status === 'closed' ? new Date() : null,
     }).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.clientId, clientId))).returning()
+
+    await logActivity({
+      actor: profile,
+      action: 'support_ticket.updated',
+      details: { ticketId, ticketNumber: ticket.ticketNumber, previousStatus: ticket.status, status },
+    }).catch((err) => console.error('[support_ticket.updated logActivity]', err))
 
     return NextResponse.json({ data: updated })
   } catch (error) {

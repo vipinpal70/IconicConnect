@@ -36,6 +36,7 @@ export const supportTickets = pgTable('support_tickets', {
   status: supportTicketStatusEnum('status').default('open').notNull(),
   adminNotes: text('admin_notes'),
   resolvedAt: timestamp('resolved_at'),
+  createdBy: uuid('created_by').references(() => profiles.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => {

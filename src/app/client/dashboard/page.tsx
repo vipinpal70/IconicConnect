@@ -15,6 +15,15 @@ import { Button } from "@/src/components/ui/button";
 export default function ClientDashboard() {
   const router = useRouter();
 
+  const { data: profile } = useQuery<{ fullName: string | null; labName: string | null }>({
+    queryKey: ["my-profile"],
+    queryFn: async () => {
+      const res = await fetch("/api/profile");
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ["client-dashboard-data"],
     queryFn: async () => {
@@ -58,7 +67,9 @@ export default function ClientDashboard() {
       <div className="space-y-4 animate-fade-in text-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Welcome to Iconic Connect</h1>
+            <h1 className="text-lg font-semibold text-foreground">
+              Welcome back, {profile?.labName || profile?.fullName || "Iconic Connect"}
+            </h1>
             <p className="text-[11px] text-muted-foreground mt-0.5">Operational performance for your design pipeline</p>
           </div>
           <Button onClick={() => router.push("/client/cases")} size="sm" className="h-8 text-xs gradient-primary border-none shadow-glow">
