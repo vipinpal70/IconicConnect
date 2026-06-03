@@ -17,6 +17,7 @@ export interface PriceListRow {
 type Props = {
   items: PriceListRow[]
   editable?: boolean
+  hideDefaultColumn?: boolean
   onChangePrice?: (catalogItemId: string, price: number) => void
 }
 
@@ -25,7 +26,7 @@ const UNIT_LABELS: Record<string, string> = {
   per_arch: 'per arch',
 }
 
-export function PriceListTable({ items, editable = false, onChangePrice }: Props) {
+export function PriceListTable({ items, editable = false, hideDefaultColumn = false, onChangePrice }: Props) {
   if (items.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-xs text-muted-foreground text-center">
@@ -51,11 +52,11 @@ export function PriceListTable({ items, editable = false, onChangePrice }: Props
               <tr className="bg-muted/40 border-b border-border/40">
                 <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Service</th>
                 <th className="text-left px-3 py-2 font-semibold text-muted-foreground w-24">Unit</th>
-                {editable && (
+                {editable && !hideDefaultColumn && (
                   <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-24">Default</th>
                 )}
                 <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-32">
-                  {editable ? 'Client Price' : 'Price'}
+                  {editable && !hideDefaultColumn ? 'Client Price' : 'Price'}
                 </th>
               </tr>
             </thead>
@@ -64,7 +65,7 @@ export function PriceListTable({ items, editable = false, onChangePrice }: Props
                 <tr key={row.id} className="hover:bg-muted/10 transition-colors">
                   <td className="px-3 py-2 font-medium text-foreground">{row.subCategory}</td>
                   <td className="px-3 py-2 text-muted-foreground">{UNIT_LABELS[row.unitType] ?? row.unitType}</td>
-                  {editable && (
+                  {editable && !hideDefaultColumn && (
                     <td className="px-3 py-2 text-right text-muted-foreground">
                       ${Number(row.defaultPrice).toFixed(2)}
                     </td>

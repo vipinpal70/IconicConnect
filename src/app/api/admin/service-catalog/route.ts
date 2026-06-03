@@ -1,45 +1,64 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { serviceCatalog } from '@/src/db/schema/price-list'
 import { createClient } from '@/src/lib/supabase/server'
 import { eq } from 'drizzle-orm'
+import { getServiceCatalog, updateCatalogDefaultPrices } from '@/src/lib/price-list'
+
+async function requireAdmin() {
+  const supabase = await createClient()
+  const { data: { user }, error } = await supabase.auth.getUser()
+
+  if (error || !user) {
+    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+
+  const [profile] = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)
+  if (!profile || profile.role !== 'admin') {
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
+
+  return { profile }
+}
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const auth = await requireAdmin()
+    if ('error' in auth) return auth.error
 
-    if (error || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const [profile] = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)
-    if (!profile || profile.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const rows = await db
-      .select()
-      .from(serviceCatalog)
-      .where(eq(serviceCatalog.isActive, true))
-      .orderBy(serviceCatalog.sortOrder)
-
-    const data = rows.map((row) => ({
-      id: row.id,
-      catalogItemId: row.id,
-      category: row.category,
-      subCategory: row.subCategory,
-      unitType: row.unitType,
-      defaultPrice: Number(row.defaultPrice),
-      price: Number(row.defaultPrice),
-      notes: null,
-      sortOrder: row.sortOrder,
-    }))
-
+    const data = await getServiceCatalog()
     return NextResponse.json({ data })
   } catch (error) {
     console.error('[admin/service-catalog GET]', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const auth = await requireAdmin()
+    if ('error' in auth) return auth.error
+
+    const body = await req.json().catch(() => ({} as { items?: unknown[] }))
+    const items = Array.isArray(body.items) ? body.items : []
+
+    type RawItem = { id?: unknown; defaultPrice?: unknown }
+    const validated = (items as RawItem[])
+      .map((item) => {
+        const price = Number(item.defaultPrice)
+        if (!Number.isFinite(price) || price < 0) return null
+        if (typeof item.id !== 'string') return null
+        return { id: item.id, defaultPrice: price }
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+
+    await updateCatalogDefaultPrices(validated)
+
+    const data = await getServiceCatalog()
+    return NextResponse.json({ data })
+  } catch (error) {
+    console.error('[admin/service-catalog PUT]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

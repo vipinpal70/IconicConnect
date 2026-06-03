@@ -10,8 +10,9 @@ import {
   Users,
   Bell,
   Headset,
-  CreditCard ,
-  BarChart3
+  CreditCard,
+  BarChart3,
+  UserCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -47,6 +48,7 @@ export function AdminSidebar() {
     { title: "Offers", url: "/admin/offers", icon: Tag },
     { title: "Support", url: "/admin/support", icon: Headset },
     { title: "Notifications", url: "/admin/notifications", icon: Bell },
+    { title: "Profile", url: "/admin/profile", icon: UserCircle },
   ];
 
   const { state } = useSidebar();

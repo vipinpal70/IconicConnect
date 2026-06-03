@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { subUsers } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
@@ -24,7 +24,7 @@ export async function resolveClientIdFromProfile(profileId: string, role: string
   return null
 }
 
-export async function getPriceListForClient(clientId: string): Promise<PriceListEntryFull[]> {
+export async function getPriceListForClient(clientId: string, _autoSeed = true): Promise<PriceListEntryFull[]> {
   const rows = await db
     .select({
       id: clientPriceList.id,
@@ -41,6 +41,11 @@ export async function getPriceListForClient(clientId: string): Promise<PriceList
     .innerJoin(serviceCatalog, eq(clientPriceList.catalogItemId, serviceCatalog.id))
     .where(eq(clientPriceList.clientId, clientId))
     .orderBy(serviceCatalog.sortOrder)
+
+  if (rows.length === 0 && _autoSeed) {
+    await seedClientPriceList(clientId)
+    return getPriceListForClient(clientId, false)
+  }
 
   return rows.map((row) => ({
     ...row,
@@ -69,7 +74,7 @@ export async function getServiceCatalog(): Promise<PriceListEntryFull[]> {
   }))
 }
 
-export async function seedClientPriceList(clientId: string, createdById: string) {
+export async function seedClientPriceList(clientId: string, createdById?: string | null) {
   const catalog = await db
     .select()
     .from(serviceCatalog)
@@ -85,10 +90,28 @@ export async function seedClientPriceList(clientId: string, createdById: string)
         clientId,
         catalogItemId: item.id,
         price: item.defaultPrice,
-        createdBy: createdById,
+        createdBy: createdById ?? null,
       }))
     )
     .onConflictDoNothing()
+}
+
+export async function updateCatalogDefaultPrices(
+  items: Array<{ id: string; defaultPrice: number }>
+) {
+  if (items.length === 0) return
+
+  await db.transaction(async (tx) => {
+    for (const item of items) {
+      await tx
+        .update(serviceCatalog)
+        .set({
+          defaultPrice: Number(item.defaultPrice).toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(serviceCatalog.id, item.id))
+    }
+  })
 }
 
 export async function updateClientPriceList(
