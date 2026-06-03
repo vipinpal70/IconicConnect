@@ -1,14 +1,40 @@
--- Drop unused Supabase-only pricing tables (never managed by Drizzle ORM)
-DROP TABLE IF EXISTS "pricing_cosmetics";--> statement-breakpoint
-DROP TABLE IF EXISTS "pricing_dentures";--> statement-breakpoint
-DROP TABLE IF EXISTS "pricing_appliances";--> statement-breakpoint
-DROP TABLE IF EXISTS "pricing_implants";--> statement-breakpoint
-DROP TABLE IF EXISTS "pricing_crown_bridge";--> statement-breakpoint
-DROP FUNCTION IF EXISTS "get_case_price";--> statement-breakpoint
-DROP FUNCTION IF EXISTS "get_implant_price";--> statement-breakpoint
+-- Drop unused Supabase-only pricing tables (wrapped in exception handlers
+-- because on some VPS environments these tables are owned by the Supabase
+-- postgres superuser and cannot be dropped by the app DB user)
+DO $$ BEGIN
+  DROP TABLE IF EXISTS "pricing_cosmetics";
+EXCEPTION WHEN others THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+  DROP TABLE IF EXISTS "pricing_dentures";
+EXCEPTION WHEN others THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+  DROP TABLE IF EXISTS "pricing_appliances";
+EXCEPTION WHEN others THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+  DROP TABLE IF EXISTS "pricing_implants";
+EXCEPTION WHEN others THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+  DROP TABLE IF EXISTS "pricing_crown_bridge";
+EXCEPTION WHEN others THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+  DROP FUNCTION IF EXISTS "get_case_price";
+EXCEPTION WHEN others THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+  DROP FUNCTION IF EXISTS "get_implant_price";
+EXCEPTION WHEN others THEN null;
+END $$;--> statement-breakpoint
 
 -- Drop old free-form price list table
-DROP TABLE IF EXISTS "client_price_list_items";--> statement-breakpoint
+DO $$ BEGIN
+  DROP TABLE IF EXISTS "client_price_list_items";
+EXCEPTION WHEN others THEN null;
+END $$;--> statement-breakpoint
 
 -- unit_type enum
 DO $$ BEGIN
@@ -18,7 +44,7 @@ EXCEPTION
 END $$;--> statement-breakpoint
 
 -- Central service catalog (template for all clients)
-CREATE TABLE "service_catalog" (
+CREATE TABLE IF NOT EXISTS "service_catalog" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "category" varchar(100) NOT NULL,
   "sub_category" varchar(100) NOT NULL,
@@ -32,7 +58,7 @@ CREATE TABLE "service_catalog" (
 );--> statement-breakpoint
 
 -- Per-client price list (allocated from catalog, prices editable per client)
-CREATE TABLE "client_price_list" (
+CREATE TABLE IF NOT EXISTS "client_price_list" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "client_id" uuid NOT NULL,
   "catalog_item_id" uuid NOT NULL,
@@ -44,17 +70,26 @@ CREATE TABLE "client_price_list" (
   CONSTRAINT "client_price_list_client_catalog_uniq" UNIQUE("client_id","catalog_item_id")
 );--> statement-breakpoint
 
-ALTER TABLE "client_price_list" ADD CONSTRAINT "client_price_list_client_id_profiles_id_fk"
-  FOREIGN KEY ("client_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "client_price_list" ADD CONSTRAINT "client_price_list_client_id_profiles_id_fk"
+    FOREIGN KEY ("client_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
-ALTER TABLE "client_price_list" ADD CONSTRAINT "client_price_list_catalog_item_id_service_catalog_id_fk"
-  FOREIGN KEY ("catalog_item_id") REFERENCES "public"."service_catalog"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "client_price_list" ADD CONSTRAINT "client_price_list_catalog_item_id_service_catalog_id_fk"
+    FOREIGN KEY ("catalog_item_id") REFERENCES "public"."service_catalog"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
-ALTER TABLE "client_price_list" ADD CONSTRAINT "client_price_list_created_by_profiles_id_fk"
-  FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+  ALTER TABLE "client_price_list" ADD CONSTRAINT "client_price_list_created_by_profiles_id_fk"
+    FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
-CREATE INDEX "service_catalog_category_idx" ON "service_catalog" USING btree ("category");--> statement-breakpoint
-CREATE INDEX "client_price_list_client_id_idx" ON "client_price_list" USING btree ("client_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "service_catalog_category_idx" ON "service_catalog" USING btree ("category");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "client_price_list_client_id_idx" ON "client_price_list" USING btree ("client_id");--> statement-breakpoint
 
 -- Seed 22 catalog items from billing_price_calculation.md
 INSERT INTO "service_catalog" ("category", "sub_category", "unit_type", "default_price", "sort_order") VALUES
@@ -79,4 +114,5 @@ INSERT INTO "service_catalog" ("category", "sub_category", "unit_type", "default
   ('Dentures',       'Partial Denture',  'per_arch',  15.00, 19),
   ('Cosmetics',      'Digital Wax Up',   'per_arch',  15.00, 20),
   ('Cosmetics',      'Veneers',          'per_arch',  15.00, 21),
-  ('Cosmetics',      'Snap on Smile',    'per_arch',  15.00, 22);
+  ('Cosmetics',      'Snap on Smile',    'per_arch',  15.00, 22)
+ON CONFLICT ("category", "sub_category") DO NOTHING;
