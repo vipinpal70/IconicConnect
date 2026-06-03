@@ -225,6 +225,13 @@
       "when": 1748900000000,
       "tag": "0031_price_list_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1748990000000,
+      "tag": "0032_ensure_price_list_catalog",
+      "breakpoints": true
     }
   ]
 }
