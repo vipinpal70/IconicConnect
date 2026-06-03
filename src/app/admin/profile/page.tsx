@@ -61,7 +61,10 @@ export default function AdminProfilePage() {
     queryKey: ["admin-service-catalog"],
     queryFn: async () => {
       const res = await fetch("/api/admin/service-catalog")
-      if (!res.ok) throw new Error("Failed to load catalog")
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(`${res.status}: ${payload.error ?? 'Failed to load catalog'}`)
+      }
       const json = await res.json()
       return json.data ?? []
     },
