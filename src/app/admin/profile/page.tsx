@@ -186,7 +186,7 @@ export default function AdminProfilePage() {
               <p className="text-xs text-muted-foreground text-center py-4">Loading...</p>
             ) : catalogQuery.isError ? (
               <p className="text-xs text-destructive text-center py-4">
-                Failed to load price list. Please try refreshing the page.
+                Error: {(catalogQuery.error as Error)?.message ?? 'Failed to load price list'}
               </p>
             ) : (
               <PriceListTable items={catalogQuery.data?.map(toCatalogRow) ?? []} />

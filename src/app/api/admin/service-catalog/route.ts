@@ -30,8 +30,9 @@ export async function GET() {
     const data = await getServiceCatalog()
     return NextResponse.json({ data })
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
     console.error('[admin/service-catalog GET]', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
 
