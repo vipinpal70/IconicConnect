@@ -184,6 +184,10 @@ export default function AdminProfilePage() {
           <CardContent className="px-4 pb-4">
             {catalogQuery.isLoading ? (
               <p className="text-xs text-muted-foreground text-center py-4">Loading...</p>
+            ) : catalogQuery.isError ? (
+              <p className="text-xs text-destructive text-center py-4">
+                Failed to load price list. Ensure migrations have been applied (<code>npm run db:migrate</code>).
+              </p>
             ) : (
               <PriceListTable items={catalogQuery.data?.map(toCatalogRow) ?? []} />
             )}
