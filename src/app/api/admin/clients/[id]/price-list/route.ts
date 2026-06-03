@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { clientPriceListItems } from '@/src/db/schema/client-price-list'
 import { createClient } from '@/src/lib/supabase/server'
-import { normalizePriceListItems, type PriceListItemInput } from '@/src/lib/client-price-list'
+import { getPriceListForClient, updateClientPriceList } from '@/src/lib/price-list'
 import { logActivity } from '@/src/lib/activity-log'
 
 async function requireAdmin() {
@@ -47,13 +46,8 @@ export async function GET(
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
 
-    const rows = await db
-      .select()
-      .from(clientPriceListItems)
-      .where(eq(clientPriceListItems.clientId, id))
-      .orderBy(clientPriceListItems.sortOrder, clientPriceListItems.createdAt)
-
-    return NextResponse.json({ data: rows })
+    const data = await getPriceListForClient(id)
+    return NextResponse.json({ data })
   } catch (error) {
     console.error('[admin/clients/[id]/price-list GET]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -74,40 +68,34 @@ export async function PUT(
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
 
-    const body = await req.json().catch(() => ({} as { items?: PriceListItemInput[] }))
+    const body = await req.json().catch(() => ({} as { items?: unknown[] }))
     const items = Array.isArray(body.items) ? body.items : []
-    const normalized = normalizePriceListItems(items)
 
-    const rows = await db.transaction(async (tx) => {
-      await tx.delete(clientPriceListItems).where(eq(clientPriceListItems.clientId, id))
+    type RawItem = { catalogItemId?: unknown; price?: unknown; notes?: unknown }
+    const validated = (items as RawItem[])
+      .map((item) => {
+        const price = Number(item.price)
+        if (!Number.isFinite(price) || price < 0) return null
+        if (typeof item.catalogItemId !== 'string') return null
+        return {
+          catalogItemId: item.catalogItemId,
+          price,
+          notes: typeof item.notes === 'string' ? item.notes : null,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
-      if (normalized.length === 0) {
-        return []
-      }
+    await updateClientPriceList(id, validated, auth.profile.id)
 
-      return await tx
-        .insert(clientPriceListItems)
-        .values(
-          normalized.map((item, index) => ({
-            clientId: id,
-            serviceName: item.serviceName,
-            subCategory: item.subCategory,
-            price: item.price,
-            notes: item.notes,
-            sortOrder: Number.isFinite(item.sortOrder) ? item.sortOrder : index,
-            createdBy: auth.profile.id,
-          }))
-        )
-        .returning()
-    })
+    const data = await getPriceListForClient(id)
 
     await logActivity({
       actor: auth.profile,
       action: 'price_list.updated',
-      details: { clientId: id, itemCount: rows.length },
+      details: { clientId: id, itemCount: validated.length },
     }).catch((err) => console.error('[price_list.updated logActivity]', err))
 
-    return NextResponse.json({ data: rows })
+    return NextResponse.json({ data })
   } catch (error) {
     console.error('[admin/clients/[id]/price-list PUT]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 })

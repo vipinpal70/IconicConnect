@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { clientPriceListItems } from '@/src/db/schema/client-price-list'
 import { createClient } from '@/src/lib/supabase/server'
 import { eq } from 'drizzle-orm'
-import { resolveClientIdFromProfile } from '@/src/lib/client-price-list'
+import { resolveClientIdFromProfile, getPriceListForClient } from '@/src/lib/price-list'
 
 async function requireClient() {
   const supabase = await createClient()
@@ -32,14 +31,8 @@ export async function GET() {
     const auth = await requireClient()
     if ('error' in auth) return auth.error
 
-    const { clientId } = auth
-    const rows = await db
-      .select()
-      .from(clientPriceListItems)
-      .where(eq(clientPriceListItems.clientId, clientId))
-      .orderBy(clientPriceListItems.sortOrder, clientPriceListItems.createdAt)
-
-    return NextResponse.json({ data: rows })
+    const data = await getPriceListForClient(auth.clientId)
+    return NextResponse.json({ data })
   } catch (error) {
     console.error('[client/price-list GET]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

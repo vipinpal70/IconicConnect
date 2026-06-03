@@ -11,9 +11,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { Badge } from "@/src/components/ui/badge"
 import { toast } from "sonner"
 import { Switch } from "@/src/components/ui/switch"
-import { ArrowLeft, Building2, Save, Plus, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp } from "lucide-react"
+import { ArrowLeft, Building2, Save, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp } from "lucide-react"
 import { PriceListTable, type PriceListRow } from "@/src/components/PriceListTable"
 import type { PreferenceFormRecord } from "@/src/lib/preference-forms"
+import type { PriceListEntryFull } from "@/src/lib/price-list"
 
 type ClientProfile = {
   id: string
@@ -36,23 +37,17 @@ type ClientProfile = {
   onBoardedAt: string | null
 }
 
-type PriceListItemRecord = {
-  id: string
-  serviceName: string
-  subCategory: string
-  price: number
-  notes: string | null
-  sortOrder: number
-}
-
-function createBlankRow(): PriceListRow {
+function toPriceListRow(item: PriceListEntryFull): PriceListRow {
   return {
-    id: crypto.randomUUID(),
-    serviceName: "",
-    subCategory: "",
-    price: 0,
-    notes: "",
-    sortOrder: 0,
+    id: item.id,
+    catalogItemId: item.catalogItemId,
+    category: item.category,
+    subCategory: item.subCategory,
+    unitType: item.unitType,
+    defaultPrice: item.defaultPrice,
+    price: item.price,
+    notes: item.notes,
+    sortOrder: item.sortOrder,
   }
 }
 
@@ -61,7 +56,9 @@ export default function ClientProfilePage() {
   const queryClient = useQueryClient()
   const params = useParams<{ id: string }>()
   const clientId = Array.isArray(params?.id) ? params.id[0] : params?.id
+
   const [priceRows, setPriceRows] = useState<PriceListRow[]>([])
+  const [priceListInitialized, setPriceListInitialized] = useState(false)
 
   const clientQuery = useQuery<ClientProfile>({
     queryKey: ["admin-client", clientId],
@@ -74,7 +71,7 @@ export default function ClientProfilePage() {
     },
   })
 
-  const priceListQuery = useQuery<PriceListItemRecord[]>({
+  const priceListQuery = useQuery<PriceListEntryFull[]>({
     queryKey: ["admin-client-price-list", clientId],
     enabled: !!clientId,
     queryFn: async () => {
@@ -85,24 +82,47 @@ export default function ClientProfilePage() {
     },
   })
 
+  const catalogQuery = useQuery<PriceListEntryFull[]>({
+    queryKey: ["admin-service-catalog"],
+    enabled: priceListQuery.isSuccess && priceListQuery.data?.length === 0,
+    queryFn: async () => {
+      const res = await fetch("/api/admin/service-catalog")
+      if (!res.ok) throw new Error("Failed to load catalog")
+      const json = await res.json()
+      return json.data ?? []
+    },
+  })
+
+  // Populate price rows from the fetched price list (or fall back to catalog defaults)
   useEffect(() => {
-    const nextRows = (priceListQuery.data ?? []).map((item) => ({
-      id: item.id,
-      serviceName: item.serviceName,
-      subCategory: item.subCategory ?? "",
-      price: item.price,
-      notes: item.notes ?? "",
-      sortOrder: item.sortOrder,
-    }))
-    setPriceRows(nextRows)
-  }, [priceListQuery.data])
+    if (!priceListQuery.isSuccess || priceListInitialized) return
+
+    if (priceListQuery.data.length > 0) {
+      setPriceRows(priceListQuery.data.map(toPriceListRow))
+      setPriceListInitialized(true)
+    }
+  }, [priceListQuery.isSuccess, priceListQuery.data, priceListInitialized])
+
+  useEffect(() => {
+    if (!catalogQuery.isSuccess || priceListInitialized) return
+    if (catalogQuery.data.length > 0) {
+      setPriceRows(catalogQuery.data.map(toPriceListRow))
+      setPriceListInitialized(true)
+    }
+  }, [catalogQuery.isSuccess, catalogQuery.data, priceListInitialized])
 
   const saveMutation = useMutation({
     mutationFn: async (items: PriceListRow[]) => {
       const res = await fetch(`/api/admin/clients/${clientId}/price-list`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({
+          items: items.map((row) => ({
+            catalogItemId: row.catalogItemId,
+            price: row.price,
+            notes: row.notes,
+          })),
+        }),
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
@@ -119,34 +139,11 @@ export default function ClientProfilePage() {
     },
   })
 
-  const updateRow = (id: string, field: "serviceName" | "subCategory" | "price" | "notes", value: string | number) => {
+  const updatePrice = (catalogItemId: string, price: number) => {
     setPriceRows((current) =>
       current.map((row) =>
-        row.id === id
-          ? {
-            ...row,
-            [field]: field === "price" ? Number(value) : value,
-          }
-          : row
+        row.catalogItemId === catalogItemId ? { ...row, price } : row
       )
-    )
-  }
-
-  const addRow = () => {
-    setPriceRows((current) => [
-      ...current,
-      {
-        ...createBlankRow(),
-        sortOrder: current.length,
-      },
-    ])
-  }
-
-  const removeRow = (id: string) => {
-    setPriceRows((current) =>
-      current
-        .filter((row) => row.id !== id)
-        .map((row, index) => ({ ...row, sortOrder: index }))
     )
   }
 
@@ -163,6 +160,7 @@ export default function ClientProfilePage() {
 
   const client = clientQuery.data
   const location = [client?.city, client?.state, client?.country].filter(Boolean).join(", ")
+  const isDefaultPrices = priceListQuery.isSuccess && priceListQuery.data?.length === 0 && priceRows.length > 0
 
   return (
     <AdminLayout>
@@ -175,18 +173,17 @@ export default function ClientProfilePage() {
             </Button>
             <div>
               <h1 className="text-2xl font-semibold text-foreground">{client?.labName || "Client details"}</h1>
-              <p className="text-sm text-muted-foreground">Full client profile and editable price list</p>
+              <p className="text-sm text-muted-foreground">Full client profile and price list editor</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="capitalize">
-              {client?.status || "unknown"}
-            </Badge>
-          </div>
+          <Badge variant="outline" className="capitalize">
+            {client?.status || "unknown"}
+          </Badge>
         </div>
 
         <div className="flex flex-col gap-4">
+          {/* Client Information */}
           <Card className="shadow-card">
             <CardHeader className="pb-2 pt-3 px-4">
               <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
@@ -208,10 +205,7 @@ export default function ClientProfilePage() {
 
               <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 flex items-center justify-between col-span-1 sm:col-span-2 md:col-span-1">
                 <div>
-                  <p className="text-xs font-semibold text-primary/70 flex items-center gap-1">
-                    {/* <Layers3 className="h-3 w-3" /> */}
-                    Plan
-                  </p>
+                  <p className="text-xs font-semibold text-primary/70">Plan</p>
                   <p className="mt-0.5 truncate text-xs font-semibold text-foreground">
                     {client?.plan || "Trial"}
                   </p>
@@ -252,44 +246,42 @@ export default function ClientProfilePage() {
             </CardContent>
           </Card>
 
+          {/* Price List Editor */}
           <Card className="shadow-card">
             <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                Price list editor
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Add or update services for this client. The client profile will reflect these changes immediately after save.
-              </p>
-            </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <div className="flex items-center justify-end gap-3 mb-3 px-1">
-                <Button onClick={addRow} variant="outline" size="sm" className="gap-1.5 shrink-0 text-xs h-8">
-                  <Plus className="h-3.5 w-3.5" />
-                  Add service
-                </Button>
-                <Button onClick={() => saveMutation.mutate(priceRows)} disabled={saveMutation.isPending} size="sm" className="gap-1.5 gradient-primary border-none shadow-glow text-xs h-8">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                    <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                    Allocated price list
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {isDefaultPrices
+                      ? "No price list found — showing catalog defaults. Save to confirm."
+                      : "Edit client-specific prices. Changes are reflected in the client portal immediately after save."}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => saveMutation.mutate(priceRows)}
+                  disabled={saveMutation.isPending || priceListQuery.isLoading}
+                  size="sm"
+                  className="gap-1.5 gradient-primary border-none shadow-glow text-xs h-8 shrink-0"
+                >
                   <Save className="h-3.5 w-3.5" />
                   Save price list
                 </Button>
               </div>
-
-              <PriceListTable
-                items={priceRows}
-                editable
-                onChangeRow={updateRow}
-                onAddRow={addRow}
-                onRemoveRow={removeRow}
-                emptyState={
-                  <div className="space-y-2 text-center py-6">
-                    <p className="text-xs text-muted-foreground">No services have been added yet.</p>
-                    <Button onClick={addRow} variant="outline" size="sm" className="gap-1.5 text-xs">
-                      <Plus className="h-3.5 w-3.5" />
-                      Add first service
-                    </Button>
-                  </div>
-                }
-              />
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {priceListQuery.isLoading ? (
+                <p className="text-xs text-muted-foreground py-6 text-center">Loading...</p>
+              ) : (
+                <PriceListTable
+                  items={priceRows}
+                  editable
+                  onChangePrice={updatePrice}
+                />
+              )}
             </CardContent>
           </Card>
 
@@ -332,10 +324,7 @@ export default function ClientProfilePage() {
 function Info({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-      <p className="text-xs font-semibold text-primary/70 flex items-center gap-1">
-        {/* {icon} */}
-        {label}
-      </p>
+      <p className="text-xs font-semibold text-primary/70 flex items-center gap-1">{label}</p>
       <p className="mt-0.5 truncate text-xs font-semibold text-foreground">{value}</p>
     </div>
   )

@@ -1,12 +1,14 @@
 "use client"
 
-import { Button, Input, NumberInput, Table, Tooltip, Whisper } from 'rsuite'
-import type { ReactNode } from 'react'
+import { NumberInput } from 'rsuite'
 
 export interface PriceListRow {
   id: string
-  serviceName: string
+  catalogItemId: string
+  category: string
   subCategory: string
+  unitType: 'per_tooth' | 'per_arch'
+  defaultPrice: number
   price: number
   notes: string | null
   sortOrder: number
@@ -15,177 +17,83 @@ export interface PriceListRow {
 type Props = {
   items: PriceListRow[]
   editable?: boolean
-  onChangeRow?: (id: string, field: 'serviceName' | 'subCategory' | 'price' | 'notes', value: string | number) => void
-  onAddRow?: () => void
-  onRemoveRow?: (id: string) => void
-  emptyState?: ReactNode
+  onChangePrice?: (catalogItemId: string, price: number) => void
 }
 
-const { Column, HeaderCell, Cell } = Table
-
-function ServiceNameCell({ rowData, editable, onChangeRow, ...rest }: any) {
-  return (
-    <Cell {...rest}>
-      {editable ? (
-        <Input
-          value={rowData.serviceName}
-          onChange={(value) => onChangeRow?.(rowData.id, 'serviceName', value)}
-          placeholder="Category name"
-          size="sm"
-        />
-      ) : (
-        <span className="font-medium text-[12px]">{rowData.serviceName}</span>
-      )}
-    </Cell>
-  )
+const UNIT_LABELS: Record<string, string> = {
+  per_tooth: 'per tooth',
+  per_arch: 'per arch',
 }
 
-function SubCategoryCell({ rowData, editable, onChangeRow, ...rest }: any) {
-  return (
-    <Cell {...rest}>
-      {editable ? (
-        <Input
-          value={rowData.subCategory ?? ''}
-          onChange={(value) => onChangeRow?.(rowData.id, 'subCategory', value)}
-          placeholder="Sub category name"
-          size="sm"
-        />
-      ) : (
-        <span className="font-medium text-[12px]">{rowData.subCategory || '—'}</span>
-      )}
-    </Cell>
-  )
-}
-
-function PriceCell({ rowData, editable, onChangeRow, ...rest }: any) {
-  return (
-    <Cell {...rest}>
-      {editable ? (
-        <NumberInput
-          value={rowData.price}
-          onChange={(value) => onChangeRow?.(rowData.id, 'price', Number(value ?? 0))}
-          prefix="$"
-          min={0}
-          step={1}
-          size="sm"
-          className="w-full"
-        />
-      ) : (
-        <span className="font-medium text-[12px]">${Number(rowData.price).toFixed(2)}</span>
-      )}
-    </Cell>
-  )
-}
-
-function NotesCell({ rowData, editable, onChangeRow, ...rest }: any) {
-  const text = rowData.notes || ''
-  return (
-    <Cell {...rest}>
-      {editable ? (
-        <Input
-          value={text}
-          onChange={(value) => onChangeRow?.(rowData.id, 'notes', value)}
-          placeholder="Optional notes"
-          size="sm"
-        />
-      ) : text ? (
-        <Whisper
-          placement="topStart"
-          trigger="hover"
-          speaker={
-            <Tooltip style={{ maxWidth: 320 }}>
-              {text}
-            </Tooltip>
-          }
-        >
-          <span
-            className="text-[12px] text-muted-foreground cursor-default block truncate"
-            style={{ maxWidth: '100%' }}
-          >
-            {text}
-          </span>
-        </Whisper>
-      ) : (
-        <span className="text-[12px] text-muted-foreground">—</span>
-      )}
-    </Cell>
-  )
-}
-
-function RemoveCell({ rowData, onRemoveRow, ...rest }: any) {
-  return (
-    <Cell {...rest}>
-      <div className="flex items-center">
-        <Button
-          appearance="ghost"
-          color="red"
-          size="sm"
-          onClick={() => onRemoveRow?.(rowData.id)}
-        >
-          Remove
-        </Button>
-      </div>
-    </Cell>
-  )
-}
-
-export function PriceListTable({
-  items,
-  editable = false,
-  onChangeRow,
-  onAddRow,
-  onRemoveRow,
-  emptyState,
-}: Props) {
+export function PriceListTable({ items, editable = false, onChangePrice }: Props) {
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
-        {emptyState ?? 'No price list services have been added yet.'}
+      <div className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-xs text-muted-foreground text-center">
+        No price list available.
       </div>
     )
   }
 
+  const grouped = items.reduce<Record<string, PriceListRow[]>>((acc, item) => {
+    ;(acc[item.category] ??= []).push(item)
+    return acc
+  }, {})
+
   return (
-    <Table
-      data={items}
-      autoHeight
-      cellBordered
-      hover
-      rowHeight={45}
-      headerHeight={38}
-    >
-      <Column flexGrow={1} minWidth={140}>
-        <HeaderCell>Category</HeaderCell>
-        <ServiceNameCell editable={editable} onChangeRow={onChangeRow} />
-      </Column>
-
-      <Column flexGrow={1} minWidth={140}>
-        <HeaderCell>Sub Category</HeaderCell>
-        <SubCategoryCell editable={editable} onChangeRow={onChangeRow} />
-      </Column>
-
-      <Column width={110}>
-        <HeaderCell>Price</HeaderCell>
-        <PriceCell editable={editable} onChangeRow={onChangeRow} />
-      </Column>
-
-      <Column flexGrow={2} minWidth={180}>
-        <HeaderCell>Notes</HeaderCell>
-        <NotesCell editable={editable} onChangeRow={onChangeRow} />
-      </Column>
-
-      {editable && (
-        <Column width={100} fixed="right">
-          <HeaderCell>
-            <div className="flex items-center">
-              <Button appearance="ghost" size="sm" onClick={onAddRow} disabled={!onAddRow}>
-                Add row
-              </Button>
-            </div>
-          </HeaderCell>
-          <RemoveCell onRemoveRow={onRemoveRow} />
-        </Column>
-      )}
-    </Table>
+    <div className="space-y-5">
+      {Object.entries(grouped).map(([category, rows]) => (
+        <div key={category}>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-primary mb-1.5 px-0.5">
+            {category}
+          </p>
+          <table className="w-full text-xs border border-border/40 rounded-lg overflow-hidden">
+            <thead>
+              <tr className="bg-muted/40 border-b border-border/40">
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Service</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground w-24">Unit</th>
+                {editable && (
+                  <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-24">Default</th>
+                )}
+                <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-32">
+                  {editable ? 'Client Price' : 'Price'}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/30">
+              {rows.map((row) => (
+                <tr key={row.id} className="hover:bg-muted/10 transition-colors">
+                  <td className="px-3 py-2 font-medium text-foreground">{row.subCategory}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{UNIT_LABELS[row.unitType] ?? row.unitType}</td>
+                  {editable && (
+                    <td className="px-3 py-2 text-right text-muted-foreground">
+                      ${Number(row.defaultPrice).toFixed(2)}
+                    </td>
+                  )}
+                  <td className="px-3 py-2 text-right">
+                    {editable ? (
+                      <div className="flex justify-end">
+                        <NumberInput
+                          value={row.price}
+                          onChange={(value) => onChangePrice?.(row.catalogItemId, Number(value ?? 0))}
+                          prefix="$"
+                          min={0}
+                          step={0.5}
+                          size="xs"
+                          style={{ width: 110 }}
+                        />
+                      </div>
+                    ) : (
+                      <span className="font-semibold text-foreground">
+                        ${Number(row.price).toFixed(2)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
   )
 }

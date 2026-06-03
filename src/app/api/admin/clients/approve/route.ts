@@ -6,6 +6,7 @@ import { createClient } from '@/src/lib/supabase/server'
 import { NotificationService } from '@/src/lib/notifications/notification-service'
 import { NotificationType } from '@/src/lib/notifications/notification-events'
 import { logActivity } from '@/src/lib/activity-log'
+import { seedClientPriceList } from '@/src/lib/price-list'
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,6 +38,11 @@ export async function POST(req: NextRequest) {
     await db.update(profiles)
       .set({ status: 'active', updatedAt: new Date() })
       .where(eq(profiles.id, clientId))
+
+    // Auto-create default price list for the newly approved client
+    await seedClientPriceList(clientId, user.id).catch((err) =>
+      console.error('[client.approved seedClientPriceList]', err)
+    )
 
     // Notify client via preference-aware service
     try {

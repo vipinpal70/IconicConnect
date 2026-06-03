@@ -218,6 +218,13 @@
       "when": 1748822500000,
       "tag": "0030_notification_prefs_extended",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1748900000000,
+      "tag": "0031_price_list_catalog",
+      "breakpoints": true
     }
   ]
 }
