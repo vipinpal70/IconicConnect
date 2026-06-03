@@ -31,8 +31,9 @@ export async function GET() {
     return NextResponse.json({ data })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
+    const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined
     console.error('[admin/service-catalog GET]', error)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json({ error: cause ? `${msg} — cause: ${cause}` : msg }, { status: 500 })
   }
 }
 
