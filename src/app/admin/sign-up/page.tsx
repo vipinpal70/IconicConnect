@@ -43,6 +43,7 @@ export default function AdminSignUp() {
 
 	// OTP dialog state
 	const [showOtp, setShowOtp] = useState(false);
+	const [verified, setVerified] = useState(false);
 	const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
 	const [otpError, setOtpError] = useState<string | null>(null);
 	const [otpLoading, setOtpLoading] = useState(false);
@@ -160,10 +161,21 @@ export default function AdminSignUp() {
 			return;
 		}
 
-		// Set profile status to active now that email is verified
+		// Activate profile (set status → active)
 		await fetch("/api/admin/activate", { method: "POST" }).catch(() => {});
 
-		router.push("/admin/dashboard");
+		// Clear all auth state so user must log in fresh
+		await supabase.auth.signOut().catch(() => {});
+		localStorage.clear();
+		sessionStorage.clear();
+		document.cookie.split(";").forEach((c) => {
+			document.cookie = c
+				.replace(/^ +/, "")
+				.replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+		});
+
+		setOtpLoading(false);
+		setVerified(true);
 	};
 
 	const handleResend = async () => {
@@ -263,68 +275,95 @@ export default function AdminSignUp() {
 			{showOtp && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
 					<div className="w-full max-w-md bg-white rounded-2xl border border-gray-100 shadow-2xl p-8">
-						{/* Icon */}
-						<div className="flex justify-center mb-5">
-							<div className="w-14 h-14 rounded-full bg-teal-50 flex items-center justify-center">
-								<svg className="w-7 h-7 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-									<path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-								</svg>
-							</div>
-						</div>
+						{verified ? (
+							/* ── Success screen ── */
+							<>
+								<div className="flex justify-center mb-5">
+									<div className="w-14 h-14 rounded-full bg-teal-50 flex items-center justify-center">
+										<svg className="w-7 h-7 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+											<path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+										</svg>
+									</div>
+								</div>
+								<h2 className="text-lg font-semibold text-gray-900 text-center mb-1">
+									Verification completed
+								</h2>
+								<p className="text-sm text-gray-500 text-center mb-8">
+									Your account is active. Please log in to continue.
+								</p>
+								<button
+									onClick={() => router.push("/auth/sign-in")}
+									className="w-full py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition"
+								>
+									Login now
+								</button>
+							</>
+						) : (
+							/* ── OTP entry screen ── */
+							<>
+								<div className="flex justify-center mb-5">
+									<div className="w-14 h-14 rounded-full bg-teal-50 flex items-center justify-center">
+										<svg className="w-7 h-7 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+											<path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+										</svg>
+									</div>
+								</div>
 
-						<h2 className="text-lg font-semibold text-gray-900 text-center mb-1">
-							Verify your email
-						</h2>
-						<p className="text-sm text-gray-500 text-center mb-6">
-							We sent a 6-digit code to{" "}
-							<span className="font-medium text-gray-700">{form.email}</span>.
-							<br />Enter it below to complete sign-up.
-						</p>
+								<h2 className="text-lg font-semibold text-gray-900 text-center mb-1">
+									Verify your email
+								</h2>
+								<p className="text-sm text-gray-500 text-center mb-6">
+									We sent a 6-digit code to{" "}
+									<span className="font-medium text-gray-700">{form.email}</span>.
+									<br />Enter it below to complete sign-up.
+								</p>
 
-						{/* 6-digit OTP boxes */}
-						<div className="flex justify-center gap-2.5 mb-5">
-							{otp.map((digit, i) => (
-								<input
-									key={i}
-									ref={otpRefs[i]}
-									type="text"
-									inputMode="numeric"
-									maxLength={1}
-									value={digit}
-									onChange={(e) => handleOtpChange(i, e.target.value)}
-									onKeyDown={(e) => handleOtpKeyDown(i, e)}
-									onPaste={i === 0 ? handleOtpPaste : undefined}
-									className="w-11 h-12 text-center text-lg font-semibold text-gray-900 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition caret-transparent"
-									autoFocus={i === 0}
-								/>
-							))}
-						</div>
+								{/* 6-digit OTP boxes */}
+								<div className="flex justify-center gap-2.5 mb-5">
+									{otp.map((digit, i) => (
+										<input
+											key={i}
+											ref={otpRefs[i]}
+											type="text"
+											inputMode="numeric"
+											maxLength={1}
+											value={digit}
+											onChange={(e) => handleOtpChange(i, e.target.value)}
+											onKeyDown={(e) => handleOtpKeyDown(i, e)}
+											onPaste={i === 0 ? handleOtpPaste : undefined}
+											className="w-11 h-12 text-center text-lg font-semibold text-gray-900 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition caret-transparent"
+											autoFocus={i === 0}
+										/>
+									))}
+								</div>
 
-						{otpError && (
-							<p className="text-sm text-red-500 bg-red-50 px-4 py-2.5 rounded-lg text-center mb-4">
-								{otpError}
-							</p>
+								{otpError && (
+									<p className="text-sm text-red-500 bg-red-50 px-4 py-2.5 rounded-lg text-center mb-4">
+										{otpError}
+									</p>
+								)}
+
+								<button
+									onClick={handleVerify}
+									disabled={otpLoading || otp.join("").length !== OTP_LENGTH}
+									className="w-full py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition mb-3"
+								>
+									{otpLoading ? "Verifying…" : "Verify & continue"}
+								</button>
+
+								<p className="text-xs text-gray-400 text-center">
+									Didn't receive the code?{" "}
+									<button
+										type="button"
+										onClick={handleResend}
+										disabled={resendCooldown > 0}
+										className="text-teal-600 font-medium hover:underline disabled:text-gray-400 disabled:no-underline"
+									>
+										{resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
+									</button>
+								</p>
+							</>
 						)}
-
-						<button
-							onClick={handleVerify}
-							disabled={otpLoading || otp.join("").length !== OTP_LENGTH}
-							className="w-full py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition mb-3"
-						>
-							{otpLoading ? "Verifying…" : "Verify & continue"}
-						</button>
-
-						<p className="text-xs text-gray-400 text-center">
-							Didn't receive the code?{" "}
-							<button
-								type="button"
-								onClick={handleResend}
-								disabled={resendCooldown > 0}
-								className="text-teal-600 font-medium hover:underline disabled:text-gray-400 disabled:no-underline"
-							>
-								{resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
-							</button>
-						</p>
 					</div>
 				</div>
 			)}
