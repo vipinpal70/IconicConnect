@@ -39,6 +39,10 @@ type CaseRecord = {
   teethLibraryFileUrl?: string | null
   teethLibraryFileName?: string | null
   clientMassage?: string | null
+  holdReason?: string | null
+  cancelReason?: string | null
+  feedbackReason?: string | null
+  rejectReason?: string | null
 }
 
 type CaseFile = {
@@ -367,6 +371,34 @@ export function CaseDetailView({
             {caseRecord.status === "client_reject" ? "✗ Rejection Reason" : "ℹ Requested Changes"}
           </span>
           <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.clientMassage}</p>
+        </div>
+      )}
+
+      {caseRecord.holdReason && (
+        <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 text-slate-800 text-xs font-medium flex flex-col gap-1">
+          <span className="font-semibold flex items-center gap-1.5">⏸ Hold Reason</span>
+          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.holdReason}</p>
+        </div>
+      )}
+
+      {caseRecord.cancelReason && (
+        <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-xs font-medium flex flex-col gap-1">
+          <span className="font-semibold flex items-center gap-1.5">🚫 Cancellation Reason</span>
+          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.cancelReason}</p>
+        </div>
+      )}
+
+      {caseRecord.feedbackReason && (
+        <div className="p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-medium flex flex-col gap-1">
+          <span className="font-semibold flex items-center gap-1.5">💬 QC Feedback</span>
+          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.feedbackReason}</p>
+        </div>
+      )}
+
+      {caseRecord.rejectReason && (
+        <div className="p-4 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-medium flex flex-col gap-1">
+          <span className="font-semibold flex items-center gap-1.5">✗ QC Rejection Reason</span>
+          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.rejectReason}</p>
         </div>
       )}
 
