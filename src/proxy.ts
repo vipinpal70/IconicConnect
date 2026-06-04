@@ -75,7 +75,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/sign-in') ||
     pathname.startsWith('/api/sign-up') ||
-    pathname === '/api/admin/user'
+    pathname === '/api/admin/user' ||
+    pathname === '/api/admin/activate'
 
   // 1. Handle unauthorized access
   if (!user && !isAuthPage && !isSignUpPage && !isPublicApi) {
