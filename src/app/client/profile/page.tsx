@@ -58,21 +58,23 @@ export default function ProfilePage() {
         const data: Profile = await res.json();
         setProfile(data);
 
-        const priceRes = await fetch("/api/client/price-list");
-        if (priceRes.ok) {
-          const priceJson = await priceRes.json();
-          const items: PriceListEntryFull[] = Array.isArray(priceJson.data) ? priceJson.data : [];
-          setPriceList(items.map((item) => ({
-            id: item.id,
-            catalogItemId: item.catalogItemId,
-            category: item.category,
-            subCategory: item.subCategory,
-            unitType: item.unitType,
-            defaultPrice: item.defaultPrice,
-            price: item.price,
-            notes: item.notes,
-            sortOrder: item.sortOrder,
-          })));
+        if (data.role !== "subuser") {
+          const priceRes = await fetch("/api/client/price-list");
+          if (priceRes.ok) {
+            const priceJson = await priceRes.json();
+            const items: PriceListEntryFull[] = Array.isArray(priceJson.data) ? priceJson.data : [];
+            setPriceList(items.map((item) => ({
+              id: item.id,
+              catalogItemId: item.catalogItemId,
+              category: item.category,
+              subCategory: item.subCategory,
+              unitType: item.unitType,
+              defaultPrice: item.defaultPrice,
+              price: item.price,
+              notes: item.notes,
+              sortOrder: item.sortOrder,
+            })));
+          }
         }
 
         if (data.role !== "subuser") {
@@ -169,15 +171,17 @@ export default function ProfilePage() {
             </div>
 
             <div className="flex items-center gap-2 mb-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs font-semibold gap-1.5"
-                onClick={() => setPriceListOpen(true)}
-              >
-                <FileText className="h-3.5 w-3.5" />
-                Allocated Price List
-              </Button>
+              {profile?.role !== "subuser" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs font-semibold gap-1.5"
+                  onClick={() => setPriceListOpen(true)}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Allocated Price List
+                </Button>
+              )}
 
               {profile?.role !== "subuser" && (
                 <Button
