@@ -13,7 +13,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { profiles } from './profile'
 
-export const unitTypeEnum = pgEnum('unit_type', ['per_tooth', 'per_arch'])
+export const unitTypeEnum = pgEnum('unit_type', ['per_tooth', 'per_arch', 'per_case'])
 
 export const serviceCatalog = pgTable(
   'service_catalog',

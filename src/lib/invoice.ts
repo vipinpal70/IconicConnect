@@ -201,6 +201,25 @@ export async function buildInvoiceItems(
     })
   }
 
+  // Model billing — count cases where modelRequired = "yes" (per_case charge)
+  const modelCount = selectedCases.filter((c) => {
+    const data = (c.subTypeData as Record<string, any>) || {}
+    return data.modelRequired === 'yes'
+  }).length
+
+  if (modelCount > 0) {
+    const modelUnitPrice = await getUnitPrice(clientId, 'Model', '3D Model')
+    const modelTotalPrice = parseFloat((modelCount * modelUnitPrice).toFixed(2))
+    subtotal += modelTotalPrice
+    items.push({
+      sno: sno++,
+      description: 'Model - 3D Model',
+      qty: modelCount,
+      unitPrice: modelUnitPrice,
+      totalPrice: modelTotalPrice,
+    })
+  }
+
   return { items, subtotal: parseFloat(subtotal.toFixed(2)) }
 }
 

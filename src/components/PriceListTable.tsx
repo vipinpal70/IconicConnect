@@ -7,7 +7,7 @@ export interface PriceListRow {
   catalogItemId: string
   category: string
   subCategory: string
-  unitType: 'per_tooth' | 'per_arch'
+  unitType: 'per_tooth' | 'per_arch' | 'per_case'
   defaultPrice: number
   price: number
   notes: string | null
@@ -24,6 +24,7 @@ type Props = {
 const UNIT_LABELS: Record<string, string> = {
   per_tooth: 'per tooth',
   per_arch: 'per arch',
+  per_case: 'per case',
 }
 
 export function PriceListTable({ items, editable = false, hideDefaultColumn = false, onChangePrice }: Props) {

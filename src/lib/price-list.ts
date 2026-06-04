@@ -8,7 +8,7 @@ export interface PriceListEntryFull {
   catalogItemId: string
   category: string
   subCategory: string
-  unitType: 'per_tooth' | 'per_arch'
+  unitType: 'per_tooth' | 'per_arch' | 'per_case'
   defaultPrice: number
   price: number
   notes: string | null
