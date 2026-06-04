@@ -149,33 +149,40 @@ export default function AdminSignUp() {
 		setOtpLoading(true);
 		setOtpError(null);
 
-		const { error } = await supabase.auth.verifyOtp({
-			email: form.email,
-			token: code,
-			type: "email",
-		});
+		try {
+			// Activate profile (verifies OTP and sets status → active on the server)
+			const res = await fetch("/api/admin/activate", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					email: form.email,
+					token: code,
+				}),
+			});
 
-		if (error) {
-			setOtpError(error.message);
+			if (!res.ok) {
+				const errorData = await res.json().catch(() => ({}));
+				throw new Error(errorData.error || "Verification failed");
+			}
+
+			// Clear all auth state so user must log in fresh
+			await supabase.auth.signOut().catch(() => {});
+			localStorage.clear();
+			sessionStorage.clear();
+			document.cookie.split(";").forEach((c) => {
+				document.cookie = c
+					.replace(/^ +/, "")
+					.replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+			});
+
 			setOtpLoading(false);
-			return;
+			setVerified(true);
+		} catch (err: any) {
+			setOtpError(err.message || "An error occurred during verification");
+			setOtpLoading(false);
 		}
-
-		// Activate profile (set status → active)
-		await fetch("/api/admin/activate", { method: "POST" }).catch(() => {});
-
-		// Clear all auth state so user must log in fresh
-		await supabase.auth.signOut().catch(() => {});
-		localStorage.clear();
-		sessionStorage.clear();
-		document.cookie.split(";").forEach((c) => {
-			document.cookie = c
-				.replace(/^ +/, "")
-				.replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-		});
-
-		setOtpLoading(false);
-		setVerified(true);
 	};
 
 	const handleResend = async () => {

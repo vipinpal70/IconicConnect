@@ -1,16 +1,27 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const body = await req.json()
+    const { email, token } = body
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!email || !token) {
+      return NextResponse.json({ error: 'Email and OTP token are required' }, { status: 400 })
+    }
+
+    const supabase = await createClient()
+    const { data: { user }, error: verifyError } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email'
+    })
+
+    if (verifyError || !user) {
+      return NextResponse.json({ error: verifyError?.message || 'Invalid or expired OTP token' }, { status: 401 })
     }
 
     const [profile] = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)
@@ -38,3 +49,4 @@ export async function POST() {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
