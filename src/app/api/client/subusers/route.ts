@@ -14,33 +14,20 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error'
 }
 
-// Resolve the owning client ID — for a subuser this is their createdBy (parent)
-async function resolveClientId(userId: string): Promise<{ clientId: string; profile: typeof profiles.$inferSelect } | null> {
-  const [profile] = await db.select().from(profiles).where(eq(profiles.id, userId)).limit(1)
-  if (!profile) return null
-
-  if (profile.role === 'client') return { clientId: profile.id, profile }
-
-  if (profile.role === 'subuser' && profile.createdBy) {
-    const [parent] = await db.select().from(profiles).where(eq(profiles.id, profile.createdBy)).limit(1)
-    if (parent && parent.role === 'client') return { clientId: parent.id, profile }
-  }
-
-  return null
-}
-
 export async function GET(_req: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const resolved = await resolveClientId(user.id)
-    if (!resolved) {
-      return NextResponse.json({ error: 'Forbidden: Only clients and their sub-users can manage sub-users' }, { status: 403 })
+    const [profile] = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)
+    if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+
+    if (profile.role !== 'client') {
+      return NextResponse.json({ error: 'Forbidden: Only clients can manage sub-users' }, { status: 403 })
     }
 
-    const subusers = await service.getSubUsers(resolved.clientId)
+    const subusers = await service.getSubUsers(profile.id)
 
     const formatted = subusers.map((u) => ({
       id: u.id,
@@ -64,9 +51,11 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const resolved = await resolveClientId(user.id)
-    if (!resolved) {
-      return NextResponse.json({ error: 'Forbidden: Only clients and their sub-users can manage sub-users' }, { status: 403 })
+    const [profile] = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)
+    if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+
+    if (profile.role !== 'client') {
+      return NextResponse.json({ error: 'Forbidden: Only clients can manage sub-users' }, { status: 403 })
     }
 
     const body = await req.json()
@@ -76,7 +65,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Name, email, and role are required' }, { status: 400 })
     }
 
-    const newSubUser = await service.createSubUser(resolved.clientId, {
+    const newSubUser = await service.createSubUser(profile.id, {
       name,
       username: username || email.split('@')[0],
       email,
@@ -94,7 +83,7 @@ export async function POST(req: NextRequest) {
     }
 
     await logActivity({
-      actor: resolved.profile,
+      actor: profile,
       action: 'subuser.created',
       details: { subuserId: newSubUser.id, email: newSubUser.email, fullName: newSubUser.fullName, role },
     }).catch((err) => console.error('[subuser.created logActivity]', err))

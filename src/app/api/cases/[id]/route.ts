@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, CaseTimelineEvent, EDITABLE_STATUSES } from '@/src/db/schema/case';
-import { profiles, subUsers } from '@/src/db/schema/profile';
+import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
@@ -83,10 +83,9 @@ export async function GET(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
-    // Role checks for GET
-    if (profile.role === 'subuser' && caseRecord.subuserId !== profile.id) {
-      return NextResponse.json({ error: 'Forbidden: You can only view your own cases' }, { status: 403 });
-    } else if (profile.role === 'client' && caseRecord.clientId !== profile.id) {
+    // Role checks for GET — sub-users share parent client's cases
+    const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+    if ((profile.role === 'client' || profile.role === 'subuser') && caseRecord.clientId !== effectiveClientId) {
       return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 });
     }
 
@@ -157,14 +156,10 @@ export async function PUT(
 
     // Validate and build updates based on role
     if (profile.role === 'client' || profile.role === 'subuser') {
-      if (profile.role === 'client' && caseRecord.clientId !== profile.id) {
+      // Sub-users share parent client's cases — verify ownership via createdBy
+      const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+      if (caseRecord.clientId !== effectiveClientId) {
         return NextResponse.json({ error: 'Forbidden: You can only update cases from your lab' }, { status: 403 });
-      }
-      if (profile.role === 'subuser') {
-        const [subuserRecord] = await db.select().from(subUsers).where(and(eq(subUsers.profileId, profile.id), eq(subUsers.clientId, caseRecord.clientId))).limit(1);
-        if (!subuserRecord) {
-          return NextResponse.json({ error: 'Forbidden: You do not have access to this client\'s cases' }, { status: 403 });
-        }
       }
 
       if (body.status) {

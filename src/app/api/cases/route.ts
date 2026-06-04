@@ -218,8 +218,9 @@ export async function GET() {
       // Client sees their own cases and cases created by their subusers (which also have clientId = client's id)
       results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, profile.id));
     } else if (profile.role === 'subuser') {
-      // Subuser sees only cases they created
-      results = await db.select(caseListSelection).from(cases).where(eq(cases.subuserId, profile.id));
+      // Subuser sees ALL cases belonging to their parent client
+      const parentClientId = profile.createdBy ?? profile.id;
+      results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, parentClientId));
     } else {
       return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
     }

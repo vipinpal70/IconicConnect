@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
-import { profiles, subUsers } from "@/src/db/schema/profile";
+import { profiles } from "@/src/db/schema/profile";
 import { activityLogs } from "@/src/db/schema/activity-log";
 import { createClient } from "@/src/lib/supabase/server";
 import { eq, inArray, desc } from "drizzle-orm";
@@ -28,21 +28,14 @@ export async function GET(req: NextRequest) {
     }
 
     let clientId: string | undefined;
-    let subuserId: string | null = null;
 
     if (profile.role === "client") {
       clientId = profile.id;
     } else if (profile.role === "subuser") {
-      const subUserRecord = await db
-        .select()
-        .from(subUsers)
-        .where(eq(subUsers.id, profile.id))
-        .limit(1);
-      if (!subUserRecord.length) {
+      if (!profile.createdBy) {
         return NextResponse.json({ error: "Subuser parent client not found" }, { status: 400 });
       }
-      clientId = subUserRecord[0].clientId;
-      subuserId = profile.id;
+      clientId = profile.createdBy;
     } else {
       return NextResponse.json({ error: "Unauthorized role for client dashboard" }, { status: 403 });
     }
@@ -53,11 +46,6 @@ export async function GET(req: NextRequest) {
       .from(cases)
       .where(eq(cases.clientId, clientId))
       .orderBy(desc(cases.updatedAt));
-
-    // If subuser, filter to only cases they created
-    if (profile.role === "subuser") {
-      clientCases = clientCases.filter((c) => c.subuserId === subuserId);
-    }
 
     // 1. KPI Counts
     // Active design: status in validation, in design, internal qc, client feedback, scan received, etc.

@@ -36,10 +36,9 @@ export async function POST(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
-    // Role checks for uploading files
-    if (profile.role === 'subuser' && caseRecord.subuserId !== profile.id) {
-      return NextResponse.json({ error: 'Forbidden: You can only upload files to your own cases' }, { status: 403 });
-    } else if (profile.role === 'client' && caseRecord.clientId !== profile.id) {
+    // Role checks for uploading files — sub-users share parent client's cases
+    const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+    if ((profile.role === 'client' || profile.role === 'subuser') && caseRecord.clientId !== effectiveClientId) {
       return NextResponse.json({ error: 'Forbidden: You can only upload files to cases from your lab' }, { status: 403 });
     }
 
@@ -125,10 +124,9 @@ export async function GET(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
-    // Role checks for viewing files
-    if (profile.role === 'subuser' && caseRecord.subuserId !== profile.id) {
-      return NextResponse.json({ error: 'Forbidden: You can only view files for your own cases' }, { status: 403 });
-    } else if (profile.role === 'client' && caseRecord.clientId !== profile.id) {
+    // Role checks for viewing files — sub-users share parent client's cases
+    const effectiveClientIdGet = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+    if ((profile.role === 'client' || profile.role === 'subuser') && caseRecord.clientId !== effectiveClientIdGet) {
       return NextResponse.json({ error: 'Forbidden: You can only view files for cases from your lab' }, { status: 403 });
     }
 

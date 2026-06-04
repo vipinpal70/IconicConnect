@@ -75,10 +75,12 @@ export default function ProfilePage() {
           })));
         }
 
-        const subusersRes = await fetch("/api/client/subusers");
-        if (subusersRes.ok) {
-          const subusersJson = await subusersRes.json();
-          setUsers(subusersJson.data || []);
+        if (data.role !== "subuser") {
+          const subusersRes = await fetch("/api/client/subusers");
+          if (subusersRes.ok) {
+            const subusersJson = await subusersRes.json();
+            setUsers(subusersJson.data || []);
+          }
         }
       } catch (err) {
         console.error("Error loading profile:", err);
@@ -205,8 +207,8 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Users & Credentials */}
-        <Card className="shadow-card border-border/50">
+        {/* Users & Credentials — only visible to the parent client */}
+        {profile?.role !== "subuser" && <Card className="shadow-card border-border/50">
             <CardHeader className="py-2 px-4 flex flex-row items-center justify-between bg-muted/20 border-b border-border/50">
               <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-2">
                 <Users className="h-3.5 w-3.5 text-primary" /> Users & Credentials
@@ -287,7 +289,7 @@ export default function ProfilePage() {
                 </table>
               </div>
             </CardContent>
-          </Card>
+          </Card>}
 
         {/* Allocated Price List Modal */}
         <ClientPriceListModal
