@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ClientLayout } from "@/src/components/ClientLayout"
@@ -116,6 +116,14 @@ export default function ClientBillingPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [confirmInvoice, setConfirmInvoice] = useState<InvoiceWithClient | null>(null)
+
+  // Sub-users cannot access billing
+  useEffect(() => {
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((p) => { if (p?.role === "subuser") router.replace("/client/dashboard") })
+      .catch(() => {})
+  }, [router])
 
   const { data: invoiceList = [], isLoading } = useQuery<InvoiceWithClient[]>({
     queryKey: ["clientInvoices"],

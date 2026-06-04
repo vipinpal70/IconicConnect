@@ -206,8 +206,7 @@ export default function ProfilePage() {
         </Card>
 
         {/* Users & Credentials */}
-        {profile?.role !== "subuser" && (
-          <Card className="shadow-card border-border/50">
+        <Card className="shadow-card border-border/50">
             <CardHeader className="py-2 px-4 flex flex-row items-center justify-between bg-muted/20 border-b border-border/50">
               <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-2">
                 <Users className="h-3.5 w-3.5 text-primary" /> Users & Credentials
@@ -289,7 +288,6 @@ export default function ProfilePage() {
               </div>
             </CardContent>
           </Card>
-        )}
 
         {/* Allocated Price List Modal */}
         <ClientPriceListModal

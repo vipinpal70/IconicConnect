@@ -73,8 +73,7 @@ function NotificationsLayout({
     )
   }
 
-  if (role === 'client') return <ClientLayout>{children}</ClientLayout>
-  if (role === 'subuser') return <SubLayout>{children}</SubLayout>
+  if (role === 'client' || role === 'subuser') return <ClientLayout>{children}</ClientLayout>
   if (role === 'admin') return <AdminLayout>{children}</AdminLayout>
   return <OpsLayout>{children}</OpsLayout>
 }
