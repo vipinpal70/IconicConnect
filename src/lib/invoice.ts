@@ -136,15 +136,15 @@ export async function buildInvoiceItems(
         else groupMap.set(key, { category: 'Implants', subCategory: input.subCategory, unitType: 'per_tooth', totalUnits: implantCount })
       }
 
-      // 2. Optional Crown / Bridge component
+      // 2. Optional Crown / Bridge component — priced from Crown & Bridge catalog
       const cbType = data.caseType2 as string | undefined
       if (cbType && cbType !== 'None' && input.type) {
         const cbCount = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
         if (cbCount > 0) {
-          const key = `Implants:${input.type}`
+          const key = `Crown & Bridge:${input.type}`
           const g = groupMap.get(key)
           if (g) g.totalUnits += cbCount
-          else groupMap.set(key, { category: 'Implants', subCategory: input.type, unitType: 'per_tooth', totalUnits: cbCount })
+          else groupMap.set(key, { category: 'Crown & Bridge', subCategory: input.type, unitType: 'per_tooth', totalUnits: cbCount })
         }
       }
 
