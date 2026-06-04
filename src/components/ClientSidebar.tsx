@@ -51,7 +51,7 @@ const navItems = [
 type Profile = {
   full_name: string;
   lab_name: string;
-  role: string;
+  user_role: string;
 }
 
 async function getProfileData(): Promise<Profile | null> {
@@ -115,7 +115,7 @@ export function ClientSidebar() {
             <SidebarMenu>
               {navItems
                 .filter((item) => {
-                  if (profile?.role === "subuser") {
+                  if (profile?.user_role === "subuser") {
                     return item.title !== "Billing" && item.title !== "Analytics";
                   }
                   return true;
