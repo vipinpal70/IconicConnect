@@ -24,7 +24,11 @@ export async function resolveClientIdFromProfile(profileId: string, role: string
   return null
 }
 
-export async function getPriceListForClient(clientId: string, _autoSeed = true): Promise<PriceListEntryFull[]> {
+export async function getPriceListForClient(clientId: string): Promise<PriceListEntryFull[]> {
+  // Always ensure every active catalog item has a row for this client.
+  // onConflictDoNothing means existing custom prices are never overwritten.
+  await seedClientPriceList(clientId)
+
   const rows = await db
     .select({
       id: clientPriceList.id,
@@ -41,11 +45,6 @@ export async function getPriceListForClient(clientId: string, _autoSeed = true):
     .innerJoin(serviceCatalog, eq(clientPriceList.catalogItemId, serviceCatalog.id))
     .where(eq(clientPriceList.clientId, clientId))
     .orderBy(serviceCatalog.sortOrder)
-
-  if (rows.length === 0 && _autoSeed) {
-    await seedClientPriceList(clientId)
-    return getPriceListForClient(clientId, false)
-  }
 
   return rows.map((row) => ({
     ...row,
