@@ -12,8 +12,19 @@ import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import { Badge } from "@/src/components/ui/badge"
-import { Building2, Mail, Phone, MapPin, Plus, ShieldCheck, ArrowRight } from "lucide-react"
+import { Building2, Mail, Phone, MapPin, Plus, ShieldCheck, ArrowRight, CircleCheck, CircleX } from "lucide-react"
 import { toast } from "sonner"
+
+type ClientPaymentSummary = {
+  clientId: string
+  invoiceId: string
+  invoiceNumber: string
+  clientPaid: boolean
+  clientPaymentDate: string | null
+  received: boolean
+  pendingCount: number
+  totalInvoices: number
+}
 
 type ClientProfile = {
   id: string
@@ -49,6 +60,16 @@ export default function AdminClients() {
       if (!res.ok) throw new Error("Failed to fetch clients")
       return res.json()
     },
+  })
+
+  const { data: paymentSummary } = useQuery<Record<string, ClientPaymentSummary>>({
+    queryKey: ["clientPaymentSummary"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/invoices/client-payments")
+      if (!res.ok) return {}
+      return res.json()
+    },
+    staleTime: 60_000,
   })
 
   const approveMutation = useMutation({
@@ -139,6 +160,34 @@ export default function AdminClients() {
                     Reg: <span className="font-semibold text-slate-700">{format(new Date(client.createdAt), "MMM dd")}</span>
                   </span>
                 </div>
+
+                {/* Payment indicator */}
+                {paymentSummary?.[client.id] ? (
+                  <div className="flex items-center justify-between border-t border-border/50 pt-1.5 text-[10px]">
+                    {paymentSummary[client.id].clientPaid ? (
+                      <div className="flex items-center gap-1 text-green-600">
+                        <CircleCheck className="h-3.5 w-3.5 text-green-500" />
+                        <span className="font-semibold">
+                          {paymentSummary[client.id].clientPaymentDate
+                            ? `Paid ${new Date(paymentSummary[client.id].clientPaymentDate!).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                            : "Latest Paid"}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-red-500">
+                        <CircleX className="h-3.5 w-3.5 text-red-400" />
+                        <span className="font-semibold">
+                          {paymentSummary[client.id].pendingCount > 1
+                            ? `${paymentSummary[client.id].pendingCount} unpaid`
+                            : "Unpaid"}
+                        </span>
+                      </div>
+                    )}
+                    <span className="text-muted-foreground">
+                      {paymentSummary[client.id].totalInvoices} invoice{paymentSummary[client.id].totalInvoices !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                ) : null}
 
                 <div className="flex items-center justify-between pt-1 text-[10px] text-primary font-semibold ">
                   <span>Open client profile</span>
