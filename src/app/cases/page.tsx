@@ -1357,6 +1357,15 @@ export default function CasesPage() {
                                     </Button>
                                   )}
 
+                                  {/* Allocate to a specific designer */}
+                                  {(c.status === "scan_received" || c.status === "scan_verified") && (
+                                    <AllocateMenu
+                                      designers={designers}
+                                      onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")}
+                                      disabled={isMutating}
+                                    />
+                                  )}
+
                                   {/* Self-assign as QC when no QC is assigned yet */}
                                   {!c.qcId && (c.status === "allocated_to_designer" || c.status === "in_progress" || c.status === "internal_qc") && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
