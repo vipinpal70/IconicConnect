@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema'
 import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone'
+import { handleProfileCreated } from '@/src/lib/price-list'
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,6 +29,11 @@ export async function POST(req: NextRequest) {
       state: body.state || null,
       country: body.country || null,
     })
+
+    // Automatically ensure default catalog exists and seed the client's allocated price list
+    await handleProfileCreated(body.id, 'client').catch((err) =>
+      console.error('[sign-up handleProfileCreated]', err)
+    )
 
     // Queue welcome email
     try {

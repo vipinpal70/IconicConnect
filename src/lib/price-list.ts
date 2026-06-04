@@ -149,3 +149,55 @@ export async function updateClientPriceList(
     return results
   })
 }
+
+export async function ensureServiceCatalogSeeded() {
+  const countResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(serviceCatalog)
+  
+  if (countResult[0]?.count > 0) {
+    return
+  }
+
+  // Seed default catalog items (23 items total)
+  const defaultItems = [
+    { category: 'Crown & Bridge', subCategory: 'Crown', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 1 },
+    { category: 'Crown & Bridge', subCategory: 'Bridge', unitType: 'per_tooth' as const, defaultPrice: '5.00', sortOrder: 2 },
+    { category: 'Crown & Bridge', subCategory: 'Cutback', unitType: 'per_tooth' as const, defaultPrice: '5.00', sortOrder: 3 },
+    { category: 'Crown & Bridge', subCategory: 'Coping', unitType: 'per_tooth' as const, defaultPrice: '5.00', sortOrder: 4 },
+    { category: 'Crown & Bridge', subCategory: 'Screw Retained', unitType: 'per_tooth' as const, defaultPrice: '10.00', sortOrder: 5 },
+    { category: 'Crown & Bridge', subCategory: 'In-Lay', unitType: 'per_tooth' as const, defaultPrice: '15.00', sortOrder: 6 },
+    { category: 'Crown & Bridge', subCategory: 'On-Lay', unitType: 'per_tooth' as const, defaultPrice: '20.00', sortOrder: 7 },
+    { category: 'Implants', subCategory: 'Robotic', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 8 },
+    { category: 'Implants', subCategory: 'Ti-Base', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 9 },
+    { category: 'Implants', subCategory: 'Custom', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 10 },
+    { category: 'Appliances', subCategory: 'Night Guards', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 11 },
+    { category: 'Appliances', subCategory: 'Spot Guards', unitType: 'per_arch' as const, defaultPrice: '20.00', sortOrder: 12 },
+    { category: 'Appliances', subCategory: 'Mouth Guards', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 13 },
+    { category: 'Appliances', subCategory: 'NTI', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 14 },
+    { category: 'Dentures', subCategory: 'Reference Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 15 },
+    { category: 'Dentures', subCategory: 'Copy Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 16 },
+    { category: 'Dentures', subCategory: 'Immediate Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 17 },
+    { category: 'Dentures', subCategory: 'Full Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 18 },
+    { category: 'Dentures', subCategory: 'Partial Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 19 },
+    { category: 'Cosmetics', subCategory: 'Digital Wax Up', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 20 },
+    { category: 'Cosmetics', subCategory: 'Veneers', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 21 },
+    { category: 'Cosmetics', subCategory: 'Snap on Smile', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 22 },
+    { category: 'Model', subCategory: '3D Model', unitType: 'per_case' as const, defaultPrice: '4.00', sortOrder: 23 },
+  ]
+
+  await db
+    .insert(serviceCatalog)
+    .values(defaultItems)
+    .onConflictDoNothing()
+}
+
+export async function handleProfileCreated(profileId: string, role: string, createdById?: string | null) {
+  // Ensure the default price list is populated
+  await ensureServiceCatalogSeeded()
+
+  // For client profiles, automatically seed the allocated client price list
+  if (role === 'client') {
+    await seedClientPriceList(profileId, createdById)
+  }
+}

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema'
+import { handleProfileCreated } from '@/src/lib/price-list'
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -69,6 +70,10 @@ export async function POST(req: NextRequest) {
             phone: phone || null,
         })
 
+        // Automatically seed default catalog and client price list
+        await handleProfileCreated(data.user.id, role).catch((err) =>
+            console.error('[admin/register handleProfileCreated]', err)
+        )
 
         return NextResponse.json({ success: true, userId: data.user.id }, { status: 201 })
 

@@ -9,6 +9,7 @@ import { isValidRoleForType } from '@/src/lib/auth/role';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { queueEmail } from '@/src/lib/queue/jobs';
+import { handleProfileCreated } from '@/src/lib/price-list';
 
 // Helper to check if current user is admin
 async function isAdmin() {
@@ -108,6 +109,11 @@ export async function POST(req: NextRequest) {
       phone,
       status: 'active',
     });
+
+    // Automatically seed default catalog and client price list
+    await handleProfileCreated(authData.user.id, role, user.id).catch((err) =>
+      console.error('[admin/members handleProfileCreated]', err)
+    );
 
     // 2.5 Trigger Welcome in-app notification
     NotificationService.dispatch({
