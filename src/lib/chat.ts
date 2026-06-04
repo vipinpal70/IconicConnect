@@ -14,7 +14,10 @@ export type CaseChatMetadata = {
 export function canAccessCaseChat(caseRecord: CaseAccessRecord, profile: Pick<Profile, 'id' | 'role' | 'createdBy'>) {
   if (profile.role === 'admin') return true
   if (profile.role === 'client') return caseRecord.clientId === profile.id
-  if (profile.role === 'subuser') return caseRecord.subuserId === profile.id
+  if (profile.role === 'subuser') {
+    const effectiveClientId = profile.createdBy ?? profile.id
+    return caseRecord.clientId === effectiveClientId
+  }
 
   return (
     caseRecord.designerId === profile.id ||
