@@ -120,14 +120,42 @@ export async function buildInvoiceItems(
     const input = mapCaseToPricingInput(c.category || '', c.subTypeData)
     if (!input) continue
 
+    // Implants are handled separately because they can produce two distinct
+    // line items: one for the implant device component (Robotic/Ti-Base/Custom)
+    // and one for the optional Crown/Bridge component, each counted by their
+    // own tooth selection array.
+    if (input.category === 'Implants') {
+      const data = (c.subTypeData as Record<string, any>) || {}
+
+      // 1. Implant device component (Robotic / Ti-Base / Custom)
+      const implantCount = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
+      if (implantCount > 0) {
+        const key = `Implants:${input.subCategory}`
+        const g = groupMap.get(key)
+        if (g) g.totalUnits += implantCount
+        else groupMap.set(key, { category: 'Implants', subCategory: input.subCategory, unitType: 'per_tooth', totalUnits: implantCount })
+      }
+
+      // 2. Optional Crown / Bridge component
+      const cbType = data.caseType2 as string | undefined
+      if (cbType && cbType !== 'None' && input.type) {
+        const cbCount = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
+        if (cbCount > 0) {
+          const key = `Implants:${input.type}`
+          const g = groupMap.get(key)
+          if (g) g.totalUnits += cbCount
+          else groupMap.set(key, { category: 'Implants', subCategory: input.type, unitType: 'per_tooth', totalUnits: cbCount })
+        }
+      }
+
+      continue // skip generic processing below
+    }
+
     let category = input.category
     let subCategory: string
     let unitType: 'per_tooth' | 'per_arch' = 'per_tooth'
 
     if (input.category === 'Crown & Bridge') {
-      subCategory = input.subCategory
-      unitType = 'per_tooth'
-    } else if (input.category === 'Implants') {
       subCategory = input.subCategory
       unitType = 'per_tooth'
     } else if (input.category === 'Appliances') {
