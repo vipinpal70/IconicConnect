@@ -10,6 +10,7 @@ export const offers = pgTable(
     category: varchar("category", { length: 50 }).notNull(),
     description: text("description").notNull(),
     discount: varchar("discount", { length: 120 }).notNull(),
+    startDate: varchar("start_date", { length: 20 }),
     validTill: varchar("valid_till", { length: 20 }).notNull(),
     targetClients: jsonb("target_clients").$type<string[]>().notNull().default([]),
     targetLocations: jsonb("target_locations").$type<string[]>().notNull().default([]),

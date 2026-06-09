@@ -16,6 +16,7 @@ type OfferInput = {
   category?: string
   description?: string
   discount?: string
+  startDate?: string
   validTill?: string
   sponsored?: boolean
   active?: boolean
@@ -79,6 +80,7 @@ async function updateOffer(req: NextRequest) {
   const category = body.category?.trim() || current.category
   const description = body.description?.trim() || current.description
   const discount = body.discount?.trim() || current.discount
+  const startDate = body.startDate?.trim() || current.startDate || null
   const validTill = body.validTill?.trim() || current.validTill
   const sponsored = typeof body.sponsored === "boolean" ? body.sponsored : current.sponsored
   const active = typeof body.active === "boolean" ? body.active : current.active
@@ -114,6 +116,7 @@ async function updateOffer(req: NextRequest) {
       category,
       description,
       discount,
+      startDate,
       validTill,
       sponsored,
       active,
@@ -178,6 +181,7 @@ export async function POST(req: NextRequest) {
     const category = body.category?.trim() ?? ""
     const description = body.description?.trim() ?? ""
     const discount = body.discount?.trim() ?? ""
+    const startDate = body.startDate?.trim() || null
     const validTill = body.validTill?.trim() ?? ""
     const sponsored = Boolean(body.sponsored)
     const active = body.active !== undefined ? Boolean(body.active) : true
@@ -211,6 +215,7 @@ export async function POST(req: NextRequest) {
         category,
         description,
         discount,
+        startDate,
         validTill,
         sponsored,
         active,

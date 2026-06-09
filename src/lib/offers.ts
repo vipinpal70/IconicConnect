@@ -15,6 +15,7 @@ export interface OfferRecord {
   category: OfferCategory
   description: string
   discount: string
+  startDate: string | null
   validTill: string
   targetClients: string[]
   targetLocations: string[]

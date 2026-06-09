@@ -253,6 +253,13 @@
       "when": 1749432000000,
       "tag": "0038_invoice_case_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1749433000000,
+      "tag": "0039_offer_start_date",
+      "breakpoints": true
     }
   ]
 }
