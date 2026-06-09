@@ -135,6 +135,8 @@ export async function POST(req: NextRequest) {
       const caseData = casesArray[i];
       const file = files[i];
 
+      // Ensure sequence exists (self-heals if migration was never applied on this DB)
+      await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS cases_number_seq START 1`)
       const seqResult = await db.execute(sql`SELECT nextval('cases_number_seq') AS n`)
       const seqNum = Number((seqResult as Array<Record<string, unknown>>)[0].n)
       const caseNumber = formatCaseNumber(getCasePrefix(caseData.category ?? ''), seqNum)
@@ -219,8 +221,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: isArray ? results : results[0] }, { status: 201 });
   } catch (error: unknown) {
-    console.error('Create case error:', error);
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
+    const message = getErrorMessage(error)
+    console.error('Create case error:', message, error);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
