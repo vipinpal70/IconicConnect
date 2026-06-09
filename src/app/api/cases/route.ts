@@ -223,9 +223,15 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: isArray ? results : results[0] }, { status: 201 });
   } catch (error: unknown) {
-    const message = getErrorMessage(error)
-    console.error('Create case error:', message, error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const err = error as Record<string, unknown>
+    const cause = err?.cause as Record<string, unknown> | undefined
+    const message      = getErrorMessage(error)
+    const causeMessage = cause ? String(cause.message ?? '') : undefined
+    const detail       = (err?.detail ?? cause?.detail) as string | undefined
+    const code         = (err?.code   ?? cause?.code)   as string | undefined
+    const constraint   = (err?.constraint ?? cause?.constraint) as string | undefined
+    console.error('Create case error:', { message, causeMessage, detail, code, constraint })
+    return NextResponse.json({ error: causeMessage || message, detail, code, constraint }, { status: 500 });
   }
 }
 
