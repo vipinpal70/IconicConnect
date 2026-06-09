@@ -1441,9 +1441,13 @@ export default function CasesPage() {
                                     </div>
                                   )}
 
-                                  {/* Inform QC that they cannot self-review */}
+                                  {/* Self-Approve: QC is also the designer on this case */}
                                   {isQcOnCase && isDesignerOnCase && c.status === "internal_qc" && (
-                                    <span className="text-[11px] text-amber-600 italic px-1">Self-review blocked</span>
+                                    <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                      onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "approve", c.caseNumber); }}
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                      ✓ Self-Approve
+                                    </Button>
                                   )}
                                   {c.status === "on_hold" && (c.qcId === activeUserId || c.designerId === activeUserId) && (
                                     <Button size="sm" disabled={isMutating}
@@ -1624,9 +1628,19 @@ export default function CasesPage() {
           </DialogHeader>
           {pendingCaseAction?.action === "approve" && (
             <div className="grid gap-2.5 py-3 border-t border-b border-white/10">
-              <p className="text-xs font-semibold text-zinc-300">
-                Quality Checklist
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-zinc-300">Quality Checklist</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allChecked = QC_CHECKLIST.every((item) => approveChecklist[item])
+                    setApproveChecklist(Object.fromEntries(QC_CHECKLIST.map((item) => [item, !allChecked])))
+                  }}
+                  className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 underline underline-offset-2 transition-colors"
+                >
+                  {QC_CHECKLIST.every((item) => approveChecklist[item]) ? "Deselect All" : "Select All"}
+                </button>
+              </div>
               <div className="grid gap-2">
                 {QC_CHECKLIST.map((item) => {
                   const itemId = `qc-approve-check-${item.replace(/\s+/g, "-").toLowerCase()}`
