@@ -112,6 +112,28 @@ export default function BillingPage() {
   const [clients, setClients] = useState<ClientProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [filterClient, setFilterClient] = useState<ClientProfile | null>(null)
+  const [exportingId, setExportingId] = useState<string | null>(null)
+
+  const handleExportCaseSheet = async (invoiceId: string, invoiceNumber: string) => {
+    setExportingId(invoiceId)
+    try {
+      const res = await fetch(`/api/admin/invoices/${invoiceId}/case-sheet`)
+      if (!res.ok) { toast.error("Failed to generate case sheet"); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${invoiceNumber}-case-sheet.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error("Failed to download case sheet")
+    } finally {
+      setExportingId(null)
+    }
+  }
 
   // Generator panel
   const [showGenerator, setShowGenerator] = useState(false)
@@ -638,12 +660,19 @@ export default function BillingPage() {
                         </span>
                       </td>
 
-                      {/* View */}
+                      {/* Actions */}
                       <td className="px-3.5 py-2.5">
-                        <Button variant="ghost" size="icon" className="h-7 w-7"
-                          onClick={() => router.push(`/admin/billing/${inv.id}`)}>
-                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
+                        <div className="flex items-center gap-0.5">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="View invoice"
+                            onClick={() => router.push(`/admin/billing/${inv.id}`)}>
+                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Export case sheet"
+                            disabled={exportingId === inv.id}
+                            onClick={() => handleExportCaseSheet(inv.id, inv.invoiceNumber)}>
+                            <Download className={`h-3.5 w-3.5 ${exportingId === inv.id ? "animate-pulse text-primary" : "text-muted-foreground"}`} />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
