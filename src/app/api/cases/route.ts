@@ -42,6 +42,18 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error';
 }
 
+type CasePayload = {
+  clientId?: string;
+  category?: string;
+  subTypeData?: Record<string, unknown>;
+  dueDate?: string;
+  uploadedFile?: { fileName: string; fileUrl: string; fileType: string; fileSize: number };
+  preferredTeethLibrary?: string;
+  teethLibraryFileUrl?: string | null;
+  teethLibraryFileName?: string | null;
+  [key: string]: unknown;
+};
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,17 +71,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
-    const formData = await req.formData();
-    const casesJson = formData.get('cases') as string;
-    const files = formData.getAll('files') as File[];
+    const contentType = req.headers.get('content-type') || '';
+    let casesData: unknown;
+    let files: File[] = [];
 
-    if (!casesJson) {
-      return NextResponse.json({ error: 'No cases data provided' }, { status: 400 });
+    if (contentType.includes('application/json')) {
+      // Mobile / API-client path: raw JSON body (single case object or array)
+      casesData = await req.json().catch(() => null);
+      if (!casesData) {
+        return NextResponse.json({ error: 'No cases data provided' }, { status: 400 });
+      }
+    } else {
+      // Browser FormData path (existing web clients)
+      const formData = await req.formData();
+      const casesJson = formData.get('cases') as string;
+      files = formData.getAll('files') as File[];
+      if (!casesJson) {
+        return NextResponse.json({ error: 'No cases data provided' }, { status: 400 });
+      }
+      casesData = JSON.parse(casesJson);
     }
 
-    const casesData = JSON.parse(casesJson);
     const isArray = Array.isArray(casesData);
-    const casesArray = isArray ? casesData : [casesData];
+    const casesArray: CasePayload[] = isArray
+      ? (casesData as CasePayload[])
+      : [casesData as CasePayload];
 
     let clientId: string | undefined;
     let subuserId: string | null = null;
@@ -111,7 +137,7 @@ export async function POST(req: NextRequest) {
 
       const seqResult = await db.execute(sql`SELECT nextval('cases_number_seq') AS n`)
       const seqNum = Number((seqResult as Array<Record<string, unknown>>)[0].n)
-      const caseNumber = formatCaseNumber(getCasePrefix(caseData.category), seqNum)
+      const caseNumber = formatCaseNumber(getCasePrefix(caseData.category ?? ''), seqNum)
 
       const newCase = {
         clientId,
