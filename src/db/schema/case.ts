@@ -140,6 +140,8 @@ export const cases = pgTable('cases', {
   accountManagerId: uuid('account_manager_id').references(() => profiles.id),
 
   // Dates
+  startTime: timestamp('start_time'),
+  deliveredTime: timestamp('delivered_time'),
   dueDate: timestamp('due_date'),
   timeline: jsonb('timeline').$type<CaseTimelineEvent[]>().default(sql`'[]'::jsonb`).notNull(),
   outputFile: text('output_file'),

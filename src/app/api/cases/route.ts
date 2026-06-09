@@ -3,9 +3,9 @@ import { db } from '@/src/db';
 import { cases, caseFiles } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
-import { generateCaseId } from '@/src/lib/case-utils';
+import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
@@ -25,6 +25,8 @@ const caseListSelection = {
   designerId: cases.designerId,
   qcId: cases.qcId,
   accountManagerId: cases.accountManagerId,
+  startTime: cases.startTime,
+  deliveredTime: cases.deliveredTime,
   dueDate: cases.dueDate,
   createdAt: cases.createdAt,
   updatedAt: cases.updatedAt,
@@ -39,6 +41,7 @@ const caseListSelection = {
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error';
 }
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -106,7 +109,9 @@ export async function POST(req: NextRequest) {
       const caseData = casesArray[i];
       const file = files[i];
 
-      const caseNumber = caseData.caseNumber || generateCaseId(caseData.category);
+      const seqResult = await db.execute(sql`SELECT nextval('cases_number_seq') AS n`)
+      const seqNum = Number((seqResult as Array<Record<string, unknown>>)[0].n)
+      const caseNumber = formatCaseNumber(getCasePrefix(caseData.category), seqNum)
 
       const newCase = {
         clientId,

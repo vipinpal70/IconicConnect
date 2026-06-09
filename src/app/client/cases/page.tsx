@@ -3,7 +3,6 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { createClient } from "@/src/lib/supabase/client";
-import { generateCaseId } from "@/src/lib/case-utils";
 import { ClientLayout } from "@/src/components/ClientLayout";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
@@ -243,7 +242,6 @@ export default function CasesPage() {
     fileSize: number;
     fileType: string;
   } | null>(null);
-  const [generatedCaseId, setGeneratedCaseId] = useState<string>("");
   const [labName, setLabName] = useState<string>("Client");
 
   const [preferredTeethLibrary, setPreferredTeethLibrary] = useState<string>("default");
@@ -266,9 +264,6 @@ export default function CasesPage() {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setGeneratedCaseId(generateCaseId(category));
-  }, [category]);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -481,7 +476,6 @@ export default function CasesPage() {
         notes,
         ...(category === "Implant" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
       },
-      caseNumber: generatedCaseId,
       uploadedFile,
       preferredTeethLibrary,
       teethLibraryFileUrl: uploadedLibraryFile?.fileUrl || null,
@@ -510,8 +504,6 @@ export default function CasesPage() {
         setUploadedFile(null);
         setPreferredTeethLibrary("default");
         setUploadedLibraryFile(null);
-        // Regenerate for next time
-        setGeneratedCaseId(generateCaseId("Crown & Bridges"));
         fetchCases();
       } else {
         toast.error("Failed to submit case.");
@@ -538,7 +530,7 @@ export default function CasesPage() {
 
     // First, set the rows with uploading status
     const rows: BulkRow[] = pickedFiles.map((f) => {
-      const caseId = generateCaseId("Crown & Bridges");
+      const caseId = crypto.randomUUID();
       return {
         fileName: f.name,
         file: f,
@@ -602,7 +594,6 @@ export default function CasesPage() {
         toothSystem: row.toothSystem,
         notes: row.notes,
       },
-      caseNumber: row.caseId,
       uploadedFile: row.uploadedFile,
     }));
 

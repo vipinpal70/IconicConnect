@@ -30,6 +30,8 @@ type CaseUpdateData = {
   | 'cancelled'
   | 'change_requested'
   | 'client_reject'
+  startTime?: Date | null
+  deliveredTime?: Date | null
   designerId?: string | null
   qcId?: string | null
   accountManagerId?: string | null
@@ -391,6 +393,15 @@ export async function PUT(
       }
     } else {
       return NextResponse.json({ error: 'Forbidden: Unauthorized role' }, { status: 403 });
+    }
+
+    // Auto-timestamp: first time work starts
+    if (updateData.status === 'in_progress' && !caseRecord.startTime) {
+      updateData.startTime = new Date()
+    }
+    // Auto-timestamp: client approval
+    if (updateData.status === 'approved') {
+      updateData.deliveredTime = new Date()
     }
 
     const updatedCase = await db.update(cases).set(updateData).where(eq(cases.id, id)).returning();

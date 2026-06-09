@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent } from "@/src/components/ui/card"
 import { Input } from "@/src/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/src/components/ui/select"
 import { Button } from "@/src/components/ui/button"
 import { StatusBadge } from "@/src/components/StatusBadge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
@@ -621,6 +621,7 @@ export default function AdminCasesPage() {
                                       </Button>
                                       <AllocateMenu
                                         designers={designers}
+                                        qcs={qcs}
                                         disabled={isMutating}
                                         onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
                                       />
@@ -630,6 +631,7 @@ export default function AdminCasesPage() {
                                   {(caseItem.status === "scan_verified" || caseItem.status === "scan_not_verified") && (
                                     <AllocateMenu
                                       designers={designers}
+                                      qcs={qcs}
                                       disabled={isMutating}
                                       onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
                                     />
@@ -640,6 +642,7 @@ export default function AdminCasesPage() {
                                       {!caseItem.designerId ? (
                                         <AllocateMenu
                                           designers={designers}
+                                          qcs={qcs}
                                           disabled={isMutating}
                                           onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
                                         />
@@ -1168,13 +1171,16 @@ function Row({ k, v }: { k: string; v: string }) {
 
 function AllocateMenu({
   designers,
+  qcs,
   onPick,
   disabled
 }: {
   designers: MemberRecord[]
-  onPick: (designerId: string) => void
+  qcs: MemberRecord[]
+  onPick: (memberId: string) => void
   disabled?: boolean
 }) {
+  const hasAny = designers.length > 0 || qcs.length > 0
   return (
     <Select onValueChange={onPick} disabled={disabled}>
       <SelectTrigger className="h-7 text-[10px] w-[120px] border-border/80 px-2">
@@ -1183,15 +1189,31 @@ function AllocateMenu({
         </span>
       </SelectTrigger>
       <SelectContent className="bg-primary border-primary/50 text-white">
-        {designers.map((d) => (
-          <SelectItem key={d.id} value={d.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
-            {d.fullName || d.email}
+        {!hasAny && (
+          <SelectItem value="none" disabled className="bg-primary text-white/50 cursor-not-allowed text-xs">
+            No active members
           </SelectItem>
-        ))}
-        {designers.length === 0 && (
-          <SelectItem value="none" disabled className="bg-primary text-white/50 focus:bg-[#047857] cursor-not-allowed text-xs">
-            No active designers
-          </SelectItem>
+        )}
+        {designers.length > 0 && (
+          <SelectGroup>
+            <SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">Designers</SelectLabel>
+            {designers.map((d) => (
+              <SelectItem key={d.id} value={d.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
+                {d.fullName || d.email}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+        {designers.length > 0 && qcs.length > 0 && <SelectSeparator className="bg-white/20" />}
+        {qcs.length > 0 && (
+          <SelectGroup>
+            <SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">QC</SelectLabel>
+            {qcs.map((q) => (
+              <SelectItem key={q.id} value={q.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
+                {q.fullName || q.email}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         )}
       </SelectContent>
     </Select>

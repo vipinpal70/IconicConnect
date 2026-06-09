@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useRef, useEffect } from "react";
-import { generateCaseId, HOLD_REASONS } from "@/src/lib/case-utils";
+import { HOLD_REASONS } from "@/src/lib/case-utils";
 import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import { Label } from "@/src/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { Textarea } from "@/src/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
@@ -301,6 +301,9 @@ export default function CasesPage() {
   const [isDesignUploading, setIsDesignUploading] = useState(false);
   const designUploadInputRef = useRef<HTMLInputElement>(null);
   const previewUploadInputRef = useRef<HTMLInputElement>(null);
+  const [designUploadProgress, setDesignUploadProgress] = useState(0)
+  const [previewUploadProgress, setPreviewUploadProgress] = useState(0)
+  const [designUploadExpectedFileName, setDesignUploadExpectedFileName] = useState<string | null>(null)
 
   const { data: membersData } = useQuery<OpsMember[]>({
     queryKey: ["ops-members-list"],
@@ -453,15 +456,28 @@ export default function CasesPage() {
     if (updated) closeCaseActionDialog();
   };
 
-  const openDesignUploadDialog = (caseId: string, caseNumber?: string | null, clientId?: string | null) => {
+  const openDesignUploadDialog = async (caseId: string, caseNumber?: string | null, clientId?: string | null) => {
     setDesignUploadCaseId(caseId);
     setDesignUploadCaseNumber(caseNumber || null);
     setDesignUploadClientId(clientId || null);
     setDesignUploadNote("");
     setDesignUploadFile(null);
     setDesignUploadPreviewFile(null);
+    setDesignUploadProgress(0);
+    setPreviewUploadProgress(0);
+    setDesignUploadExpectedFileName(null);
     if (designUploadInputRef.current) designUploadInputRef.current.value = "";
     if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
+    try {
+      const res = await fetch(`/api/cases/${caseId}/files`);
+      if (res.ok) {
+        const data = await res.json();
+        const files: Array<{ fileName: string }> = data.data || [];
+        if (files.length > 0) setDesignUploadExpectedFileName(files[0].fileName);
+      }
+    } catch {
+      // non-critical
+    }
   };
 
   const closeDesignUploadDialog = () => {
@@ -471,25 +487,46 @@ export default function CasesPage() {
     setDesignUploadNote("");
     setDesignUploadFile(null);
     setDesignUploadPreviewFile(null);
+    setDesignUploadProgress(0);
+    setPreviewUploadProgress(0);
+    setDesignUploadExpectedFileName(null);
     if (designUploadInputRef.current) designUploadInputRef.current.value = "";
     if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
   };
 
-  const uploadLocalFile = async (file: File, clientId: string): Promise<string> => {
-    const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}&clientId=${encodeURIComponent(clientId)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-      },
-      body: file,
+  const uploadLocalFile = (
+    file: File,
+    clientId: string,
+    onProgress?: (pct: number) => void
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}&clientId=${encodeURIComponent(clientId)}`;
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data.fileUrl);
+          } catch {
+            reject(new Error("Failed to parse upload response"));
+          }
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err.error || `Upload failed with status ${xhr.status}`));
+          } catch {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload failed"));
+      xhr.open("POST", url);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.send(file);
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to upload file using existing upload API");
-    }
-    const data = await res.json();
-    return data.fileUrl;
   };
 
   const validateHtmlFile = (file: File): { isValid: boolean; error?: string } => {
@@ -507,20 +544,28 @@ export default function CasesPage() {
     const fileCheck = validateFile(designUploadFile);
     if (!fileCheck.isValid) { toast.error(fileCheck.error || "Invalid file"); return; }
 
+    if (designUploadExpectedFileName &&
+        designUploadFile.name.toLowerCase() !== designUploadExpectedFileName.toLowerCase()) {
+      toast.error(`Output file name must match the original case file: "${designUploadExpectedFileName}"`);
+      return;
+    }
+
     if (designUploadPreviewFile) {
       const previewCheck = validateHtmlFile(designUploadPreviewFile);
       if (!previewCheck.isValid) { toast.error(previewCheck.error || "Invalid preview file"); return; }
     }
 
     setIsDesignUploading(true);
+    setDesignUploadProgress(0);
+    setPreviewUploadProgress(0);
     try {
-      // 1. Upload output file using existing upload api
-      const outputUrl = await uploadLocalFile(designUploadFile, designUploadClientId || "");
+      // 1. Upload output file with progress
+      const outputUrl = await uploadLocalFile(designUploadFile, designUploadClientId || "", setDesignUploadProgress);
 
-      // 2. Upload preview file if present
+      // 2. Upload preview file with progress if present
       let previewUrl = null;
       if (designUploadPreviewFile) {
-        previewUrl = await uploadLocalFile(designUploadPreviewFile, designUploadClientId || "");
+        previewUrl = await uploadLocalFile(designUploadPreviewFile, designUploadClientId || "", setPreviewUploadProgress);
       }
 
       // 3. Link them to the case database structure
@@ -579,7 +624,6 @@ export default function CasesPage() {
   const [uploadedFile, setUploadedFile] = useState<{ fileUrl: string; fileName: string; fileSize: number; fileType: string } | null>(null);
   const [labName, setLabName] = useState<string>("Client");
   const [userProfile, setUserProfile] = useState<ProfileSummary | null>(null);
-  const generatedCaseId = useMemo(() => generateCaseId(category), [category]);
 
   // Refs for replacement triggering
   const singleFileRef = useRef<HTMLInputElement>(null);
@@ -742,7 +786,6 @@ export default function CasesPage() {
     const caseData = {
       category,
       subTypeData: { ...subTypeData, modelRequired, teeth, toothSystem, notes },
-      caseNumber: generatedCaseId,
       uploadedFile,
     };
     formData.append("cases", JSON.stringify(caseData));
@@ -775,7 +818,7 @@ export default function CasesPage() {
       fileName: f.name, file: f, category: "Crown & Bridges", subTypeData: {},
       modelRequired: "no", teeth: [], toothSystem: "USA", notes: "",
       uploadProgress: 0, uploadedUrl: null, isUploading: true,
-      caseId: generateCaseId("Crown & Bridges"),
+      caseId: crypto.randomUUID(),
     }));
     setBulkRows(rows);
     rows.forEach((row) => {
@@ -804,7 +847,6 @@ export default function CasesPage() {
       bulkRows.map((row) => ({
         category: row.category,
         subTypeData: { ...row.subTypeData, modelRequired: row.modelRequired, teeth: row.teeth, toothSystem: row.toothSystem, notes: row.notes },
-        caseNumber: row.caseId,
         uploadedFile: row.uploadedFile,
       }))
     ));
@@ -1262,15 +1304,15 @@ export default function CasesPage() {
                                         className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
                                         <ShieldCheck className="h-3 w-3 mr-1" />Validate
                                       </Button>
-                                      <AllocateMenu designers={designers} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
                                     </>
                                   )}
                                   {(c.status === "scan_verified" || c.status === "scan_not_verified") && (
-                                    <AllocateMenu designers={designers} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                    <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
                                   )}
                                   {(c.status === "allocated_to_designer" || c.status === "in_progress") && (
                                     !c.designerId ? (
-                                      <AllocateMenu designers={designers} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
                                     ) : (
                                       !c.qcId ? (
                                         <Button size="sm" variant="outline" disabled={isMutating} onClick={() => setAssignQcCaseId(c.id)}
@@ -1361,6 +1403,7 @@ export default function CasesPage() {
                                   {(c.status === "scan_received" || c.status === "scan_verified") && (
                                     <AllocateMenu
                                       designers={designers}
+                                      qcs={qcs}
                                       onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")}
                                       disabled={isMutating}
                                     />
@@ -1378,6 +1421,11 @@ export default function CasesPage() {
                                   {/* QC review actions — only when assigned as QC AND not also the designer */}
                                   {canDoQcActions && c.status === "internal_qc" && (
                                     <div className="flex flex-wrap gap-1 items-center">
+                                      <Button size="sm" variant="outline" disabled={isMutating}
+                                        onClick={(e) => { e.stopPropagation(); void openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-sm">
+                                        <Upload className="h-3 w-3 mr-1" /> Upload Design
+                                      </Button>
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "approve", c.caseNumber); }}
                                         className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">✓ Approve</Button>
@@ -1453,7 +1501,7 @@ export default function CasesPage() {
                                   {/* If case has client feedback, show Upload Design + Apply Feedback */}
                                   {isDesignerOnCase && c.status === "client_feedback" && (
                                     <Button size="sm" disabled={isMutating}
-                                      onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
+                                      onClick={(e) => { e.stopPropagation(); void openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
                                       className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
                                       <Upload className="h-3 w-3 mr-1" /> Upload & Apply
                                     </Button>
@@ -1486,12 +1534,19 @@ export default function CasesPage() {
                                     </Button>
                                   )}
 
-                                  {/* Step 4: Upload Design (if in progress and no design files are uploaded yet) */}
+                                  {/* Step 4: Upload Design (if in progress) — first upload or re-upload */}
                                   {isDesignerOnCase && c.status === "in_progress" && !c.outputFile && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
-                                      onClick={(e) => { e.stopPropagation(); openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
+                                      onClick={(e) => { e.stopPropagation(); void openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
                                       className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
                                       <Upload className="h-3 w-3 mr-1" /> Upload Design
+                                    </Button>
+                                  )}
+                                  {isDesignerOnCase && c.status === "in_progress" && c.outputFile && (
+                                    <Button size="sm" variant="outline" disabled={isMutating}
+                                      onClick={(e) => { e.stopPropagation(); void openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-sm">
+                                      <RefreshCw className="h-3 w-3 mr-1" /> Re-upload
                                     </Button>
                                   )}
 
@@ -1513,9 +1568,17 @@ export default function CasesPage() {
                                     </Button>
                                   )}
 
-                                  {/* If in internal_qc review, show status */}
-                                  {isDesignerOnCase && c.status === "internal_qc" && (
+                                  {/* If in internal_qc and user is a pure designer, show status text */}
+                                  {isDesignerOnCase && !isQc && c.status === "internal_qc" && (
                                     <span className="text-[11px] text-amber-600 italic px-1">In QC Review</span>
+                                  )}
+                                  {/* QC acting as designer: can re-upload during internal_qc */}
+                                  {isDesignerOnCase && isQc && c.status === "internal_qc" && (
+                                    <Button size="sm" variant="outline" disabled={isMutating}
+                                      onClick={(e) => { e.stopPropagation(); void openDesignUploadDialog(c.id, c.caseNumber, c.clientId); }}
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-sm">
+                                      <Upload className="h-3 w-3 mr-1" /> Upload Design
+                                    </Button>
                                   )}
                                 </>
                               )}
@@ -1679,11 +1742,36 @@ export default function CasesPage() {
                 className="min-h-[120px] bg-gray-100 border-gray-200 text-gray-900 placeholder:text-zinc-400" />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="design-file" className="text-sm font-semibold text-gray-700">Case File</Label>
+              <Label htmlFor="design-file" className="text-sm font-semibold text-gray-700">
+                Case Output File
+                {designUploadExpectedFileName && (
+                  <span className="ml-2 text-[11px] font-normal text-gray-500">
+                    (must match: <span className="font-mono text-indigo-700">{designUploadExpectedFileName}</span>)
+                  </span>
+                )}
+              </Label>
               <Input id="design-file" ref={designUploadInputRef} type="file"
                 onChange={(e) => setDesignUploadFile(e.target.files?.[0] || null)}
                 className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-emerald-600 file:border-none file:rounded-md file:px-2 file:py-2" />
-              {designUploadFile && <p className="text-xs text-gray-900">Selected: {designUploadFile.name}</p>}
+              {designUploadFile && (
+                <p className={`text-xs font-medium ${designUploadExpectedFileName && designUploadFile.name.toLowerCase() !== designUploadExpectedFileName.toLowerCase() ? "text-red-600" : "text-gray-700"}`}>
+                  Selected: {designUploadFile.name}
+                  {designUploadExpectedFileName && designUploadFile.name.toLowerCase() !== designUploadExpectedFileName.toLowerCase() && (
+                    <span className="ml-1">— name must match case file</span>
+                  )}
+                </p>
+              )}
+              {isDesignUploading && designUploadProgress > 0 && (
+                <div className="space-y-1 pt-1">
+                  <div className="flex justify-between text-[11px] text-gray-500">
+                    <span>Uploading case file…</span>
+                    <span>{designUploadProgress}%</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-200" style={{ width: `${designUploadProgress}%` }} />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="grid gap-2 mt-1">
               <Label htmlFor="preview-file" className="text-sm font-semibold text-gray-700">Preview File (HTML Only - Optional)</Label>
@@ -1704,13 +1792,24 @@ export default function CasesPage() {
                   }
                 }}
                 className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-indigo-600 file:border-none file:rounded-md file:px-3 file:py-2" />
-              {designUploadPreviewFile && <p className="text-xs text-gray-900">Selected HTML: {designUploadPreviewFile.name}</p>}
+              {designUploadPreviewFile && <p className="text-xs text-gray-700">Selected HTML: {designUploadPreviewFile.name}</p>}
+              {isDesignUploading && designUploadPreviewFile && previewUploadProgress > 0 && (
+                <div className="space-y-1 pt-1">
+                  <div className="flex justify-between text-[11px] text-gray-500">
+                    <span>Uploading preview file…</span>
+                    <span>{previewUploadProgress}%</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-indigo-500 rounded-full transition-all duration-200" style={{ width: `${previewUploadProgress}%` }} />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="ghost" onClick={closeDesignUploadDialog} className="text-gray-700 hover:bg-zinc-100 hover:text-black" disabled={isDesignUploading}>Cancel</Button>
             <Button disabled={isDesignUploading} onClick={confirmDesignUpload} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
-              {isDesignUploading ? "Uploading..." : "Confirm Upload"}
+              {isDesignUploading ? `Uploading… ${designUploadProgress > 0 ? designUploadProgress + "%" : ""}` : "Confirm Upload"}
             </Button>
           </div>
         </DialogContent>
@@ -1762,7 +1861,8 @@ export default function CasesPage() {
   );
 }
 
-function AllocateMenu({ designers, onPick, disabled }: { designers: OpsMember[]; onPick: (designerId: string) => void; disabled?: boolean }) {
+function AllocateMenu({ designers, qcs, onPick, disabled }: { designers: OpsMember[]; qcs: OpsMember[]; onPick: (memberId: string) => void; disabled?: boolean }) {
+  const hasAny = designers.length > 0 || qcs.length > 0
   return (
     <Select onValueChange={onPick} disabled={disabled}>
       <SelectTrigger className="h-8 text-xs w-[160px] border-border/80 bg-white">
@@ -1771,15 +1871,31 @@ function AllocateMenu({ designers, onPick, disabled }: { designers: OpsMember[];
         </span>
       </SelectTrigger>
       <SelectContent className="bg-primary border-primary/50 text-white">
-        {designers.map((d) => (
-          <SelectItem key={d.id} value={d.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer">
-            {d.fullName || d.email}
-          </SelectItem>
-        ))}
-        {designers.length === 0 && (
+        {!hasAny && (
           <SelectItem value="none" disabled className="bg-primary text-white/50 cursor-not-allowed">
-            No active designers
+            No active members
           </SelectItem>
+        )}
+        {designers.length > 0 && (
+          <SelectGroup>
+            <SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">Designers</SelectLabel>
+            {designers.map((d) => (
+              <SelectItem key={d.id} value={d.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer">
+                {d.fullName || d.email}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+        {designers.length > 0 && qcs.length > 0 && <SelectSeparator className="bg-white/20" />}
+        {qcs.length > 0 && (
+          <SelectGroup>
+            <SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">QC</SelectLabel>
+            {qcs.map((q) => (
+              <SelectItem key={q.id} value={q.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer">
+                {q.fullName || q.email}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         )}
       </SelectContent>
     </Select>
