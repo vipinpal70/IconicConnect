@@ -232,6 +232,27 @@
       "when": 1780420000000,
       "tag": "0032_ensure_price_list_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1749430000000,
+      "tag": "0036_case_timestamps",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1749431000000,
+      "tag": "0037_cases_number_seq",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1749432000000,
+      "tag": "0038_invoice_case_ids",
+      "breakpoints": true
     }
   ]
 }

@@ -240,6 +240,7 @@ export type InvoiceWithClient = {
   startDate: string
   endDate: string
   items: InvoiceLineItem[]
+  caseIds: string[]
   subtotal: number
   taxType: string
   taxValue: number
@@ -284,6 +285,7 @@ export function formatInvoiceRow(
     startDate: inv.startDate,
     endDate: inv.endDate,
     items: (inv.items as InvoiceLineItem[]) ?? [],
+    caseIds: (inv.caseIds as string[]) ?? [],
     subtotal: parseFloat(String(inv.subtotal)),
     taxType: inv.taxType,
     taxValue: parseFloat(String(inv.taxValue)),

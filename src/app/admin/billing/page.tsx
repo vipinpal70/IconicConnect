@@ -23,6 +23,7 @@ import {
   Plus,
   X,
   DollarSign,
+  Download,
   CircleCheck,
   CircleX,
   BadgeCheck,
@@ -215,6 +216,71 @@ export default function BillingPage() {
     setAdj({ taxType: "percent", taxValue: "", discountType: "percent", discountValue: "", extraChargesType: "percent", extraChargesValue: "" })
   }
 
+  const handleExportSheet = () => {
+    const selectedCases = candidateCases.filter(c => selectedCaseIds.has(c.id))
+    if (selectedCases.length === 0) { toast.error("Select at least one case to export"); return }
+
+    const headers = ["Case ID", "Case Number", "Category", "Sub-Type", "Teeth / Arch Selection", "Units / Arches Count", "Model Required", "Price (USD)"]
+
+    const rows = selectedCases.map(c => {
+      const d = (c.subTypeData ?? {}) as Record<string, unknown>
+      const cat = (c.category ?? "").toLowerCase()
+      let subType = "—"
+      let selection = "—"
+      let units = 0
+      const modelRequired = d.modelRequired === "yes" ? "Yes" : "No"
+
+      if (cat.includes("crown") || cat.includes("bridge")) {
+        subType = String(d.sub_category || d.subCategory || d.caseType || "Crown")
+        const teeth = Array.isArray(d.teeth) ? (d.teeth as number[]) : []
+        selection = teeth.length > 0 ? teeth.map(t => `#${t}`).join(", ") : "—"
+        units = teeth.length
+      } else if (cat.includes("implant")) {
+        const implantSubCat = String(d.sub_category || d.caseType1 || "Ti-Base")
+        const cbType = String(d.caseType2 || "")
+        subType = cbType && cbType !== "None" ? `${implantSubCat} - ${cbType}` : implantSubCat
+        const implantTeeth = Array.isArray(d.teeth) ? (d.teeth as number[]) : []
+        const cbTeeth = Array.isArray(d.crownBridgeTeeth) ? (d.crownBridgeTeeth as number[]) : []
+        const implantParts = implantTeeth.map(t => `Imp:#${t}`)
+        const cbParts = cbTeeth.map(t => `CB:#${t}`)
+        selection = [...implantParts, ...cbParts].join(", ") || "—"
+        units = implantTeeth.length + cbTeeth.length
+      } else {
+        subType = String(d.appliance_type || d.applianceType || d.sub_category || d.caseType1 || "—")
+        const arch = String(d.arch || d.caseType2 || "Upper")
+        selection = arch
+        units = arch.toLowerCase().includes("both") || arch.toLowerCase().includes("full") ? 2 : 1
+      }
+
+      return [
+        c.id,
+        c.caseNumber || c.id.slice(0, 8),
+        c.category ?? "—",
+        subType,
+        selection,
+        units,
+        modelRequired,
+        c.price.toFixed(2),
+      ]
+    })
+
+    const csvLines = [
+      headers.map(h => `"${h}"`).join(","),
+      ...rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")),
+    ]
+    const csvContent = csvLines.join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `cases-export-${new Date().toISOString().split("T")[0]}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${selectedCases.length} case${selectedCases.length !== 1 ? "s" : ""} to CSV`)
+  }
+
   const getCaseLabel = (c: CandidateCase) => {
     const d = c.subTypeData ?? {}; const cat = c.category?.toLowerCase() ?? ""
     if (cat.includes("crown")) return `Crown & Bridge - ${d.sub_category || d.caseType || "Crown"}`
@@ -376,7 +442,7 @@ export default function BillingPage() {
                       No approved or delivered cases found in this period.
                     </div>
                   ) : (
-                    <div className="border border-border rounded-md overflow-hidden max-h-56 overflow-y-auto">
+                    <div className="border border-border rounded-md overflow-hidden max-h-72 overflow-y-auto">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="bg-muted/50 border-b border-border text-muted-foreground uppercase text-[9px] font-semibold tracking-wider">
@@ -387,23 +453,54 @@ export default function BillingPage() {
                             </th>
                             <th className="p-2.5 text-left">Case</th>
                             <th className="p-2.5 text-left">Service</th>
+                            <th className="p-2.5 text-left">Units / Arches</th>
+                            <th className="p-2.5 text-center">Model</th>
                             <th className="p-2.5 text-left">Date</th>
                             <th className="p-2.5 text-right">Price</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                          {candidateCases.map(c => (
-                            <tr key={c.id} className="hover:bg-muted/20 transition-colors">
-                              <td className="p-2.5 text-center">
-                                <input type="checkbox" checked={selectedCaseIds.has(c.id)}
-                                  onChange={() => toggleCase(c.id)} className="h-3.5 w-3.5 cursor-pointer rounded" />
-                              </td>
-                              <td className="p-2.5 font-medium">{c.caseNumber || c.id.slice(0, 8)}</td>
-                              <td className="p-2.5 text-muted-foreground">{getCaseLabel(c)}</td>
-                              <td className="p-2.5 text-muted-foreground">{new Date(c.createdAt).toLocaleDateString()}</td>
-                              <td className="p-2.5 text-right font-medium">${c.price.toFixed(2)}</td>
-                            </tr>
-                          ))}
+                          {candidateCases.map(c => {
+                            const d = (c.subTypeData ?? {}) as Record<string, unknown>
+                            const cat = (c.category ?? "").toLowerCase()
+                            const isArchBased = cat.includes("appliance") || cat.includes("denture") || cat.includes("cosmetic")
+                            const modelRequired = d.modelRequired === "yes"
+
+                            let units = 0
+                            if (cat.includes("crown") || cat.includes("bridge")) {
+                              units = Array.isArray(d.teeth) ? (d.teeth as unknown[]).length : 0
+                            } else if (cat.includes("implant")) {
+                              const imp = Array.isArray(d.teeth) ? (d.teeth as unknown[]).length : 0
+                              const cb = Array.isArray(d.crownBridgeTeeth) ? (d.crownBridgeTeeth as unknown[]).length : 0
+                              units = imp + cb
+                            } else {
+                              const arch = String(d.arch || d.caseType2 || "Upper").toLowerCase()
+                              units = (arch.includes("both") || arch.includes("full")) ? 2 : 1
+                            }
+
+                            const unitsLabel = isArchBased
+                              ? `${units} arch${units !== 1 ? "es" : ""}`
+                              : `${units} unit${units !== 1 ? "s" : ""}`
+
+                            return (
+                              <tr key={c.id} className="hover:bg-muted/20 transition-colors">
+                                <td className="p-2.5 text-center">
+                                  <input type="checkbox" checked={selectedCaseIds.has(c.id)}
+                                    onChange={() => toggleCase(c.id)} className="h-3.5 w-3.5 cursor-pointer rounded" />
+                                </td>
+                                <td className="p-2.5 font-medium whitespace-nowrap">{c.caseNumber || c.id.slice(0, 8)}</td>
+                                <td className="p-2.5 text-muted-foreground">{getCaseLabel(c)}</td>
+                                <td className="p-2.5 text-muted-foreground whitespace-nowrap">{unitsLabel}</td>
+                                <td className="p-2.5 text-center">
+                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${modelRequired ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"}`}>
+                                    {modelRequired ? "Yes" : "No"}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-muted-foreground whitespace-nowrap">{new Date(c.createdAt).toLocaleDateString()}</td>
+                                <td className="p-2.5 text-right font-medium whitespace-nowrap">${c.price.toFixed(2)}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -433,7 +530,16 @@ export default function BillingPage() {
                 </div>
               )}
 
-              <div className="flex justify-end pt-1">
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  onClick={handleExportSheet}
+                  disabled={selectedCaseIds.size === 0}
+                  className="h-8 text-xs px-4 gap-1.5"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export Sheet
+                </Button>
                 <Button onClick={handleGenerate} disabled={generating || !selectedClient || selectedCaseIds.size === 0} className="h-8 text-xs px-5 gap-1.5">
                   <DollarSign className="h-3.5 w-3.5" />
                   {generating ? "Generating…" : "Generate Invoice"}

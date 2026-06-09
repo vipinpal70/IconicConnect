@@ -121,6 +121,7 @@ export async function POST(req: NextRequest) {
         startDate,
         endDate,
         items,
+        caseIds,
         subtotal: String(subtotal),
         taxType,
         taxValue: String(taxValue),

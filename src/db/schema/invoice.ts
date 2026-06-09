@@ -65,6 +65,8 @@ export const invoices = pgTable(
     receivedConfirmationId: varchar('received_confirmation_id', { length: 100 }),
     receivedOn: date('received_on'),
 
+    caseIds: jsonb('case_ids').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
