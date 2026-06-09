@@ -135,10 +135,12 @@ export async function POST(req: NextRequest) {
       const caseData = casesArray[i];
       const file = files[i];
 
-      // Ensure sequence exists (self-heals if migration was never applied on this DB)
+      // Ensure sequence exists then get next value
       await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS cases_number_seq START 1`)
       const seqResult = await db.execute(sql`SELECT nextval('cases_number_seq') AS n`)
-      const seqNum = Number((seqResult as Array<Record<string, unknown>>)[0].n)
+      // drizzle-orm/postgres-js returns rows as a RowList (array-like); handle both shapes
+      const seqRow = (Array.isArray(seqResult) ? seqResult[0] : (seqResult as any)?.rows?.[0] ?? (seqResult as any)?.[0]) as Record<string, unknown>
+      const seqNum = Number(seqRow?.n ?? 1)
       const caseNumber = formatCaseNumber(getCasePrefix(caseData.category ?? ''), seqNum)
 
       const newCase = {
@@ -171,8 +173,8 @@ export async function POST(req: NextRequest) {
           uploadedBy: user.id,
           fileName: caseData.uploadedFile.fileName,
           fileUrl: caseData.uploadedFile.fileUrl,
-          fileType: caseData.uploadedFile.fileType,
-          fileSize: caseData.uploadedFile.fileSize,
+          fileType: caseData.uploadedFile.fileType ?? null,
+          fileSize: caseData.uploadedFile.fileSize ? Number(caseData.uploadedFile.fileSize) : null,
         });
       } else if (file) {
         // Legacy/Direct fallback upload
