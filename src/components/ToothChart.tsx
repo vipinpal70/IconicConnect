@@ -76,7 +76,7 @@
 
 
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { cn } from "@/src/lib/utils";
 
 // Static arrays representing the visual left-to-right layout for both systems
@@ -112,6 +112,9 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
   const upper = system === "USA" ? UPPER_USA : UPPER_FDI;
   const lower = system === "USA" ? LOWER_USA : LOWER_FDI;
 
+  // Anchor tooth for Ctrl+click range selection — resets only on plain clicks
+  const anchorRef = useRef<number | null>(null);
+
   const toggleSystem = (newSystem: "USA" | "FDI") => {
     if (newSystem === system) return;
 
@@ -121,6 +124,7 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
       .filter(Boolean)
       .sort((a, b) => a - b);
 
+    anchorRef.current = null;
     onChange(translated);
     if (onChangeSystem) {
       onChangeSystem(newSystem);
@@ -129,7 +133,26 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
     }
   };
 
-  const toggleTooth = (n: number) => {
+  const toggleTooth = (n: number, ctrlKey: boolean) => {
+    // Visual order: upper row left-to-right, then lower row left-to-right
+    const allTeeth = [...upper, ...lower];
+
+    if (ctrlKey && anchorRef.current !== null) {
+      // Range selection: select all teeth between anchor and n (inclusive)
+      const fromIdx = allTeeth.indexOf(anchorRef.current);
+      const toIdx = allTeeth.indexOf(n);
+
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const [start, end] = fromIdx <= toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+        const rangeTeeth = allTeeth.slice(start, end + 1);
+        const merged = Array.from(new Set([...selected, ...rangeTeeth])).sort((a, b) => a - b);
+        onChange(merged);
+        return;
+      }
+    }
+
+    // Plain click — update anchor and toggle the tooth
+    anchorRef.current = n;
     if (selected.includes(n)) {
       onChange(selected.filter((x) => x !== n));
     } else {
@@ -142,7 +165,7 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
     return (
       <button
         type="button"
-        onClick={() => toggleTooth(n)}
+        onClick={(e) => toggleTooth(n, e.ctrlKey)}
         className={cn(
           "flex flex-col items-center justify-end gap-1 group transition-transform hover:-translate-y-0.5"
         )}
@@ -220,7 +243,9 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
       <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground px-1 mt-2">
         <span className="w-24">Lower Right</span>
         <span>
-          {selected.length ? `Selected: ${selected.join(", ")}` : "Click teeth to select"}
+          {selected.length
+            ? `Selected: ${selected.join(", ")}`
+            : "Click to select · Ctrl+click to select range"}
         </span>
         <span className="w-24 text-right">Lower Left</span>
       </div>
