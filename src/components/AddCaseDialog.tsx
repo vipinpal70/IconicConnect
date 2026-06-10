@@ -38,7 +38,7 @@ interface Field {
 
 const ARCH_OPTIONS = ["Upper", "Lower", "Both Arches"] as const
 
-const ARCH_BASED_CATEGORIES = new Set(["Denture", "Appliances", "Cosmetics"])
+const ARCH_BASED_CATEGORIES = new Set(["Denture", "Appliances"])
 
 const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
   "Crown & Bridges": {
@@ -54,8 +54,7 @@ const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
   },
   "Cosmetics": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"] },
-      { name: "arch", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
+      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"] }
     ]
   },
   "Appliances": {
