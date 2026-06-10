@@ -43,11 +43,12 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        // 3. Create auth user
+        // 3. Create auth user — email_confirm: true skips OTP/confirmation email
         const { data, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email,
             password,
             phone,
+            email_confirm: true,
             user_metadata: { name: fullName, phone: phone, role: "admin", userType: "admin_portal" },
         })
 
@@ -60,12 +61,13 @@ export async function POST(req: NextRequest) {
 
         const role = "admin"
 
-        // 4. Insert profile
-        const rs = await db.insert(profiles).values({
+        // 4. Insert profile — status active immediately since email is already confirmed
+        await db.insert(profiles).values({
             id: data.user.id,
             email,
-            userType: 'admin_portal',  // ← hardcoded
-            role,                             // admin | qc | account_manager | designer
+            userType: 'admin_portal',
+            role,
+            status: 'active',
             fullName: fullName || null,
             phone: phone || null,
         })
