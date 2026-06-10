@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { StatusBadge } from "@/src/components/StatusBadge"
 import { CaseChat } from "@/src/components/CaseChat"
 import { CASE_LIFECYCLE_STEPS, CASE_STATUS_TO_LIFECYCLE_STEP } from "@/src/db/schema/case"
-import { useState, useRef } from "react"
+import React, { useState, useRef } from "react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
@@ -81,16 +81,16 @@ function formatFileSize(size: number | null) {
   return `${(size / (1024 * 1024)).toFixed(2)} MB`
 }
 
-function DetailRow({ label, value }: { label: string; value: string | React.ReactNode }) {
+const DetailRow = React.memo(function DetailRow({ label, value }: { label: string; value: string | React.ReactNode }) {
   return (
     <div className="flex justify-between gap-2 border-b border-border/40 py-2 last:border-b-0">
       <span className="text-xs text-muted-foreground shrink-0">{label}</span>
       <span className="text-xs font-medium text-foreground text-right">{value}</span>
     </div>
   )
-}
+})
 
-function LifecycleStrip({ status }: { status: string }) {
+const LifecycleStrip = React.memo(function LifecycleStrip({ status }: { status: string }) {
   const currentStep = CASE_STATUS_TO_LIFECYCLE_STEP[status as keyof typeof CASE_STATUS_TO_LIFECYCLE_STEP]
   const currentIndex = Math.max(CASE_LIFECYCLE_STEPS.indexOf(currentStep ?? "Submitted"), 0)
 
@@ -140,7 +140,7 @@ function LifecycleStrip({ status }: { status: string }) {
       </CardContent>
     </Card>
   )
-}
+})
 
 export function CaseDetailView({
   caseId,
@@ -301,6 +301,7 @@ export function CaseDetailView({
       }
       return res.json()
     },
+    staleTime: 15_000, // case data fetched by detail view; chat polls separately
   })
 
   const { data: filesResponse } = useQuery<{ data: CaseFile[] }>({
@@ -314,6 +315,7 @@ export function CaseDetailView({
       return res.json()
     },
     retry: false,
+    staleTime: 30_000, // files don't change frequently
   })
 
   const caseRecord = caseResponse?.data

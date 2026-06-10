@@ -9,6 +9,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare } from "lucide-react";
+import { downloadCSV } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -202,6 +203,18 @@ const statusFilters: string[] = [
   "Pending Client Approval", "Feedback", "On Hold", "Completed", "Cancelled",
 ];
 
+const STATUS_FILTER_MAP: Record<string, string[]> = {
+  "Submitted": ["scan_received"],
+  "In Validation": ["scan_verified", "scan_not_verified"],
+  "In Design": ["allocated_to_designer", "in_progress", "client_feedback"],
+  "Internal QC": ["internal_qc"],
+  "Pending Client Approval": ["submitted_to_client", "change_requested"],
+  "Feedback": ["client_feedback"],
+  "On Hold": ["on_hold"],
+  "Completed": ["approved", "delivered"],
+  "Cancelled": ["cancelled"],
+};
+
 const hasAllRequiredCaseFields = (
   category: string,
   subTypeData: Record<string, string>,
@@ -278,7 +291,7 @@ export default function CasesPage() {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
-    const intervalId = window.setInterval(() => { void fetchCases(false); }, 8000);
+    const intervalId = window.setInterval(() => { void fetchCases(false); }, 30_000);
     return () => {
       window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
@@ -309,19 +322,14 @@ export default function CasesPage() {
     queryKey: ["ops-members-list"],
     queryFn: async () => {
       try {
-        const res = await fetch("/api/admin/members", { cache: "no-store" });
-        if (!res.ok) {
-          console.error("fetch /api/admin/members failed status:", res.status);
-          return [];
-        }
-        const data = await res.json();
-        console.log("fetch /api/admin/members returned:", data);
-        return data;
-      } catch (err) {
-        console.error("fetch /api/admin/members error:", err);
+        const res = await fetch("/api/admin/members");
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
         return [];
       }
     },
+    staleTime: 5 * 60_000,
   });
 
   const { data: currentUser } = useQuery<ProfileSummary | null>({
@@ -331,6 +339,7 @@ export default function CasesPage() {
       if (!res.ok) return null;
       return res.json();
     },
+    staleTime: 10 * 60_000,
   });
 
   const handleUpdate = async (
@@ -755,19 +764,7 @@ export default function CasesPage() {
 
       const matchesSearch = !s || friendlyId.includes(s) || friendlyRestoration.includes(s);
 
-      const statusFilterMap: Record<string, string[]> = {
-        "Submitted": ["scan_received"],
-        "In Validation": ["scan_verified"],
-        "In Design": ["allocated_to_designer", "in_progress"],
-        "Internal QC": ["internal_qc"],
-        "Pending Client Approval": ["submitted_to_client", "change_requested"],
-        "Feedback": ["client_feedback"],
-        "On Hold": ["on_hold", "scan_not_verified"],
-        "Completed": ["approved", "delivered"],
-        "Cancelled": ["cancelled"],
-      };
-
-      const matchesStatus = statusFilter === "All" || (statusFilterMap[statusFilter]?.includes(c.status) ?? false);
+      const matchesStatus = statusFilter === "All" || (STATUS_FILTER_MAP[statusFilter]?.includes(c.status) ?? false);
       const matchesType = typeFilter === "All" || c.category === typeFilter;
       const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "";
       const matchesFrom = !from || createdAtDate >= from;
@@ -875,9 +872,38 @@ export default function CasesPage() {
             <h1 className="text-xl font-semibold text-foreground">Cases</h1>
             <p className="text-xs text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
-          {/* <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8 text-xs font-semibold"><Download className="h-3.5 w-3.5 mr-1.5" /> Export Excel</Button>
-            <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5"
+              onClick={() => {
+                const headers = ["Case #", "Category", "Type / Restoration", "Status", "Designer", "Due Date", "Created At"]
+                const rows = filtered.map((c) => {
+                  const restoration = c.subTypeData
+                    ? Object.entries(c.subTypeData)
+                        .filter(([k, v]) => k !== "teeth" && k !== "crownBridgeTeeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v && v.toLowerCase() !== "none")
+                        .map(([, v]) => v as string)
+                        .join(" - ") || "—"
+                    : "—"
+                  return [
+                    c.caseNumber || c.id,
+                    c.category || "—",
+                    restoration,
+                    c.status,
+                    c.designerName || "—",
+                    c.dueDate ? new Date(String(c.dueDate)).toLocaleDateString("en-IN") : "—",
+                    c.createdAt ? new Date(String(c.createdAt)).toLocaleDateString("en-IN") : "—",
+                  ]
+                })
+                const date = new Date().toISOString().split("T")[0]
+                downloadCSV(headers, rows, `cases-${date}.csv`)
+              }}
+            >
+              <Download className="h-3.5 w-3.5" /> Export
+            </Button>
+          </div>
+          {/* <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="h-8 text-xs font-semibold"><Plus className="h-3.5 w-3.5 mr-1.5" />Add New Case</Button>
               </DialogTrigger>

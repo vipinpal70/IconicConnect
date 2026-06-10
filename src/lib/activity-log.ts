@@ -30,9 +30,12 @@ export function formatActivityActor(actor: Pick<Profile, 'fullName' | 'labName' 
   return actor.fullName || actor.labName || 'System'
 }
 
-export function formatActivityLabel(action: string, details: ActivityDetails) {
+export function formatActivityLabel(action: string, details: ActivityDetails, actorRole?: string) {
   if (action === 'case.created') return 'Case submitted by client'
-  if (action === 'case.file_uploaded') return 'Case file uploaded'
+  if (action === 'case.file_uploaded') {
+    if (actorRole === 'designer') return 'Designer uploaded design'
+    return 'Case file uploaded'
+  }
   if (action === 'offer.created') return 'Offer created'
   if (action === 'offer.updated') return 'Offer updated'
   if (action === 'offer.deleted') return 'Offer deleted'
@@ -59,8 +62,9 @@ export function formatActivityLabel(action: string, details: ActivityDetails) {
       case 'scan_verified':
         return 'Scan validated'
       case 'allocated_to_designer':
-      case 'in_progress':
         return 'Allocated to designer'
+      case 'in_progress':
+        return 'Designer started working'
       case 'internal_qc':
         return 'Design submitted to internal QC'
       case 'submitted_to_client':
@@ -70,6 +74,12 @@ export function formatActivityLabel(action: string, details: ActivityDetails) {
         return 'Client approved · Delivered'
       case 'client_feedback':
         return 'Client requested changes'
+      case 'change_requested':
+        return 'Client requested changes'
+      case 'client_reject':
+        return 'Client rejected design'
+      case 'cancelled':
+        return 'Case cancelled'
       case 'on_hold':
       case 'scan_not_verified':
         return 'Case put on hold'
@@ -89,7 +99,7 @@ function buildCaseTimelineEvent({
   return {
     id: randomUUID(),
     action,
-    label: formatActivityLabel(action, details ?? null),
+    label: formatActivityLabel(action, details ?? null, actor.role),
     actor: formatActivityActor(actor),
     actionAt: new Date().toISOString(),
     actionTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),

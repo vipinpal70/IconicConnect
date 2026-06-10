@@ -14,9 +14,10 @@ import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
 import { ClientPriceListModal } from "@/src/components/ClientPriceListModal";
 import type { PriceListRow } from "@/src/components/PriceListTable";
 import type { PriceListEntryFull } from "@/src/lib/price-list";
+import { toast } from "sonner";
 import {
   Building2, Mail, Phone, MapPin, Plus, Eye, EyeOff,
-  Users, KeyRound, Trash2, Settings, User, FileText
+  Users, KeyRound, Trash2, Settings, User, FileText, Pencil, X, Check
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -101,6 +102,40 @@ export default function ProfilePage() {
     phone: profile?.phone || "—",
     poc: profile?.fullName || profile?.name || "—",
     title: profile?.title || (profile?.role === "admin" ? "Administrator" : profile?.role) || "—",
+  };
+
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({ fullName: "", phone: "", title: "" });
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  const handleEditProfile = () => {
+    setProfileDraft({
+      fullName: profile?.fullName || profile?.name || "",
+      phone: profile?.phone || "",
+      title: profile?.title || "",
+    });
+    setEditingProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profile?.id) return;
+    setSavingProfile(true);
+    try {
+      const res = await fetch(`/api/admin/members/${profile.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profileDraft),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "Failed to update profile");
+      setProfile((prev) => prev ? { ...prev, ...profileDraft } : prev);
+      toast.success("Profile updated");
+      setEditingProfile(false);
+    } catch (err: any) {
+      toast.error(err.message || "Something went wrong");
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const [showPwd, setShowPwd] = useState<Record<string, boolean>>({});
@@ -208,6 +243,69 @@ export default function ProfilePage() {
             <Detail icon={<Mail className="h-3.5 w-3.5" />} label="POC Email" value={displayProfile.email} />
             <Detail icon={<Phone className="h-3.5 w-3.5" />} label="POC Phone" value={displayProfile.phone} />
             <Detail icon={<User className="h-3.5 w-3.5" />} label="Primary POC" value={displayProfile.poc} />
+          </CardContent>
+        </Card>
+
+        {/* Personal Info — editable by both client and sub-user */}
+        <Card className="shadow-card border-border/50 max-w-sm">
+          <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50 flex flex-row items-center justify-between">
+            <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 text-primary" /> Personal Info
+            </CardTitle>
+            {!editingProfile && (
+              <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={handleEditProfile}>
+                <Pencil className="h-3 w-3" /> Edit
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className="p-3.5">
+            {editingProfile ? (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">Full Name</Label>
+                  <Input
+                    className="h-8 text-xs"
+                    value={profileDraft.fullName}
+                    onChange={(e) => setProfileDraft((d) => ({ ...d, fullName: e.target.value }))}
+                    placeholder="Your full name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">Phone</Label>
+                  <Input
+                    className="h-8 text-xs"
+                    value={profileDraft.phone}
+                    onChange={(e) => setProfileDraft((d) => ({ ...d, phone: e.target.value }))}
+                    placeholder="+91 XXXXX XXXXX"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">Title / Designation</Label>
+                  <Input
+                    className="h-8 text-xs"
+                    value={profileDraft.title}
+                    onChange={(e) => setProfileDraft((d) => ({ ...d, title: e.target.value }))}
+                    placeholder="e.g. Lab Manager"
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button size="sm" className="h-8 text-xs gap-1.5" onClick={handleSaveProfile} disabled={savingProfile}>
+                    <Check className="h-3.5 w-3.5" />
+                    {savingProfile ? "Saving..." : "Save"}
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => setEditingProfile(false)}>
+                    <X className="h-3.5 w-3.5" /> Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Detail icon={<User className="h-3.5 w-3.5" />} label="Full Name" value={profile?.fullName || profile?.name || "—"} />
+                <Detail icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={profile?.email || "—"} />
+                <Detail icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={profile?.phone || "—"} />
+                <Detail label="Title" value={profile?.title || "—"} />
+              </div>
+            )}
           </CardContent>
         </Card>
 

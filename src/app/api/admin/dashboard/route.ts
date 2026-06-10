@@ -4,7 +4,7 @@ import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { activityLogs } from "@/src/db/schema/activity-log";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, inArray, notInArray, and, count, desc, isNotNull } from "drizzle-orm";
+import { eq, inArray, notInArray, and, count, desc, isNotNull, asc } from "drizzle-orm";
 import { isValidRoleForType } from "@/src/lib/auth/role";
 
 import { formatActivityLabel } from "@/src/lib/activity-log";
@@ -158,12 +158,40 @@ export async function GET(req: NextRequest) {
       .groupBy(profiles.id, profiles.fullName, profiles.email)
       .orderBy(desc(count(cases.id)));
 
+    // 4. Fetch 6 most recently created clients
+    const recentClientsResult = await db
+      .select({
+        id: profiles.id,
+        labName: profiles.labName,
+        fullName: profiles.fullName,
+        status: profiles.status,
+        plan: profiles.plan,
+        city: profiles.city,
+        state: profiles.state,
+        country: profiles.country,
+        onBoardedAt: profiles.onBoardedAt,
+        createdAt: profiles.createdAt,
+      })
+      .from(profiles)
+      .where(eq(profiles.role, "client"))
+      .orderBy(desc(profiles.createdAt))
+      .limit(6);
+
     return NextResponse.json({
       counts,
       recentActivities: recentCases,
       designerLoad: designerLoadResult.map((d) => ({
         name: d.fullName || d.email.split("@")[0],
         load: Number(d.load),
+      })),
+      recentClients: recentClientsResult.map((c) => ({
+        id: c.id,
+        name: c.labName || c.fullName || "Unnamed Lab",
+        status: c.status,
+        plan: c.plan,
+        location: [c.city, c.state, c.country].filter(Boolean).join(", ") || null,
+        onBoardedAt: c.onBoardedAt,
+        createdAt: c.createdAt,
       })),
     });
   } catch (error: unknown) {

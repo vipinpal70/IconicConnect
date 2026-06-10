@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import React, { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent } from "@/src/components/ui/card"
@@ -28,8 +28,10 @@ import {
   FileText,
   RefreshCw,
   Upload,
-  Plus
+  Plus,
+  Download,
 } from "lucide-react"
+import { downloadCSV } from "@/src/lib/export-csv"
 
 type CaseRecord = {
   id: string
@@ -206,7 +208,8 @@ export default function AdminCasesPage() {
       }
       return res.json()
     },
-    refetchInterval: 8000,
+    refetchInterval: 30_000,
+    staleTime: 20_000,
   })
 
   // Fetch Client profiles
@@ -216,7 +219,8 @@ export default function AdminCasesPage() {
       const res = await fetch("/api/admin/clients")
       if (!res.ok) return []
       return res.json()
-    }
+    },
+    staleTime: 5 * 60_000, // clients list rarely changes
   })
 
   // Fetch Team members
@@ -224,19 +228,15 @@ export default function AdminCasesPage() {
     queryKey: ["admin-members-list"],
     queryFn: async () => {
       try {
-        const res = await fetch("/api/admin/members", { cache: "no-store" })
-        if (!res.ok) {
-          console.error("fetch /api/admin/members failed in admin dashboard, status:", res.status)
-          return []
-        }
+        const res = await fetch("/api/admin/members")
+        if (!res.ok) return []
         const data = await res.json()
-        console.log("fetch /api/admin/members returned in admin dashboard:", data)
         return data
-      } catch (err) {
-        console.error("fetch /api/admin/members error in admin dashboard:", err)
+      } catch {
         return []
       }
-    }
+    },
+    staleTime: 5 * 60_000, // team roster rarely changes
   })
 
   // Fetch current logged in user
@@ -246,7 +246,8 @@ export default function AdminCasesPage() {
       const res = await fetch("/api/admin/me")
       if (!res.ok) return null
       return res.json()
-    }
+    },
+    staleTime: 10 * 60_000, // current user identity never changes mid-session
   })
 
   // Mappings to translate UUIDs to descriptive names
@@ -465,13 +466,42 @@ export default function AdminCasesPage() {
             <h1 className="text-xl font-semibold text-foreground">Cases — Review & Allocation</h1>
             <p className="text-xs text-muted-foreground">Triage incoming cases, allocate to designers and route through QC</p>
           </div>
-          <Button
-            size="sm"
-            className="h-8 text-xs bg-emerald-800 text-white hover:bg-emerald-900 flex items-center gap-1.5"
-            onClick={() => setIsAddOpen(true)}
-          >
-            <Plus className="h-3.5 w-3.5" /> Add New Case
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5"
+              onClick={() => {
+                const headers = ["Case #", "Client", "Category", "Type / Restoration", "Status", "Designer", "Due Date", "Created At"]
+                const rows = filtered.map((c) => {
+                  const client = clientsMap.get(c.clientId)
+                  const clientName = client?.labName || client?.fullName || "—"
+                  const designer = membersMap.get(c.designerId || "")?.fullName || "—"
+                  return [
+                    c.caseNumber || c.id,
+                    clientName,
+                    c.category || "—",
+                    renderSubTypeSummary(c.subTypeData),
+                    c.status,
+                    designer,
+                    c.dueDate ? new Date(c.dueDate).toLocaleDateString("en-IN") : "—",
+                    new Date(c.createdAt).toLocaleDateString("en-IN"),
+                  ]
+                })
+                const date = new Date().toISOString().split("T")[0]
+                downloadCSV(headers, rows, `cases-${date}.csv`)
+              }}
+            >
+              <Download className="h-3.5 w-3.5" /> Export
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs bg-emerald-800 text-white hover:bg-emerald-900 flex items-center gap-1.5"
+              onClick={() => setIsAddOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" /> Add New Case
+            </Button>
+          </div>
         </div>
 
         <Card className="shadow-card border-border/50">
@@ -1160,16 +1190,16 @@ export default function AdminCasesPage() {
   )
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+const Row = React.memo(function Row({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex justify-between gap-3 py-1 border-b border-border/40 last:border-0 text-xs">
       <span className="text-muted-foreground">{k}</span>
       <span className="text-foreground font-medium text-right">{v}</span>
     </div>
   )
-}
+})
 
-function AllocateMenu({
+const AllocateMenu = React.memo(function AllocateMenu({
   designers,
   qcs,
   onPick,
@@ -1218,9 +1248,9 @@ function AllocateMenu({
       </SelectContent>
     </Select>
   )
-}
+})
 
-function PreferenceFormCard({ form }: { form: PreferenceFormRecord }) {
+const PreferenceFormCard = React.memo(function PreferenceFormCard({ form }: { form: PreferenceFormRecord }) {
   const p = form.payload
 
   const sections: { label: string; lines: string[] }[] = []
@@ -1307,4 +1337,4 @@ function PreferenceFormCard({ form }: { form: PreferenceFormRecord }) {
       </CardContent>
     </Card>
   )
-}
+})

@@ -30,7 +30,8 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch cases");
       return res.json();
     },
-    refetchInterval: 8000,
+    refetchInterval: 30_000,
+    staleTime: 20_000,
   });
 
   const { data: profile } = useQuery<{ fullName: string | null; role: string | null; labName: string | null }>({
@@ -40,6 +41,7 @@ export default function Dashboard() {
       if (!res.ok) return null;
       return res.json();
     },
+    staleTime: 5 * 60_000, // profile rarely changes
   });
 
   const cases = casesData?.data ?? [];

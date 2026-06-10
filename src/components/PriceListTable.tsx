@@ -1,6 +1,6 @@
 "use client"
 
-import { NumberInput } from 'rsuite'
+import { Input } from "@/src/components/ui/input"
 
 export interface PriceListRow {
   id: string
@@ -56,7 +56,7 @@ export function PriceListTable({ items, editable = false, hideDefaultColumn = fa
                 {editable && !hideDefaultColumn && (
                   <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-24">Default</th>
                 )}
-                <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-32">
+                <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-36">
                   {editable && !hideDefaultColumn ? 'Client Price' : 'Price'}
                 </th>
               </tr>
@@ -73,15 +73,24 @@ export function PriceListTable({ items, editable = false, hideDefaultColumn = fa
                   )}
                   <td className="px-3 py-2 text-right">
                     {editable ? (
-                      <div className="flex justify-end">
-                        <NumberInput
+                      <div className="flex justify-end items-center gap-1">
+                        <span className="text-muted-foreground text-xs">$</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
                           value={row.price}
-                          onChange={(value) => onChangePrice?.(row.catalogItemId, Number(value ?? 0))}
-                          prefix="$"
-                          min={0}
-                          step={0.5}
-                          size="xs"
-                          style={{ width: 110 }}
+                          onChange={(e) => {
+                            const raw = parseFloat(e.target.value)
+                            const val = isNaN(raw) ? 0 : Math.max(0, raw)
+                            onChangePrice?.(row.catalogItemId, val)
+                          }}
+                          onBlur={(e) => {
+                            const raw = parseFloat(e.target.value)
+                            const val = isNaN(raw) ? 0 : Math.max(0, parseFloat(raw.toFixed(2)))
+                            onChangePrice?.(row.catalogItemId, val)
+                          }}
+                          className="h-7 w-24 text-xs text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                       </div>
                     ) : (

@@ -3,11 +3,14 @@
 import { AdminLayout } from "@/src/components/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
-import { Inbox, Layers, ShieldCheck, ClipboardCheck, Users, MapPin } from "lucide-react";
+import { Inbox, Layers, ShieldCheck, ClipboardCheck, Users, MapPin, Building2, CalendarDays } from "lucide-react";
+import { Badge } from "@/src/components/ui/badge";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { StatusBadge } from "@/src/components/StatusBadge";
+
+const CHART_MARGIN = { left: 5, right: 12, top: 0, bottom: 0 } as const;
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -19,7 +22,8 @@ export default function AdminDashboard() {
       if (!res.ok) throw new Error("Failed to fetch dashboard data");
       return res.json();
     },
-    refetchInterval: 8000,
+    refetchInterval: 30_000,
+    staleTime: 20_000,
   });
 
   const counts = dashboardData?.counts || {
@@ -33,6 +37,7 @@ export default function AdminDashboard() {
 
   const designerLoad = dashboardData?.designerLoad || [];
   const recentActivities = dashboardData?.recentActivities || [];
+  const recentClients = dashboardData?.recentClients || [];
 
   const kpis = [
     { label: "incoming/in_validation", value: counts.incoming, icon: Inbox, color: "text-blue-500", bg: "bg-blue-500/10" },
@@ -151,7 +156,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="overflow-y-auto max-h-[190px] pr-1 scrollbar-thin">
                   <ResponsiveContainer width="100%" height={Math.max(190, designerLoad.length * 32)}>
-                    <BarChart data={designerLoad} layout="vertical" margin={{ left: 5, right: 12, top: 0, bottom: 0 }}>
+                    <BarChart data={designerLoad} layout="vertical" margin={CHART_MARGIN}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
                       <XAxis type="number" hide />
                       <YAxis
@@ -178,7 +183,7 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Dynamic Active Clients List (Pre-seeded with live data counts fallback) */}
+        {/* Recently Added Clients */}
         <Card className="shadow-card border-border/50">
           <CardHeader className="p-3.5 pb-2 border-b border-border/60 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-xs font-semibold text-foreground">Active Clients Overview</CardTitle>
@@ -191,27 +196,89 @@ export default function AdminDashboard() {
               Manage Clients
             </Button>
           </CardHeader>
-          <CardContent className="p-3.5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[
-              { id: "CL-001", company: "Medanta Labs", location: "Miami, FL", volume: counts.activeClients > 0 ? "Active client" : "Miami, FL" },
-              { id: "CL-002", company: "SmileCraft Center", location: "Austin, TX", volume: "Austin, TX" },
-              { id: "CL-003", company: "CityDental Labs", location: "New York, NY", volume: "New York, NY" },
-            ].map((c) => (
-              <div
-                key={c.id}
-                className="rounded-lg border border-border/50 p-3 hover:shadow-glow transition-all cursor-pointer bg-card/50"
-                onClick={() => router.push("/admin/clients")}
-              >
-                <p className="text-[11px] font-semibold text-foreground mb-0.5">{c.company}</p>
-                <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                  <MapPin className="h-2.5 w-2.5" /> {c.location}
-                </p>
-                <div className="mt-2 pt-2 border-t border-border/50 flex justify-between items-center">
-                  <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Status</span>
-                  <span className="text-[11px] font-semibold text-primary">Connected</span>
-                </div>
+          <CardContent className="p-3.5">
+            {isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="rounded-lg border border-border/50 p-3 space-y-2 animate-pulse">
+                    <div className="h-3 bg-muted rounded w-3/4" />
+                    <div className="h-2.5 bg-muted rounded w-1/2" />
+                    <div className="h-px bg-border/50 mt-2" />
+                    <div className="flex justify-between">
+                      <div className="h-2.5 bg-muted rounded w-1/3" />
+                      <div className="h-2.5 bg-muted rounded w-1/4" />
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : recentClients.length === 0 ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground text-[11px]">
+                No clients registered yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {recentClients.map((c: any) => (
+                  <div
+                    key={c.id}
+                    className="rounded-lg border border-border/50 p-3 hover:shadow-glow hover:border-primary/30 transition-all cursor-pointer bg-card/50 group"
+                    onClick={() => router.push(`/admin/clients/${c.id}`)}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="p-1.5 rounded-md bg-primary/10 shrink-0 mt-0.5">
+                        <Building2 className="h-3 w-3 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                          {c.name}
+                        </p>
+                        {c.location ? (
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <MapPin className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">{c.location}</span>
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">No location set</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] px-1.5 py-0 h-4 font-semibold border-0 ${
+                            c.status === "active"
+                              ? "bg-green-100 text-green-700"
+                              : c.status === "pending"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {c.status === "active" ? "Approved" : c.status === "pending" ? "Pending" : c.status}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] px-1.5 py-0 h-4 font-semibold border-0 ${
+                            c.plan === "Trial"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-primary/10 text-primary"
+                          }`}
+                        >
+                          {c.plan || "Trial"}
+                        </Badge>
+                      </div>
+                      <p className="text-[9px] text-muted-foreground flex items-center gap-1 shrink-0">
+                        <CalendarDays className="h-2.5 w-2.5" />
+                        {c.onBoardedAt
+                          ? new Date(c.onBoardedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })
+                          : new Date(c.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" })
+                        }
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

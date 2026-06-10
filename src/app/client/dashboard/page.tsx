@@ -31,7 +31,8 @@ export default function ClientDashboard() {
       if (!res.ok) throw new Error("Failed to fetch client dashboard data");
       return res.json();
     },
-    refetchInterval: 8000,
+    refetchInterval: 30_000,
+    staleTime: 20_000,
   });
 
   const counts = dashboardData?.counts || {

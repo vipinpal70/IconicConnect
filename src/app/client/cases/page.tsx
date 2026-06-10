@@ -11,6 +11,7 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
 import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare } from "lucide-react";
+import { downloadCSV } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -128,6 +129,18 @@ const statusFilters: (CaseStatus | "All")[] = [
   "Pending Client Approval", "Feedback", "On Hold", "Completed", "Cancelled",
 ];
 
+const STATUS_FILTER_MAP: Record<string, string[]> = {
+  "Submitted": ["scan_received"],
+  "In Validation": ["scan_verified", "scan_not_verified"],
+  "In Design": ["allocated_to_designer", "in_progress"],
+  "Internal QC": ["internal_qc"],
+  "Pending Client Approval": ["submitted_to_client", "change_requested"],
+  "Feedback": ["client_feedback"],
+  "On Hold": ["on_hold"],
+  "Completed": ["approved", "delivered"],
+  "Cancelled": ["cancelled"],
+};
+
 const hasAllRequiredCaseFields = (
   category: string,
   subTypeData: Record<string, any>,
@@ -221,7 +234,7 @@ export default function CasesPage() {
 
   useEffect(() => {
     fetchCases();
-    const interval = setInterval(() => { void fetchCases(false); }, 8000);
+    const interval = setInterval(() => { void fetchCases(false); }, 30_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -427,22 +440,9 @@ export default function CasesPage() {
         friendlyId.includes(s) ||
         friendlyRestoration.includes(s);
 
-      // Map UI filters to database enums
-      const statusFilterMap: Record<string, string[]> = {
-        "Submitted": ["scan_received"],
-        "In Validation": ["scan_verified"],
-        "In Design": ["allocated_to_designer", "in_progress"],
-        "Internal QC": ["internal_qc"],
-        "Pending Client Approval": ["submitted_to_client"],
-        "Feedback": ["client_feedback"],
-        "On Hold": ["on_hold", "scan_not_verified"],
-        "Completed": ["approved", "delivered"],
-        "Cancelled": ["cancelled"],
-      };
-
       const matchesStatus =
         statusFilter === "All" ||
-        (statusFilterMap[statusFilter] && statusFilterMap[statusFilter].includes(c.status));
+        (STATUS_FILTER_MAP[statusFilter]?.includes(c.status) ?? false);
 
       const matchesType = typeFilter === "All" || c.category === typeFilter;
 
@@ -630,8 +630,33 @@ export default function CasesPage() {
             <p className="text-xs text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8 text-xs">
-              <Download className="h-3.5 w-3.5 mr-1.5" /> Export Excel
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5"
+              onClick={() => {
+                const headers = ["Case #", "Category", "Type / Restoration", "Status", "Due Date", "Created At"]
+                const rows = filtered.map((c) => {
+                  const restoration = c.subTypeData
+                    ? Object.entries(c.subTypeData)
+                        .filter(([k, v]) => k !== "teeth" && k !== "crownBridgeTeeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v && v.toLowerCase() !== "none")
+                        .map(([, v]) => v as string)
+                        .join(" - ") || "—"
+                    : "—"
+                  return [
+                    c.caseNumber || c.id,
+                    c.category || "—",
+                    restoration,
+                    c.status,
+                    c.dueDate ? new Date(c.dueDate).toLocaleDateString("en-IN") : "—",
+                    c.createdAt ? new Date(c.createdAt).toLocaleDateString("en-IN") : "—",
+                  ]
+                })
+                const date = new Date().toISOString().split("T")[0]
+                downloadCSV(headers, rows, `my-cases-${date}.csv`)
+              }}
+            >
+              <Download className="h-3.5 w-3.5" /> Export
             </Button>
             <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
               <DialogTrigger asChild>

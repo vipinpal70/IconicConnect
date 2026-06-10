@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
     });
 
     const totalClientCasesCount = clientCases.length;
-    const colors = ["hsl(var(--primary))", "hsl(var(--secondary))", "hsl(var(--accent))", "#f59e0b", "#10b981", "#6366f1"];
+    const colors = ["hsl(158,64%,28%)", "hsl(38,92%,50%)", "hsl(200,90%,45%)", "#6366f1", "#f59e0b", "#10b981"];
     const breakdownData = Object.entries(categoryCounts)
       .map(([name, count], index) => ({
         name,

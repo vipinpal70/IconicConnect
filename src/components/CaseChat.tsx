@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { Send, Paperclip, FileText, Loader2, Download } from "lucide-react"
@@ -31,22 +31,27 @@ interface Props {
 
 export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", disabled }: Props) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null)
+  const [forbidden, setForbidden] = useState(false)
   const [text, setText] = useState("")
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  const [currentId, setCurrentId] = useState(caseId)
-  if (currentId !== caseId) {
-    setCurrentId(caseId)
+  // Reset state when the caseId prop changes — useEffect avoids the render-time setState anti-pattern
+  useEffect(() => {
     setMessages(null)
-  }
+    setForbidden(false)
+  }, [caseId])
 
   // 1. Fetch case messages
   const fetchMessages = useCallback(async () => {
     try {
       const res = await fetch(`/api/cases/${caseId}/chat`)
+      if (res.status === 403) {
+        setForbidden(true)
+        return
+      }
       if (!res.ok) throw new Error("Failed to load chat messages")
       const json = await res.json()
       setMessages(json.data || [])
@@ -57,6 +62,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
 
   // Reset messages to null on caseId change to show loading skeleton
   useEffect(() => {
+    if (forbidden) return
     const t = setTimeout(() => {
       fetchMessages()
     }, 0)
@@ -66,7 +72,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
       clearTimeout(t)
       clearInterval(interval)
     }
-  }, [caseId, fetchMessages])
+  }, [caseId, fetchMessages, forbidden])
 
   // Scroll to bottom of the chat container whenever messages load or change
   useEffect(() => {
@@ -238,12 +244,25 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
   }
 
   // Reverse timeline order (oldest at top, latest at bottom)
-  const sortedMessages = messages ? [...messages].reverse() : null
+  const sortedMessages = useMemo(
+    () => (messages ? [...messages].reverse() : null),
+    [messages]
+  )
 
   return (
     <div className={cn("flex flex-col rounded-lg border border-border bg-card overflow-hidden shadow-sm", className)}>
       <div ref={scrollContainerRef} className={cn("flex-1 overflow-y-auto p-3 space-y-2 bg-muted/15 flex flex-col", heightClass)}>
-        {sortedMessages === null ? (
+        {forbidden ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 py-20">
+            <div className="p-3 rounded-full bg-muted/50">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+            </div>
+            <p className="text-xs font-semibold text-foreground">Chat not accessible</p>
+            <p className="text-[11px] text-muted-foreground text-center max-w-48">You are not a participant in this case and cannot view or send messages here.</p>
+          </div>
+        ) : sortedMessages === null ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground text-xs gap-2 py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
             Loading conversations...
@@ -308,9 +327,9 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
         </div>
       )}
 
-      {disabled ? (
+      {forbidden ? null : disabled ? (
         <div className="p-3 text-center text-xs text-red-600 bg-red-50 border-t border-red-100 font-medium">
-          🚫 Chat is disabled because this case has been rejected.
+          Chat is disabled because this case has been rejected.
         </div>
       ) : (
         <div className="flex gap-1.5 p-2 border-t border-border bg-card items-center">
