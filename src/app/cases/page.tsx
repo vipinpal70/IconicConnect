@@ -9,7 +9,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare } from "lucide-react";
-import { downloadCSV } from "@/src/lib/export-csv";
+import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -879,7 +879,7 @@ export default function CasesPage() {
               size="sm"
               className="h-8 text-xs gap-1.5"
               onClick={() => {
-                const headers = ["Case #", "Category", "Type / Restoration", "Status", "Designer", "Due Date", "Created At"]
+                const headers = ["Case #", "Category", "Type / Restoration", "Teeth / Arch Selection", "Unit Count", "Numbering System", "Status", "Designer", "Due Date", "Created At"]
                 const rows = filtered.map((c) => {
                   const restoration = c.subTypeData
                     ? Object.entries(c.subTypeData)
@@ -887,10 +887,14 @@ export default function CasesPage() {
                         .map(([, v]) => v as string)
                         .join(" - ") || "—"
                     : "—"
+                  const teeth = extractCaseTeethInfo(c.category, c.subTypeData as Record<string, unknown>)
                   return [
                     c.caseNumber || c.id,
                     c.category || "—",
                     restoration,
+                    teeth.selection,
+                    teeth.unitCount,
+                    teeth.numberingSystem,
                     c.status,
                     c.designerName || "—",
                     c.dueDate ? new Date(String(c.dueDate)).toLocaleDateString("en-IN") : "—",

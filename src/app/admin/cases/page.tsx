@@ -31,7 +31,7 @@ import {
   Plus,
   Download,
 } from "lucide-react"
-import { downloadCSV } from "@/src/lib/export-csv"
+import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv"
 
 type CaseRecord = {
   id: string
@@ -472,16 +472,20 @@ export default function AdminCasesPage() {
               size="sm"
               className="h-8 text-xs gap-1.5"
               onClick={() => {
-                const headers = ["Case #", "Client", "Category", "Type / Restoration", "Status", "Designer", "Due Date", "Created At"]
+                const headers = ["Case #", "Client", "Category", "Type / Restoration", "Teeth / Arch Selection", "Unit Count", "Numbering System", "Status", "Designer", "Due Date", "Created At"]
                 const rows = filtered.map((c) => {
                   const client = clientsMap.get(c.clientId)
                   const clientName = client?.labName || client?.fullName || "—"
                   const designer = membersMap.get(c.designerId || "")?.fullName || "—"
+                  const teeth = extractCaseTeethInfo(c.category, c.subTypeData as Record<string, unknown>)
                   return [
                     c.caseNumber || c.id,
                     clientName,
                     c.category || "—",
                     renderSubTypeSummary(c.subTypeData),
+                    teeth.selection,
+                    teeth.unitCount,
+                    teeth.numberingSystem,
                     c.status,
                     designer,
                     c.dueDate ? new Date(c.dueDate).toLocaleDateString("en-IN") : "—",

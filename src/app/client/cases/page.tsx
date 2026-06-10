@@ -11,7 +11,7 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
 import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare } from "lucide-react";
-import { downloadCSV } from "@/src/lib/export-csv";
+import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -635,7 +635,7 @@ export default function CasesPage() {
               size="sm"
               className="h-8 text-xs gap-1.5"
               onClick={() => {
-                const headers = ["Case #", "Category", "Type / Restoration", "Status", "Due Date", "Created At"]
+                const headers = ["Case #", "Category", "Type / Restoration", "Teeth / Arch Selection", "Unit Count", "Numbering System", "Status", "Due Date", "Created At"]
                 const rows = filtered.map((c) => {
                   const restoration = c.subTypeData
                     ? Object.entries(c.subTypeData)
@@ -643,10 +643,14 @@ export default function CasesPage() {
                         .map(([, v]) => v as string)
                         .join(" - ") || "—"
                     : "—"
+                  const teeth = extractCaseTeethInfo(c.category, c.subTypeData as Record<string, unknown>)
                   return [
                     c.caseNumber || c.id,
                     c.category || "—",
                     restoration,
+                    teeth.selection,
+                    teeth.unitCount,
+                    teeth.numberingSystem,
                     c.status,
                     c.dueDate ? new Date(c.dueDate).toLocaleDateString("en-IN") : "—",
                     c.createdAt ? new Date(c.createdAt).toLocaleDateString("en-IN") : "—",
