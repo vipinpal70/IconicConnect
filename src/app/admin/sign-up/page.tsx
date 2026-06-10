@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { useMutation } from "@tanstack/react-query";
+import { X, CheckCircle2 } from "lucide-react";
+
 
 type FormData = {
 	name: string;
@@ -13,6 +15,7 @@ type FormData = {
 	confirmPassword: string;
 };
 
+
 const initial: FormData = {
 	name: "",
 	email: "",
@@ -21,11 +24,18 @@ const initial: FormData = {
 	confirmPassword: "",
 };
 
+
+
 export default function AdminSignUp() {
 	const router = useRouter();
 	const supabase = createClient();
 
 	const [form, setForm] = useState<FormData>(initial);
+	const [showSuccess, setShowSuccess] = useState(false);
+
+	const handleCloseSuccess = () => {
+		router.push("/auth/sign-in");
+	};
 
 	const signupMutation = useMutation({
 		mutationFn: async (formData: FormData) => {
@@ -54,7 +64,7 @@ export default function AdminSignUp() {
 			return response.json();
 		},
 		onSuccess: () => {
-			router.push("/auth/sign-in");
+			setShowSuccess(true);
 		},
 	});
 
@@ -152,9 +162,45 @@ export default function AdminSignUp() {
 					</div>
 				</form>
 			</div>
+
+			{showSuccess && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+					<div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl relative border border-gray-100 transform transition-all scale-100 animate-in fade-in zoom-in-95 duration-200">
+						{/* Close X button */}
+						<button
+							onClick={handleCloseSuccess}
+							className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100"
+							aria-label="Close"
+						>
+							<X className="h-5 w-5" />
+						</button>
+
+						{/* Content */}
+						<div className="flex flex-col items-center text-center mt-4">
+							<div className="w-12 h-12 rounded-full bg-teal-50 flex items-center justify-center text-teal-600 mb-4 animate-bounce">
+								<CheckCircle2 className="h-8 w-8" />
+							</div>
+							<h3 className="text-lg font-semibold text-gray-900 mb-2">
+								Account Created Successfully!
+							</h3>
+							<p className="text-sm text-gray-500 mb-6">
+								Your admin account has been created. You can now sign in using your credentials.
+							</p>
+							<button
+								onClick={handleCloseSuccess}
+								className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg text-sm transition-all shadow-md hover:shadow-lg active:scale-[0.98]"
+							>
+								Go to Sign In
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
+
+
 
 function Field({
 	label,
@@ -188,3 +234,4 @@ function Field({
 		</div>
 	);
 }
+
