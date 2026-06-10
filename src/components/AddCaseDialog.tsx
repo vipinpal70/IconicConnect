@@ -36,6 +36,10 @@ interface Field {
   optional?: boolean
 }
 
+const ARCH_OPTIONS = ["Upper", "Lower", "Both Arches"] as const
+
+const ARCH_BASED_CATEGORIES = new Set(["Denture", "Appliances", "Cosmetics"])
+
 const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
   "Crown & Bridges": {
     fields: [
@@ -44,25 +48,26 @@ const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
   },
   "Denture": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Both Arches"] }
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
+      { name: "caseType2", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
     ]
   },
   "Cosmetics": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"] }
+      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"] },
+      { name: "arch", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
     ]
   },
   "Appliances": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"] },
-      { name: "occlusion", label: "Occlusion", type: "select", options: ["even occlusion", "custom"] },
-      { name: "arch", label: "Arch", type: "select", options: ["Lower", "Upper"] }
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"] },
+      { name: "occlusion", label: "Occlusion", type: "select", options: ["Even Occlusion", "Custom"] },
+      { name: "arch", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
     ]
   },
   "Implant": {
     fields: [
-      { name: "caseType1", label: "Sub Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
+      { name: "caseType1", label: "Sub Type", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
       { name: "caseType2", label: "Crown & Bridge type", type: "select", options: ["None", "Crown", "Bridge"], optional: true }
     ]
   }
@@ -280,7 +285,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     // Validation
     const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
     const allFieldsFilled = fields.every((f) => f.optional || subTypeData[f.name])
-    const teethValid = category === "Denture" ? true : teeth.length > 0
+    const isArchBased = ARCH_BASED_CATEGORIES.has(category)
+    const teethValid = isArchBased ? true : teeth.length > 0
     const implantCrownBridgeValid = category === "Implant" && subTypeData.caseType2 !== "None" ? crownBridgeTeeth.length > 0 : true
 
     if (!allFieldsFilled || !teethValid || !uploadedFileUrl || !implantCrownBridgeValid) {
@@ -294,16 +300,22 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     }
 
     const formData = new FormData()
+    const isArchBasedSubmit = ARCH_BASED_CATEGORIES.has(category)
     const caseData = {
       clientId: role === "admin" ? selectedClientId : undefined,
       category,
       subTypeData: {
         ...subTypeData,
         modelRequired,
-        teeth,
-        toothSystem,
         notes,
-        ...(category === "Implant" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {})
+        ...(isArchBasedSubmit
+          ? {}
+          : {
+              teeth,
+              toothSystem,
+              ...(category === "Implant" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {})
+            }
+        ),
       },
       caseNumber: generatedCaseId,
       uploadedFile,
@@ -686,10 +698,12 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 </div>
               ))}
 
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold text-gray-700">Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
-                <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
-              </div>
+              {!ARCH_BASED_CATEGORIES.has(category) && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-gray-700">Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                  <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Preferred Teeth Library</Label>
