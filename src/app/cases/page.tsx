@@ -73,6 +73,7 @@ type OpsCase = {
     teeth?: number[];
     toothSystem?: "USA" | "FDI";
   };
+  dueDate?: string | null;
   outputFile?: string | null;
   previewFile?: string | null;
   outputNote?: string | null;
