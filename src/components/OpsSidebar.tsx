@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -27,24 +27,25 @@ import {
   SidebarTrigger,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Logo from "@/public/IconicConnectLogo.png";
+import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
 
-const navItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "All Cases", url: "/cases", icon: FolderOpen },
-  { title: "Notifications", url: "/notifications", icon: Bell },
-  { title: "Support", url: "/support", icon: Headset },
-  { title: "Profile", url: "/profile", icon: UserCircle },
-];
+const NAV_ITEMS = [
+  { title: "Dashboard",     url: "/dashboard",     icon: LayoutDashboard },
+  { title: "All Cases",     url: "/cases",         icon: FolderOpen,  badgeKey: "cases" },
+  { title: "Notifications", url: "/notifications", icon: Bell,        badgeKey: "notifications" },
+  { title: "Support",       url: "/support",       icon: Headset,     badgeKey: "support" },
+  { title: "Profile",       url: "/profile",       icon: UserCircle },
+]
 
 export function OpsSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
-  const router = useRouter();
+  const { badges, markSeen } = useSidebarBadges()
 
-  // Fetch current user details dynamically
   const { data: profile } = useQuery({
     queryKey: ['my-profile'],
     queryFn: async () => {
@@ -53,6 +54,16 @@ export function OpsSidebar() {
       return res.json()
     }
   });
+
+  // Mark the current page as seen whenever the route changes
+  useEffect(() => {
+    const item = NAV_ITEMS.find(
+      (i) => i.url === pathname || pathname.startsWith(i.url + '/')
+    )
+    if (item?.badgeKey) {
+      markSeen(item.badgeKey)
+    }
+  }, [pathname, markSeen])
 
   const initials = profile?.fullName
     ? profile.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
@@ -85,7 +96,7 @@ export function OpsSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {NAV_ITEMS.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <Link
@@ -95,7 +106,12 @@ export function OpsSidebar() {
                         pathname === item.url && "bg-accent text-accent-foreground font-medium"
                       )}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="relative shrink-0">
+                        <item.icon className="h-4 w-4" />
+                        {item.badgeKey && badges[item.badgeKey] && (
+                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 ring-1 ring-white" />
+                        )}
+                      </span>
                       {!collapsed && <span className="text-xs">{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>
@@ -109,8 +125,8 @@ export function OpsSidebar() {
         <div className="flex items-center gap-3">
           {!collapsed && (
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white text-[10px] font-bold">
-            {initials}
-          </div>
+              {initials}
+            </div>
           )}
           {!collapsed && (
             <div className="min-w-0 mb-0">
@@ -129,7 +145,6 @@ export function OpsSidebar() {
           onClick={handleLogout}
         >
           <LogOut className="h-4 w-4" />
-          {/* {!collapsed && <span className="text-xs font-medium">Log Out</span>} */}
         </Button>
       </SidebarFooter>
     </Sidebar>

@@ -4,6 +4,7 @@ export const OFFER_CATEGORIES = [
   "Equipment",
   "Software",
   "Consumables",
+  "CAD Design",
 ] as const
 
 export type OfferCategory = (typeof OFFER_CATEGORIES)[number]

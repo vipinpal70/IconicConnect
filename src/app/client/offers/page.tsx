@@ -11,7 +11,7 @@ import { Input } from "@/src/components/ui/input"
 import { ExternalLink, Loader2, Sparkles, Tag, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { OFFER_CATEGORIES, type OfferClaimRecord, type OfferRecord } from "@/src/lib/offers"
-import { Camera, BrickWall, Wrench, Code, FlaskConical } from "lucide-react"
+import { Camera, BrickWall, Wrench, Code, FlaskConical, PenTool } from "lucide-react"
 
 type OffersResponse = { data: OfferRecord[] }
 type ClaimsResponse = { data: OfferClaimRecord[] }
@@ -24,6 +24,7 @@ const categoryEmoji: Record<OfferRecord["category"], ReactNode> = {
   Equipment: <Wrench className="w-10 h-10" />,
   Software: <Code className="w-10 h-10" />,
   Consumables: <FlaskConical className="w-10 h-10" />,
+  "CAD Design": <PenTool className="w-10 h-10" />,
 }
 
 function formatDate(value: string) {

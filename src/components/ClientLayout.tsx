@@ -27,12 +27,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-16 flex items-center justify-end border-b border-border bg-gray-50 px-4 sticky top-0 z-10">
             {/* <SidebarTrigger className="text-muted-foreground" /> */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-2">
               <Link href="/notifications">
-                <Button variant="ghost" size="icon" className="relative h-8 w-8">
-                  <Bell className="h-4 w-4 text-muted-foreground" />
+                <Button variant="ghost" size="icon" className="relative h-10 w-10">
+                  <Bell className="h-5 w-5 text-muted-foreground" />
                   {hasUnread && (
-                    <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+                    <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500" />
                   )}
                 </Button>
               </Link>

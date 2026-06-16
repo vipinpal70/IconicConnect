@@ -8,7 +8,7 @@ import {
   Bell,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -24,22 +24,31 @@ import {
   useSidebar,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
+import { useEffect } from "react";
+import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
+
+const NAV_ITEMS = [
+  { title: "Dashboard",     url: "/dashboard",     icon: LayoutDashboard },
+  { title: "Cases",         url: "/cases",         icon: FolderOpen,  badgeKey: "cases" },
+  { title: "Notifications", url: "/notifications", icon: Bell,        badgeKey: "notifications" },
+  { title: "Profile",       url: "/profile",       icon: UserCircle },
+]
 
 export function SubSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
-  const router = useRouter();
+  const { badges, markSeen } = useSidebarBadges()
 
-  // Extract clientId from path if needed, or get from context/profile
-  // For subusers, URLs are usually /client/[clientId]/subuser/...
-  
-  const navItems = [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-    { title: "Cases", url: "/cases", icon: FolderOpen },
-    { title: "Notifications", url: "/notifications", icon: Bell },
-    { title: "Profile", url: "/profile", icon: UserCircle },
-  ];
+  // Mark the current page as seen whenever the route changes
+  useEffect(() => {
+    const item = NAV_ITEMS.find(
+      (i) => i.url === pathname || pathname.startsWith(i.url + '/')
+    )
+    if (item?.badgeKey) {
+      markSeen(item.badgeKey)
+    }
+  }, [pathname, markSeen])
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -73,7 +82,7 @@ export function SubSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {NAV_ITEMS.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <Link
@@ -83,7 +92,12 @@ export function SubSidebar() {
                         pathname === item.url && "bg-accent text-accent-foreground font-medium"
                       )}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="relative shrink-0">
+                        <item.icon className="h-4 w-4" />
+                        {item.badgeKey && badges[item.badgeKey] && (
+                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 ring-1 ring-white" />
+                        )}
+                      </span>
                       {!collapsed && <span className="text-sm">{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>

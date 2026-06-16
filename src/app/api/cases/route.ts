@@ -3,7 +3,7 @@ import { db } from '@/src/db';
 import { cases, caseFiles } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql, asc } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
@@ -278,11 +278,28 @@ export async function GET() {
 
     const chatMetadata = await getCasesChatMetadata(results.map((r) => r.id), profile.id);
 
+    // Fetch first uploaded scan file name for each case
+    const caseIds = results.map((r) => r.id)
+    const scanFileMap = new Map<string, string>()
+    if (caseIds.length > 0) {
+      const fileRows = await db
+        .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
+        .from(caseFiles)
+        .where(inArray(caseFiles.caseId, caseIds))
+        .orderBy(asc(caseFiles.createdAt))
+      for (const row of fileRows) {
+        if (!scanFileMap.has(row.caseId)) {
+          scanFileMap.set(row.caseId, row.fileName)
+        }
+      }
+    }
+
     const mappedResults = results.map(r => ({
       ...r,
       designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
       todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,
       hasUnreadChat: chatMetadata.get(r.id)?.hasUnreadChat ?? false,
+      scanFileName: scanFileMap.get(r.id) ?? null,
     }));
 
     return NextResponse.json({ data: mappedResults });

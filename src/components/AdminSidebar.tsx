@@ -35,25 +35,28 @@ import { cn } from "@/src/lib/utils";
 import { useEffect, useState } from "react";
 import Image from "next/image"
 import logo from "@/public/IconicConnectLogo.png"
+import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
+
+const NAV_ITEMS = [
+  { title: "Dashboard",     url: "/admin/dashboard",     icon: LayoutDashboard },
+  { title: "Cases",         url: "/admin/cases",         icon: ClipboardList,  badgeKey: "cases" },
+  { title: "Analytics",     url: "/admin/analytics",     icon: BarChart3 },
+  { title: "Clients",       url: "/admin/clients",       icon: Building2,      badgeKey: "clients" },
+  { title: "Billing",       url: "/admin/billing",       icon: CreditCard,     badgeKey: "billing" },
+  { title: "Team",          url: "/admin/team",          icon: Users },
+  { title: "Tutorials",     url: "/admin/tutorials",     icon: PlayCircle },
+  { title: "Offers",        url: "/admin/offers",        icon: Tag,            badgeKey: "offers" },
+  { title: "Support",       url: "/admin/support",       icon: Headset,        badgeKey: "support" },
+  { title: "Notifications", url: "/admin/notifications", icon: Bell,           badgeKey: "notifications" },
+  { title: "Profile",       url: "/admin/profile",       icon: UserCircle },
+]
 
 export function AdminSidebar() {
-  const navItems = [
-    { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
-    { title: "Cases", url: "/admin/cases", icon: ClipboardList },
-    { title: "Analytics", url: "/admin/analytics", icon: BarChart3},
-    { title: "Clients", url: "/admin/clients", icon: Building2 },
-    { title: "Billing", url: "/admin/billing", icon: CreditCard },
-    { title: "Team", url: "/admin/team", icon: Users },
-    { title: "Tutorials", url: "/admin/tutorials", icon: PlayCircle },
-    { title: "Offers", url: "/admin/offers", icon: Tag },
-    { title: "Support", url: "/admin/support", icon: Headset },
-    { title: "Notifications", url: "/admin/notifications", icon: Bell },
-    { title: "Profile", url: "/admin/profile", icon: UserCircle },
-  ];
-
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
+  const { badges, markSeen } = useSidebarBadges()
+
   const [profile, setProfile] = useState<{
     fullName: string | null
     role: string | null
@@ -74,9 +77,7 @@ export function AdminSidebar() {
         return
       }
 
-      const res = await fetch(`/api/profile/${user.id}`, {
-        cache: "no-store",
-      })
+      const res = await fetch(`/api/profile/${user.id}`, { cache: "no-store" })
       if (!active) return
 
       if (!res.ok) {
@@ -93,35 +94,38 @@ export function AdminSidebar() {
     }
 
     fetchProfile()
-
-    return () => {
-      active = false
-    }
+    return () => { active = false }
   }, [])
+
+  // Mark the current page as seen whenever the route changes
+  useEffect(() => {
+    const item = NAV_ITEMS.find(
+      (i) => i.url === pathname || pathname.startsWith(i.url + '/')
+    )
+    if (item?.badgeKey) {
+      markSeen(item.badgeKey)
+    }
+  }, [pathname, markSeen])
 
   const isNotAdmin = profile?.role !== "admin"
 
-  const filteredNavItems = navItems.filter(item => {
-    if (item.title === "Team" && isNotAdmin) return false;
-    return true;
-  });
+  const filteredNavItems = NAV_ITEMS.filter((item) => {
+    if (item.title === "Team" && isNotAdmin) return false
+    return true
+  })
 
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
 
-    // Clear all cookies
     document.cookie.split(";").forEach((c) => {
       document.cookie = c
         .replace(/^ +/, "")
         .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
     });
 
-    // Clear storage
     localStorage.clear();
     sessionStorage.clear();
-
-    // Hard redirect to clear any remaining in-memory state
     window.location.href = "/auth/sign-in";
   };
 
@@ -149,7 +153,12 @@ export function AdminSidebar() {
                         pathname === item.url && "bg-accent text-accent-foreground font-medium"
                       )}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="relative shrink-0">
+                        <item.icon className="h-4 w-4" />
+                        {item.badgeKey && badges[item.badgeKey] && (
+                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 ring-1 ring-white" />
+                        )}
+                      </span>
                       {!collapsed && <span className="text-xs">{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>
@@ -190,7 +199,6 @@ export function AdminSidebar() {
           onClick={handleLogout}
         >
           <LogOut className="h-4 w-4" />
-          {/* {!collapsed && <span className="text-xs font-medium">Log Out</span>} */}
         </Button>
       </SidebarFooter>
     </Sidebar>

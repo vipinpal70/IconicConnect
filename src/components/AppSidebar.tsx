@@ -29,40 +29,55 @@ import {
   useSidebar,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
+import { useEffect } from "react";
+import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
 
-const navItems = [
+const NAV_ITEMS = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Cases", url: "/cases", icon: FolderOpen },
+  { title: "Cases",     url: "/cases",     icon: FolderOpen,      badgeKey: "cases" },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
-  { title: "Offers", url: "/offers", icon: Tag },
-  { title: "Billing", url: "/billing", icon: CreditCard },
-  { title: "Support", url: "/support", icon: HeadphonesIcon },
-  { title: "Tutorials", url: "/tutorials", icon: PlayCircle },
-  { title: "Profile", url: "/profile", icon: UserCircle },
-];
-
+  { title: "Offers",    url: "/offers",    icon: Tag,             badgeKey: "offers" },
+  { title: "Billing",   url: "/billing",   icon: CreditCard,      badgeKey: "billing" },
+  { title: "Support",   url: "/support",   icon: HeadphonesIcon,  badgeKey: "support" },
+  { title: "Tutorials", url: "/tutorials", icon: PlayCircle,      badgeKey: "tutorials" },
+  { title: "Profile",   url: "/profile",   icon: UserCircle },
+]
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
+  const { badges, markSeen } = useSidebarBadges()
+
+  // Mark the current page as seen whenever the route changes.
+  // AppSidebar supports both bare paths and /client-prefixed paths.
+  useEffect(() => {
+    const item = NAV_ITEMS.find((i) => {
+      const clientUrl = `/client${i.url === "/dashboard" ? "/dashboard" : i.url}`
+      return (
+        pathname === i.url ||
+        pathname.startsWith(i.url + '/') ||
+        pathname === clientUrl ||
+        pathname.startsWith(clientUrl + '/')
+      )
+    })
+    if (item?.badgeKey) {
+      markSeen(item.badgeKey)
+    }
+  }, [pathname, markSeen])
 
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
 
-    // Clear all cookies
     document.cookie.split(";").forEach((c) => {
       document.cookie = c
         .replace(/^ +/, "")
         .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
     });
 
-    // Clear storage
     localStorage.clear();
     sessionStorage.clear();
-
-    // Hard redirect to clear any remaining in-memory state
     window.location.href = "/auth/sign-in";
   };
 
@@ -88,7 +103,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {NAV_ITEMS.map((item) => {
                 const isClientPath = pathname.startsWith("/client");
                 const itemUrl = isClientPath ? `/client${item.url === "/dashboard" ? "/dashboard" : item.url}` : item.url;
                 const isActive = pathname === itemUrl;
@@ -103,7 +118,12 @@ export function AppSidebar() {
                           isActive && "bg-accent text-accent-foreground font-medium"
                         )}
                       >
-                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="relative shrink-0">
+                          <item.icon className="h-4 w-4" />
+                          {item.badgeKey && badges[item.badgeKey] && (
+                            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 ring-1 ring-white" />
+                          )}
+                        </span>
                         {!collapsed && <span className="text-sm">{item.title}</span>}
                       </Link>
                     </SidebarMenuButton>

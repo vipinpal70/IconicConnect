@@ -34,19 +34,20 @@ import { cn } from "@/src/lib/utils";
 import { useEffect, useState } from "react";
 import logo from "@/public/IconicConnectLogo.png"
 import Image from "next/image"
+import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
 
-const navItems = [
-  { title: "Dashboard", url: "/client/dashboard", icon: LayoutDashboard },
-  { title: "Cases", url: "/client/cases", icon: FolderOpen },
-  { title: "Analytics", url: "/client/analytics", icon: BarChart3 },
-  { title: "Tutorials", url: "/client/tutorials", icon: PlayCircle },
-  { title: "Offers", url: "/client/offers", icon: Tag },
-  { title: "Support", url: "/client/support", icon: Headset },
-  { title: "Billing", url: "/client/billing", icon: CreditCard },
-  { title: "Notifications", url: "/notifications", icon: Bell },
+const NAV_ITEMS = [
+  { title: "Dashboard",        url: "/client/dashboard",   icon: LayoutDashboard },
+  { title: "Cases",            url: "/client/cases",       icon: FolderOpen,  badgeKey: "cases" },
+  { title: "Analytics",        url: "/client/analytics",   icon: BarChart3 },
+  { title: "Tutorials",        url: "/client/tutorials",   icon: PlayCircle,  badgeKey: "tutorials" },
+  { title: "Offers",           url: "/client/offers",      icon: Tag,         badgeKey: "offers" },
+  { title: "Support",          url: "/client/support",     icon: Headset,     badgeKey: "support" },
+  { title: "Billing",          url: "/client/billing",     icon: CreditCard,  badgeKey: "billing" },
+  { title: "Notifications",    url: "/notifications",      icon: Bell,        badgeKey: "notifications" },
   { title: "Preference Forms", url: "/client/preferences", icon: FileText },
-  { title: "Profile", url: "/client/profile", icon: UserCircle },
-];
+  { title: "Profile",          url: "/client/profile",     icon: UserCircle },
+]
 
 type Profile = {
   full_name: string;
@@ -67,6 +68,7 @@ export function ClientSidebar() {
   const collapsed = state === "collapsed";
   const pathname = usePathname();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const { badges, markSeen } = useSidebarBadges()
 
   useEffect(() => {
     const fetchData = async () => {
@@ -76,22 +78,28 @@ export function ClientSidebar() {
     fetchData();
   }, []);
 
+  // Mark the current page as seen whenever the route changes
+  useEffect(() => {
+    const item = NAV_ITEMS.find(
+      (i) => i.url === pathname || pathname.startsWith(i.url + '/')
+    )
+    if (item?.badgeKey) {
+      markSeen(item.badgeKey)
+    }
+  }, [pathname, markSeen])
+
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
 
-    // Clear all cookies
     document.cookie.split(";").forEach((c) => {
       document.cookie = c
         .replace(/^ +/, "")
         .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
     });
 
-    // Clear storage
     localStorage.clear();
     sessionStorage.clear();
-
-    // Hard redirect to clear any remaining in-memory state
     window.location.href = "/auth/sign-in";
   };
 
@@ -113,7 +121,7 @@ export function ClientSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems
+              {NAV_ITEMS
                 .filter((item) => {
                   if (profile?.user_role === "subuser") {
                     return item.title !== "Billing" && item.title !== "Analytics";
@@ -130,7 +138,12 @@ export function ClientSidebar() {
                           pathname === item.url && "bg-accent text-accent-foreground font-medium"
                         )}
                       >
-                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="relative shrink-0">
+                          <item.icon className="h-4 w-4" />
+                          {item.badgeKey && badges[item.badgeKey] && (
+                            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 ring-1 ring-white" />
+                          )}
+                        </span>
                         {!collapsed && <span className="text-xs">{item.title}</span>}
                       </Link>
                     </SidebarMenuButton>
@@ -163,7 +176,6 @@ export function ClientSidebar() {
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4" />
-            {/* {!collapsed && <span className="text-xs font-medium">Log Out</span>} */}
           </Button>
         </div>
       </SidebarFooter>

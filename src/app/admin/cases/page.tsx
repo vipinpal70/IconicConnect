@@ -188,6 +188,8 @@ export default function AdminCasesPage() {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
   const [clientFilter, setClientFilter] = useState("All")
+  const [from, setFrom] = useState("")
+  const [to, setTo] = useState("")
   const [openCase, setOpenCase] = useState<CaseRecord | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null)
@@ -309,10 +311,13 @@ export default function AdminCasesPage() {
 
       const matchesStatus = statusFilter === "All" || caseItem.status === statusFilter
       const matchesClient = clientFilter === "All" || caseItem.clientId === clientFilter
+      const createdAtDate = caseItem.createdAt ? new Date(caseItem.createdAt).toISOString().split("T")[0] : ""
+      const matchesFrom = !from || createdAtDate >= from
+      const matchesTo = !to || createdAtDate <= to
 
-      return matchesSearch && matchesStatus && matchesClient
+      return matchesSearch && matchesStatus && matchesClient && matchesFrom && matchesTo
     })
-  }, [data, search, statusFilter, clientFilter, clientsMap])
+  }, [data, search, statusFilter, clientFilter, clientsMap, from, to])
 
   // Live database updates
   const handleUpdate = async (caseId: string, patch: Record<string, string | number | boolean | null>, successMessage: string) => {
@@ -472,14 +477,15 @@ export default function AdminCasesPage() {
               size="sm"
               className="h-8 text-xs gap-1.5"
               onClick={() => {
-                const headers = ["Case #", "Client", "Category", "Type / Restoration", "Teeth / Arch Selection", "Unit Count", "Numbering System", "Status", "Designer", "Due Date", "Created At"]
+                const headers = ["Case Name", "Case #", "Client", "Category", "Type / Restoration", "Teeth / Arch Selection", "Unit Count", "Numbering System", "Status", "Designer", "Due Date", "Created At"]
                 const rows = filtered.map((c) => {
                   const client = clientsMap.get(c.clientId)
                   const clientName = client?.labName || client?.fullName || "—"
                   const designer = membersMap.get(c.designerId || "")?.fullName || "—"
                   const teeth = extractCaseTeethInfo(c.category, c.subTypeData as Record<string, unknown>)
                   return [
-                    c.caseNumber || c.id,
+                    (c as any).scanFileName || "—",
+                    c.caseNumber || "—",
                     clientName,
                     c.category || "—",
                     renderSubTypeSummary(c.subTypeData),
@@ -544,6 +550,16 @@ export default function AdminCasesPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-36 h-8 text-xs" title="Start date" />
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-36 h-8 text-xs" title="End date" />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => { setSearch(""); setStatusFilter("All"); setClientFilter("All"); setFrom(""); setTo(""); }}
+            >
+              Clear
+            </Button>
           </CardContent>
         </Card>
 
@@ -599,7 +615,7 @@ export default function AdminCasesPage() {
                       return (
                         <tr
                           key={caseItem.id}
-                          className={`hover:bg-muted/10 transition-colors border-l-2 ${caseItem.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
+                          className={`transition-colors border-l-2 ${caseItem.status === "on_hold" ? "bg-red-50 hover:bg-red-100/80 border-l-red-500" : caseItem.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "hover:bg-muted/10 border-l-transparent"}`}
                         >
                           <td className="px-3.5 py-2">
                             <div className="flex items-center gap-1.5">

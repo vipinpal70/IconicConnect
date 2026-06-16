@@ -48,6 +48,7 @@ interface CandidateCase {
   status: string
   createdAt: string
   price: number
+  scanFileName: string | null
 }
 
 type AdjType = "percent" | "fixed"
@@ -242,7 +243,7 @@ export default function BillingPage() {
     const selectedCases = candidateCases.filter(c => selectedCaseIds.has(c.id))
     if (selectedCases.length === 0) { toast.error("Select at least one case to export"); return }
 
-    const headers = ["Case ID", "Case Number", "Category", "Sub-Type", "Teeth / Arch Selection", "Units / Arches Count", "Model Required", "Price (USD)"]
+    const headers = ["Case Name", "Case #", "Category", "Sub-Type", "Teeth / Arch Selection", "Units / Arches Count", "Model Required", "Price (USD)"]
 
     const rows = selectedCases.map(c => {
       const d = (c.subTypeData ?? {}) as Record<string, unknown>
@@ -275,8 +276,8 @@ export default function BillingPage() {
       }
 
       return [
-        c.id,
-        c.caseNumber || c.id.slice(0, 8),
+        c.scanFileName || "—",
+        c.caseNumber || "—",
         c.category ?? "—",
         subType,
         selection,

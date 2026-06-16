@@ -27,10 +27,10 @@ export function SubLayout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-14 flex items-center justify-between border-b border-border bg-card px-4 sticky top-0 z-10">
             <SidebarTrigger className="text-muted-foreground" />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-2">
               <Link href="/notifications">
-                <Button variant="ghost" size="icon" className="relative h-9 w-9">
-                  <Bell className="h-4 w-4 text-muted-foreground" />
+                <Button variant="ghost" size="icon" className="relative h-10 w-10">
+                  <Bell className="h-5 w-5 text-muted-foreground" />
                   {hasUnread && (
                     <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500" />
                   )}

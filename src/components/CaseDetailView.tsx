@@ -377,9 +377,9 @@ export function CaseDetailView({
       )}
 
       {caseRecord.holdReason && (
-        <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 text-slate-800 text-xs font-medium flex flex-col gap-1">
-          <span className="font-semibold flex items-center gap-1.5">⏸ Hold Reason</span>
-          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.holdReason}</p>
+        <div className="p-4 rounded-lg border-2 border-red-500 bg-red-50 text-red-900 text-xs font-medium flex flex-col gap-1 shadow-[0_0_0_3px_rgba(239,68,68,0.15)]">
+          <span className="font-bold flex items-center gap-1.5 text-red-600">⏸ On Hold — Reason</span>
+          <p className="whitespace-pre-wrap font-normal mt-0.5 text-red-800">{caseRecord.holdReason}</p>
         </div>
       )}
 
@@ -751,7 +751,7 @@ export function CaseDetailView({
                 caseId={caseRecord.id}
                 side={chatSide}
                 className="border-none rounded-none"
-                heightClass="h-[500px]"
+                heightClass="h-[360px]"
                 disabled={caseRecord.status === "client_reject"}
               />
             </CardContent>

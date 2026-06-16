@@ -7,10 +7,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
-import { cases } from '@/src/db/schema/case'
+import { cases, caseFiles } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
-import { eq, and, gte, lte, inArray } from 'drizzle-orm'
+import { eq, and, gte, lte, inArray, asc } from 'drizzle-orm'
 import { createClient } from '@/src/lib/supabase/server'
 
 // ── Price map helpers ──────────────────────────────────────────────────────────
@@ -178,6 +178,22 @@ export async function GET(
 
     const getPrice = buildPriceMap(catalogItems, clientPriceRows)
 
+    // Fetch first uploaded scan file name for each case in one batch query
+    const caseIdList = clientCases.map(c => c.id)
+    const scanFileMap = new Map<string, string>()
+    if (caseIdList.length > 0) {
+      const fileRows = await db
+        .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
+        .from(caseFiles)
+        .where(inArray(caseFiles.caseId, caseIdList))
+        .orderBy(asc(caseFiles.createdAt))
+      for (const row of fileRows) {
+        if (!scanFileMap.has(row.caseId)) {
+          scanFileMap.set(row.caseId, row.fileName)
+        }
+      }
+    }
+
     let totalPrice = 0
     const detailedCases = clientCases.map(c => {
       const price = computeCasePrice(c.category, c.subTypeData, getPrice)
@@ -191,6 +207,7 @@ export async function GET(
         createdAt: c.createdAt,
         dueDate: c.dueDate,
         price,
+        scanFileName: scanFileMap.get(c.id) ?? null,
       }
     })
 

@@ -635,7 +635,7 @@ export default function CasesPage() {
               size="sm"
               className="h-8 text-xs gap-1.5"
               onClick={() => {
-                const headers = ["Case #", "Category", "Type / Restoration", "Teeth / Arch Selection", "Unit Count", "Numbering System", "Status", "Due Date", "Created At"]
+                const headers = ["Case Name", "Case #", "Category", "Type / Restoration", "Teeth / Arch Selection", "Unit Count", "Numbering System", "Status", "Due Date", "Created At"]
                 const rows = filtered.map((c) => {
                   const restoration = c.subTypeData
                     ? Object.entries(c.subTypeData)
@@ -645,7 +645,8 @@ export default function CasesPage() {
                     : "—"
                   const teeth = extractCaseTeethInfo(c.category, c.subTypeData as Record<string, unknown>)
                   return [
-                    c.caseNumber || c.id,
+                    c.scanFileName || "—",
+                    c.caseNumber || "—",
                     c.category || "—",
                     restoration,
                     teeth.selection,
@@ -1409,7 +1410,7 @@ export default function CasesPage() {
                       return (
                         <tr
                           key={c.id}
-                          className={`hover:bg-muted/10 cursor-pointer transition-colors border-l-2 ${c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "border-l-transparent"}`}
+                          className={`cursor-pointer transition-colors border-l-2 ${c.status === "on_hold" ? "bg-red-50 hover:bg-red-100/80 border-l-red-500" : c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "hover:bg-muted/10 border-l-transparent"}`}
                           onClick={() => router.push(`/client/cases/${c.id}`)}
                         >
                           <td className="px-3.5 py-2">
