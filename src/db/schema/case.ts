@@ -7,6 +7,7 @@ import {
   text,
   integer,
   jsonb,
+  boolean,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { profiles } from './profile'
