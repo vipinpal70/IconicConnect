@@ -42,6 +42,20 @@ module.exports = {
         NODE_ENV: 'production',
       },
     },
+    {
+      name: 'iconic-connect-auto-approve',
+      script: 'npx',
+      args: 'tsx src/lib/queue/auto-approve-task.ts',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: false,
+      watch: false,
+      cron_restart: '30 * * * *',
+      max_memory_restart: '200M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
   ],
 };
 

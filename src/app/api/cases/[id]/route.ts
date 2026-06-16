@@ -32,6 +32,8 @@ type CaseUpdateData = {
   | 'client_reject'
   startTime?: Date | null
   deliveredTime?: Date | null
+  submittedToClientAt?: Date | null
+  autoApproved?: boolean
   designerId?: string | null
   qcId?: string | null
   accountManagerId?: string | null
@@ -393,6 +395,10 @@ export async function PUT(
     // Auto-timestamp: client approval
     if (updateData.status === 'approved') {
       updateData.deliveredTime = new Date()
+    }
+    // Track when case enters client review — starts the 7-day auto-approval window
+    if (updateData.status === 'submitted_to_client') {
+      updateData.submittedToClientAt = new Date()
     }
 
     const updatedCase = await db.update(cases).set(updateData).where(eq(cases.id, id)).returning();

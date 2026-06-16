@@ -43,6 +43,7 @@ type CaseRecord = {
   cancelReason?: string | null
   feedbackReason?: string | null
   rejectReason?: string | null
+  autoApproved?: boolean | null
 }
 
 type CaseFile = {
@@ -358,7 +359,12 @@ export function CaseDetailView({
             {caseRecord.category || "—"} · {renderSubTypeSummary(caseRecord.subTypeData)}
           </p>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {caseRecord.autoApproved && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
+              ⏱ Auto-Approved
+            </span>
+          )}
           <StatusBadge status={caseRecord.status} role={chatSide === "admin" ? "internal" : "client"} />
         </div>
       </div>

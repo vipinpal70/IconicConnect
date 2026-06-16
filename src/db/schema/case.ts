@@ -140,6 +140,9 @@ export const cases = pgTable('cases', {
   accountManagerId: uuid('account_manager_id').references(() => profiles.id),
 
   // Dates
+  autoApproved: boolean('auto_approved').default(false).notNull(),
+  submittedToClientAt: timestamp('submitted_to_client_at'),
+
   startTime: timestamp('start_time'),
   deliveredTime: timestamp('delivered_time'),
   dueDate: timestamp('due_date'),

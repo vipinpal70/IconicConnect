@@ -80,6 +80,7 @@ type OpsCase = {
   todayMessagesCount?: number;
   hasUnreadChat?: boolean;
   scanFileName?: string | null;
+  autoApproved?: boolean | null;
 };
 
 function shouldShowChatIcon(caseItem: OpsCase, currentUser: ProfileSummary | null | undefined) {
@@ -1321,7 +1322,14 @@ export default function CasesPage() {
                               toothNumbers.length ? `#${toothNumbers.join(", #")} (${toothSys === "USA" ? "Universal" : toothSys})` : "—"
                             )}
                           </td>
-                          <td className="px-3.5 py-1.5"><StatusBadge status={c.status} role="internal" /></td>
+                          <td className="px-3.5 py-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <StatusBadge status={c.status} role="internal" />
+                              {c.autoApproved && (
+                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 whitespace-nowrap">⏱ Auto</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
