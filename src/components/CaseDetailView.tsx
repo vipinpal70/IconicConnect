@@ -637,11 +637,11 @@ export function CaseDetailView({
         </Card>
 
         {/* Activity Timeline Card */}
-        <Card className="shadow-card flex flex-col h-full">
+        <Card className="shadow-card self-start w-full">
           <CardHeader className="py-2.5 px-4 border-b border-border/50">
             <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>
           </CardHeader>
-          <CardContent className="mt-2 px-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          <CardContent className="mt-2 px-4 h-[380px] overflow-y-auto pr-2 custom-scrollbar">
             {activities.length === 0 ? (
               <p className="text-xs text-muted-foreground">No activity recorded for this case yet.</p>
             ) : (

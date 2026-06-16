@@ -146,6 +146,7 @@ export const cases = pgTable('cases', {
 
   startTime: timestamp('start_time'),
   deliveredTime: timestamp('delivered_time'),
+  tat: integer('tat'), // Turn Around Time in minutes (deliveredTime - startTime)
   dueDate: timestamp('due_date'),
   timeline: jsonb('timeline').$type<CaseTimelineEvent[]>().default(sql`'[]'::jsonb`).notNull(),
   outputFile: text('output_file'),

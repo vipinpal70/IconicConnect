@@ -29,12 +29,17 @@ export async function runAutoApprove() {
 
   for (const c of pendingCases) {
     try {
+      const deliveredTime = new Date()
+      const tat = c.startTime
+        ? Math.round((deliveredTime.getTime() - c.startTime.getTime()) / 60000)
+        : null
       await db
         .update(cases)
         .set({
           status: 'approved',
           autoApproved: true,
-          deliveredTime: new Date(),
+          deliveredTime,
+          tat,
           updatedAt: new Date(),
         })
         .where(eq(cases.id, c.id))

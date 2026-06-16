@@ -32,6 +32,7 @@ type CaseUpdateData = {
   | 'client_reject'
   startTime?: Date | null
   deliveredTime?: Date | null
+  tat?: number | null
   submittedToClientAt?: Date | null
   autoApproved?: boolean
   designerId?: string | null
@@ -392,9 +393,13 @@ export async function PUT(
     if (updateData.status === 'in_progress' && !caseRecord.startTime) {
       updateData.startTime = new Date()
     }
-    // Auto-timestamp: client approval
+    // Auto-timestamp: client approval + compute TAT
     if (updateData.status === 'approved') {
       updateData.deliveredTime = new Date()
+      const workStart = updateData.startTime ?? caseRecord.startTime
+      if (workStart) {
+        updateData.tat = Math.round((updateData.deliveredTime.getTime() - workStart.getTime()) / 60000)
+      }
     }
     // Track when case enters client review — starts the 7-day auto-approval window
     if (updateData.status === 'submitted_to_client') {

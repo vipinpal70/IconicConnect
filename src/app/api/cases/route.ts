@@ -27,6 +27,7 @@ const caseListSelection = {
   accountManagerId: cases.accountManagerId,
   startTime: cases.startTime,
   deliveredTime: cases.deliveredTime,
+  tat: cases.tat,
   dueDate: cases.dueDate,
   createdAt: cases.createdAt,
   updatedAt: cases.updatedAt,
