@@ -251,7 +251,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
 
   return (
     <div className={cn("flex flex-col rounded-lg border border-border bg-card overflow-hidden shadow-sm", className)}>
-      <div ref={scrollContainerRef} className={cn("flex-1 overflow-y-scroll p-3 space-y-2 bg-muted/15 flex flex-col scrollbar-thin scrollbar-thumb-zinc-300 scrollbar-track-transparent", heightClass)}>
+      <div ref={scrollContainerRef} className={cn("flex-1 overflow-y-scroll p-3 space-y-2 bg-muted/15 flex flex-col custom-scrollbar", heightClass)}>
         {forbidden ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-2 py-20">
             <div className="p-3 rounded-full bg-muted/50">

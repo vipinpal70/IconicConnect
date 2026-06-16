@@ -57,7 +57,7 @@ export default function Dashboard() {
     { label: "Active / In Progress", value: activeCount, icon: FolderOpen, color: "text-primary", bg: "bg-primary/10" },
     { label: "Delivered", value: deliveredCount, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-100" },
     { label: "Pending Approval", value: pendingCount, icon: ClipboardCheck, color: "text-yellow-600", bg: "bg-yellow-100" },
-    { label: "On Hold", value: holdCount, icon: PauseCircle, color: "text-blue-600", bg: "bg-blue-100" },
+    { label: "On Hold", value: holdCount, icon: PauseCircle, color: "text-red-600", bg: "bg-red-100", isHoldAlert: holdCount > 0 },
     { label: "Cancelled", value: cancelledCount, icon: XCircle, color: "text-gray-600", bg: "bg-gray-100" },
   ];
 
@@ -150,7 +150,11 @@ export default function Dashboard() {
           {dynamicKpis.map((kpi) => (
             <Card
               key={kpi.label}
-              className="shadow-card hover:shadow-elevated transition-shadow cursor-pointer"
+              className={`shadow-card hover:shadow-elevated transition-shadow cursor-pointer ${
+                (kpi as any).isHoldAlert
+                  ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)] animate-pulse ring-1 ring-red-500/30 bg-red-500/5"
+                  : ""
+              }`}
               onClick={() => router.push("/cases")}
             >
               <CardContent className="p-5">
