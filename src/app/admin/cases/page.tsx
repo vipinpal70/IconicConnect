@@ -673,7 +673,7 @@ export default function AdminCasesPage() {
                                         designers={designers}
                                         qcs={qcs}
                                         disabled={isMutating}
-                                        onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
+                                        onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId }, `Allocated designer to case`)}
                                       />
                                     </>
                                   )}
@@ -683,18 +683,18 @@ export default function AdminCasesPage() {
                                       designers={designers}
                                       qcs={qcs}
                                       disabled={isMutating}
-                                      onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
+                                      onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId }, `Allocated designer to case`)}
                                     />
                                   )}
 
-                                  {(caseItem.status === "allocated_to_designer" || caseItem.status === "in_progress") && (
+                                  {(caseItem.status === "scan_verified" || caseItem.status === "allocated_to_designer" || caseItem.status === "in_progress") && (
                                     <>
                                       {!caseItem.designerId ? (
                                         <AllocateMenu
                                           designers={designers}
                                           qcs={qcs}
                                           disabled={isMutating}
-                                          onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId, status: "allocated_to_designer" }, `Allocated case to designer`)}
+                                          onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId }, `Allocated designer to case`)}
                                         />
                                       ) : (
                                         <>
@@ -774,14 +774,22 @@ export default function AdminCasesPage() {
                                     </Button>
                                   )}
                                   {caseItem.status === "on_hold" && (
-                                    <Button
-                                      size="sm"
-                                      disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { status: "scan_received" }, `Case resumed to active queue`)}
-                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
-                                    >
-                                      <RefreshCw className="h-3 w-3 mr-0.5" /> Resume Case
-                                    </Button>
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        disabled={isMutating}
+                                        onClick={() => handleUpdate(caseItem.id, { status: "scan_received" }, `Case resumed to active queue`)}
+                                        className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+                                      >
+                                        <RefreshCw className="h-3 w-3 mr-0.5" /> Resume Case
+                                      </Button>
+                                      <AllocateMenu
+                                        designers={designers}
+                                        qcs={qcs}
+                                        disabled={isMutating}
+                                        onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId }, `Allocated designer to on-hold case`)}
+                                      />
+                                    </>
                                   )}
                                 </>
                               )}
@@ -819,14 +827,14 @@ export default function AdminCasesPage() {
                                   {/* Step 2: Allocate to Self (if scan is verified and no designer is allocated yet) */}
                                   {!caseItem.designerId && caseItem.status === "scan_verified" && (
                                     <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { designerId: currentUser.id, status: "allocated_to_designer" }, "Allocated case to yourself")}
+                                      onClick={() => handleUpdate(caseItem.id, { designerId: currentUser.id }, "Allocated case to yourself")}
                                       className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
                                       <UserPlus className="h-3 w-3 mr-0.5" /> Allocate to Self
                                     </Button>
                                   )}
 
-                                  {/* Step 3: Start Work (if allocated to designer and status is allocated_to_designer) */}
-                                  {caseItem.designerId === currentUser?.id && caseItem.status === "allocated_to_designer" && (
+                                  {/* Step 3: Start Work — requires validation done and designer assigned */}
+                                  {caseItem.designerId === currentUser?.id && (caseItem.status === "scan_verified" || caseItem.status === "allocated_to_designer") && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Started design work")}
                                       className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">

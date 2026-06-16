@@ -206,9 +206,9 @@ const statusFilters: string[] = [
 ];
 
 const STATUS_FILTER_MAP: Record<string, string[]> = {
-  "Submitted": ["scan_received"],
+  "Submitted": ["scan_received", "allocated_to_designer"],
   "In Validation": ["scan_verified", "scan_not_verified"],
-  "In Design": ["allocated_to_designer", "in_progress", "client_feedback"],
+  "In Design": ["in_progress", "client_feedback"],
   "Internal QC": ["internal_qc"],
   "Pending Client Approval": ["submitted_to_client", "change_requested"],
   "Feedback": ["client_feedback"],
@@ -1337,15 +1337,15 @@ export default function CasesPage() {
                                         className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
                                         <ShieldCheck className="h-3 w-3 mr-1" />Validate
                                       </Button>
-                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to case")} />
                                     </>
                                   )}
                                   {(c.status === "scan_verified" || c.status === "scan_not_verified") && (
-                                    <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                    <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to case")} />
                                   )}
-                                  {(c.status === "allocated_to_designer" || c.status === "in_progress") && (
+                                  {(c.status === "scan_verified" || c.status === "allocated_to_designer" || c.status === "in_progress") && (
                                     !c.designerId ? (
-                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")} />
+                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to case")} />
                                     ) : (
                                       !c.qcId ? (
                                         <Button size="sm" variant="outline" disabled={isMutating} onClick={() => setAssignQcCaseId(c.id)}
@@ -1390,11 +1390,14 @@ export default function CasesPage() {
                                     </>
                                   )}
                                   {c.status === "on_hold" && (
-                                    <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
-                                      <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
-                                    </Button>
+                                    <>
+                                      <Button size="sm" disabled={isMutating}
+                                        onClick={() => handleUpdate(c.id, { status: "scan_received" }, "Case resumed to active queue")}
+                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+                                        <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
+                                      </Button>
+                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to on-hold case")} />
+                                    </>
                                   )}
                                 </>
                               )}
@@ -1424,26 +1427,26 @@ export default function CasesPage() {
                                   )}
 
                                   {/* Self-allocate as designer when no designer is assigned */}
-                                  {!c.designerId && (c.status === "scan_received" || c.status === "scan_verified") && (
+                                  {!c.designerId && (c.status === "scan_received" || c.status === "scan_verified" || c.status === "on_hold") && (
                                     <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(c.id, { designerId: activeUserId, status: "allocated_to_designer" }, "Allocated case to yourself as designer")}
+                                      onClick={() => handleUpdate(c.id, { designerId: activeUserId }, "Allocated case to yourself as designer")}
                                       className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                       <UserPlus className="h-3 w-3 mr-1" /> Take as Designer
                                     </Button>
                                   )}
 
                                   {/* Allocate to a specific designer */}
-                                  {(c.status === "scan_received" || c.status === "scan_verified") && (
+                                  {(c.status === "scan_received" || c.status === "scan_verified" || c.status === "on_hold") && (
                                     <AllocateMenu
                                       designers={designers}
                                       qcs={qcs}
-                                      onPick={(dId) => handleUpdate(c.id, { designerId: dId, status: "allocated_to_designer" }, "Allocated case to designer")}
+                                      onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to case")}
                                       disabled={isMutating}
                                     />
                                   )}
 
                                   {/* Self-assign as QC when no QC is assigned yet */}
-                                  {!c.qcId && (c.status === "allocated_to_designer" || c.status === "in_progress" || c.status === "internal_qc") && (
+                                  {!c.qcId && (c.status === "scan_verified" || c.status === "allocated_to_designer" || c.status === "in_progress" || c.status === "internal_qc") && (
                                     <Button size="sm" variant="outline" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { qcId: activeUserId }, "Assigned yourself as QC")}
                                       className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm">
@@ -1556,14 +1559,14 @@ export default function CasesPage() {
                                   {/* Step 2: Allocate to Self (if scan is verified and no designer is allocated yet) */}
                                   {isDesigner && !c.designerId && c.status === "scan_verified" && (
                                     <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(c.id, { designerId: activeUserId, status: "allocated_to_designer" }, "Allocated case to yourself")}
+                                      onClick={() => handleUpdate(c.id, { designerId: activeUserId }, "Allocated case to yourself")}
                                       className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                       <UserPlus className="h-3 w-3 mr-1" /> Allocate to Self
                                     </Button>
                                   )}
 
-                                  {/* Step 3: Start Work (if allocated to designer and status is allocated_to_designer) */}
-                                  {isDesignerOnCase && c.status === "allocated_to_designer" && (
+                                  {/* Step 3: Start Work — requires validation done (scan_verified) and designer assigned */}
+                                  {isDesignerOnCase && (c.status === "scan_verified" || c.status === "allocated_to_designer") && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Started design work")}
                                       className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">

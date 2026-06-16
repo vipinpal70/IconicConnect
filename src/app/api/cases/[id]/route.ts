@@ -269,11 +269,8 @@ export async function PUT(
         }
 
         if (body.designerId !== undefined) {
-          if (body.designerId === profile.id && (!caseRecord.designerId || caseRecord.designerId === profile.id)) {
-            updateData.designerId = profile.id;
-          } else if (body.designerId !== caseRecord.designerId) {
-            return NextResponse.json({ error: 'Forbidden: QC can only self-assign as designer on this case' }, { status: 403 });
-          }
+          // QC can assign any designer to any case (including on_hold); assignment is not a status change
+          updateData.designerId = body.designerId;
         }
 
         if (body.qcId !== undefined) {
@@ -287,13 +284,7 @@ export async function PUT(
         if (target) {
           if (target === 'scan_verified' && current === 'scan_received') {
             updateData.status = target;
-          } else if (target === 'allocated_to_designer' && (current === 'scan_received' || current === 'scan_verified')) {
-            if (body.designerId === profile.id || caseRecord.designerId === profile.id) {
-              updateData.status = target;
-            } else {
-              return NextResponse.json({ error: 'Forbidden: QC cannot allocate this case to a different designer' }, { status: 403 });
-            }
-          } else if (target === 'in_progress' && current === 'allocated_to_designer' && caseRecord.designerId === profile.id) {
+          } else if (target === 'in_progress' && (current === 'scan_verified' || current === 'allocated_to_designer') && (caseRecord.designerId === profile.id || updateData.designerId === profile.id)) {
             updateData.status = target;
           } else if (target === 'in_progress' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;
@@ -348,7 +339,7 @@ export async function PUT(
 
         if (isSelfAllocation) {
           updateData.designerId = profile.id;
-          if (target) updateData.status = target;
+          // designer assignment is not a lifecycle status change
         } else if (target === 'scan_verified' && current === 'scan_received' && !caseRecord.designerId) {
           updateData.status = target;
         } else {
@@ -371,7 +362,7 @@ export async function PUT(
           if (target) {
             if (target === 'scan_verified' && current === 'scan_received') {
               updateData.status = target;
-            } else if (target === 'in_progress' && (current === 'allocated_to_designer' || current === 'client_feedback')) {
+            } else if (target === 'in_progress' && (current === 'allocated_to_designer' || current === 'scan_verified' || current === 'client_feedback')) {
               updateData.status = target;
             } else if (target === 'scan_received' && current === 'on_hold' && caseRecord.designerId === profile.id) {
               updateData.status = target;

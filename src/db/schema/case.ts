@@ -44,7 +44,7 @@ export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
   scan_received: 'Submitted',
   scan_not_verified: 'In Validation',
   scan_verified: 'In Validation',
-  allocated_to_designer: 'In Design',
+  allocated_to_designer: 'Submitted',
   in_progress: 'In Design',
   internal_qc: 'Internal QC',
   submitted_to_client: 'Pending Client Approval',
