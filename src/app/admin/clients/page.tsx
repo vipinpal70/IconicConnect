@@ -100,10 +100,10 @@ export default function AdminClients() {
             <p className="text-xs text-muted-foreground">Review registrations, manage profiles and price lists</p>
           </div>
 
-          <Button onClick={() => setOnboardOpen(true)} size="sm" className="gradient-primary border-none shadow-glow text-xs h-8">
+          {/* <Button onClick={() => setOnboardOpen(true)} size="sm" className="gradient-primary border-none shadow-glow text-xs h-8">
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             Onboard Client
-          </Button>
+          </Button> */}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">

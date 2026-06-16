@@ -370,11 +370,10 @@ export function CaseDetailView({
       </div>
 
       {caseRecord.clientMassage && (
-        <div className={`p-4 rounded-lg border text-xs font-medium flex flex-col gap-1 ${
-          caseRecord.status === "client_reject"
-            ? "bg-red-50 border-red-200 text-red-800"
-            : "bg-amber-50 border-amber-200 text-amber-800"
-        }`}>
+        <div className={`p-4 rounded-lg border text-xs font-medium flex flex-col gap-1 ${caseRecord.status === "client_reject"
+          ? "bg-red-50 border-red-200 text-red-800"
+          : "bg-amber-50 border-amber-200 text-amber-800"
+          }`}>
           <span className="font-semibold flex items-center gap-1.5">
             {caseRecord.status === "client_reject" ? "✗ Rejection Reason" : "ℹ Requested Changes"}
           </span>
@@ -637,11 +636,11 @@ export function CaseDetailView({
         </Card>
 
         {/* Activity Timeline Card */}
-        <Card className="shadow-card self-start w-full">
+        <Card className="shadow-card flex flex-col h-full">
           <CardHeader className="py-2.5 px-4 border-b border-border/50">
             <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>
           </CardHeader>
-          <CardContent className="mt-2 px-4 h-[380px] overflow-y-auto pr-2 custom-scrollbar">
+          <CardContent className="mt-2 px-4 max-h-[390px] overflow-y-auto pr-2 custom-scrollbar">
             {activities.length === 0 ? (
               <p className="text-xs text-muted-foreground">No activity recorded for this case yet.</p>
             ) : (
@@ -714,8 +713,8 @@ export function CaseDetailView({
                         onClick={() => setShowPreview(!showPreview)}
                         className="w-full border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
                       >
-                          <Eye className="w-4 h-4"/>
-                         {showPreview ? "Hide Preview" : "Show Preview"}
+                        <Eye className="w-4 h-4" />
+                        {showPreview ? "Hide Preview" : "Show Preview"}
                       </Button>
                     </div>
                   </div>
