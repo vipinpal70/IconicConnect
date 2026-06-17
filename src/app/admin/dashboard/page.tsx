@@ -3,7 +3,7 @@
 import { AdminLayout } from "@/src/components/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
-import { Inbox, Layers, ShieldCheck, ClipboardCheck, Users, MapPin, Building2, CalendarDays } from "lucide-react";
+import { Inbox, Layers, ShieldCheck, ClipboardCheck, Users, MapPin, Building2, CalendarDays, Timer } from "lucide-react";
 import { Badge } from "@/src/components/ui/badge";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -33,6 +33,7 @@ export default function AdminDashboard() {
     awaitClientApproval: 0,
     holdCase: 0,
     activeClients: 0,
+    avgTat: "N/A",
   };
 
   const designerLoad = dashboardData?.designerLoad || [];
@@ -52,6 +53,13 @@ export default function AdminDashboard() {
       bg: "bg-red-500/10",
       isHoldAlert: counts.holdCase > 0
     },
+    {
+      label: "avg_turnaround_(30d)",
+      value: counts.avgTat || "N/A",
+      icon: Timer,
+      color: "text-purple-500",
+      bg: "bg-purple-500/10"
+    }
   ];
 
   return (
@@ -63,7 +71,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* KPI Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {kpis.map((k) => (
             <Card
               key={k.label}

@@ -97,20 +97,20 @@ export default function Dashboard() {
       .sort((a, b) => b.value - a.value);
   }, [cases]);
 
-  // Average TAT from completed cases
-  const avgTat = useMemo(() => {
-    const completed = cases.filter((c: any) => ["approved", "delivered"].includes(c.status));
-    if (!completed.length) return null;
-    let total = 0;
-    let count = 0;
-    completed.forEach((c: any) => {
-      const created = new Date(c.createdAt).getTime();
-      const updated = new Date(c.updatedAt).getTime();
-      const days = (updated - created) / (1000 * 60 * 60 * 24);
-      if (days >= 0) { total += days; count++; }
-    });
-    return count > 0 ? (total / count).toFixed(1) : null;
-  }, [cases]);
+  const { data: tatData } = useQuery<{ avgTatDays: number | null }>({
+    queryKey: ["dashboard-tat"],
+    queryFn: async () => {
+      const res = await fetch("/api/cases/tat");
+      if (!res.ok) throw new Error("Failed to fetch TAT analytics");
+      return res.json();
+    },
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+  });
+
+  const avgTat = tatData?.avgTatDays !== null && tatData?.avgTatDays !== undefined
+    ? tatData.avgTatDays.toFixed(1)
+    : null;
 
   // Recent 5 cases sorted by updatedAt
   const recentCases = useMemo(() => {
@@ -256,11 +256,11 @@ export default function Dashboard() {
                     <p className="text-4xl font-semibold text-foreground">{avgTat}</p>
                     <p className="text-sm text-muted-foreground pb-1.5">days avg</p>
                     <span className="ml-auto text-xs text-green-600 flex items-center gap-1 pb-1.5">
-                      <TrendingUp className="h-3 w-3" /> from completed cases
+                      <TrendingUp className="h-3 w-3" /> from completed cases (30d)
                     </span>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No completed cases yet</p>
+                  <p className="text-sm text-muted-foreground">No completed cases in last 30 days</p>
                 )}
               </CardContent>
             </Card>

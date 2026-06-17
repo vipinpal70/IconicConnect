@@ -640,7 +640,7 @@ export function CaseDetailView({
           <CardHeader className="py-2.5 px-4 border-b border-border/50">
             <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>
           </CardHeader>
-          <CardContent className="mt-2 px-4 max-h-[390px] overflow-y-auto pr-2 custom-scrollbar">
+          <CardContent className="mt-2 px-4 max-h-[450px] overflow-y-scroll pr-2 custom-scrollbar">
             {activities.length === 0 ? (
               <p className="text-xs text-muted-foreground">No activity recorded for this case yet.</p>
             ) : (

@@ -4,7 +4,7 @@ import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { activityLogs } from "@/src/db/schema/activity-log";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, inArray, desc } from "drizzle-orm";
+import { eq, inArray, desc, and, isNotNull, gte, sql } from "drizzle-orm";
 import { formatActivityLabel } from "@/src/lib/activity-log";
 
 export async function GET(req: NextRequest) {
@@ -64,33 +64,23 @@ export async function GET(req: NextRequest) {
     const awaitingActionCount = clientCases.filter((c) => c.status === "submitted_to_client").length;
     const holdCount = clientCases.filter((c) => c.status === "on_hold").length;
 
-    // Avg Turnaround Time Calculation
-    const completedCases = clientCases.filter((c) => ["approved", "delivered"].includes(c.status));
-    let totalDays = 0;
-    let completedCount = 0;
-
-    for (const c of completedCases) {
-      let completionDate = new Date(c.updatedAt);
-      
-      // Look for custom completion timeline event
-      const approvalEvent = c.timeline?.find(
-        (e) =>
-          e.action === "case.updated" &&
-          (e.label?.toLowerCase().includes("approved") || e.label?.toLowerCase().includes("delivered"))
+    // Avg Turnaround Time Calculation using DB tat column for the last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const tatResult = await db
+      .select({
+        avgTat: sql<number>`AVG(${cases.tat})`
+      })
+      .from(cases)
+      .where(
+        and(
+          eq(cases.clientId, clientId),
+          isNotNull(cases.tat),
+          gte(cases.deliveredTime, thirtyDaysAgo)
+        )
       );
-      if (approvalEvent && approvalEvent.actionAt) {
-        completionDate = new Date(approvalEvent.actionAt);
-      }
-
-      const createdDate = new Date(c.createdAt);
-      const diffMs = completionDate.getTime() - createdDate.getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
-      if (diffDays >= 0) {
-        totalDays += diffDays;
-        completedCount++;
-      }
-    }
-    const avgTurnaround = completedCount > 0 ? `${(totalDays / completedCount).toFixed(1)}d` : "4.5d"; // Fallback to 4.5d if no completed cases yet
+    const avgTatMinutes = tatResult[0]?.avgTat ? Number(tatResult[0].avgTat) : null;
+    const avgTurnaround = avgTatMinutes !== null ? `${(avgTatMinutes / 1440).toFixed(1)}d` : "4.5d";
 
     // 2. Case Volume Trends (Monthly)
     const now = new Date();
