@@ -151,8 +151,8 @@ export default function Dashboard() {
             <Card
               key={kpi.label}
               className={`shadow-card hover:shadow-elevated transition-shadow cursor-pointer ${(kpi as any).isHoldAlert
-                  ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)] animate-pulse ring-1 ring-red-500/30 bg-red-500/5"
-                  : ""
+                ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)] animate-pulse ring-1 ring-red-500/30 bg-red-500/5"
+                : ""
                 }`}
               onClick={() => router.push("/cases")}
             >
