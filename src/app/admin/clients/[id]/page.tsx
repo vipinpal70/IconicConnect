@@ -332,18 +332,6 @@ function Info({ label, value, icon }: { label: string; value: string; icon?: Rea
 
 function PrefFormCard({ form }: { form: PreferenceFormRecord }) {
   const [expanded, setExpanded] = useState(false)
-  const p = form.payload
-
-  const rows: { label: string; value: string; comment?: string }[] = [
-    { label: "Occlusion", value: p.occlusion.defaultValues || "—", comment: p.occlusion.comments },
-    { label: "Proximal Contacts", value: p.proximalContacts.defaultValues || "—", comment: p.proximalContacts.comments },
-    { label: "Distal-most Crown Contact", value: p.distalMostCrownContact.defaultValues || "—", comment: p.distalMostCrownContact.comments },
-    { label: "Anatomy", value: p.anatomy.option || "—", comment: p.anatomy.comments },
-    { label: "Smile Library", value: [p.smileLibrary.option, p.smileLibrary.libraryName].filter(Boolean).join(" · ") || "—", comment: p.smileLibrary.comments },
-    { label: "Pontic Type", value: p.ponticType.option || "—", comment: p.ponticType.comments },
-    { label: "Pontic Distance", value: [p.ponticDistanceFromTissue.option, p.ponticDistanceFromTissue.distanceMm ? `${p.ponticDistanceFromTissue.distanceMm}mm` : ""].filter(Boolean).join(" · ") || "—", comment: p.ponticDistanceFromTissue.comments },
-    { label: "Match Marginal Ridge", value: p.matchMarginalRidge.option || "—", comment: p.matchMarginalRidge.comments },
-  ]
 
   return (
     <div className="rounded-lg border border-border/50 bg-muted/[0.02] overflow-hidden">
@@ -364,18 +352,80 @@ function PrefFormCard({ form }: { form: PreferenceFormRecord }) {
       </button>
 
       {expanded && (
-        <div className="border-t border-border/50 px-3.5 py-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {rows.map(({ label, value, comment }) => (
-            <div key={label} className="rounded border border-border/40 bg-muted/20 px-2.5 py-2">
-              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-              <p className="text-[11px] font-semibold text-foreground mt-0.5">{value}</p>
-              {comment && (
-                <p className="text-[10px] text-muted-foreground mt-0.5 italic">{comment}</p>
-              )}
-            </div>
-          ))}
+        <div className="border-t border-border/50 px-3.5 py-3">
+          <div className="grid gap-2 text-xs md:grid-cols-2">
+            <Summary label="Occlusion" value={form.payload.occlusion.defaultValues || "-"} />
+            <Summary label="Proximal Contacts" value={form.payload.proximalContacts.defaultValues || "-"} />
+            <Summary label="Distal-most Crown" value={form.payload.distalMostCrownContact.defaultValues || "-"} />
+            <Summary label="Anatomy" value={form.payload.anatomy.option || "-"} />
+            <Summary label="Smile Library" value={form.payload.smileLibrary.option || "-"} />
+            <Summary label="Pontic Type" value={form.payload.ponticType.option || "-"} />
+            <Summary label="Pontic Distance" value={form.payload.ponticDistanceFromTissue.option || "-"} />
+            <Summary label="Match Marginal Ridge" value={form.payload.matchMarginalRidge.option || "-"} />
+            <Summary label="Posterior Cutback" value={form.payload.posteriorCutback?.option || "-"} />
+            <Summary label="Anterior Cutback" value={form.payload.anteriorCutback?.option || "-"} />
+            <Summary
+              label="Coping Pontic Distance"
+              value={
+                [
+                  form.payload.copingPonticDistanceFromTissue?.option,
+                  form.payload.copingPonticDistanceFromTissue?.distanceMm
+                    ? `${form.payload.copingPonticDistanceFromTissue.distanceMm}mm`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "-"
+              }
+            />
+            <Summary label="Collar Type" value={form.payload.copingCollarType?.option || "-"} />
+            <Summary label="Create Island" value={form.payload.copingCreateIsland?.option || "-"} />
+            <Summary label="Preferred Software" value={form.payload.preferredSoftware?.option || "-"} />
+            <Summary
+              label="Image 1"
+              value={
+                form.payload.uploadedImage1 ? (
+                  <a
+                    href={form.payload.uploadedImage1.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-bold"
+                  >
+                    {form.payload.uploadedImage1.fileName}
+                  </a>
+                ) : (
+                  "-"
+                )
+              }
+            />
+            <Summary
+              label="Image 2"
+              value={
+                form.payload.uploadedImage2 ? (
+                  <a
+                    href={form.payload.uploadedImage2.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-bold"
+                  >
+                    {form.payload.uploadedImage2.fileName}
+                  </a>
+                ) : (
+                  "-"
+                )
+              }
+            />
+          </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function Summary({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded border border-border/50 bg-muted/20 px-2.5 py-1.5">
+      <p className="text-[9px] font-bold tracking-wider text-muted-foreground">{label}</p>
+      <div className="truncate text-[11px] text-foreground font-semibold mt-0.5">{value}</div>
     </div>
   )
 }

@@ -16,6 +16,10 @@ import {
   ponticTypeOptions,
   smileLibraryOptions,
   yesNoOptions,
+  posteriorCutbackOptions,
+  anteriorCutbackOptions,
+  collarTypeOptions,
+  preferredSoftwareOptions,
 } from "@/src/lib/preference-forms"
 import type { PreferenceFormPayload, PreferenceFormRecord } from "@/src/lib/preference-forms"
 import { Plus, PencilLine, Trash2 } from "lucide-react"
@@ -45,6 +49,55 @@ export default function ClientPreferencesPage() {
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<FormState>(emptyForm)
+  const [formStep, setFormStep] = useState<1 | 2 | 3 | 4>(1)
+  const [uploadingFields, setUploadingFields] = useState({
+    uploadedImage1: false,
+    uploadedImage2: false,
+  })
+
+  const uploadImage = async (e: React.ChangeEvent<HTMLInputElement>, field: "uploadedImage1" | "uploadedImage2") => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const maxLimit = 10 * 1024 * 1024 // 10MB
+    if (file.size > maxLimit) {
+      alert("File size exceeds the 10MB limit.")
+      return
+    }
+    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
+    const allowedExtensions = [".png", ".jpg", ".jpeg", ".gif"]
+    if (!allowedExtensions.includes(ext)) {
+      alert("Unsupported file type. Allowed: PNG, JPG, JPEG, GIF")
+      return
+    }
+
+    setUploadingFields((prev) => ({ ...prev, [field]: true }))
+    try {
+      const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+        },
+        body: file,
+      })
+
+      if (!res.ok) {
+        throw new Error("Upload failed")
+      }
+
+      const data = await res.json()
+      updatePayload(field, {
+        fileUrl: data.fileUrl,
+        fileName: data.fileName,
+      })
+    } catch (err) {
+      console.error(err)
+      alert("Failed to upload image")
+    } finally {
+      setUploadingFields((prev) => ({ ...prev, [field]: false }))
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -111,6 +164,7 @@ export default function ClientPreferencesPage() {
 
       setDraft(emptyForm())
       setEditingId(null)
+      setFormStep(1)
     } catch (error) {
       console.error(error)
     } finally {
@@ -124,6 +178,7 @@ export default function ClientPreferencesPage() {
       formName: form.formName,
       payload: clonePreferenceFormPayload(form.payload),
     })
+    setFormStep(1)
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
@@ -168,6 +223,7 @@ export default function ClientPreferencesPage() {
             onClick={() => {
               setDraft(emptyForm())
               setEditingId(null)
+              setFormStep(1)
               document.getElementById("preference-form")?.scrollIntoView({ behavior: "smooth" })
             }}
           >
@@ -217,6 +273,58 @@ export default function ClientPreferencesPage() {
                         <Summary label="Pontic Type" value={form.payload.ponticType.option || "-"} />
                         <Summary label="Pontic Distance" value={form.payload.ponticDistanceFromTissue.option || "-"} />
                         <Summary label="Match Marginal Ridge" value={form.payload.matchMarginalRidge.option || "-"} />
+                        <Summary label="Posterior Cutback" value={form.payload.posteriorCutback?.option || "-"} />
+                        <Summary label="Anterior Cutback" value={form.payload.anteriorCutback?.option || "-"} />
+                        <Summary
+                          label="Coping Pontic Distance"
+                          value={
+                            [
+                              form.payload.copingPonticDistanceFromTissue?.option,
+                              form.payload.copingPonticDistanceFromTissue?.distanceMm
+                                ? `${form.payload.copingPonticDistanceFromTissue.distanceMm}mm`
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || "-"
+                          }
+                        />
+                        <Summary label="Collar Type" value={form.payload.copingCollarType?.option || "-"} />
+                        <Summary label="Create Island" value={form.payload.copingCreateIsland?.option || "-"} />
+                        <Summary label="Preferred Software" value={form.payload.preferredSoftware?.option || "-"} />
+                        <Summary
+                          label="Image 1"
+                          value={
+                            form.payload.uploadedImage1 ? (
+                              <a
+                                href={form.payload.uploadedImage1.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline font-bold"
+                              >
+                                {form.payload.uploadedImage1.fileName}
+                              </a>
+                            ) : (
+                              "-"
+                            )
+                          }
+                        />
+                        <Summary
+                          label="Image 2"
+                          value={
+                            form.payload.uploadedImage2 ? (
+                              <a
+                                href={form.payload.uploadedImage2.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline font-bold"
+                              >
+                                {form.payload.uploadedImage2.fileName}
+                              </a>
+                            ) : (
+                              "-"
+                            )
+                          }
+                        />
                       </div>
                     </CardContent>
                   </Card>
@@ -229,165 +337,359 @@ export default function ClientPreferencesPage() {
         <Card id="preference-form" className="overflow-hidden border-border/50 shadow-sm bg-white">
           <CardContent className="p-0">
             <div className="border-b border-border/50 px-4 py-2.5 bg-muted/20">
-              <h2 className="text-sm font-semibold text-muted-foreground">Full Contour Form</h2>
+              <h2 className="text-sm font-semibold text-muted-foreground">
+                {formStep === 1 && "Full Contour Form"}
+                {formStep === 2 && "Facial Cutback"}
+                {formStep === 3 && "Coping"}
+                {formStep === 4 && "Finally"}
+              </h2>
               <p className="text-[10px] text-muted-foreground">
-                {editingId ? "Editing preference form" : "Add a new preference form"}
+                {editingId ? "Editing preference form" : "Add a new preference form"} — Step {formStep} of 4
               </p>
             </div>
 
-            <div className="p-4 space-y-3.5">
-              <Section label="Form Name *">
-                <Input
-                  className="h-8 text-xs"
-                  value={draft.formName}
-                  onChange={(e) => setDraft((current) => ({ ...current, formName: e.target.value }))}
-                  placeholder="form name"
-                />
-              </Section>
+            <div className="p-4 space-y-3.5 animate-fade-in">
+              {formStep === 1 && (
+                <div className="space-y-3.5 animate-fade-in">
+                  <Section label="Form Name *">
+                    <Input
+                      className="h-8 text-xs"
+                      value={draft.formName}
+                      onChange={(e) => setDraft((current) => ({ ...current, formName: e.target.value }))}
+                      placeholder="form name"
+                    />
+                  </Section>
 
-              <Section label="Occlusion">
-                <div className="grid gap-2">
-                  <Input
-                    className="h-8 text-xs"
-                    value={draft.payload.occlusion.defaultValues}
-                    onChange={(e) => updatePayload("occlusion", { ...draft.payload.occlusion, defaultValues: e.target.value })}
-                    placeholder="Default Values"
-                  />
-                  <Input
-                    className="h-8 text-xs"
-                    value={draft.payload.occlusion.comments}
-                    onChange={(e) => updatePayload("occlusion", { ...draft.payload.occlusion, comments: e.target.value })}
-                    placeholder="Comments"
-                  />
+                  <Section label="Occlusion">
+                    <div className="grid gap-2">
+                      <Input
+                        className="h-8 text-xs"
+                        value={draft.payload.occlusion.defaultValues}
+                        onChange={(e) => updatePayload("occlusion", { ...draft.payload.occlusion, defaultValues: e.target.value })}
+                        placeholder="Default Values"
+                      />
+                      <Input
+                        className="h-8 text-xs"
+                        value={draft.payload.occlusion.comments}
+                        onChange={(e) => updatePayload("occlusion", { ...draft.payload.occlusion, comments: e.target.value })}
+                        placeholder="Comments"
+                      />
+                    </div>
+                  </Section>
+
+                  <Section label="Proximal Contacts">
+                    <div className="grid gap-2">
+                      <Input
+                        className="h-8 text-xs"
+                        value={draft.payload.proximalContacts.defaultValues}
+                        onChange={(e) => updatePayload("proximalContacts", { ...draft.payload.proximalContacts, defaultValues: e.target.value })}
+                        placeholder="Default Values"
+                      />
+                      <Input
+                        className="h-8 text-xs"
+                        value={draft.payload.proximalContacts.comments}
+                        onChange={(e) => updatePayload("proximalContacts", { ...draft.payload.proximalContacts, comments: e.target.value })}
+                        placeholder="Comments"
+                      />
+                    </div>
+                  </Section>
+
+                  <Section label="Contact for Distal-most Crown">
+                    <div className="grid gap-2">
+                      <Input
+                        className="h-8 text-xs"
+                        value={draft.payload.distalMostCrownContact.defaultValues}
+                        onChange={(e) => updatePayload("distalMostCrownContact", { ...draft.payload.distalMostCrownContact, defaultValues: e.target.value })}
+                        placeholder="Default Values"
+                      />
+                      <Input
+                        className="h-8 text-xs"
+                        value={draft.payload.distalMostCrownContact.comments}
+                        onChange={(e) => updatePayload("distalMostCrownContact", { ...draft.payload.distalMostCrownContact, comments: e.target.value })}
+                        placeholder="Comments"
+                      />
+                    </div>
+                  </Section>
+
+                  <Section label="Anatomy">
+                    <ChoiceRow
+                      name="anatomy"
+                      value={draft.payload.anatomy.option}
+                      options={anatomyOptions}
+                      onChange={(option) => updatePayload("anatomy", { ...draft.payload.anatomy, option })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.anatomy.comments}
+                      onChange={(e) => updatePayload("anatomy", { ...draft.payload.anatomy, comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
+
+                  <Section label="Smile Library">
+                    <ChoiceRow
+                      name="smile-library"
+                      value={draft.payload.smileLibrary.option}
+                      options={smileLibraryOptions}
+                      onChange={(option) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, option })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.smileLibrary.libraryName}
+                      onChange={(e) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, libraryName: e.target.value })}
+                      placeholder="Name of Library"
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1.5"
+                      value={draft.payload.smileLibrary.comments}
+                      onChange={(e) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
+
+                  <Section label="Pontic Type">
+                    <ChoiceRow
+                      name="pontic-type"
+                      value={draft.payload.ponticType.option}
+                      options={ponticTypeOptions}
+                      onChange={(option) => updatePayload("ponticType", { ...draft.payload.ponticType, option })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.ponticType.comments}
+                      onChange={(e) => updatePayload("ponticType", { ...draft.payload.ponticType, comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
+
+                  <Section label="Pontic Distance From Tissue">
+                    <ChoiceRow
+                      name="pontic-distance"
+                      value={draft.payload.ponticDistanceFromTissue.option}
+                      options={ponticDistanceOptions}
+                      onChange={(option) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, option })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.ponticDistanceFromTissue.comments}
+                      onChange={(e) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1.5"
+                      value={draft.payload.ponticDistanceFromTissue.distanceMm}
+                      onChange={(e) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, distanceMm: e.target.value })}
+                      placeholder="Distance (mm)"
+                    />
+                  </Section>
+
+                  <Section label="Match Marginal Ridge to Occlusal of Opposing">
+                    <ChoiceRow
+                      name="match-marginal-ridge"
+                      value={draft.payload.matchMarginalRidge.option}
+                      options={yesNoOptions}
+                      onChange={(option) => updatePayload("matchMarginalRidge", { ...draft.payload.matchMarginalRidge, option })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.matchMarginalRidge.comments}
+                      onChange={(e) => updatePayload("matchMarginalRidge", { ...draft.payload.matchMarginalRidge, comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
                 </div>
-              </Section>
+              )}
 
-              <Section label="Proximal Contacts">
-                <div className="grid gap-2">
-                  <Input
-                    className="h-8 text-xs"
-                    value={draft.payload.proximalContacts.defaultValues}
-                    onChange={(e) => updatePayload("proximalContacts", { ...draft.payload.proximalContacts, defaultValues: e.target.value })}
-                    placeholder="Default Values"
-                  />
-                  <Input
-                    className="h-8 text-xs"
-                    value={draft.payload.proximalContacts.comments}
-                    onChange={(e) => updatePayload("proximalContacts", { ...draft.payload.proximalContacts, comments: e.target.value })}
-                    placeholder="Comments"
-                  />
+              {formStep === 2 && (
+                <div className="space-y-3.5 animate-fade-in">
+                  <Section label="Posterior Cutback">
+                    <ChoiceRow
+                      name="posterior-cutback"
+                      value={draft.payload.posteriorCutback?.option || ""}
+                      options={posteriorCutbackOptions}
+                      onChange={(option) => updatePayload("posteriorCutback", { ...draft.payload.posteriorCutback, option, comments: draft.payload.posteriorCutback?.comments || "" })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.posteriorCutback?.comments || ""}
+                      onChange={(e) => updatePayload("posteriorCutback", { ...draft.payload.posteriorCutback, option: draft.payload.posteriorCutback?.option || "", comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
+
+                  <Section label="Anterior Cutback">
+                    <ChoiceRow
+                      name="anterior-cutback"
+                      value={draft.payload.anteriorCutback?.option || ""}
+                      options={anteriorCutbackOptions}
+                      onChange={(option) => updatePayload("anteriorCutback", { ...draft.payload.anteriorCutback, option, comments: draft.payload.anteriorCutback?.comments || "" })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.anteriorCutback?.comments || ""}
+                      onChange={(e) => updatePayload("anteriorCutback", { ...draft.payload.anteriorCutback, option: draft.payload.anteriorCutback?.option || "", comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
                 </div>
-              </Section>
+              )}
 
-              <Section label="Contact for Distal-most Crown">
-                <div className="grid gap-2">
-                  <Input
-                    className="h-8 text-xs"
-                    value={draft.payload.distalMostCrownContact.defaultValues}
-                    onChange={(e) => updatePayload("distalMostCrownContact", { ...draft.payload.distalMostCrownContact, defaultValues: e.target.value })}
-                    placeholder="Default Values"
-                  />
-                  <Input
-                    className="h-8 text-xs"
-                    value={draft.payload.distalMostCrownContact.comments}
-                    onChange={(e) => updatePayload("distalMostCrownContact", { ...draft.payload.distalMostCrownContact, comments: e.target.value })}
-                    placeholder="Comments"
-                  />
+              {formStep === 3 && (
+                <div className="space-y-3.5 animate-fade-in">
+                  <Section label="Pontic Distance From Tissue">
+                    <ChoiceRow
+                      name="coping-pontic-distance"
+                      value={draft.payload.copingPonticDistanceFromTissue?.option || ""}
+                      options={ponticDistanceOptions}
+                      onChange={(option) => updatePayload("copingPonticDistanceFromTissue", { ...draft.payload.copingPonticDistanceFromTissue, option, distanceMm: draft.payload.copingPonticDistanceFromTissue?.distanceMm || "", comments: draft.payload.copingPonticDistanceFromTissue?.comments || "" })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.copingPonticDistanceFromTissue?.distanceMm || ""}
+                      onChange={(e) => updatePayload("copingPonticDistanceFromTissue", { ...draft.payload.copingPonticDistanceFromTissue, option: draft.payload.copingPonticDistanceFromTissue?.option || "", distanceMm: e.target.value, comments: draft.payload.copingPonticDistanceFromTissue?.comments || "" })}
+                      placeholder="Distance (mm)"
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.copingPonticDistanceFromTissue?.comments || ""}
+                      onChange={(e) => updatePayload("copingPonticDistanceFromTissue", { ...draft.payload.copingPonticDistanceFromTissue, option: draft.payload.copingPonticDistanceFromTissue?.option || "", distanceMm: draft.payload.copingPonticDistanceFromTissue?.distanceMm || "", comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
+
+                  <Section label="Collar Type">
+                    <ChoiceRow
+                      name="coping-collar-type"
+                      value={draft.payload.copingCollarType?.option || ""}
+                      options={collarTypeOptions}
+                      onChange={(option) => updatePayload("copingCollarType", { ...draft.payload.copingCollarType, option, comments: draft.payload.copingCollarType?.comments || "" })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.copingCollarType?.comments || ""}
+                      onChange={(e) => updatePayload("copingCollarType", { ...draft.payload.copingCollarType, option: draft.payload.copingCollarType?.option || "", comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
+
+                  <Section label="Create Island - Limited Space">
+                    <ChoiceRow
+                      name="coping-create-island"
+                      value={draft.payload.copingCreateIsland?.option || ""}
+                      options={yesNoOptions}
+                      onChange={(option) => updatePayload("copingCreateIsland", { ...draft.payload.copingCreateIsland, option, comments: draft.payload.copingCreateIsland?.comments || "" })}
+                    />
+                    <Input
+                      className="h-8 text-xs mt-1"
+                      value={draft.payload.copingCreateIsland?.comments || ""}
+                      onChange={(e) => updatePayload("copingCreateIsland", { ...draft.payload.copingCreateIsland, option: draft.payload.copingCreateIsland?.option || "", comments: e.target.value })}
+                      placeholder="Comments"
+                    />
+                  </Section>
                 </div>
-              </Section>
+              )}
 
-              <Section label="Anatomy">
-                <ChoiceRow
-                  name="anatomy"
-                  value={draft.payload.anatomy.option}
-                  options={anatomyOptions}
-                  onChange={(option) => updatePayload("anatomy", { ...draft.payload.anatomy, option })}
-                />
-                <Input
-                  className="h-8 text-xs mt-1"
-                  value={draft.payload.anatomy.comments}
-                  onChange={(e) => updatePayload("anatomy", { ...draft.payload.anatomy, comments: e.target.value })}
-                  placeholder="Comments"
-                />
-              </Section>
+              {formStep === 4 && (
+                <div className="space-y-3.5 animate-fade-in">
+                  <Section label="Preferred Software">
+                    <ChoiceRow
+                      name="preferred-software"
+                      value={draft.payload.preferredSoftware?.option || ""}
+                      options={preferredSoftwareOptions}
+                      onChange={(option) => updatePayload("preferredSoftware", { ...draft.payload.preferredSoftware, option })}
+                    />
+                  </Section>
 
-              <Section label="Smile Library">
-                <ChoiceRow
-                  name="smile-library"
-                  value={draft.payload.smileLibrary.option}
-                  options={smileLibraryOptions}
-                  onChange={(option) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, option })}
-                />
-                <Input
-                  className="h-8 text-xs mt-1"
-                  value={draft.payload.smileLibrary.libraryName}
-                  onChange={(e) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, libraryName: e.target.value })}
-                  placeholder="Name of Library"
-                />
-                <Input
-                  className="h-8 text-xs mt-1.5"
-                  value={draft.payload.smileLibrary.comments}
-                  onChange={(e) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, comments: e.target.value })}
-                  placeholder="Comments"
-                />
-              </Section>
+                  <Section label="Upload Image 1 (png, jpg or gif - max size 10MB)">
+                    <div className="flex flex-col gap-2">
+                      {uploadingFields.uploadedImage1 ? (
+                        <div className="text-xs text-muted-foreground">Uploading image...</div>
+                      ) : draft.payload.uploadedImage1 ? (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-emerald-600 font-medium truncate max-w-[200px]">
+                            ✓ {draft.payload.uploadedImage1.fileName}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-destructive hover:underline"
+                            onClick={() => updatePayload("uploadedImage1", null)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          className="h-8 text-xs py-1"
+                          onChange={(e) => uploadImage(e, "uploadedImage1")}
+                        />
+                      )}
+                    </div>
+                  </Section>
 
-              <Section label="Pontic Type">
-                <ChoiceRow
-                  name="pontic-type"
-                  value={draft.payload.ponticType.option}
-                  options={ponticTypeOptions}
-                  onChange={(option) => updatePayload("ponticType", { ...draft.payload.ponticType, option })}
-                />
-                <Input
-                  className="h-8 text-xs mt-1"
-                  value={draft.payload.ponticType.comments}
-                  onChange={(e) => updatePayload("ponticType", { ...draft.payload.ponticType, comments: e.target.value })}
-                  placeholder="Comments"
-                />
-              </Section>
+                  <Section label="Upload Image 2 (png, jpg or gif - max size 10MB)">
+                    <div className="flex flex-col gap-2">
+                      {uploadingFields.uploadedImage2 ? (
+                        <div className="text-xs text-muted-foreground">Uploading image...</div>
+                      ) : draft.payload.uploadedImage2 ? (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-emerald-600 font-medium truncate max-w-[200px]">
+                            ✓ {draft.payload.uploadedImage2.fileName}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-destructive hover:underline"
+                            onClick={() => updatePayload("uploadedImage2", null)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          className="h-8 text-xs py-1"
+                          onChange={(e) => uploadImage(e, "uploadedImage2")}
+                        />
+                      )}
+                    </div>
+                  </Section>
+                </div>
+              )}
 
-              <Section label="Pontic Distance From Tissue">
-                <ChoiceRow
-                  name="pontic-distance"
-                  value={draft.payload.ponticDistanceFromTissue.option}
-                  options={ponticDistanceOptions}
-                  onChange={(option) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, option })}
-                />
-                <Input
-                  className="h-8 text-xs mt-1"
-                  value={draft.payload.ponticDistanceFromTissue.comments}
-                  onChange={(e) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, comments: e.target.value })}
-                  placeholder="Comments"
-                />
-                <Input
-                  className="h-8 text-xs mt-1.5"
-                  value={draft.payload.ponticDistanceFromTissue.distanceMm}
-                  onChange={(e) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, distanceMm: e.target.value })}
-                  placeholder="Distance (mm)"
-                />
-              </Section>
-
-              <Section label="Match Marginal Ridge to Occlusal of Opposing">
-                <ChoiceRow
-                  name="match-marginal-ridge"
-                  value={draft.payload.matchMarginalRidge.option}
-                  options={yesNoOptions}
-                  onChange={(option) => updatePayload("matchMarginalRidge", { ...draft.payload.matchMarginalRidge, option })}
-                />
-                <Input
-                  className="h-8 text-xs mt-1"
-                  value={draft.payload.matchMarginalRidge.comments}
-                  onChange={(e) => updatePayload("matchMarginalRidge", { ...draft.payload.matchMarginalRidge, comments: e.target.value })}
-                  placeholder="Comments"
-                />
-              </Section>
-
-              <div className="pt-2">
-                <Button onClick={saveForm} disabled={saving} size="sm" className="gap-1.5 h-8 text-xs">
-                  {editingId ? <PencilLine className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                  {editingId ? "Update Form" : "Save Form"}
+              <div className="pt-2 flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 text-xs bg-slate-600 hover:bg-slate-700 text-white disabled:bg-slate-300 disabled:text-slate-500"
+                  disabled={formStep === 1}
+                  onClick={() => setFormStep((step) => (step > 1 ? (step - 1) as 1 | 2 | 3 | 4 : step))}
+                >
+                  Previous
                 </Button>
+
+                {formStep < 4 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => setFormStep((step) => (step < 4 ? (step + 1) as 1 | 2 | 3 | 4 : step))}
+                  >
+                    Next
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 text-xs bg-teal-700 hover:bg-teal-800 text-white"
+                    onClick={saveForm}
+                    disabled={saving || uploadingFields.uploadedImage1 || uploadingFields.uploadedImage2}
+                  >
+                    {editingId ? "Submit (Update)" : "Submit"}
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
@@ -437,11 +739,11 @@ function ChoiceRow<T extends string>({
   )
 }
 
-function Summary({ label, value }: { label: string; value: string }) {
+function Summary({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded border border-border/50 bg-muted/20 px-2.5 py-1.5">
       <p className="text-[9px] font-bold tracking-wider text-muted-foreground">{label}</p>
-      <p className="truncate text-[11px] text-foreground font-semibold mt-0.5">{value}</p>
+      <div className="truncate text-[11px] text-foreground font-semibold mt-0.5">{value}</div>
     </div>
   )
 }
