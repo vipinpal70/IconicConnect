@@ -133,8 +133,8 @@ export default function Dashboard() {
   const greetingName = !profile
     ? null
     : OPS_ROLES.includes(profile.role ?? "")
-    ? "Iconic Connect"
-    : profile.fullName;
+      ? "Iconic Connect"
+      : profile.fullName;
   const greeting = greetingName ? `Welcome back, ${greetingName}` : "Welcome back";
 
   return (
@@ -150,11 +150,10 @@ export default function Dashboard() {
           {dynamicKpis.map((kpi) => (
             <Card
               key={kpi.label}
-              className={`shadow-card hover:shadow-elevated transition-shadow cursor-pointer ${
-                (kpi as any).isHoldAlert
+              className={`shadow-card hover:shadow-elevated transition-shadow cursor-pointer ${(kpi as any).isHoldAlert
                   ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)] animate-pulse ring-1 ring-red-500/30 bg-red-500/5"
                   : ""
-              }`}
+                }`}
               onClick={() => router.push("/cases")}
             >
               <CardContent className="p-5">

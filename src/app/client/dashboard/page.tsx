@@ -53,11 +53,11 @@ export default function ClientDashboard() {
     { label: "Delivered", value: counts.delivered, icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10" },
     { label: "Awaiting Action", value: counts.awaitingAction, icon: ClipboardCheck, color: "text-amber-500", bg: "bg-amber-500/10" },
     { label: "Avg. Turnaround", value: counts.avgTurnaround, icon: Timer, color: "text-indigo-500", bg: "bg-indigo-500/10" },
-    { 
-      label: "hold Case", 
-      value: counts.holdCount, 
-      icon: Timer, 
-      color: "text-red-500", 
+    {
+      label: "Hold Cases",
+      value: counts.holdCount,
+      icon: Timer,
+      color: "text-red-500",
       bg: "bg-red-500/10",
       isHoldAlert: counts.holdCount > 0
     },
@@ -83,9 +83,8 @@ export default function ClientDashboard() {
           {dynamicKpis.map((k) => (
             <Card
               key={k.label}
-              className={`shadow-card hover:shadow-glow transition-all border-border/50 cursor-pointer ${
-                k.isHoldAlert ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)] animate-pulse ring-1 ring-red-500/30 bg-red-500/5" : ""
-              }`}
+              className={`shadow-card hover:shadow-glow transition-all border-border/50 cursor-pointer ${k.isHoldAlert ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)] animate-pulse ring-1 ring-red-500/30 bg-red-500/5" : ""
+                }`}
               onClick={() => router.push("/client/cases")}
             >
               <CardContent className="p-3.5">

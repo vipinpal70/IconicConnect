@@ -41,20 +41,20 @@ export default function AdminDashboard() {
   const recentClients = dashboardData?.recentClients || [];
 
   const kpis = [
-    { label: "incoming/in_validation", value: counts.incoming, icon: Inbox, color: "text-blue-500", bg: "bg-blue-500/10" },
-    { label: "in_design", value: counts.inDesign, icon: Layers, color: "text-primary", bg: "bg-primary/10" },
-    { label: "internal_qc", value: counts.internalQc, icon: ShieldCheck, color: "text-amber-500", bg: "bg-amber-500/10" },
-    { label: "await_client_approval", value: counts.awaitClientApproval, icon: ClipboardCheck, color: "text-indigo-500", bg: "bg-indigo-500/10" },
-    { 
-      label: "hold Case", 
-      value: counts.holdCase, 
-      icon: Users, 
-      color: "text-red-500", 
+    { label: "Incoming/In Validation", value: counts.incoming, icon: Inbox, color: "text-blue-500", bg: "bg-blue-500/10" },
+    { label: "In Design", value: counts.inDesign, icon: Layers, color: "text-primary", bg: "bg-primary/10" },
+    { label: "Internal QC", value: counts.internalQc, icon: ShieldCheck, color: "text-amber-500", bg: "bg-amber-500/10" },
+    { label: "Awaiting Client Approval", value: counts.awaitClientApproval, icon: ClipboardCheck, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+    {
+      label: "Hold Cases",
+      value: counts.holdCase,
+      icon: Users,
+      color: "text-red-500",
       bg: "bg-red-500/10",
       isHoldAlert: counts.holdCase > 0
     },
     {
-      label: "avg_turnaround_(30d)",
+      label: "Avg Turnaround",
       value: counts.avgTat || "N/A",
       icon: Timer,
       color: "text-purple-500",
@@ -75,9 +75,8 @@ export default function AdminDashboard() {
           {kpis.map((k) => (
             <Card
               key={k.label}
-              className={`shadow-card hover:shadow-glow transition-all cursor-pointer border-border/50 ${
-                k.isHoldAlert ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)] animate-pulse ring-1 ring-red-500/30 bg-red-500/5" : ""
-              }`}
+              className={`shadow-card hover:shadow-glow transition-all cursor-pointer border-border/50 ${k.isHoldAlert ? "border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)] animate-pulse ring-1 ring-red-500/30 bg-red-500/5" : ""
+                }`}
               onClick={() => router.push("/admin/cases")}
             >
               <CardContent className="p-3.5">
@@ -254,23 +253,21 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-1.5">
                         <Badge
                           variant="outline"
-                          className={`text-[9px] px-1.5 py-0 h-4 font-semibold border-0 ${
-                            c.status === "active"
-                              ? "bg-green-100 text-green-700"
-                              : c.status === "pending"
+                          className={`text-[9px] px-1.5 py-0 h-4 font-semibold border-0 ${c.status === "active"
+                            ? "bg-green-100 text-green-700"
+                            : c.status === "pending"
                               ? "bg-amber-100 text-amber-700"
                               : "bg-muted text-muted-foreground"
-                          }`}
+                            }`}
                         >
                           {c.status === "active" ? "Approved" : c.status === "pending" ? "Pending" : c.status}
                         </Badge>
                         <Badge
                           variant="outline"
-                          className={`text-[9px] px-1.5 py-0 h-4 font-semibold border-0 ${
-                            c.plan === "Trial"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-primary/10 text-primary"
-                          }`}
+                          className={`text-[9px] px-1.5 py-0 h-4 font-semibold border-0 ${c.plan === "Trial"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-primary/10 text-primary"
+                            }`}
                         >
                           {c.plan || "Trial"}
                         </Badge>
