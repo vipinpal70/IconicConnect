@@ -20,7 +20,7 @@ export function createWorkerConnection() {
 }
 
 export const emailQueue = new Queue('email-queue', {
-  connection,
+  connection: connection as any,
   defaultJobOptions: {
     attempts: 3,
     backoff: {

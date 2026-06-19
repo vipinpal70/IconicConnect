@@ -285,3 +285,27 @@ export async function notifyTutorialCreated(input: {
     },
   }))
 }
+
+export async function notifyClientRegistered(input: {
+  clientId: string
+  clientName: string
+  labName?: string | null
+  email: string
+}) {
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager', 'consultant'])
+
+  return dispatchToUserIds(adminIds, (targetUserId) => ({
+    type: NotificationType.CLIENT_REGISTERED,
+    actorUserId: input.clientId,
+    title: 'New Client Registered',
+    message: `${input.clientName}${input.labName ? ` (${input.labName})` : ''} has registered a new account and is pending approval.`,
+    link: '/admin/clients',
+    metadata: {
+      clientId: input.clientId,
+      clientName: input.clientName,
+      labName: input.labName || null,
+      email: input.email,
+      targetUserId,
+    },
+  }))
+}

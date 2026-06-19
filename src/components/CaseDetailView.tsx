@@ -1,6 +1,6 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, FileText, MessageSquare, Paperclip, Download } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
@@ -155,6 +155,7 @@ export function CaseDetailView({
   chatSide: "lab" | "admin"
 }) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const chatRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -187,6 +188,8 @@ export function CaseDetailView({
       if (res.ok) {
         toast.success(`Case status updated successfully!`)
         setIsHoldDialogOpen(false)
+        await queryClient.invalidateQueries({ queryKey: ["case", caseId] })
+        await queryClient.invalidateQueries({ queryKey: ["case-files", caseId] })
         router.refresh()
       } else {
         const err = await res.json()
@@ -236,6 +239,8 @@ export function CaseDetailView({
         toast.success("Change request submitted successfully!")
         setIsChangeDialogOpen(false)
         setChangeNotes("")
+        await queryClient.invalidateQueries({ queryKey: ["case", caseId] })
+        await queryClient.invalidateQueries({ queryKey: ["case-files", caseId] })
         router.refresh()
       } else {
         const err = await res.json()
@@ -276,6 +281,8 @@ export function CaseDetailView({
         toast.success("Case rejected successfully.")
         setIsRejectDialogOpen(false)
         setRejectNotes("")
+        await queryClient.invalidateQueries({ queryKey: ["case", caseId] })
+        await queryClient.invalidateQueries({ queryKey: ["case-files", caseId] })
         router.refresh()
       } else {
         const err = await res.json()

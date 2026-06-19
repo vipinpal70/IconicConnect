@@ -63,7 +63,7 @@ function createWorker(conn = createWorkerConnection()) {
       }
     },
     {
-      connection: conn,
+      connection: conn as any,
       removeOnComplete: {
         age: 3600,   // 1 hour
         count: 1000,

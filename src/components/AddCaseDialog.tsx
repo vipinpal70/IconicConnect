@@ -38,10 +38,10 @@ interface Field {
 
 const ARCH_OPTIONS = ["Upper", "Lower", "Both Arches"] as const
 
-const ARCH_BASED_CATEGORIES = new Set(["Denture", "Appliances"])
+const ARCH_BASED_CATEGORIES = new Set(["Denture", "Appliance"])
 
 const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
-  "Crown & Bridges": {
+  "Crown & Bridge": {
     fields: [
       { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] }
     ]
@@ -52,14 +52,14 @@ const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
       { name: "caseType2", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
     ]
   },
-  "Cosmetics": {
+  "Cosmetic": {
     fields: [
       { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"] }
     ]
   },
-  "Appliances": {
+  "Appliance": {
     fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"] },
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Night Guard", "Sport Guard", "Mouth Guard", "NTI"] },
       { name: "occlusion", label: "Occlusion", type: "select", options: ["Even Occlusion", "Custom"] },
       { name: "arch", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
     ]
@@ -78,7 +78,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   const [targetLabName, setTargetLabName] = useState<string>("Client")
 
   // Form State
-  const [category, setCategory] = useState<string>("Crown & Bridges")
+  const [category, setCategory] = useState<string>("Crown & Bridge")
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({})
   const [modelRequired, setModelRequired] = useState("no")
   const [teeth, setTeeth] = useState<number[]>([])
@@ -110,6 +110,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   } | null>(null)
 
   const [generatedCaseId, setGeneratedCaseId] = useState<string>("")
+  const [isSubmitDisabled, setIsSubmitDisabled] = useState(false)
+  const submitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const singleFileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
 
@@ -122,7 +124,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     if (open) {
       setSelectedClientId("")
       setTargetLabName("Client")
-      setCategory("Crown & Bridges")
+      setCategory("Crown & Bridge")
       setSubTypeData({})
       setModelRequired("no")
       setTeeth([])
@@ -134,9 +136,22 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       setUploadedFile(null)
       setPreferredTeethLibrary("default")
       setUploadedLibraryFile(null)
-      setGeneratedCaseId(generateCaseId("Crown & Bridges"))
+      setGeneratedCaseId(generateCaseId("Crown & Bridge"))
+      setIsSubmitDisabled(false)
+    } else {
+      if (submitTimeoutRef.current) {
+        clearTimeout(submitTimeoutRef.current)
+      }
     }
   }, [open])
+
+  useEffect(() => {
+    return () => {
+      if (submitTimeoutRef.current) {
+        clearTimeout(submitTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
     const maxLimit = 2 * 1024 * 1024 * 1024 // 2GB
@@ -298,6 +313,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       return
     }
 
+    setIsSubmitDisabled(true)
+    submitTimeoutRef.current = setTimeout(() => {
+      setIsSubmitDisabled(false)
+    }, 3000)
+
     const formData = new FormData()
     const isArchBasedSubmit = ARCH_BASED_CATEGORIES.has(category)
     const caseData = {
@@ -310,10 +330,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
         ...(isArchBasedSubmit
           ? {}
           : {
-              teeth,
-              toothSystem,
-              ...(category === "Implant" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {})
-            }
+            teeth,
+            toothSystem,
+            ...(category === "Implant" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {})
+          }
         ),
       },
       caseNumber: generatedCaseId,
@@ -824,8 +844,9 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           <Button
             className="w-full bg-emerald-800 text-white hover:bg-emerald-900 font-semibold h-9 rounded-md text-xs mt-2"
             onClick={handleSubmit}
+            disabled={isSubmitDisabled}
           >
-            Submit Case
+            {isSubmitDisabled ? "Submitting..." : "Submit Case"}
           </Button>
         </div>
       </DialogContent>

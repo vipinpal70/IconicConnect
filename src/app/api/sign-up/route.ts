@@ -35,6 +35,19 @@ export async function POST(req: NextRequest) {
       console.error('[sign-up handleProfileCreated]', err)
     )
 
+    // Notify admins about new client registration
+    try {
+      const { notifyClientRegistered } = await import('@/src/lib/notifications/notification-dispatcher')
+      await notifyClientRegistered({
+        clientId: body.id,
+        clientName: body.fullName || body.email,
+        labName: body.labName || null,
+        email: body.email,
+      })
+    } catch (err) {
+      console.error('Failed to notify admin on new client onboarding:', err)
+    }
+
     // Queue welcome email
     try {
       const { queueEmail } = await import('@/src/lib/queue/jobs');

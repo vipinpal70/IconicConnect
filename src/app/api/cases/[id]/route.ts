@@ -440,6 +440,18 @@ export async function PUT(
         }
       }
 
+      // 1.5 Case Assigned for QC: qcId changed
+      if (updateData.qcId !== undefined && updateData.qcId !== caseRecord.qcId) {
+        if (updateData.qcId) {
+          triggerNotification(
+            NotificationType.CASE_ASSIGNED,
+            updateData.qcId,
+            'Case Assigned for QC',
+            `You have been assigned as QC for case ${uCase.caseNumber}.`
+          );
+        }
+      }
+
       // 2. Status Transitions
       if (updateData.status && updateData.status !== caseRecord.status) {
         const status = updateData.status;
@@ -473,6 +485,23 @@ export async function PUT(
                 `Client has provided feedback on case ${uCase.caseNumber}.`
               );
             }
+          } else if (status === 'change_requested') {
+            if (caseRecord.designerId) {
+              triggerNotification(
+                NotificationType.CASE_FEEDBACK,
+                caseRecord.designerId,
+                'Case Change Requested',
+                `Client has requested changes on case ${uCase.caseNumber}.`
+              );
+            }
+            if (caseRecord.qcId) {
+              triggerNotification(
+                NotificationType.CASE_FEEDBACK,
+                caseRecord.qcId,
+                'Case Change Requested',
+                `Client has requested changes on case ${uCase.caseNumber}.`
+              );
+            }
           } else if (status === 'on_hold') {
             if (caseRecord.designerId) {
               triggerNotification(
@@ -500,6 +529,16 @@ export async function PUT(
             caseNumber: uCase.caseNumber ?? '',
             status: status as string,
           }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case status notification:', err));
+
+          // Also notify QC if the status is transitioned to internal_qc
+          if (status === 'internal_qc' && uCase.qcId) {
+            triggerNotification(
+              NotificationType.CASE_STATUS_CHANGED,
+              uCase.qcId,
+              'Case Ready for QC Review',
+              `Case ${uCase.caseNumber} has been submitted for QC review.`
+            );
+          }
         }
       }
     }

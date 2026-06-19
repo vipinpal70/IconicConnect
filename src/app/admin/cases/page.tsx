@@ -52,6 +52,7 @@ type CaseRecord = {
   outputFile?: string | null
   previewFile?: string | null
   outputNote?: string | null
+  scanFileName?: string | null
 }
 
 type ChatIndicatorUser = {
@@ -484,7 +485,7 @@ export default function AdminCasesPage() {
                   const designer = membersMap.get(c.designerId || "")?.fullName || "—"
                   const teeth = extractCaseTeethInfo(c.category, c.subTypeData as Record<string, unknown>)
                   return [
-                    (c as any).scanFileName || "—",
+                    c.scanFileName || "—",
                     c.caseNumber || "—",
                     clientName,
                     c.category || "—",
@@ -678,7 +679,7 @@ export default function AdminCasesPage() {
                                     </>
                                   )}
 
-                                  {(caseItem.status === "scan_verified" || caseItem.status === "scan_not_verified") && (
+                                  {caseItem.status === "scan_not_verified" && (
                                     <AllocateMenu
                                       designers={designers}
                                       qcs={qcs}

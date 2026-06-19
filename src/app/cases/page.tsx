@@ -557,7 +557,7 @@ export default function CasesPage() {
     if (!fileCheck.isValid) { toast.error(fileCheck.error || "Invalid file"); return; }
 
     if (designUploadExpectedFileName &&
-        designUploadFile.name.toLowerCase() !== designUploadExpectedFileName.toLowerCase()) {
+      designUploadFile.name.toLowerCase() !== designUploadExpectedFileName.toLowerCase()) {
       toast.error(`Output file name must match the original case file: "${designUploadExpectedFileName}"`);
       return;
     }
@@ -885,9 +885,9 @@ export default function CasesPage() {
                 const rows = filtered.map((c) => {
                   const restoration = c.subTypeData
                     ? Object.entries(c.subTypeData)
-                        .filter(([k, v]) => k !== "teeth" && k !== "crownBridgeTeeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v && v.toLowerCase() !== "none")
-                        .map(([, v]) => v as string)
-                        .join(" - ") || "—"
+                      .filter(([k, v]) => k !== "teeth" && k !== "crownBridgeTeeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v && v.toLowerCase() !== "none")
+                      .map(([, v]) => v as string)
+                      .join(" - ") || "—"
                     : "—"
                   const teeth = extractCaseTeethInfo(c.category, c.subTypeData as Record<string, unknown>)
                   return [
@@ -1312,7 +1312,8 @@ export default function CasesPage() {
                               <div className="flex flex-col">
                                 <span>Imp: {toothNumbers.length ? `#${toothNumbers.join(", #")}` : "—"}</span>
                                 {(() => {
-                                  const cbToothNumbers = Array.isArray((c.subTypeData as any)?.crownBridgeTeeth) ? ((c.subTypeData as any).crownBridgeTeeth as number[]) : [];
+                                  const subType = c.subTypeData as Record<string, unknown> | null | undefined;
+                                  const cbToothNumbers = Array.isArray(subType?.crownBridgeTeeth) ? (subType.crownBridgeTeeth as number[]) : [];
                                   return cbToothNumbers.length > 0 && (
                                     <span>C&B: #{cbToothNumbers.join(", #")}</span>
                                   );
@@ -1348,7 +1349,7 @@ export default function CasesPage() {
                                       <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to case")} />
                                     </>
                                   )}
-                                  {(c.status === "scan_verified" || c.status === "scan_not_verified") && (
+                                  {c.status === "scan_not_verified" && (
                                     <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to case")} />
                                   )}
                                   {(c.status === "scan_verified" || c.status === "allocated_to_designer" || c.status === "in_progress") && (
@@ -1786,7 +1787,7 @@ export default function CasesPage() {
         <DialogContent className="sm:max-w-[520px] bg-white border-gray-200 text-black shadow-xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-medium text-black flex items-center gap-2">
-               Upload Design
+              Upload Design
             </DialogTitle>
             <p className="text-xs text-gray-700">
               Add the design notes and upload the case design file{designUploadCaseNumber ? ` for case ${designUploadCaseNumber}.` : "."}

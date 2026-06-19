@@ -18,6 +18,7 @@ export enum NotificationType {
   SUPPORT_CALLBACK_REQUESTED = 'support_callback_requested',
   OFFER_CREATED = 'offer_created',
   TUTORIAL_CREATED = 'tutorial_created',
+  CLIENT_REGISTERED = 'client_registered',
 }
 
 export interface NotificationEventPayload {

@@ -1,7 +1,8 @@
+
+
 /**
  * To create a admin user headers
- * 
- */
+ * */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -13,8 +14,6 @@ const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-
 
 import { createClient as createServerClient } from '@/src/lib/supabase/server'
 
@@ -79,8 +78,21 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true, userId: data.user.id }, { status: 201 })
 
-    } catch (err) {
+    } catch (err: any) {
         console.error('[admin/register POST]', err)
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+
+        // Check if the error is a PostgreSQL duplicate key violation (code 23505)
+        if (err?.code === '23505') {
+            return NextResponse.json(
+                { error: 'A user with this email already exists.' },
+                { status: 409 }
+            )
+        }
+
+        // Return a clean 500 for any other catastrophic failure
+        return NextResponse.json(
+            { error: 'Internal server error' },
+            { status: 500 }
+        )
     }
 }
