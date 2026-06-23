@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
 
     // 2. Generate a recovery link using the Service Role Key
     // This allows us to bypass Supabase's built-in email templates and use our own robust queue
+    if (typeof globalThis.WebSocket === 'undefined') {
+      globalThis.WebSocket = class {} as any;
+    }
     const { createClient: createAdminClient } = await import('@supabase/supabase-js');
     const supabaseAdmin = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

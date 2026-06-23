@@ -1,4 +1,7 @@
 import 'dotenv/config';
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = class {} as any;
+}
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { db } from '../../db';
 import { caseFiles, cases } from '../../db/schema/case';

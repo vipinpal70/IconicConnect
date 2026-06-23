@@ -1,4 +1,7 @@
 import 'dotenv/config'
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = class {};
+}
 import { createClient } from '@supabase/supabase-js'
 import postgres from 'postgres'
 import fs from 'node:fs'

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Upload, FileArchive, RefreshCw, X, Plus } from "lucide-react"
+import { Upload, FileArchive, RefreshCw, X, Plus, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
 import { Label } from "@/src/components/ui/label"
@@ -110,8 +110,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   } | null>(null)
 
   const [generatedCaseId, setGeneratedCaseId] = useState<string>("")
-  const [isSubmitDisabled, setIsSubmitDisabled] = useState(false)
-  const submitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const singleFileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
 
@@ -137,21 +136,9 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       setPreferredTeethLibrary("default")
       setUploadedLibraryFile(null)
       setGeneratedCaseId(generateCaseId("Crown & Bridge"))
-      setIsSubmitDisabled(false)
-    } else {
-      if (submitTimeoutRef.current) {
-        clearTimeout(submitTimeoutRef.current)
-      }
+      setIsSubmitting(false)
     }
   }, [open])
-
-  useEffect(() => {
-    return () => {
-      if (submitTimeoutRef.current) {
-        clearTimeout(submitTimeoutRef.current)
-      }
-    }
-  }, [])
 
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
     const maxLimit = 2 * 1024 * 1024 * 1024 // 2GB
@@ -296,6 +283,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       return
     }
 
+    if (isUploading || isLibraryUploading) {
+      toast.error("Please wait for all file uploads to complete.")
+      return
+    }
+
     // Validation
     const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
     const allFieldsFilled = fields.every((f) => f.optional || subTypeData[f.name])
@@ -313,10 +305,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       return
     }
 
-    setIsSubmitDisabled(true)
-    submitTimeoutRef.current = setTimeout(() => {
-      setIsSubmitDisabled(false)
-    }, 3000)
+    setIsSubmitting(true)
 
     const formData = new FormData()
     const isArchBasedSubmit = ARCH_BASED_CATEGORIES.has(category)
@@ -362,12 +351,25 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       }
     } catch {
       toast.error("An error occurred during submission.")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg">
+    <Dialog open={open} onOpenChange={(val) => {
+      if (isSubmitting || isUploading || isLibraryUploading) return
+      onOpenChange(val)
+    }}>
+      <DialogContent 
+        className="sm:max-w-3xl max-h-[85vh] overflow-y-auto bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg"
+        onPointerDownOutside={(e) => {
+          if (isSubmitting || isUploading || isLibraryUploading) e.preventDefault()
+        }}
+        onEscapeKeyDown={(e) => {
+          if (isSubmitting || isUploading || isLibraryUploading) e.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-gray-900">
             {role === "admin" ? "Create New Case (Admin)" : "Submit New Case"}
@@ -379,11 +381,15 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           {role === "admin" && (
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-700">Select Client *</Label>
-              <Select value={selectedClientId} onValueChange={(v) => {
-                setSelectedClientId(v)
-                const client = clients.find(c => c.id === v)
-                setTargetLabName(client?.labName || "Client")
-              }}>
+              <Select 
+                disabled={isSubmitting || isUploading || isLibraryUploading}
+                value={selectedClientId} 
+                onValueChange={(v) => {
+                  setSelectedClientId(v)
+                  const client = clients.find(c => c.id === v)
+                  setTargetLabName(client?.labName || "Client")
+                }}
+              >
                 <SelectTrigger className="h-9 bg-white border border-gray-300 text-gray-900 rounded-md focus:ring-emerald-500">
                   <SelectValue placeholder="Choose a client..." />
                 </SelectTrigger>
@@ -445,6 +451,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                     type="button"
                     variant="outline"
                     size="sm"
+                    disabled={isSubmitting || isUploading}
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
@@ -458,6 +465,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                     type="button"
                     variant="ghost"
                     size="icon"
+                    disabled={isSubmitting || isUploading}
                     onClick={async (e) => {
                       e.preventDefault()
                       e.stopPropagation()
@@ -475,10 +483,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 </div>
               </div>
             ) : (
-              <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+              <label className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors block border-border ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-800'}`}>
                 <input
                   type="file"
                   className="hidden"
+                  disabled={isSubmitting}
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) handleFileSelect(file)
@@ -498,7 +507,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
             <>
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Category</Label>
-                <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
+                <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
                   <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-emerald-800 text-white">
                     {Object.keys(CASE_HIERARCHY).map((cat) => (
@@ -513,6 +522,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Sub Type 1</Label>
                 <Select
+                  disabled={isSubmitting}
                   value={subTypeData["caseType1"] || ""}
                   onValueChange={(v) => setSubTypeData({ ...subTypeData, caseType1: v })}
                 >
@@ -542,7 +552,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
 
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Preferred Teeth Library</Label>
-                <Select value={preferredTeethLibrary} onValueChange={setPreferredTeethLibrary}>
+                <Select disabled={isSubmitting} value={preferredTeethLibrary} onValueChange={setPreferredTeethLibrary}>
                   <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md">
                     <SelectValue placeholder="Select Preferred Teeth Library" />
                   </SelectTrigger>
@@ -600,6 +610,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                           type="button"
                           variant="outline"
                           size="sm"
+                          disabled={isSubmitting || isLibraryUploading}
                           onClick={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
@@ -613,6 +624,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                           type="button"
                           variant="ghost"
                           size="icon"
+                          disabled={isSubmitting || isLibraryUploading}
                           onClick={async (e) => {
                             e.preventDefault()
                             e.stopPropagation()
@@ -626,10 +638,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       </div>
                     </div>
                   ) : (
-                    <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                    <label className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors block border-border ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-800'}`}>
                       <input
                         type="file"
                         className="hidden"
+                        disabled={isSubmitting}
                         onChange={(e) => {
                           const file = e.target.files?.[0]
                           if (file) handleLibraryFileSelect(file)
@@ -648,6 +661,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Crown & Bridge type (optional)</Label>
                 <Select
+                  disabled={isSubmitting}
                   value={subTypeData["caseType2"] || "None"}
                   onValueChange={(v) => {
                     setSubTypeData({ ...subTypeData, caseType2: v })
@@ -677,7 +691,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-gray-700">Category</Label>
-                  <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
+                  <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
                     <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-emerald-800 text-white">
                       {Object.keys(CASE_HIERARCHY).map((cat) => (
@@ -702,6 +716,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 <div className="space-y-2" key={field.name}>
                   <Label className="text-xs font-semibold text-gray-700">{field.label}</Label>
                   <Select
+                    disabled={isSubmitting}
                     value={subTypeData[field.name] || ""}
                     onValueChange={(v) => setSubTypeData({ ...subTypeData, [field.name]: v })}
                   >
@@ -726,7 +741,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
 
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Preferred Teeth Library</Label>
-                <Select value={preferredTeethLibrary} onValueChange={setPreferredTeethLibrary}>
+                <Select disabled={isSubmitting} value={preferredTeethLibrary} onValueChange={setPreferredTeethLibrary}>
                   <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md">
                     <SelectValue placeholder="Select Preferred Teeth Library" />
                   </SelectTrigger>
@@ -784,6 +799,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                           type="button"
                           variant="outline"
                           size="sm"
+                          disabled={isSubmitting || isLibraryUploading}
                           onClick={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
@@ -797,6 +813,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                           type="button"
                           variant="ghost"
                           size="icon"
+                          disabled={isSubmitting || isLibraryUploading}
                           onClick={async (e) => {
                             e.preventDefault()
                             e.stopPropagation()
@@ -810,10 +827,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       </div>
                     </div>
                   ) : (
-                    <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                    <label className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors block border-border ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-800'}`}>
                       <input
                         type="file"
                         className="hidden"
+                        disabled={isSubmitting}
                         onChange={(e) => {
                           const file = e.target.files?.[0]
                           if (file) handleLibraryFileSelect(file)
@@ -836,17 +854,27 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
             <Textarea
               placeholder="Special instructions, shade reference, occlusion notes…"
               value={notes}
+              disabled={isSubmitting}
               onChange={(e) => setNotes(e.target.value)}
               className="text-xs"
             />
           </div>
 
           <Button
-            className="w-full bg-emerald-800 text-white hover:bg-emerald-900 font-semibold h-9 rounded-md text-xs mt-2"
+            className="w-full bg-emerald-800 text-white hover:bg-emerald-900 font-semibold h-9 rounded-md text-xs mt-2 flex items-center justify-center gap-1.5"
             onClick={handleSubmit}
-            disabled={isSubmitDisabled}
+            disabled={isSubmitting || isUploading || isLibraryUploading}
           >
-            {isSubmitDisabled ? "Submitting..." : "Submit Case"}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Submitting Case...
+              </>
+            ) : isUploading || isLibraryUploading ? (
+              "Uploading Files..."
+            ) : (
+              "Submit Case"
+            )}
           </Button>
         </div>
       </DialogContent>

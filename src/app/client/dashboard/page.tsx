@@ -40,7 +40,7 @@ export default function ClientDashboard() {
     delivered: 0,
     awaitingAction: 0,
     holdCount: 0,
-    avgTurnaround: "4.5d",
+    avgTurnaround: "0.0d",
   };
 
   const volumeTrends = dashboardData?.volumeTrends || [];
