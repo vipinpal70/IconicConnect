@@ -31,12 +31,11 @@ module.exports = {
     {
       name: 'iconic-connect-cleanup',
       script: 'npx',
-      args: 'tsx src/lib/queue/cleanup-task.ts',
+      args: 'tsx src/lib/queue/cleanup-scheduler.ts',
       instances: 1,
       exec_mode: 'fork',
-      autorestart: false,
+      autorestart: true,
       watch: false,
-      cron_restart: '0 * * * *',
       max_memory_restart: '200M',
       env: {
         NODE_ENV: 'production',
@@ -45,12 +44,11 @@ module.exports = {
     {
       name: 'iconic-connect-auto-approve',
       script: 'npx',
-      args: 'tsx src/lib/queue/auto-approve-task.ts',
+      args: 'tsx src/lib/queue/auto-approve-scheduler.ts',
       instances: 1,
       exec_mode: 'fork',
-      autorestart: false,
+      autorestart: true,
       watch: false,
-      cron_restart: '30 * * * *',
       max_memory_restart: '200M',
       env: {
         NODE_ENV: 'production',

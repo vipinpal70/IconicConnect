@@ -361,7 +361,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       if (isSubmitting || isUploading || isLibraryUploading) return
       onOpenChange(val)
     }}>
-      <DialogContent 
+      <DialogContent
         className="sm:max-w-3xl max-h-[85vh] overflow-y-auto bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg"
         onPointerDownOutside={(e) => {
           if (isSubmitting || isUploading || isLibraryUploading) e.preventDefault()
@@ -381,9 +381,9 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           {role === "admin" && (
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-700">Select Client *</Label>
-              <Select 
+              <Select
                 disabled={isSubmitting || isUploading || isLibraryUploading}
-                value={selectedClientId} 
+                value={selectedClientId}
                 onValueChange={(v) => {
                   setSelectedClientId(v)
                   const client = clients.find(c => c.id === v)
