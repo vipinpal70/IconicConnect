@@ -13,12 +13,12 @@ const PALETTE = [
   "hsl(200,90%,45%)", "hsl(280,55%,55%)", "hsl(350,70%,55%)",
 ];
 const DELIVERY_COLORS: Record<string, string> = {
-  "Completed":       "hsl(152,64%,36%)",
-  "In Progress":     "hsl(158,64%,28%)",
+  "Completed": "hsl(152,64%,36%)",
+  "In Progress": "hsl(158,64%,28%)",
   "Awaiting Client": "hsl(38,92%,50%)",
-  "Feedback":        "hsl(0,72%,51%)",
-  "On Hold":         "hsl(200,90%,45%)",
-  "Cancelled":       "hsl(158,12%,42%)",
+  "Feedback": "hsl(0,72%,51%)",
+  "On Hold": "hsl(200,90%,45%)",
+  "Cancelled": "hsl(158,12%,42%)",
 };
 
 const BASE = "/api/admin/analytics";
@@ -67,8 +67,8 @@ export default function AnalyticsPage() {
     queryFn: () => fetch(`${BASE}/recent-invoices`).then((r) => r.json()),
   });
 
-  const typeMixWithColors = (typeMix ?? []).map((t, i) => ({ ...t, color: PALETTE[i % PALETTE.length] }));
-  const deliveryWithColors = (deliveryStatus ?? []).map((d) => ({
+  const typeMixWithColors = (Array.isArray(typeMix) ? typeMix : []).map((t, i) => ({ ...t, color: PALETTE[i % PALETTE.length] }));
+  const deliveryWithColors = (Array.isArray(deliveryStatus) ? deliveryStatus : []).map((d) => ({
     ...d,
     color: DELIVERY_COLORS[d.name] ?? PALETTE[0],
   }));
@@ -77,7 +77,7 @@ export default function AnalyticsPage() {
     { label: "Total Cases", value: kpisLoading ? null : kpis?.totalCases, sub: "lifetime" },
     { label: "Avg TAT", value: kpisLoading ? null : kpis?.avgTat, sub: "last 30 days", positive: true },
     { label: "Cases On Hold", value: kpisLoading ? null : kpis?.casesOnHold, sub: "needs action" },
-    { label: `${monthName} Billing`, value: kpisLoading ? null : kpis ? `$${kpis.currentMonthBilling.toLocaleString()}` : null, sub: "current month" },
+    { label: `${monthName} Billing`, value: kpisLoading ? null : kpis && typeof kpis.currentMonthBilling === 'number' ? `$${kpis.currentMonthBilling.toLocaleString()}` : 'N/A', sub: "current month" },
   ];
 
   return (
@@ -117,7 +117,7 @@ export default function AnalyticsPage() {
               ) : (
                 <div className="h-[160px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={tatTrend ?? []}>
+                    <LineChart data={Array.isArray(tatTrend) ? tatTrend : []}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(150,18%,95%)" />
                       <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" />
                       <YAxis tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" unit=" d" />
@@ -175,7 +175,7 @@ export default function AnalyticsPage() {
               ) : (
                 <div className="h-[160px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyBilling ?? []}>
+                    <BarChart data={Array.isArray(monthlyBilling) ? monthlyBilling : []}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(150,18%,95%)" />
                       <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" />
                       <YAxis tick={{ fontSize: 10 }} stroke="hsl(158,12%,42%)" tickFormatter={(v: any) => `$${v}`} />
@@ -224,11 +224,11 @@ export default function AnalyticsPage() {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
               </div>
-            ) : (onHoldReasons ?? []).length === 0 ? (
+            ) : (Array.isArray(onHoldReasons) ? onHoldReasons : []).length === 0 ? (
               <p className="text-xs text-muted-foreground py-2">No cases on hold in the last 90 days.</p>
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-                {(onHoldReasons ?? []).map((r) => (
+                {(Array.isArray(onHoldReasons) ? onHoldReasons : []).map((r) => (
                   <div key={r.reason} className="rounded bg-muted/20 px-3 py-2 border border-border/50">
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{r.reason}</p>
                     <p className="text-lg font-semibold text-foreground mt-0.5">{r.count}</p>
@@ -260,7 +260,7 @@ export default function AnalyticsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {(recentInvoices ?? []).map((inv) => (
+                    {(Array.isArray(recentInvoices) ? recentInvoices : []).map((inv) => (
                       <tr key={inv.id} className="hover:bg-muted/10 transition-colors">
                         <td className="px-3.5 py-1.5 text-[11px] font-semibold text-primary">{inv.invoiceNumber}</td>
                         <td className="px-3.5 py-1.5 text-[11px] text-foreground">{inv.period}</td>
