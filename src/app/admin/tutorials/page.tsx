@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/componen
 import { Input } from "@/src/components/ui/input"
 import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/src/components/ui/select"
 import {
   AlertCircle,
   Clock3,
@@ -279,22 +280,25 @@ export default function AdminTutorialsPage() {
               <form className="space-y-3" onSubmit={handleSubmit}>
                 <div className="space-y-1">
                   <Label htmlFor="tutorial-category" className="text-xs">Category</Label>
-                  <select
-                    id="tutorial-category"
-                    className="flex h-8 w-full rounded border border-input bg-background px-3 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  <Select
                     value={form.category}
-                    onChange={(event) => {
-                      setForm((current) => ({ ...current, category: event.target.value as TutorialCategory | "" }))
+                    onValueChange={(val) => {
+                      setForm((current) => ({ ...current, category: val as TutorialCategory }))
                       if (errors.category) setErrors((current) => ({ ...current, category: undefined }))
                     }}
+                    disabled={createMutation.isPending}
                   >
-                    <option value="">Select a category</option>
-                    {TUTORIAL_CATEGORIES.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="tutorial-category" className="h-8 w-full bg-white border border-input text-gray-900 rounded px-3 text-xs focus:ring-1 focus:ring-ring focus:ring-offset-0">
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-200 text-gray-900 max-h-60 overflow-y-auto">
+                      {TUTORIAL_CATEGORIES.map((category) => (
+                        <SelectItem key={category} value={category} className="cursor-pointer hover:bg-gray-100 text-xs">
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {errors.category && <p className="text-[10px] text-red-500">{errors.category}</p>}
                 </div>
 

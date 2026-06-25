@@ -362,7 +362,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       onOpenChange(val)
     }}>
       <DialogContent
-        className="sm:max-w-3xl max-h-[85vh] overflow-y-auto bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg"
+        className="w-[95vw] sm:w-full sm:max-w-3xl max-h-[85vh] overflow-y-auto bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg"
         onPointerDownOutside={(e) => {
           if (isSubmitting || isUploading || isLibraryUploading) e.preventDefault()
         }}
@@ -427,13 +427,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 </div>
               </div>
             ) : uploadedFileUrl ? (
-              <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
                     <FileArchive className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+                    <p className="text-sm font-semibold text-foreground truncate max-w-[200px] sm:max-w-[280px] lg:max-w-[400px]">
                       {singleFile?.name}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -446,7 +446,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-2 shrink-0 justify-end w-full sm:w-auto">
                   <Button
                     type="button"
                     variant="outline"
@@ -586,13 +586,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       </div>
                     </div>
                   ) : uploadedLibraryFile ? (
-                    <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
                           <FileArchive className="h-5 w-5" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+                          <p className="text-sm font-semibold text-foreground truncate max-w-[200px] sm:max-w-[280px] lg:max-w-[400px]">
                             {uploadedLibraryFile.fileName}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
@@ -605,7 +605,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2 shrink-0">
+                      <div className="flex gap-2 shrink-0 justify-end w-full sm:w-auto">
                         <Button
                           type="button"
                           variant="outline"
@@ -688,7 +688,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
             </>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-gray-700">Category</Label>
                   <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
@@ -775,13 +775,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       </div>
                     </div>
                   ) : uploadedLibraryFile ? (
-                    <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
                           <FileArchive className="h-5 w-5" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+                          <p className="text-sm font-semibold text-foreground truncate max-w-[200px] sm:max-w-[280px] lg:max-w-[400px]">
                             {uploadedLibraryFile.fileName}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
@@ -794,7 +794,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2 shrink-0">
+                      <div className="flex gap-2 shrink-0 justify-end w-full sm:w-auto">
                         <Button
                           type="button"
                           variant="outline"

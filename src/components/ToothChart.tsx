@@ -167,12 +167,12 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
         type="button"
         onClick={(e) => toggleTooth(n, e.ctrlKey)}
         className={cn(
-          "flex flex-col items-center justify-end gap-1 group transition-transform hover:-translate-y-0.5"
+          "flex flex-col items-center justify-end gap-1 group transition-transform hover:-translate-y-0.5 shrink-0"
         )}
       >
         <div
           className={cn(
-            "w-7 h-9 rounded-md border-2 transition-all",
+            "w-6 h-8 sm:w-7 sm:h-9 rounded-md border-2 transition-all",
             active
               ? "bg-primary border-primary shadow-glow"
               : "bg-card border-border group-hover:border-primary/50"
@@ -191,63 +191,149 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
   };
 
   return (
-    <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground px-1 mb-2">
-        <span className="w-24">Upper Right</span>
+    <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3 w-full max-w-full overflow-hidden">
+      {/* Desktop view (2 rows of 16 teeth) */}
+      <div className="hidden sm:block space-y-3">
+        <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground px-1 mb-2">
+          <span className="w-24">Upper Right</span>
 
-        {/* System Toggle Controls */}
-        <div className="flex bg-muted p-0.5 rounded-md border border-border">
-          <button
-            type="button"
-            onClick={() => toggleSystem("USA")}
-            className={cn(
-              "px-3 py-1 rounded-sm transition-all font-semibold",
-              system === "USA"
-                ? "bg-background text-foreground shadow-sm"
-                : "hover:text-foreground text-muted-foreground"
-            )}
-          >
-            Universal
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleSystem("FDI")}
-            className={cn(
-              "px-3 py-1 rounded-sm transition-all font-semibold",
-              system === "FDI"
-                ? "bg-background text-foreground shadow-sm"
-                : "hover:text-foreground text-muted-foreground"
-            )}
-          >
-            FDI
-          </button>
+          {/* System Toggle Controls */}
+          <div className="flex bg-muted p-0.5 rounded-md border border-border">
+            <button
+              type="button"
+              onClick={() => toggleSystem("USA")}
+              className={cn(
+                "px-3 py-1 rounded-sm transition-all font-semibold",
+                system === "USA"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:text-foreground text-muted-foreground"
+              )}
+            >
+              Universal
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleSystem("FDI")}
+              className={cn(
+                "px-3 py-1 rounded-sm transition-all font-semibold",
+                system === "FDI"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:text-foreground text-muted-foreground"
+              )}
+            >
+              FDI
+            </button>
+          </div>
+
+          <span className="w-24 text-right">Upper Left</span>
         </div>
 
-        <span className="w-24 text-right">Upper Left</span>
+        <div className="flex justify-center gap-1">
+          {upper.map((n) => (
+            <Tooth key={n} n={n} />
+          ))}
+        </div>
+
+        <div className="border-t border-dashed border-border" />
+
+        <div className="flex justify-center gap-1">
+          {lower.map((n) => (
+            <Tooth key={n} n={n} />
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground px-1 mt-2">
+          <span className="w-24">Lower Right</span>
+          <span>
+            {selected.length
+              ? `Selected: ${selected.join(", ")}`
+              : "Click to select · Ctrl+click to select range"}
+          </span>
+          <span className="w-24 text-right">Lower Left</span>
+        </div>
       </div>
 
-      <div className="flex justify-center gap-1">
-        {upper.map((n) => (
-          <Tooth key={n} n={n} />
-        ))}
-      </div>
+      {/* Mobile view (4 rows of 8 teeth) */}
+      <div className="block sm:hidden space-y-4">
+        {/* System Toggle Controls */}
+        <div className="flex justify-center mb-1">
+          <div className="flex bg-muted p-0.5 rounded-md border border-border">
+            <button
+              type="button"
+              onClick={() => toggleSystem("USA")}
+              className={cn(
+                "px-3 py-1 rounded-sm transition-all font-semibold text-xs",
+                system === "USA"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:text-foreground text-muted-foreground"
+              )}
+            >
+              Universal
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleSystem("FDI")}
+              className={cn(
+                "px-3 py-1 rounded-sm transition-all font-semibold text-xs",
+                system === "FDI"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:text-foreground text-muted-foreground"
+              )}
+            >
+              FDI
+            </button>
+          </div>
+        </div>
 
-      <div className="border-t border-dashed border-border" />
+        {/* Upper teeth */}
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Upper Right</div>
+            <div className="flex justify-between gap-0.5">
+              {upper.slice(0, 8).map((n) => (
+                <Tooth key={n} n={n} />
+              ))}
+            </div>
+          </div>
 
-      <div className="flex justify-center gap-1">
-        {lower.map((n) => (
-          <Tooth key={n} n={n} />
-        ))}
-      </div>
+          <div className="space-y-1">
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-right px-1">Upper Left</div>
+            <div className="flex justify-between gap-0.5">
+              {upper.slice(8, 16).map((n) => (
+                <Tooth key={n} n={n} />
+              ))}
+            </div>
+          </div>
+        </div>
 
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground px-1 mt-2">
-        <span className="w-24">Lower Right</span>
-        <span>
+        <div className="border-t border-dashed border-border" />
+
+        {/* Lower teeth */}
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Lower Right</div>
+            <div className="flex justify-between gap-0.5">
+              {lower.slice(0, 8).map((n) => (
+                <Tooth key={n} n={n} />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-right px-1">Lower Left</div>
+            <div className="flex justify-between gap-0.5">
+              {lower.slice(8, 16).map((n) => (
+                <Tooth key={n} n={n} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center text-[10px] text-muted-foreground pt-1 border-t border-muted">
           {selected.length
             ? `Selected: ${selected.join(", ")}`
-            : "Click to select · Ctrl+click to select range"}
-        </span>
-        <span className="w-24 text-right">Lower Left</span>
+            : "Click teeth to select"}
+        </div>
       </div>
     </div>
   );

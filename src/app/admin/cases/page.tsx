@@ -503,14 +503,16 @@ export default function AdminCasesPage() {
                 downloadCSV(headers, rows, `cases-${date}.csv`)
               }}
             >
-              <Download className="h-3.5 w-3.5" /> Export
+              <Download className="h-3.5 w-3.5" /> 
+              <span className="hidden md:block">Export</span>
             </Button>
             <Button
               size="sm"
               className="h-8 text-xs bg-emerald-800 text-white hover:bg-emerald-900 flex items-center gap-1.5"
               onClick={() => setIsAddOpen(true)}
             >
-              <Plus className="h-3.5 w-3.5" /> Add New Case
+              <Plus className="h-3.5 w-3.5" /> 
+              <span className="hidden md:block">Add New Case</span>
             </Button>
           </div>
         </div>
