@@ -9,6 +9,7 @@ import { logActivity } from '@/src/lib/activity-log';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
+import { invalidateCasesCache } from '@/src/lib/redis-cache';
 
 type CaseUpdateData = {
   caseNumber?: string
@@ -582,6 +583,10 @@ export async function PUT(
       },
     });
 
+    if (updatedCase.length > 0) {
+      await invalidateCasesCache(updatedCase[0].clientId);
+    }
+
     return NextResponse.json({ data: updatedCase[0] });
   } catch (error: unknown) {
     console.error('Update case error:', error);
@@ -643,6 +648,8 @@ export async function DELETE(
     });
 
     await db.delete(cases).where(eq(cases.id, id));
+
+    await invalidateCasesCache(caseRecord.clientId);
 
     return NextResponse.json({ message: 'Case deleted successfully' });
   } catch (error: unknown) {

@@ -5,6 +5,7 @@ import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
 import { eq, and, count, sql } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
+import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
 
 const STATUS_BUCKETS = [
   { name: "Completed",      statuses: ["approved", "delivered"] },
@@ -27,6 +28,12 @@ export async function GET(req: NextRequest) {
 
     const clientId = resolveClientId(profile);
 
+    const cacheKey = `analytics:client:${clientId}:delivery-status`;
+    const cachedData = await getCachedData<any>(cacheKey);
+    if (cachedData) {
+      return NextResponse.json(cachedData);
+    }
+
     const rows = await db
       .select({ status: cases.status, cnt: count() })
       .from(cases)
@@ -39,6 +46,8 @@ export async function GET(req: NextRequest) {
       name,
       value: statuses.reduce((sum, s) => sum + (countMap.get(s as any) ?? 0), 0),
     })).filter((d) => d.value > 0);
+
+    await setCachedData(cacheKey, result, 300);
 
     return NextResponse.json(result);
   } catch (err) {

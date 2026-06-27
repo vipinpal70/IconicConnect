@@ -5,6 +5,7 @@ import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
+import { invalidateCasesCache } from '@/src/lib/redis-cache';
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error';
@@ -90,6 +91,8 @@ export async function POST(
         fileSize: file.size,
       },
     });
+
+    await invalidateCasesCache(caseRecord.clientId);
 
     return NextResponse.json({ data: insertedFile[0] }, { status: 201 });
   } catch (error: unknown) {

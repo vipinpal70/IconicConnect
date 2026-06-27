@@ -5,6 +5,7 @@ import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
 import { eq, and, gte, count, sql, desc } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
+import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,6 +18,12 @@ export async function GET(req: NextRequest) {
     if (!isLabUser(profile)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const clientId = resolveClientId(profile);
+
+    const cacheKey = `analytics:client:${clientId}:on-hold-reasons`;
+    const cachedData = await getCachedData<any>(cacheKey);
+    if (cachedData) {
+      return NextResponse.json(cachedData);
+    }
 
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
@@ -37,7 +44,11 @@ export async function GET(req: NextRequest) {
       .groupBy(sql`COALESCE(${cases.holdReason}, 'Unspecified')`)
       .orderBy(desc(count()));
 
-    return NextResponse.json(rows.map((r) => ({ reason: r.reason, count: Number(r.count) })));
+    const result = rows.map((r) => ({ reason: r.reason, count: Number(r.count) }));
+
+    await setCachedData(cacheKey, result, 300);
+
+    return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal Server Error";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -6,6 +6,7 @@ import { activityLogs } from "@/src/db/schema/activity-log";
 import { createClient } from "@/src/lib/supabase/server";
 import { eq, inArray, desc, and, isNotNull, gte, sql } from "drizzle-orm";
 import { formatActivityLabel } from "@/src/lib/activity-log";
+import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -38,6 +39,12 @@ export async function GET(req: NextRequest) {
       clientId = profile.createdBy;
     } else {
       return NextResponse.json({ error: "Unauthorized role for client dashboard" }, { status: 403 });
+    }
+
+    const cacheKey = `dashboard:client:${clientId}`;
+    const cachedData = await getCachedData<any>(cacheKey);
+    if (cachedData) {
+      return NextResponse.json(cachedData);
     }
 
     // Fetch all cases for this client
@@ -241,7 +248,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    const dashboardResponse = {
       counts: {
         active: activeCount,
         delivered: deliveredCount,
@@ -253,7 +260,11 @@ export async function GET(req: NextRequest) {
       breakdownData,
       activeDesignQueue,
       activityTimeline,
-    });
+    };
+
+    await setCachedData(cacheKey, dashboardResponse, 300);
+
+    return NextResponse.json(dashboardResponse);
   } catch (error: unknown) {
     console.error("Client dashboard fetch error:", error);
     const message = error instanceof Error ? error.message : "Internal Server Error";
