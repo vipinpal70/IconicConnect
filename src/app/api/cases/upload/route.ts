@@ -3,9 +3,11 @@ import { db } from '@/src/db';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
-import { createWriteStream, existsSync, mkdirSync } from 'fs';
+import { createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { createClient } from '@/src/lib/supabase/server';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,11 +57,13 @@ export async function POST(req: NextRequest) {
     }
 
     let clientId: string | undefined;
+    let labName = 'UnknownLab';
 
     if (isValidRoleForType('admin_portal', profile.role)) {
       clientId = adminClientId || profile.id; // Fallback to admin if not provided
     } else if (profile.role === 'client') {
       clientId = profile.id;
+      labName = profile.labName || 'UnknownLab';
     } else if (profile.role === 'subuser') {
       const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
       if (!subUserRecord.length) {
@@ -72,9 +76,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to determine Client ID' }, { status: 400 });
     }
 
-    // Fetch client profile to get lab name for folder structure
-    const clientProfile = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1).then(res => res[0]);
-    const labName = clientProfile?.labName || 'UnknownLab';
+    // Optimize DB query: fetch client profile only if we don't already have it
+    if (profile.role !== 'client') {
+      if (clientId === profile.id) {
+        labName = profile.labName || 'UnknownLab';
+      } else {
+        const clientProfileResult = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1);
+        const clientProfile = clientProfileResult[0];
+        labName = clientProfile?.labName || 'UnknownLab';
+      }
+    }
 
     // Directory structure: case_data / ClientName
     const dirPath = join(process.cwd(), 'case_data', labName);
@@ -85,17 +96,27 @@ export async function POST(req: NextRequest) {
     const filePath = join(dirPath, fileName);
     const writer = createWriteStream(filePath);
 
-    const reader = req.body?.getReader();
-    let totalBytesWritten = 0;
-    if (reader) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        writer.write(value);
-        totalBytesWritten += value.length;
-      }
+    if (!req.body) {
+      return NextResponse.json({ error: 'No file data received' }, { status: 400 });
     }
-    writer.end();
+
+    try {
+      // Use pipeline to handle stream backpressure, saving memory and avoiding process/GC stalling
+      await pipeline(Readable.fromWeb(req.body as any), writer);
+    } catch (err) {
+      // Clean up partially written file if upload is aborted/failed
+      try {
+        if (existsSync(filePath)) {
+          unlinkSync(filePath);
+        }
+      } catch (cleanupErr) {
+        console.error('Failed to delete incomplete file:', cleanupErr);
+      }
+      throw err;
+    }
+
+    const stats = statSync(filePath);
+    const totalBytesWritten = stats.size;
 
     // Local secure download URL
     const fileUrl = `/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`;
