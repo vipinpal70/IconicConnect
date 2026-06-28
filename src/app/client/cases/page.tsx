@@ -10,7 +10,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2 } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
@@ -273,6 +273,29 @@ export default function CasesPage() {
   const bulkRowFileRef = useRef<HTMLInputElement>(null);
   const [replacingBulkRowIndex, setReplacingBulkRowIndex] = useState<number | null>(null);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitCooldown, setSubmitCooldown] = useState(false);
+  const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!uploadOpen) {
+      setIsSubmitting(false);
+      setSubmitCooldown(false);
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
+      }
+    }
+  }, [uploadOpen]);
+
   // Bulk upload
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const bulkFileRef = useRef<HTMLInputElement>(null);
@@ -455,6 +478,8 @@ export default function CasesPage() {
   }, [cases, search, statusFilter, typeFilter, from, to]);
 
   const handleSubmit = async () => {
+    if (submitCooldown || isSubmitting) return;
+
     if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile, crownBridgeTeeth)) {
       toast.error("Please complete all fields, select teeth, and upload a file.");
       return;
@@ -464,6 +489,15 @@ export default function CasesPage() {
       toast.error("Please upload your custom teeth library file.");
       return;
     }
+
+    setIsSubmitting(true);
+    setSubmitCooldown(true);
+    if (cooldownTimerRef.current) {
+      clearTimeout(cooldownTimerRef.current);
+    }
+    cooldownTimerRef.current = setTimeout(() => {
+      setSubmitCooldown(false);
+    }, 5000);
 
     const formData = new FormData();
     const caseData = {
@@ -512,6 +546,8 @@ export default function CasesPage() {
     } catch (error) {
       toast.error("An error occurred during submission.");
       console.error('Single submit error:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -575,6 +611,8 @@ export default function CasesPage() {
     setBulkRows((prev) => prev.filter((_, idx) => idx !== i));
 
   const handleBulkSubmit = async () => {
+    if (submitCooldown || isSubmitting) return;
+
     if (bulkRows.length === 0) return;
 
     const hasInvalidRow = bulkRows.some((row) => !hasAllRequiredCaseFields(row.category, row.subTypeData, row.notes, row.teeth, row.uploadedFile))
@@ -582,6 +620,15 @@ export default function CasesPage() {
       toast.error("Complete all fields, teeth selection, and file upload for every case.");
       return;
     }
+
+    setIsSubmitting(true);
+    setSubmitCooldown(true);
+    if (cooldownTimerRef.current) {
+      clearTimeout(cooldownTimerRef.current);
+    }
+    cooldownTimerRef.current = setTimeout(() => {
+      setSubmitCooldown(false);
+    }, 5000);
 
     const formData = new FormData();
 
@@ -618,6 +665,8 @@ export default function CasesPage() {
     } catch (error) {
       toast.error("An error occurred during submission.");
       console.error('Bulk submit error:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -663,11 +712,23 @@ export default function CasesPage() {
             >
               <Download className="h-3.5 w-3.5" /> Export
             </Button>
-            <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+            <Dialog open={uploadOpen} onOpenChange={(val) => {
+              if (isSubmitting || isUploading || isLibraryUploading) return;
+              setUploadOpen(val);
+            }}>
               <DialogTrigger asChild>
                 <Button size="sm" className="h-8 text-xs"><Plus className="h-3.5 w-3.5 mr-1.5" />Add New Case</Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-3xl" style={{ maxHeight: "85vh", overflowY: "auto" }}>
+              <DialogContent
+                className="sm:max-w-3xl"
+                style={{ maxHeight: "85vh", overflowY: "auto" }}
+                onPointerDownOutside={(e) => {
+                  if (isSubmitting || isUploading || isLibraryUploading) e.preventDefault();
+                }}
+                onEscapeKeyDown={(e) => {
+                  if (isSubmitting || isUploading || isLibraryUploading) e.preventDefault();
+                }}
+              >
                 <DialogHeader>
                   <DialogTitle>Submit New Case</DialogTitle>
                 </DialogHeader>
@@ -1112,7 +1173,22 @@ export default function CasesPage() {
                       <Label>Additional Notes</Label>
                       <Textarea placeholder="Special instructions, shade reference, occlusion notes…" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
-                    <Button className="w-full bg-emerald-800 text-white hover:bg-emerald-900" onClick={handleSubmit}>Submit Case</Button>
+                    <Button
+                      className="w-full bg-emerald-800 text-white hover:bg-emerald-900 font-semibold h-9 rounded-md text-xs mt-2 flex items-center justify-center gap-1.5"
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || isUploading || isLibraryUploading || submitCooldown}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Submitting...
+                        </>
+                      ) : isUploading || isLibraryUploading ? (
+                        "Uploading Files..."
+                      ) : (
+                        "Submit Case"
+                      )}
+                    </Button>
                   </TabsContent>
 
                   <TabsContent value="bulk" className="space-y-4 mt-4">
@@ -1315,7 +1391,20 @@ export default function CasesPage() {
                             </Card>
                           ))}
                         </div>
-                        <Button className="w-full" onClick={handleBulkSubmit}>Submit All Cases</Button>
+                        <Button
+                          className="w-full bg-emerald-800 text-white hover:bg-emerald-900 font-semibold h-9 rounded-md text-xs mt-2 flex items-center justify-center gap-1.5"
+                          onClick={handleBulkSubmit}
+                          disabled={isSubmitting || submitCooldown || bulkRows.some(row => row.isUploading)}
+                        >
+                          {isSubmitting ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Submitting...
+                            </>
+                          ) : (
+                            "Submit All Cases"
+                          )}
+                        </Button>
                       </>
                     )}
                   </TabsContent>

@@ -111,12 +111,22 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
 
   const [generatedCaseId, setGeneratedCaseId] = useState<string>("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitCooldown, setSubmitCooldown] = useState(false)
+  const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null)
   const singleFileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setGeneratedCaseId(generateCaseId(category))
   }, [category])
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current)
+      }
+    }
+  }, [])
 
   // Reset form when dialog opens/closes
   useEffect(() => {
@@ -137,6 +147,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       setUploadedLibraryFile(null)
       setGeneratedCaseId(generateCaseId("Crown & Bridge"))
       setIsSubmitting(false)
+      setSubmitCooldown(false)
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current)
+        cooldownTimerRef.current = null
+      }
     }
   }, [open])
 
@@ -278,6 +293,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   }
 
   const handleSubmit = async () => {
+    if (submitCooldown || isSubmitting) return
+
     if (role === "admin" && !selectedClientId) {
       toast.error("Please select a client.")
       return
@@ -306,6 +323,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     }
 
     setIsSubmitting(true)
+    setSubmitCooldown(true)
+    if (cooldownTimerRef.current) {
+      clearTimeout(cooldownTimerRef.current)
+    }
+    cooldownTimerRef.current = setTimeout(() => {
+      setSubmitCooldown(false)
+    }, 5000)
 
     const formData = new FormData()
     const isArchBasedSubmit = ARCH_BASED_CATEGORIES.has(category)
@@ -863,12 +887,12 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           <Button
             className="w-full bg-emerald-800 text-white hover:bg-emerald-900 font-semibold h-9 rounded-md text-xs mt-2 flex items-center justify-center gap-1.5"
             onClick={handleSubmit}
-            disabled={isSubmitting || isUploading || isLibraryUploading}
+            disabled={isSubmitting || isUploading || isLibraryUploading || submitCooldown}
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Submitting Case...
+                Submitting...
               </>
             ) : isUploading || isLibraryUploading ? (
               "Uploading Files..."

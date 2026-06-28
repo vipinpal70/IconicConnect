@@ -3,6 +3,9 @@ import { connection } from './queue/client';
 const DEFAULT_TTL = 300; // 5 minutes default cache time
 
 export async function getCachedData<T>(key: string): Promise<T | null> {
+  if (connection.status !== 'ready') {
+    return null;
+  }
   try {
     const cached = await connection.get(key);
     if (cached) {
@@ -19,6 +22,9 @@ export async function setCachedData<T>(
   data: T,
   ttlSeconds: number = DEFAULT_TTL
 ): Promise<void> {
+  if (connection.status !== 'ready') {
+    return;
+  }
   try {
     await connection.set(key, JSON.stringify(data), 'EX', ttlSeconds);
   } catch (error) {
@@ -27,6 +33,9 @@ export async function setCachedData<T>(
 }
 
 export async function deleteCachedData(key: string): Promise<void> {
+  if (connection.status !== 'ready') {
+    return;
+  }
   try {
     await connection.del(key);
   } catch (error) {
@@ -39,6 +48,9 @@ export async function deleteCachedData(key: string): Promise<void> {
  * Note: Uses SCAN rather than KEYS to avoid blocking the Redis server thread.
  */
 export async function deleteKeysByPattern(pattern: string): Promise<void> {
+  if (connection.status !== 'ready') {
+    return;
+  }
   try {
     let cursor = '0';
     do {
@@ -57,6 +69,10 @@ export async function deleteKeysByPattern(pattern: string): Promise<void> {
  * Invalidates cases and dashboard caches for clients and admins
  */
 export async function invalidateCasesCache(clientId?: string | null): Promise<void> {
+  if (connection.status !== 'ready') {
+    console.warn(`[Redis Cache Invalidation] Redis is not ready. Skipping cache invalidation for Client: ${clientId || 'ALL'}`);
+    return;
+  }
   try {
     const keysToDelete: string[] = ['cases:base:admin', 'dashboard:admin', 'analytics:admin'];
 
