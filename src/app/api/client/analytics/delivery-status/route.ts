@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       value: statuses.reduce((sum, s) => sum + (countMap.get(s as any) ?? 0), 0),
     })).filter((d) => d.value > 0);
 
-    await setCachedData(cacheKey, result, 300);
+    await setCachedData(cacheKey, result, 3600);
 
     return NextResponse.json(result);
   } catch (err) {

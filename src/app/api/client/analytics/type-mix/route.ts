@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     const result = rows.map((r) => ({ name: r.name, value: Number(r.value) }));
 
-    await setCachedData(cacheKey, result, 300);
+    await setCachedData(cacheKey, result, 3600);
 
     return NextResponse.json(result);
   } catch (err) {

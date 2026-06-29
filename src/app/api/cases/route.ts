@@ -319,7 +319,7 @@ export async function GET() {
       }));
 
       if (cacheKey) {
-        await setCachedData(cacheKey, baseCases, 300); // 5 minutes TTL
+        await setCachedData(cacheKey, baseCases, 3600); // 1 hour TTL
       }
     }
 

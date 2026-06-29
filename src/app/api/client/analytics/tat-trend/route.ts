@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
     const result = rows.map((r) => ({ month: r.month, tat: Number(r.tat) }));
 
-    await setCachedData(cacheKey, result, 300);
+    await setCachedData(cacheKey, result, 3600);
 
     return NextResponse.json(result);
   } catch (err) {

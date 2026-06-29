@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       currentMonthBilling: Number(billingResult[0]?.total ?? 0),
     };
 
-    await setCachedData(cacheKey, result, 300);
+    await setCachedData(cacheKey, result, 3600);
 
     return NextResponse.json(result);
   } catch (err) {

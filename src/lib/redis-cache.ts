@@ -1,6 +1,6 @@
 import { connection } from './queue/client';
 
-const DEFAULT_TTL = 300; // 5 minutes default cache time
+const DEFAULT_TTL = 3600; // 1 hour default cache time
 
 export async function getCachedData<T>(key: string): Promise<T | null> {
   if (connection.status !== 'ready') {

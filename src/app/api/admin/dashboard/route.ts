@@ -219,7 +219,7 @@ export async function GET(req: NextRequest) {
       })),
     };
 
-    await setCachedData(cacheKey, dashboardResponse, 300);
+    await setCachedData(cacheKey, dashboardResponse, 3600);
 
     return NextResponse.json(dashboardResponse);
   } catch (error: unknown) {
