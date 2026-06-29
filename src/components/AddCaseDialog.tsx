@@ -117,6 +117,53 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   const singleFileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
 
+  const [isDraggingCaseFile, setIsDraggingCaseFile] = useState(false)
+  const [isDraggingLibraryFile, setIsDraggingLibraryFile] = useState(false)
+
+  const handleCaseFileDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDraggingCaseFile(true)
+    } else if (e.type === "dragleave" || e.type === "drop") {
+      setIsDraggingCaseFile(false)
+    }
+  }
+
+  const handleCaseFileDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingCaseFile(false)
+    if (isSubmitting) return
+
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      handleFileSelect(file)
+    }
+  }
+
+  const handleLibraryFileDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDraggingLibraryFile(true)
+    } else if (e.type === "dragleave" || e.type === "drop") {
+      setIsDraggingLibraryFile(false)
+    }
+  }
+
+  const handleLibraryFileDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingLibraryFile(false)
+    if (isSubmitting) return
+
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      handleLibraryFileSelect(file)
+    }
+  }
+
   useEffect(() => {
     setGeneratedCaseId(generateCaseId(category))
   }, [category])
@@ -484,7 +531,17 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 </div>
               </div>
             ) : (
-              <label className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors block border-border ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-800'}`}>
+              <label
+                onDragEnter={handleCaseFileDrag}
+                onDragOver={handleCaseFileDrag}
+                onDragLeave={handleCaseFileDrag}
+                onDrop={handleCaseFileDrop}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${
+                  isDraggingCaseFile
+                    ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
+                    : 'border-border hover:border-emerald-800'
+                } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
                 <input
                   type="file"
                   className="hidden"
@@ -495,8 +552,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   }}
                 />
                 <div>
-                  <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
-                  <p className="text-sm font-medium text-foreground">Drop file here or click to upload</p>
+                  <Upload className={`h-6 w-6 mx-auto mb-1 transition-transform ${isDraggingCaseFile ? 'text-emerald-600 scale-110' : 'text-muted-foreground'}`} />
+                  <p className={`text-sm font-medium transition-colors ${isDraggingCaseFile ? 'text-emerald-700' : 'text-foreground'}`}>
+                    {isDraggingCaseFile ? 'Drop file here!' : 'Drop file here or click to upload'}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)</p>
                 </div>
               </label>
@@ -639,7 +698,17 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       </div>
                     </div>
                   ) : (
-                    <label className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors block border-border ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-800'}`}>
+                    <label
+                      onDragEnter={handleLibraryFileDrag}
+                      onDragOver={handleLibraryFileDrag}
+                      onDragLeave={handleLibraryFileDrag}
+                      onDrop={handleLibraryFileDrop}
+                      className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${
+                        isDraggingLibraryFile
+                          ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
+                          : 'border-border hover:border-emerald-800'
+                      } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
                       <input
                         type="file"
                         className="hidden"
@@ -650,8 +719,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                         }}
                       />
                       <div>
-                        <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
-                        <p className="text-sm font-medium text-foreground">Click to upload Custom Teeth Library</p>
+                        <Upload className={`h-6 w-6 mx-auto mb-1 transition-transform ${isDraggingLibraryFile ? 'text-emerald-600 scale-110' : 'text-muted-foreground'}`} />
+                        <p className={`text-sm font-medium transition-colors ${isDraggingLibraryFile ? 'text-emerald-700' : 'text-foreground'}`}>
+                          {isDraggingLibraryFile ? 'Drop file here!' : 'Click or drop to upload Custom Teeth Library'}
+                        </p>
                         <p className="text-xs text-muted-foreground mt-0.5">ZIP or DME (Max 2GB)</p>
                       </div>
                     </label>
