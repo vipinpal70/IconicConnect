@@ -258,6 +258,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(Math.max(Number(searchParams.get('limit') || 10), 1), 200);
+    const page = Math.max(Number(searchParams.get('page') || 1), 1);
+    const offset = (page - 1) * limit;
+
     let cacheKey = '';
     if (isValidRoleForType('admin_portal', profile.role)) {
       cacheKey = 'cases:base:admin';
@@ -274,15 +279,17 @@ export async function GET(req: NextRequest) {
       let results;
 
       if (isValidRoleForType('admin_portal', profile.role)) {
-        // Admin sees all cases
-        results = await db.select(caseListSelection).from(cases);
+        results = await db.select(caseListSelection).from(cases)
+          .orderBy(desc(cases.createdAt));
       } else if (profile.role === 'client') {
-        // Client sees their own cases and cases created by their subusers (which also have clientId = client's id)
-        results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, profile.id));
+        results = await db.select(caseListSelection).from(cases)
+          .where(eq(cases.clientId, profile.id))
+          .orderBy(desc(cases.createdAt));
       } else if (profile.role === 'subuser') {
-        // Subuser sees ALL cases belonging to their parent client
         const parentClientId = profile.createdBy ?? profile.id;
-        results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, parentClientId));
+        results = await db.select(caseListSelection).from(cases)
+          .where(eq(cases.clientId, parentClientId))
+          .orderBy(desc(cases.createdAt));
       } else {
         return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
       }
@@ -323,9 +330,17 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const chatMetadata = await getCasesChatMetadata(baseCases.map((r) => r.id), profile.id);
+    // Sort newest-first (covers both cache-hit path and fresh-fetch path)
+    baseCases.sort((a: any, b: any) =>
+      new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+    );
 
-    const mappedResults = baseCases.map(r => ({
+    const paginatedCases = baseCases.slice(offset, offset + limit);
+    const hasMore = baseCases.length > offset + limit;
+
+    const chatMetadata = await getCasesChatMetadata(paginatedCases.map((r: any) => r.id), profile.id);
+
+    const mappedResults = paginatedCases.map((r: any) => ({
       ...r,
       todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,
       hasUnreadChat: chatMetadata.get(r.id)?.hasUnreadChat ?? false,
