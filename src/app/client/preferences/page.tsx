@@ -60,9 +60,9 @@ export default function ClientPreferencesPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const maxLimit = 10 * 1024 * 1024 // 10MB
+    const maxLimit = 15 * 1024 * 1024 // 15MB
     if (file.size > maxLimit) {
-      alert("File size exceeds the 10MB limit.")
+      alert("File size exceeds the 15MB limit.")
       return
     }
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
@@ -77,7 +77,7 @@ export default function ClientPreferencesPage() {
       await uploadFileInChunks(
         file,
         {},
-        () => {},
+        () => { },
         (data) => {
           updatePayload(field, {
             fileUrl: data.fileUrl,
@@ -213,10 +213,10 @@ export default function ClientPreferencesPage() {
             <h1 className="text-xl font-semibold text-foreground">{headerName}</h1>
             <p className="text-xs text-muted-foreground mt-0.5">Create, edit, and manage multiple preference forms linked to your account.</p>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-1.5 h-8 text-xs w-fit" 
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-8 text-xs w-fit"
             onClick={() => {
               setDraft(emptyForm())
               setEditingId(null)

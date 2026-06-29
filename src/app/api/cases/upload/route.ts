@@ -41,9 +41,9 @@ export async function POST(req: NextRequest) {
 
     // 1. File size verification (Max 2GB)
     const contentLength = Number(req.headers.get('content-length') || 0);
-    const maxLimit = 2 * 1024 * 1024 * 1024; // 2GB
+    const maxLimit = 2.5 * 1024 * 1024 * 1024; // 2.5GB
     if (contentLength > maxLimit) {
-      return NextResponse.json({ error: 'File size exceeds the 2GB limit' }, { status: 400 });
+      return NextResponse.json({ error: 'File size exceeds the 2.5GB limit' }, { status: 400 });
     }
 
     // 2. File extension verification
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
       const uploadedChunks = readdirSync(tempChunksDir);
       if (uploadedChunks.length === totalChunks) {
         // Double check all indices from 0 to totalChunks-1 exist
-        const allChunksPresent = Array.from({ length: totalChunks }, (_, i) => 
+        const allChunksPresent = Array.from({ length: totalChunks }, (_, i) =>
           existsSync(join(tempChunksDir, i.toString()))
         ).every(Boolean);
 
