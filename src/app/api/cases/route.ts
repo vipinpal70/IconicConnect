@@ -9,7 +9,7 @@ import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
-import { getCachedData, setCachedData, invalidateCasesCache } from '@/src/lib/redis-cache';
+import { invalidateCasesCache } from '@/src/lib/redis-cache';
 
 const caseListSelection = {
   id: cases.id,
@@ -262,88 +262,69 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Math.max(Number(searchParams.get('limit') || 10), 1), 200);
     const page = Math.max(Number(searchParams.get('page') || 1), 1);
     const offset = (page - 1) * limit;
+    // Fetch one extra row to determine whether another page exists
+    const fetchLimit = limit + 1;
 
-    let cacheKey = '';
+    let results;
+
     if (isValidRoleForType('admin_portal', profile.role)) {
-      cacheKey = 'cases:base:admin';
+      results = await db.select(caseListSelection).from(cases)
+        .orderBy(desc(cases.createdAt))
+        .limit(fetchLimit)
+        .offset(offset);
     } else if (profile.role === 'client') {
-      cacheKey = `cases:base:client:${profile.id}`;
+      results = await db.select(caseListSelection).from(cases)
+        .where(eq(cases.clientId, profile.id))
+        .orderBy(desc(cases.createdAt))
+        .limit(fetchLimit)
+        .offset(offset);
     } else if (profile.role === 'subuser') {
       const parentClientId = profile.createdBy ?? profile.id;
-      cacheKey = `cases:base:client:${parentClientId}`;
+      results = await db.select(caseListSelection).from(cases)
+        .where(eq(cases.clientId, parentClientId))
+        .orderBy(desc(cases.createdAt))
+        .limit(fetchLimit)
+        .offset(offset);
+    } else {
+      return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
     }
 
-    let baseCases = cacheKey ? await getCachedData<any[]>(cacheKey) : null;
+    // Determine hasMore before trimming the extra row
+    const hasMore = results.length > limit;
+    if (hasMore) results = results.slice(0, limit);
 
-    if (!baseCases) {
-      let results;
+    const designerIds = Array.from(new Set(results.map(r => r.designerId).filter(Boolean))) as string[];
+    const designersMap = new Map<string, string>();
+    if (designerIds.length > 0) {
+      const designersProfiles = await db.select().from(profiles).where(inArray(profiles.id, designerIds));
+      designersProfiles.forEach(p => {
+        designersMap.set(p.id, p.fullName || p.email);
+      });
+    }
 
-      if (isValidRoleForType('admin_portal', profile.role)) {
-        results = await db.select(caseListSelection).from(cases)
-          .orderBy(desc(cases.createdAt));
-      } else if (profile.role === 'client') {
-        results = await db.select(caseListSelection).from(cases)
-          .where(eq(cases.clientId, profile.id))
-          .orderBy(desc(cases.createdAt));
-      } else if (profile.role === 'subuser') {
-        const parentClientId = profile.createdBy ?? profile.id;
-        results = await db.select(caseListSelection).from(cases)
-          .where(eq(cases.clientId, parentClientId))
-          .orderBy(desc(cases.createdAt));
-      } else {
-        return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
-      }
+    const chatMetadata = await getCasesChatMetadata(results.map((r) => r.id), profile.id);
 
-      const designerIds = Array.from(new Set(results.map(r => r.designerId).filter(Boolean))) as string[];
-      const designersMap = new Map<string, string>();
-      if (designerIds.length > 0) {
-        const designersProfiles = await db.select().from(profiles).where(inArray(profiles.id, designerIds));
-        designersProfiles.forEach(p => {
-          designersMap.set(p.id, p.fullName || p.email);
-        });
-      }
-
-      // Fetch first uploaded scan file name for each case
-      const caseIds = results.map((r) => r.id);
-      const scanFileMap = new Map<string, string>();
-      if (caseIds.length > 0) {
-        const fileRows = await db
-          .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
-          .from(caseFiles)
-          .where(inArray(caseFiles.caseId, caseIds))
-          .orderBy(asc(caseFiles.createdAt));
-        for (const row of fileRows) {
-          if (!scanFileMap.has(row.caseId)) {
-            scanFileMap.set(row.caseId, row.fileName);
-          }
+    const caseIds = results.map((r) => r.id);
+    const scanFileMap = new Map<string, string>();
+    if (caseIds.length > 0) {
+      const fileRows = await db
+        .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
+        .from(caseFiles)
+        .where(inArray(caseFiles.caseId, caseIds))
+        .orderBy(asc(caseFiles.createdAt));
+      for (const row of fileRows) {
+        if (!scanFileMap.has(row.caseId)) {
+          scanFileMap.set(row.caseId, row.fileName);
         }
       }
-
-      baseCases = results.map(r => ({
-        ...r,
-        designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
-        scanFileName: scanFileMap.get(r.id) ?? null,
-      }));
-
-      if (cacheKey) {
-        await setCachedData(cacheKey, baseCases, 3600); // 1 hour TTL
-      }
     }
 
-    // Sort newest-first (covers both cache-hit path and fresh-fetch path)
-    baseCases.sort((a: any, b: any) =>
-      new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
-    );
-
-    const paginatedCases = baseCases.slice(offset, offset + limit);
-    const hasMore = baseCases.length > offset + limit;
-
-    const chatMetadata = await getCasesChatMetadata(paginatedCases.map((r: any) => r.id), profile.id);
-
-    const mappedResults = paginatedCases.map((r: any) => ({
+    const mappedResults = results.map(r => ({
       ...r,
+      designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
       todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,
       hasUnreadChat: chatMetadata.get(r.id)?.hasUnreadChat ?? false,
+      scanFileName: scanFileMap.get(r.id) ?? null,
     }));
 
     return NextResponse.json({ data: mappedResults, hasMore });
