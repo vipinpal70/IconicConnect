@@ -19,6 +19,27 @@ server {
         proxy_busy_buffers_size    256k;
     }
 
+    location /api/cases/upload {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Disable request body buffering to allow direct streaming
+        proxy_request_buffering off;
+        proxy_buffering off;
+
+        # Timeouts for large uploads
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+
+
     listen 443 ssl; # managed by Certbot
     ssl_certificate /etc/letsencrypt/live/connectapp.theiconicdental.com/fullchain.pem; # managed by Certbot
     ssl_certificate_key /etc/letsencrypt/live/connectapp.theiconicdental.com/privkey.pem; # managed by Certbot

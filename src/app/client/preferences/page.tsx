@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { ClientLayout } from "@/src/components/ClientLayout"
 import { Button } from "@/src/components/ui/button"
+import { uploadFileInChunks } from "@/src/lib/upload-utils"
 import { Card, CardContent } from "@/src/components/ui/card"
 import { Input } from "@/src/components/ui/input"
 import { Label } from "@/src/components/ui/label"
@@ -73,24 +74,20 @@ export default function ClientPreferencesPage() {
 
     setUploadingFields((prev) => ({ ...prev, [field]: true }))
     try {
-      const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
+      await uploadFileInChunks(
+        file,
+        {},
+        () => {},
+        (data) => {
+          updatePayload(field, {
+            fileUrl: data.fileUrl,
+            fileName: data.fileName,
+          })
         },
-        body: file,
-      })
-
-      if (!res.ok) {
-        throw new Error("Upload failed")
-      }
-
-      const data = await res.json()
-      updatePayload(field, {
-        fileUrl: data.fileUrl,
-        fileName: data.fileName,
-      })
+        (err) => {
+          alert(`Failed to upload image: ${err}`)
+        }
+      )
     } catch (err) {
       console.error(err)
       alert("Failed to upload image")

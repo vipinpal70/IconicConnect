@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/src/components/ui/select"
 import { ToothChart } from "@/src/components/ToothChart"
 import { generateCaseId } from "@/src/lib/case-utils"
+import { uploadFileInChunks } from "@/src/lib/upload-utils"
 
 interface ClientRecord {
   id: string
@@ -183,40 +184,16 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     onSuccess: (res: { fileUrl: string; fileName: string; fileSize: number; fileType: string }) => void,
     onError: (err: string) => void
   ) => {
-    try {
-      let url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`
-      if (role === "admin" && selectedClientId) {
-        url += `&clientId=${encodeURIComponent(selectedClientId)}`
-      }
-
-      const xhr = new XMLHttpRequest()
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percentage = Math.round((event.loaded / event.total) * 100)
-          onProgress(percentage)
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const res = JSON.parse(xhr.responseText)
-            onSuccess(res)
-          } catch {
-            onError("Failed to parse response")
-          }
-        } else {
-          onError(`Upload failed with status ${xhr.status}`)
-        }
-      }
-
-      xhr.onerror = () => onError("Upload failed")
-      xhr.open("POST", url)
-      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream")
-      xhr.send(file)
-    } catch (err: any) {
-      onError(err.message || "Initialization failed")
-    }
+    await uploadFileInChunks(
+      file,
+      {
+        clientId: role === "admin" ? selectedClientId : null,
+        role: role
+      },
+      onProgress,
+      onSuccess,
+      onError
+    )
   }
 
   const handleFileSelect = async (file: File) => {

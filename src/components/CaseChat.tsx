@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
+import { uploadFileInChunks } from "@/src/lib/upload-utils"
 import { Send, Paperclip, FileText, Loader2, Download } from "lucide-react"
 import { cn } from "@/src/lib/utils"
 import { toast } from "sonner"
@@ -146,19 +147,13 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
     setUploadProgress(0)
 
     try {
-      const xhr = new XMLHttpRequest()
-      xhr.open("POST", `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`, true)
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100)
+      await uploadFileInChunks(
+        file,
+        {},
+        (percent) => {
           setUploadProgress(percent)
-        }
-      }
-
-      xhr.onload = async () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          const uploadRes = JSON.parse(xhr.responseText)
+        },
+        async (uploadRes) => {
           const msgPayload = {
             messageText: `Shared an attachment: ${file.name}`,
             fileUrl: uploadRes.fileUrl,
@@ -180,19 +175,13 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
             const err = await linkRes.json()
             toast.error(err.error || "Failed to attach file to message")
           }
-        } else {
-          const err = JSON.parse(xhr.responseText || "{}")
-          toast.error(err.error || "Failed to upload file")
+          setUploading(false)
+        },
+        (err) => {
+          toast.error(err || "Failed to upload file")
+          setUploading(false)
         }
-        setUploading(false)
-      }
-
-      xhr.onerror = () => {
-        toast.error("Connection error during upload")
-        setUploading(false)
-      }
-
-      xhr.send(file)
+      )
     } catch {
       toast.error("Upload error")
       setUploading(false)

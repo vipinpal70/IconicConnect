@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       "internal_qc",
       "client_feedback"
     ];
-    
+
     const activeCount = clientCases.filter((c) => activeStatuses.includes(c.status)).length;
     const deliveredCount = clientCases.filter((c) => ["approved", "delivered"].includes(c.status)).length;
     const awaitingActionCount = clientCases.filter((c) => c.status === "submitted_to_client").length;
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
         )
       );
     const avgTatMinutes = tatResult[0]?.avgTat ? Number(tatResult[0].avgTat) : null;
-    const avgTurnaround = avgTatMinutes !== null ? `${(avgTatMinutes / 1440).toFixed(1)}d` : "4.5d";
+    const avgTurnaround = avgTatMinutes !== null ? `${(avgTatMinutes / 1440).toFixed(1)}d` : "0.0d";
 
     // 2. Case Volume Trends (Monthly)
     const now = new Date();
@@ -183,7 +183,7 @@ export async function GET(req: NextRequest) {
       if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? "s" : ""} ago`;
       if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
       if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
-      
+
       const diffMonths = Math.floor(diffDays / 30);
       return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
     }
@@ -216,7 +216,7 @@ export async function GET(req: NextRequest) {
       activityTimeline = logs.map((log) => {
         let msg = "";
         const detailsObj = (typeof log.details === "object" ? log.details : null) as any;
-        
+
         if (log.action === "case.created") {
           msg = `New case ${log.caseNumber} submitted`;
         } else if (log.action === "case.updated") {

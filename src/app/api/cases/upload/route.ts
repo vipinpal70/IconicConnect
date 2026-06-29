@@ -3,7 +3,7 @@ import { db } from '@/src/db';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
-import { createWriteStream, existsSync, mkdirSync, statSync, unlinkSync } from 'fs';
+import { createWriteStream, createReadStream, existsSync, mkdirSync, statSync, unlinkSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { createClient } from '@/src/lib/supabase/server';
 import { pipeline } from 'stream/promises';
@@ -28,6 +28,11 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const fileName = searchParams.get('fileName');
     const adminClientId = searchParams.get('clientId'); // Optional: sent by admin
+
+    // Chunking parameters
+    const chunkIndexStr = searchParams.get('chunkIndex');
+    const totalChunksStr = searchParams.get('totalChunks');
+    const uploadId = searchParams.get('uploadId');
 
     if (!fileName) {
       return NextResponse.json({ error: 'File Name is required' }, { status: 400 });
@@ -87,48 +92,146 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Directory structure: case_data / ClientName
-    const dirPath = join(process.cwd(), 'case_data', labName);
-    if (!existsSync(dirPath)) {
-      mkdirSync(dirPath, { recursive: true });
-    }
-
-    const filePath = join(dirPath, fileName);
-    const writer = createWriteStream(filePath);
-
     if (!req.body) {
       return NextResponse.json({ error: 'No file data received' }, { status: 400 });
     }
 
-    try {
-      // Use pipeline to handle stream backpressure, saving memory and avoiding process/GC stalling
-      await pipeline(Readable.fromWeb(req.body as any), writer);
-    } catch (err) {
-      // Clean up partially written file if upload is aborted/failed
-      try {
-        if (existsSync(filePath)) {
-          unlinkSync(filePath);
-        }
-      } catch (cleanupErr) {
-        console.error('Failed to delete incomplete file:', cleanupErr);
+    const isChunked = chunkIndexStr !== null && totalChunksStr !== null && uploadId !== null;
+
+    if (isChunked) {
+      const chunkIndex = parseInt(chunkIndexStr!, 10);
+      const totalChunks = parseInt(totalChunksStr!, 10);
+
+      // Temporary folder for storing chunks
+      const tempChunksDir = join(process.cwd(), 'case_data', 'chunks', uploadId!);
+      if (!existsSync(tempChunksDir)) {
+        mkdirSync(tempChunksDir, { recursive: true });
       }
-      throw err;
+
+      const chunkPath = join(tempChunksDir, chunkIndex.toString());
+      const chunkWriter = createWriteStream(chunkPath, { highWaterMark: 1024 * 1024 }); // 1MB writing buffer
+
+      try {
+        await pipeline(Readable.fromWeb(req.body as any), chunkWriter);
+      } catch (err) {
+        try {
+          if (existsSync(chunkPath)) {
+            unlinkSync(chunkPath);
+          }
+        } catch (cleanupErr) {
+          console.error('Failed to delete incomplete chunk:', cleanupErr);
+        }
+        throw err;
+      }
+
+      // Check if all chunks exist
+      const uploadedChunks = readdirSync(tempChunksDir);
+      if (uploadedChunks.length === totalChunks) {
+        // Double check all indices from 0 to totalChunks-1 exist
+        const allChunksPresent = Array.from({ length: totalChunks }, (_, i) => 
+          existsSync(join(tempChunksDir, i.toString()))
+        ).every(Boolean);
+
+        if (allChunksPresent) {
+          // Reassemble chunks
+          const dirPath = join(process.cwd(), 'case_data', labName);
+          if (!existsSync(dirPath)) {
+            mkdirSync(dirPath, { recursive: true });
+          }
+
+          const filePath = join(dirPath, fileName);
+          const finalWriter = createWriteStream(filePath, { highWaterMark: 1024 * 1024 }); // 1MB buffer
+
+          try {
+            for (let i = 0; i < totalChunks; i++) {
+              const currentChunkPath = join(tempChunksDir, i.toString());
+              const chunkReader = createReadStream(currentChunkPath);
+              await pipeline(chunkReader, finalWriter, { end: false });
+            }
+            finalWriter.end();
+
+            // Cleanup chunk files
+            for (let i = 0; i < totalChunks; i++) {
+              const currentChunkPath = join(tempChunksDir, i.toString());
+              if (existsSync(currentChunkPath)) {
+                unlinkSync(currentChunkPath);
+              }
+            }
+            // Cleanup chunk folder
+            if (existsSync(tempChunksDir)) {
+              unlinkSync(tempChunksDir);
+            }
+          } catch (mergeError) {
+            finalWriter.end();
+            if (existsSync(filePath)) {
+              unlinkSync(filePath);
+            }
+            throw mergeError;
+          }
+
+          const stats = statSync(filePath);
+          const totalBytesWritten = stats.size;
+
+          // Local secure download URL
+          const fileUrl = `/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`;
+
+          return NextResponse.json({
+            success: true,
+            fileUrl,
+            fileName,
+            fileSize: totalBytesWritten,
+            fileType: req.headers.get('content-type') || 'application/octet-stream',
+            storagePath: `${labName}/${fileName}`,
+          });
+        }
+      }
+
+      // Chunk received successfully, but still waiting for other chunks
+      return NextResponse.json({
+        success: true,
+        chunkReceived: chunkIndex
+      });
+
+    } else {
+      // Legacy single-stream fallback upload (Optimized with highWaterMark write buffer)
+      const dirPath = join(process.cwd(), 'case_data', labName);
+      if (!existsSync(dirPath)) {
+        mkdirSync(dirPath, { recursive: true });
+      }
+
+      const filePath = join(dirPath, fileName);
+      const writer = createWriteStream(filePath, { highWaterMark: 1024 * 1024 }); // 1MB write buffer
+
+      try {
+        // Use pipeline to handle stream backpressure, saving memory and avoiding process/GC stalling
+        await pipeline(Readable.fromWeb(req.body as any), writer);
+      } catch (err) {
+        // Clean up partially written file if upload is aborted/failed
+        try {
+          if (existsSync(filePath)) {
+            unlinkSync(filePath);
+          }
+        } catch (cleanupErr) {
+          console.error('Failed to delete incomplete file:', cleanupErr);
+        }
+        throw err;
+      }
+
+      const stats = statSync(filePath);
+      const totalBytesWritten = stats.size;
+
+      // Local secure download URL
+      const fileUrl = `/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`;
+
+      return NextResponse.json({
+        success: true,
+        fileUrl,
+        fileName,
+        fileSize: totalBytesWritten,
+        fileType: req.headers.get('content-type') || 'application/octet-stream',
+        storagePath: `${labName}/${fileName}`,
+      });
     }
-
-    const stats = statSync(filePath);
-    const totalBytesWritten = stats.size;
-
-    // Local secure download URL
-    const fileUrl = `/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`;
-
-    return NextResponse.json({
-      success: true,
-      fileUrl,
-      fileName,
-      fileSize: totalBytesWritten,
-      fileType: req.headers.get('content-type') || 'application/octet-stream',
-      storagePath: `${labName}/${fileName}`,
-    });
   } catch (error: any) {
     console.error('Immediate local upload route error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
