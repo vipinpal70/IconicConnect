@@ -258,13 +258,13 @@ export default function CasesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const loadedPagesRef = useRef(1);
+  // Tracks total cases to keep visible; grows as user loads more or creates new cases
+  const pageLimitRef = useRef(10);
 
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const limit = loadedPagesRef.current * 10;
-      const res = await fetch(`/api/cases?limit=${limit}&page=1`);
+      const res = await fetch(`/api/cases?limit=${pageLimitRef.current}&page=1`);
       if (res.ok) {
         const json = await res.json();
         setCases(Array.isArray(json.data) ? json.data : []);
@@ -281,20 +281,20 @@ export default function CasesPage() {
   };
 
   const handleLoadMore = async () => {
+    pageLimitRef.current += 10;
     setIsLoadingMore(true);
     try {
-      const nextPage = loadedPagesRef.current + 1;
-      const res = await fetch(`/api/cases?limit=10&page=${nextPage}`);
+      const res = await fetch(`/api/cases?limit=${pageLimitRef.current}&page=1`);
       if (res.ok) {
         const json = await res.json();
-        const newCases: OpsCase[] = Array.isArray(json.data) ? json.data : [];
-        setCases(prev => [...prev, ...newCases]);
+        setCases(Array.isArray(json.data) ? json.data : []);
         setHasMore(json.hasMore ?? false);
-        loadedPagesRef.current = nextPage;
       } else {
+        pageLimitRef.current -= 10;
         toast.error("Failed to load more cases");
       }
     } catch {
+      pageLimitRef.current -= 10;
       toast.error("Failed to load more cases");
     } finally {
       setIsLoadingMore(false);
@@ -302,7 +302,7 @@ export default function CasesPage() {
   };
 
   useEffect(() => {
-    loadedPagesRef.current = 1;
+    pageLimitRef.current = 10;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
     const intervalId = window.setInterval(() => { void fetchCases(false); }, 30_000);
     return () => {
@@ -780,6 +780,7 @@ export default function CasesPage() {
         setNotes(""); setTeeth([]); setToothSystem("USA"); setModelRequired("no");
         setCategory("Crown & Bridges"); setSubTypeData({});
         setSingleFile(null); setUploadedFileUrl(null); setUploadedFile(null);
+        pageLimitRef.current += 1;
         fetchCases();
       } else {
         toast.error("Failed to submit case.");
@@ -837,9 +838,11 @@ export default function CasesPage() {
       const res = await fetch("/api/cases", { method: "POST", body: formData });
       if (res.ok) {
         toast.success("Cases submitted successfully!");
+        const addedCount = bulkRows.length;
         setBulkRows([]);
         if (bulkFileRef.current) bulkFileRef.current.value = "";
         setUploadOpen(false);
+        pageLimitRef.current += addedCount;
         fetchCases();
       } else {
         toast.error("Failed to submit bulk cases.");
