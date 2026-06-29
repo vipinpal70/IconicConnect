@@ -3,7 +3,7 @@ import { db } from '@/src/db';
 import { cases, caseFiles } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq, inArray, sql, asc } from 'drizzle-orm';
+import { eq, inArray, sql, asc, desc } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -252,21 +252,38 @@ export async function GET() {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(Math.max(Number(searchParams.get('limit') || 10), 1), 200);
+    const page = Math.max(Number(searchParams.get('page') || 1), 1);
+    const offset = (page - 1) * limit;
+    const fetchLimit = limit + 1; // fetch one extra to determine if there are more
+
     let results;
 
     if (isValidRoleForType('admin_portal', profile.role)) {
-      // Admin sees all cases
-      results = await db.select(caseListSelection).from(cases);
+      results = await db.select(caseListSelection).from(cases)
+        .orderBy(desc(cases.createdAt))
+        .limit(fetchLimit)
+        .offset(offset);
     } else if (profile.role === 'client') {
-      // Client sees their own cases and cases created by their subusers (which also have clientId = client's id)
-      results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, profile.id));
+      results = await db.select(caseListSelection).from(cases)
+        .where(eq(cases.clientId, profile.id))
+        .orderBy(desc(cases.createdAt))
+        .limit(fetchLimit)
+        .offset(offset);
     } else if (profile.role === 'subuser') {
-      // Subuser sees ALL cases belonging to their parent client
       const parentClientId = profile.createdBy ?? profile.id;
-      results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, parentClientId));
+      results = await db.select(caseListSelection).from(cases)
+        .where(eq(cases.clientId, parentClientId))
+        .orderBy(desc(cases.createdAt))
+        .limit(fetchLimit)
+        .offset(offset);
     } else {
       return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
     }
+
+    const hasMore = results.length > limit;
+    if (hasMore) results = results.slice(0, limit);
 
     const designerIds = Array.from(new Set(results.map(r => r.designerId).filter(Boolean))) as string[];
     const designersMap = new Map<string, string>();
@@ -303,7 +320,7 @@ export async function GET() {
       scanFileName: scanFileMap.get(r.id) ?? null,
     }));
 
-    return NextResponse.json({ data: mappedResults });
+    return NextResponse.json({ data: mappedResults, hasMore });
   } catch (error: unknown) {
     console.error('Get cases error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
