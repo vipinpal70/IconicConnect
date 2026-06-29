@@ -27,7 +27,7 @@ export async function uploadFileInChunks(
   onError: UploadErrorCallback
 ) {
   const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
-  
+
   // If the file is smaller than 10MB, upload it as a single chunk/file
   if (file.size <= CHUNK_SIZE) {
     try {
@@ -91,7 +91,7 @@ export async function uploadFileInChunks(
 
     const uploadPromise = new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      
+
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
           loadedSizes[chunkIndex] = event.loaded;
@@ -118,18 +118,18 @@ export async function uploadFileInChunks(
       };
 
       xhr.onerror = () => reject(new Error("Network connection error"));
-      
+
       xhr.open("POST", url, true);
       xhr.setRequestHeader("Content-Type", "application/octet-stream");
       xhr.send(chunkBlob);
     });
 
     activeUploads.add(uploadPromise);
-    
+
     try {
       await uploadPromise;
       activeUploads.delete(uploadPromise);
-      
+
       // Request next chunk recursively
       await uploadNextChunk();
     } catch (err) {
@@ -139,10 +139,10 @@ export async function uploadFileInChunks(
     }
   };
 
-  // Limit parallel requests (concurrency pool size = 8)
-  const concurrencyLimit = Math.min(8, totalChunks);
+  // Limit parallel requests (concurrency pool size = 10)
+  const concurrencyLimit = Math.min(10, totalChunks);
   const uploadThreads = [];
-  
+
   for (let i = 0; i < concurrencyLimit; i++) {
     uploadThreads.push(uploadNextChunk());
   }
