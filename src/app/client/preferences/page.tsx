@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/src/components/ui/card"
 import { Input } from "@/src/components/ui/input"
 import { fetchProfileWithCache } from "@/src/lib/profile-cache"
 import { Label } from "@/src/components/ui/label"
+import { toast } from "sonner"
 import { Badge } from "@/src/components/ui/badge"
 import { createClient } from "@/src/lib/supabase/client"
 import {
@@ -133,6 +134,7 @@ export default function ClientPreferencesPage() {
 
   const saveForm = async () => {
     if (!draft.formName.trim()) {
+      toast.error("Form name is required")
       return
     }
 
@@ -159,11 +161,13 @@ export default function ClientPreferencesPage() {
         setForms(nextData?.data ?? [])
       }
 
+      toast.success(editingId ? "Preferences updated successfully" : "Preferences saved successfully")
       setDraft(emptyForm())
       setEditingId(null)
       setFormStep(1)
     } catch (error) {
       console.error(error)
+      toast.error(error instanceof Error ? error.message : "Failed to save preference form")
     } finally {
       setSaving(false)
     }
@@ -684,7 +688,7 @@ export default function ClientPreferencesPage() {
                     onClick={saveForm}
                     disabled={saving || uploadingFields.uploadedImage1 || uploadingFields.uploadedImage2}
                   >
-                    {editingId ? "Submit (Update)" : "Submit"}
+                    {saving ? "Submitting..." : editingId ? "Submit (Update)" : "Submit"}
                   </Button>
                 )}
               </div>
