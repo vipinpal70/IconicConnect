@@ -26,7 +26,7 @@ export async function uploadFileInChunks(
   onSuccess: UploadSuccessCallback,
   onError: UploadErrorCallback
 ) {
-  const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+  const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
   
   // If the file is smaller than 10MB, upload it as a single chunk/file
   if (file.size <= CHUNK_SIZE) {
@@ -139,8 +139,8 @@ export async function uploadFileInChunks(
     }
   };
 
-  // Limit parallel requests (concurrency pool size = 4)
-  const concurrencyLimit = Math.min(4, totalChunks);
+  // Limit parallel requests (concurrency pool size = 8)
+  const concurrencyLimit = Math.min(8, totalChunks);
   const uploadThreads = [];
   
   for (let i = 0; i < concurrencyLimit; i++) {

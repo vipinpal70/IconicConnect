@@ -8,6 +8,7 @@ import { join } from 'path';
 import { createClient } from '@/src/lib/supabase/server';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
+import { open } from 'fs/promises';
 
 export async function POST(req: NextRequest) {
   try {
@@ -101,79 +102,61 @@ export async function POST(req: NextRequest) {
     if (isChunked) {
       const chunkIndex = parseInt(chunkIndexStr!, 10);
       const totalChunks = parseInt(totalChunksStr!, 10);
+      const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
+      const offset = chunkIndex * CHUNK_SIZE;
 
-      // Temporary folder for storing chunks
+      // Ensure target directory exists
+      const dirPath = join(process.cwd(), 'case_data', labName);
+      if (!existsSync(dirPath)) {
+        mkdirSync(dirPath, { recursive: true });
+      }
+
+      const filePath = join(dirPath, fileName);
+      let fileHandle = null;
+
+      try {
+        if (!existsSync(filePath)) {
+          const tempFd = await open(filePath, 'w');
+          await tempFd.close();
+        }
+        fileHandle = await open(filePath, 'r+');
+        const chunkWriter = fileHandle.createWriteStream({ start: offset });
+        await pipeline(Readable.fromWeb(req.body as any), chunkWriter);
+      } catch (err) {
+        throw err;
+      } finally {
+        if (fileHandle) {
+          try {
+            await fileHandle.close();
+          } catch (e) {
+            console.error('Error closing file handle:', e);
+          }
+        }
+      }
+
+      // Temporary folder for tracking chunks
       const tempChunksDir = join(process.cwd(), 'case_data', 'chunks', uploadId!);
       if (!existsSync(tempChunksDir)) {
         mkdirSync(tempChunksDir, { recursive: true });
       }
 
-      const chunkPath = join(tempChunksDir, chunkIndex.toString());
-      const chunkWriter = createWriteStream(chunkPath, { highWaterMark: 1024 * 1024 }); // 1MB writing buffer
-
-      try {
-        await pipeline(Readable.fromWeb(req.body as any), chunkWriter);
-      } catch (err) {
-        try {
-          if (existsSync(chunkPath)) {
-            unlinkSync(chunkPath);
-          }
-        } catch (cleanupErr) {
-          console.error('Failed to delete incomplete chunk:', cleanupErr);
-        }
-        throw err;
-      }
+      // Write empty tracking file
+      const trackerPath = join(tempChunksDir, chunkIndex.toString());
+      const trackerFd = await open(trackerPath, 'w');
+      await trackerFd.close();
 
       // Check if all chunks exist
       const uploadedChunks = readdirSync(tempChunksDir);
       if (uploadedChunks.length === totalChunks) {
         // Double check all indices from 0 to totalChunks-1 exist
-        const allChunksPresent = Array.from({ length: totalChunks }, (_, i) =>
+        const allChunksPresent = Array.from({ length: totalChunks }, (_, i) => 
           existsSync(join(tempChunksDir, i.toString()))
         ).every(Boolean);
 
         if (allChunksPresent) {
-          // Reassemble chunks
-          const dirPath = join(process.cwd(), 'case_data', labName);
-          if (!existsSync(dirPath)) {
-            mkdirSync(dirPath, { recursive: true });
-          }
-
-          const filePath = join(dirPath, fileName);
-          const finalWriter = createWriteStream(filePath, { highWaterMark: 1024 * 1024 }); // 1MB buffer
-
-          try {
-            for (let i = 0; i < totalChunks; i++) {
-              const currentChunkPath = join(tempChunksDir, i.toString());
-              const chunkReader = createReadStream(currentChunkPath);
-
-              for await (const chunk of chunkReader) {
-                const canWrite = finalWriter.write(chunk);
-                if (!canWrite) {
-                  await new Promise<void>((resolve) => finalWriter.once('drain', resolve));
-                }
-              }
-            }
-            finalWriter.end();
-            await new Promise<void>((resolve, reject) => {
-              finalWriter.on('finish', resolve);
-              finalWriter.on('error', reject);
-            });
-
-            // Cleanup chunk folder and files recursively
-            if (existsSync(tempChunksDir)) {
-              rmSync(tempChunksDir, { recursive: true, force: true });
-            }
-          } catch (mergeError) {
-            finalWriter.end();
-            if (existsSync(filePath)) {
-              try {
-                unlinkSync(filePath);
-              } catch (cleanupErr) {
-                console.error('Failed to clean up merged file on error:', cleanupErr);
-              }
-            }
-            throw mergeError;
+          // Cleanup chunk tracking folder
+          if (existsSync(tempChunksDir)) {
+            rmSync(tempChunksDir, { recursive: true, force: true });
           }
 
           const stats = statSync(filePath);
@@ -193,7 +176,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Chunk received successfully, but still waiting for other chunks
+      // Chunk received and written successfully, but still waiting for other chunks
       return NextResponse.json({
         success: true,
         chunkReceived: chunkIndex
