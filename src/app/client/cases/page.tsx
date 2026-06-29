@@ -188,14 +188,18 @@ export default function CasesPage() {
 
   const [cases, setCases] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const pageLimitRef = useRef(10);
 
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const res = await fetch("/api/cases");
+      const res = await fetch(`/api/cases?limit=${pageLimitRef.current}&page=1`);
       if (res.ok) {
         const json = await res.json();
-        setCases(json.data || []);
+        setCases(Array.isArray(json.data) ? json.data : []);
+        setHasMore(json.hasMore ?? false);
       } else {
         toast.error("Failed to load cases");
       }
@@ -207,10 +211,32 @@ export default function CasesPage() {
     }
   };
 
+  const handleLoadMore = async () => {
+    pageLimitRef.current += 10;
+    setIsLoadingMore(true);
+    try {
+      const res = await fetch(`/api/cases?limit=${pageLimitRef.current}&page=1`);
+      if (res.ok) {
+        const json = await res.json();
+        setCases(Array.isArray(json.data) ? json.data : []);
+        setHasMore(json.hasMore ?? false);
+      } else {
+        pageLimitRef.current -= 10;
+        toast.error("Failed to load more cases");
+      }
+    } catch {
+      pageLimitRef.current -= 10;
+      toast.error("Failed to load more cases");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
-    fetchCases();
-    const interval = setInterval(() => { void fetchCases(false); }, 30_000);
-    return () => clearInterval(interval);
+    pageLimitRef.current = 10;
+    const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
+    const intervalId = window.setInterval(() => { void fetchCases(false); }, 30_000);
+    return () => { window.clearTimeout(timeoutId); window.clearInterval(intervalId); };
   }, []);
 
   const [category, setCategory] = useState<string>("Crown & Bridges");
@@ -513,6 +539,7 @@ export default function CasesPage() {
         setUploadedFile(null);
         setPreferredTeethLibrary("default");
         setUploadedLibraryFile(null);
+        pageLimitRef.current += 1;
         fetchCases();
       } else {
         toast.error("Failed to submit case.");
@@ -629,9 +656,11 @@ export default function CasesPage() {
 
       if (res.ok) {
         toast.success("Cases submitted successfully!");
+        const addedCount = bulkRows.length;
         setBulkRows([]);
         if (bulkFileRef.current) bulkFileRef.current.value = "";
         setUploadOpen(false);
+        pageLimitRef.current += addedCount;
         fetchCases();
       } else {
         toast.error("Failed to submit bulk cases.");
@@ -651,7 +680,7 @@ export default function CasesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-semibold text-foreground">Cases</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">{cases.length} lifetime cases · {filtered.length} shown</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} shown · {cases.length} loaded{hasMore ? " · more available" : ""}</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -1536,6 +1565,18 @@ export default function CasesPage() {
                 </tbody>
               </table>
             </div>
+            {!isLoading && hasMore && (
+              <div className="p-3 border-t border-border/50 flex justify-center">
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
+                  onClick={handleLoadMore} disabled={isLoadingMore}>
+                  {isLoadingMore ? (
+                    <><RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" />Loading...</>
+                  ) : (
+                    "Load more cases"
+                  )}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
