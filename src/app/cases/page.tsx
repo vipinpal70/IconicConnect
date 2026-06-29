@@ -20,6 +20,8 @@ import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval";
+import { uploadFileInChunks } from "@/src/lib/upload-utils";
+import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 
 interface BulkRow {
   fileName: string;
@@ -156,38 +158,19 @@ const uploadFileWithXHR = async (
   onSuccess: (res: { fileUrl: string; fileName: string; fileSize: number; fileType: string }) => void,
   onError: (err: string) => void
 ) => {
-  try {
-    const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`;
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        onProgress(Math.round((event.loaded / event.total) * 100));
-      }
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          onSuccess(JSON.parse(xhr.responseText));
-        } catch {
-          onError("Failed to parse response");
-        }
-      } else {
-        onError("Upload failed with status " + xhr.status);
-      }
-    };
-    xhr.onerror = () => onError("Upload failed");
-    xhr.open("POST", url);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-    xhr.send(file);
-  } catch (err: unknown) {
-    onError(err instanceof Error ? err.message : "Initialization failed");
-  }
+  await uploadFileInChunks(
+    file,
+    {},
+    onProgress,
+    onSuccess,
+    onError
+  );
 };
 
 const validateFile = (file: File): { isValid: boolean; error?: string } => {
-  const maxLimit = 2 * 1024 * 1024 * 1024;
+  const maxLimit = 2.5 * 1024 * 1024 * 1024;
   if (file.size > maxLimit) {
-    return { isValid: false, error: `File size exceeds the 2GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` };
+    return { isValid: false, error: `File size exceeds the 2.5GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` };
   }
   const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
   const allowedExtensions = [
@@ -364,12 +347,7 @@ export default function CasesPage() {
 
   const { data: currentUser } = useQuery<ProfileSummary | null>({
     queryKey: ["ops-me"],
-    queryFn: async () => {
-      const res = await fetch("/api/profile");
-      if (!res.ok) return null;
-      return res.json();
-    },
-    staleTime: 10 * 60_000,
+    queryFn: fetchProfileWithCache as any,
   });
 
   const handleUpdate = async (
@@ -539,32 +517,13 @@ export default function CasesPage() {
     onProgress?: (pct: number) => void
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}&clientId=${encodeURIComponent(clientId)}`;
-      const xhr = new XMLHttpRequest();
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            resolve(data.fileUrl);
-          } catch {
-            reject(new Error("Failed to parse upload response"));
-          }
-        } else {
-          try {
-            const err = JSON.parse(xhr.responseText);
-            reject(new Error(err.error || `Upload failed with status ${xhr.status}`));
-          } catch {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
-          }
-        }
-      };
-      xhr.onerror = () => reject(new Error("Upload failed"));
-      xhr.open("POST", url);
-      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-      xhr.send(file);
+      uploadFileInChunks(
+        file,
+        { clientId },
+        (pct) => onProgress?.(pct),
+        (res) => resolve(res.fileUrl),
+        (err) => reject(new Error(err))
+      );
     });
   };
 
@@ -676,13 +635,10 @@ export default function CasesPage() {
   useEffect(() => {
     async function fetchProfile() {
       try {
-        const res = await fetch("/api/profile");
-        if (res.ok) {
-          const profile = await res.json();
-          if (profile) {
-            setUserProfile({ id: profile.id, role: profile.role, fullName: profile.fullName || null });
-            if (profile.labName) setLabName(profile.labName);
-          }
+        const profile = await fetchProfileWithCache();
+        if (profile) {
+          setUserProfile({ id: profile.id, role: profile.role, fullName: profile.fullName || null });
+          if (profile.labName) setLabName(profile.labName);
         }
       } catch (err) {
         console.error("Error fetching operations profile:", err);

@@ -6,6 +6,7 @@ import { activityLogs } from "@/src/db/schema/activity-log";
 import { createClient } from "@/src/lib/supabase/server";
 import { eq, inArray, desc, and, isNotNull, gte, sql } from "drizzle-orm";
 import { formatActivityLabel } from "@/src/lib/activity-log";
+import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,6 +41,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized role for client dashboard" }, { status: 403 });
     }
 
+    const cacheKey = `dashboard:client:${clientId}`;
+    const cachedData = await getCachedData<any>(cacheKey);
+    if (cachedData) {
+      return NextResponse.json(cachedData);
+    }
+
     // Fetch all cases for this client
     let clientCases = await db
       .select()
@@ -58,7 +65,7 @@ export async function GET(req: NextRequest) {
       "internal_qc",
       "client_feedback"
     ];
-    
+
     const activeCount = clientCases.filter((c) => activeStatuses.includes(c.status)).length;
     const deliveredCount = clientCases.filter((c) => ["approved", "delivered"].includes(c.status)).length;
     const awaitingActionCount = clientCases.filter((c) => c.status === "submitted_to_client").length;
@@ -80,7 +87,7 @@ export async function GET(req: NextRequest) {
         )
       );
     const avgTatMinutes = tatResult[0]?.avgTat ? Number(tatResult[0].avgTat) : null;
-    const avgTurnaround = avgTatMinutes !== null ? `${(avgTatMinutes / 1440).toFixed(1)}d` : "4.5d";
+    const avgTurnaround = avgTatMinutes !== null ? `${(avgTatMinutes / 1440).toFixed(1)}d` : "0.0d";
 
     // 2. Case Volume Trends (Monthly)
     const now = new Date();
@@ -176,7 +183,7 @@ export async function GET(req: NextRequest) {
       if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? "s" : ""} ago`;
       if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
       if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
-      
+
       const diffMonths = Math.floor(diffDays / 30);
       return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
     }
@@ -209,7 +216,7 @@ export async function GET(req: NextRequest) {
       activityTimeline = logs.map((log) => {
         let msg = "";
         const detailsObj = (typeof log.details === "object" ? log.details : null) as any;
-        
+
         if (log.action === "case.created") {
           msg = `New case ${log.caseNumber} submitted`;
         } else if (log.action === "case.updated") {
@@ -241,7 +248,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    const dashboardResponse = {
       counts: {
         active: activeCount,
         delivered: deliveredCount,
@@ -253,7 +260,11 @@ export async function GET(req: NextRequest) {
       breakdownData,
       activeDesignQueue,
       activityTimeline,
-    });
+    };
+
+    await setCachedData(cacheKey, dashboardResponse, 3600);
+
+    return NextResponse.json(dashboardResponse);
   } catch (error: unknown) {
     console.error("Client dashboard fetch error:", error);
     const message = error instanceof Error ? error.message : "Internal Server Error";

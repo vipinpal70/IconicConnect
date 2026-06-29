@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { OpsLayout } from "@/src/components/OpsLayout"
+import { fetchProfileWithCache, invalidateProfileCache } from "@/src/lib/profile-cache"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
@@ -32,11 +33,7 @@ export default function ProfilePage() {
 
   const { data: profile, isLoading } = useQuery<ProfileData>({
     queryKey: ["my-profile"],
-    queryFn: async () => {
-      const res = await fetch("/api/profile")
-      if (!res.ok) throw new Error("Failed to fetch profile")
-      return res.json()
-    },
+    queryFn: fetchProfileWithCache as any,
   })
 
   const updateMutation = useMutation({
@@ -53,6 +50,7 @@ export default function ProfilePage() {
     },
     onSuccess: () => {
       toast.success("Profile updated")
+      invalidateProfileCache()
       queryClient.invalidateQueries({ queryKey: ["my-profile"] })
       setEditing(false)
     },

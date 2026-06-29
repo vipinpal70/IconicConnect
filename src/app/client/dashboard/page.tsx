@@ -11,17 +11,14 @@ import {
   PieChart, Pie, Cell
 } from "recharts";
 import { Button } from "@/src/components/ui/button";
+import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 
 export default function ClientDashboard() {
   const router = useRouter();
 
   const { data: profile } = useQuery<{ fullName: string | null; labName: string | null }>({
     queryKey: ["my-profile"],
-    queryFn: async () => {
-      const res = await fetch("/api/profile");
-      if (!res.ok) return null;
-      return res.json();
-    },
+    queryFn: fetchProfileWithCache as any,
   });
 
   const { data: dashboardData, isLoading } = useQuery({

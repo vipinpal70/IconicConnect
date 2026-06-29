@@ -12,11 +12,18 @@ const redisOptions = {
 
 // Queue connection — used only for adding jobs and reading state
 export const connection = new IORedis(REDIS_URL, redisOptions);
+connection.on('error', (err) => {
+  console.error('[Redis Client Connection Error]', err.message || err);
+});
 
 // Separate connection for the worker — BullMQ workers use blocking Redis commands
 // (BRPOPLPUSH) that must not share a connection with the queue
 export function createWorkerConnection() {
-  return new IORedis(REDIS_URL, redisOptions);
+  const conn = new IORedis(REDIS_URL, redisOptions);
+  conn.on('error', (err) => {
+    console.error('[Redis Worker Connection Error]', err.message || err);
+  });
+  return conn;
 }
 
 export const emailQueue = new Queue('email-queue', {

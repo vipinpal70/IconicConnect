@@ -3,16 +3,17 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { 
-  Bell, Check, Trash2, Settings, UserPlus, 
-  CheckCircle2, XCircle, MessageSquare, AlertCircle, 
+import { fetchProfileWithCache } from '@/src/lib/profile-cache'
+import {
+  Bell, Check, Trash2, Settings, UserPlus,
+  CheckCircle2, XCircle, MessageSquare, AlertCircle,
   PauseCircle, Info, MoreHorizontal,
-  Sliders, Mail, Sparkles, ArrowRight
+  Sliders, Mail, Sparkles, ArrowRight, Loader2
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { 
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuTrigger
 } from '@/src/components/ui/dropdown-menu'
 import { Button } from '@/src/components/ui/button'
 import { Badge } from '@/src/components/ui/badge'
@@ -64,10 +65,10 @@ function NotificationsLayout({
 }) {
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-slate-500 text-sm font-medium">Securing session layout...</p>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-2">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground text-xs font-medium animate-pulse">Loading application layout...</p>
         </div>
       </div>
     )
@@ -98,10 +99,9 @@ export default function NotificationsPage() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const res = await fetch('/api/profile')
-        if (res.ok) {
-          const data = await res.json()
-          setProfile(data)
+        const data = await fetchProfileWithCache()
+        if (data) {
+          setProfile(data as any)
         }
       } catch (err) {
         console.error('Failed to load profile:', err)
@@ -382,7 +382,7 @@ export default function NotificationsPage() {
     <NotificationsLayout role={profile?.role} isLoading={isProfileLoading}>
       <div className="min-h-screen bg-slate-50/40 p-2">
         <div className="max-w-7xl mx-auto space-y-4">
-          
+
           {/* Header Area */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
             <div className="space-y-0.5">
@@ -405,35 +405,33 @@ export default function NotificationsPage() {
               <div className="inline-flex rounded-lg p-0.5 bg-slate-100 border border-slate-200">
                 <button
                   onClick={() => setActiveTab('dashboard')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                    activeTab === 'dashboard'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${activeTab === 'dashboard'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   <Sliders className="w-3.5 h-3.5" /> Dashboard
                 </button>
                 <button
                   onClick={() => setActiveTab('preferences')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                    activeTab === 'preferences'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${activeTab === 'preferences'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   <Settings className="w-3.5 h-3.5" /> Preferences
                 </button>
               </div>
 
               {activeTab === 'dashboard' && (
-                <Button 
+                <Button
                   onClick={() => readAllMutation.mutate()}
                   variant="outline"
                   size="sm"
                   disabled={unreadCount === 0}
                   className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm text-xs h-7 px-2.5"
                 >
-                  <Check className="w-3.5 h-3.5 mr-1" /> 
+                  <Check className="w-3.5 h-3.5 mr-1" />
                   <span>Mark all read</span>
                 </Button>
               )}
@@ -443,7 +441,7 @@ export default function NotificationsPage() {
           {/* MAIN CONTENT AREA */}
           {activeTab === 'dashboard' ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              
+
               {/* LEFT COLUMN: Client Activities & Live Feedback */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -472,15 +470,14 @@ export default function NotificationsPage() {
                       return (
                         <div
                           key={notif.id}
-                          className={`group relative bg-white rounded-lg border border-l-4 transition-all duration-200 hover:shadow-sm ${
-                            cfg.borderColor
-                          } ${notif.read ? 'border-slate-100 opacity-60' : 'border-slate-200 shadow-sm'}`}
+                          className={`group relative bg-white rounded-lg border border-l-4 transition-all duration-200 hover:shadow-sm ${cfg.borderColor
+                            } ${notif.read ? 'border-slate-100 opacity-60' : 'border-slate-200 shadow-sm'}`}
                         >
                           <div className="p-2.5 flex items-start gap-2.5">
                             <div className={`p-1.5 rounded-lg ${cfg.bgColor} flex-shrink-0`}>
                               {React.cloneElement(cfg.icon, { className: 'w-3.5 h-3.5 text-current' })}
                             </div>
-                            
+
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-1.5 mb-0.5">
                                 <h4 className={`text-xs font-semibold truncate ${notif.read ? 'text-slate-500' : 'text-slate-900'}`}>
@@ -493,9 +490,9 @@ export default function NotificationsPage() {
                               <p className={`text-[11px] leading-relaxed ${notif.read ? 'text-slate-400' : 'text-slate-600'}`}>
                                 {notif.message}
                               </p>
-                              
+
                               {notif.link && (
-                                <button 
+                                <button
                                   onClick={() => handleOpenDetails(notif)}
                                   className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#00786f] mt-1.5 hover:underline bg-transparent border-none cursor-pointer"
                                 >
@@ -515,7 +512,7 @@ export default function NotificationsPage() {
                                   <DropdownMenuItem onClick={() => updateNotificationMutation.mutate({ id: notif.id, read: !notif.read })} className="text-xs">
                                     <Check className="w-3.5 h-3.5 mr-1.5" /> Mark {notif.read ? 'unread' : 'read'}
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     onClick={() => updateNotificationMutation.mutate({ id: notif.id, dismissed: true })}
                                     className="text-xs text-rose-600 focus:text-rose-600"
                                   >
@@ -563,15 +560,14 @@ export default function NotificationsPage() {
                       return (
                         <div
                           key={notif.id}
-                          className={`group relative bg-white rounded-lg border border-l-4 transition-all duration-200 hover:shadow-sm ${
-                            cfg.borderColor
-                          } ${notif.read ? 'border-slate-100 opacity-60' : 'border-slate-200 shadow-sm'}`}
+                          className={`group relative bg-white rounded-lg border border-l-4 transition-all duration-200 hover:shadow-sm ${cfg.borderColor
+                            } ${notif.read ? 'border-slate-100 opacity-60' : 'border-slate-200 shadow-sm'}`}
                         >
                           <div className="p-2.5 flex items-start gap-2.5">
                             <div className={`p-1.5 rounded-lg ${cfg.bgColor} flex-shrink-0`}>
                               {React.cloneElement(cfg.icon, { className: 'w-3.5 h-3.5 text-current' })}
                             </div>
-                            
+
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-1.5 mb-0.5">
                                 <h4 className={`text-xs font-semibold truncate ${notif.read ? 'text-slate-500' : 'text-slate-900'}`}>
@@ -584,9 +580,9 @@ export default function NotificationsPage() {
                               <p className={`text-[11px] leading-relaxed ${notif.read ? 'text-slate-400' : 'text-slate-600'}`}>
                                 {notif.message}
                               </p>
-                              
+
                               {notif.link && (
-                                <button 
+                                <button
                                   onClick={() => handleOpenDetails(notif)}
                                   className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#00786f] mt-1.5 hover:underline bg-transparent border-none cursor-pointer"
                                 >
@@ -606,7 +602,7 @@ export default function NotificationsPage() {
                                   <DropdownMenuItem onClick={() => updateNotificationMutation.mutate({ id: notif.id, read: !notif.read })} className="text-xs">
                                     <Check className="w-3.5 h-3.5 mr-1.5" /> Mark {notif.read ? 'unread' : 'read'}
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     onClick={() => updateNotificationMutation.mutate({ id: notif.id, dismissed: true })}
                                     className="text-xs text-rose-600 focus:text-rose-600"
                                   >
@@ -628,7 +624,7 @@ export default function NotificationsPage() {
 
             </div>
           ) : (
-            
+
             /* PREFERENCES SETTINGS */
             <div className="max-w-3xl mx-auto space-y-4">
               <Card className="bg-white border-slate-100 shadow-sm rounded-lg overflow-hidden">
@@ -660,7 +656,7 @@ export default function NotificationsPage() {
                             <Switch
                               className="scale-75 origin-right"
                               checked={preferences.inAppEnabled ?? true}
-                              onCheckedChange={(checked) => 
+                              onCheckedChange={(checked) =>
                                 updatePreferenceMutation.mutate({ key: 'inAppEnabled', value: checked })
                               }
                             />
@@ -674,7 +670,7 @@ export default function NotificationsPage() {
                             <Switch
                               className="scale-75 origin-right"
                               checked={preferences.emailEnabled ?? true}
-                              onCheckedChange={(checked) => 
+                              onCheckedChange={(checked) =>
                                 updatePreferenceMutation.mutate({ key: 'emailEnabled', value: checked })
                               }
                             />
@@ -689,7 +685,7 @@ export default function NotificationsPage() {
                             <h4 className="text-xs font-semibold text-slate-800">{item.label}</h4>
                             <p className="text-[11px] text-slate-500 leading-normal">{item.description}</p>
                           </div>
-                          
+
                           <div className="flex items-center gap-6">
                             <div className="flex items-center gap-2">
                               <span className="text-[10px] font-medium text-slate-500">In-App</span>
@@ -697,7 +693,7 @@ export default function NotificationsPage() {
                                 className="scale-75 origin-right"
                                 checked={preferences[item.inAppKey] ?? true}
                                 disabled={!(preferences.inAppEnabled ?? true)}
-                                onCheckedChange={(checked) => 
+                                onCheckedChange={(checked) =>
                                   updatePreferenceMutation.mutate({ key: item.inAppKey, value: checked })
                                 }
                               />
@@ -709,7 +705,7 @@ export default function NotificationsPage() {
                                 className="scale-75 origin-right"
                                 checked={preferences[item.emailKey] ?? true}
                                 disabled={!(preferences.emailEnabled ?? true)}
-                                onCheckedChange={(checked) => 
+                                onCheckedChange={(checked) =>
                                   updatePreferenceMutation.mutate({ key: item.emailKey, value: checked })
                                 }
                               />

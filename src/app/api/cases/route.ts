@@ -9,6 +9,7 @@ import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
+import { getCachedData, setCachedData, invalidateCasesCache } from '@/src/lib/redis-cache';
 
 const caseListSelection = {
   id: cases.id,
@@ -132,12 +133,13 @@ export async function POST(req: NextRequest) {
 
     const results = [];
 
+    // Ensure sequence exists once before generating next values
+    await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS cases_number_seq START 1`);
+
     for (let i = 0; i < casesArray.length; i++) {
       const caseData = casesArray[i];
       const file = files[i];
 
-      // Ensure sequence exists then get next value
-      await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS cases_number_seq START 1`)
       const seqResult = await db.execute(sql`SELECT nextval('cases_number_seq') AS n`)
       // drizzle-orm/postgres-js returns rows as a RowList (array-like); handle both shapes
       const seqRow = (Array.isArray(seqResult) ? seqResult[0] : (seqResult as any)?.rows?.[0] ?? (seqResult as any)?.[0]) as Record<string, unknown>
@@ -159,7 +161,7 @@ export async function POST(req: NextRequest) {
 
       const insertedCase = await db.insert(cases).values(newCase).returning().then(res => res[0]);
 
-      await notifyCaseSubmitted({
+      notifyCaseSubmitted({
         actorUserId: user.id,
         caseId: insertedCase.id,
         caseNumber: insertedCase.caseNumber ?? '',
@@ -205,7 +207,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      await logActivity({
+      logActivity({
         actor: profile,
         action: 'case.created',
         caseId: insertedCase.id,
@@ -217,9 +219,13 @@ export async function POST(req: NextRequest) {
           status: insertedCase.status,
           hasUploadedFile: Boolean(caseData.uploadedFile || file),
         },
-      });
+      }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
 
       results.push(insertedCase);
+    }
+
+    if (clientId) {
+      await invalidateCasesCache(clientId);
     }
 
     return NextResponse.json({ data: isArray ? results : results[0] }, { status: 201 });
@@ -252,72 +258,77 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const limit = Math.min(Math.max(Number(searchParams.get('limit') || 10), 1), 200);
-    const page = Math.max(Number(searchParams.get('page') || 1), 1);
-    const offset = (page - 1) * limit;
-    const fetchLimit = limit + 1; // fetch one extra to determine if there are more
-
-    let results;
-
+    let cacheKey = '';
     if (isValidRoleForType('admin_portal', profile.role)) {
-      results = await db.select(caseListSelection).from(cases)
-        .orderBy(desc(cases.createdAt))
-        .limit(fetchLimit)
-        .offset(offset);
+      cacheKey = 'cases:base:admin';
     } else if (profile.role === 'client') {
-      results = await db.select(caseListSelection).from(cases)
-        .where(eq(cases.clientId, profile.id))
-        .orderBy(desc(cases.createdAt))
-        .limit(fetchLimit)
-        .offset(offset);
+      cacheKey = `cases:base:client:${profile.id}`;
     } else if (profile.role === 'subuser') {
       const parentClientId = profile.createdBy ?? profile.id;
-      results = await db.select(caseListSelection).from(cases)
-        .where(eq(cases.clientId, parentClientId))
-        .orderBy(desc(cases.createdAt))
-        .limit(fetchLimit)
-        .offset(offset);
-    } else {
-      return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
+      cacheKey = `cases:base:client:${parentClientId}`;
     }
 
-    const hasMore = results.length > limit;
-    if (hasMore) results = results.slice(0, limit);
+    let baseCases = cacheKey ? await getCachedData<any[]>(cacheKey) : null;
 
-    const designerIds = Array.from(new Set(results.map(r => r.designerId).filter(Boolean))) as string[];
-    const designersMap = new Map<string, string>();
-    if (designerIds.length > 0) {
-      const designersProfiles = await db.select().from(profiles).where(inArray(profiles.id, designerIds));
-      designersProfiles.forEach(p => {
-        designersMap.set(p.id, p.fullName || p.email);
-      });
-    }
+    if (!baseCases) {
+      let results;
 
-    const chatMetadata = await getCasesChatMetadata(results.map((r) => r.id), profile.id);
+      if (isValidRoleForType('admin_portal', profile.role)) {
+        // Admin sees all cases
+        results = await db.select(caseListSelection).from(cases);
+      } else if (profile.role === 'client') {
+        // Client sees their own cases and cases created by their subusers (which also have clientId = client's id)
+        results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, profile.id));
+      } else if (profile.role === 'subuser') {
+        // Subuser sees ALL cases belonging to their parent client
+        const parentClientId = profile.createdBy ?? profile.id;
+        results = await db.select(caseListSelection).from(cases).where(eq(cases.clientId, parentClientId));
+      } else {
+        return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
+      }
 
-    // Fetch first uploaded scan file name for each case
-    const caseIds = results.map((r) => r.id)
-    const scanFileMap = new Map<string, string>()
-    if (caseIds.length > 0) {
-      const fileRows = await db
-        .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
-        .from(caseFiles)
-        .where(inArray(caseFiles.caseId, caseIds))
-        .orderBy(asc(caseFiles.createdAt))
-      for (const row of fileRows) {
-        if (!scanFileMap.has(row.caseId)) {
-          scanFileMap.set(row.caseId, row.fileName)
+      const designerIds = Array.from(new Set(results.map(r => r.designerId).filter(Boolean))) as string[];
+      const designersMap = new Map<string, string>();
+      if (designerIds.length > 0) {
+        const designersProfiles = await db.select().from(profiles).where(inArray(profiles.id, designerIds));
+        designersProfiles.forEach(p => {
+          designersMap.set(p.id, p.fullName || p.email);
+        });
+      }
+
+      // Fetch first uploaded scan file name for each case
+      const caseIds = results.map((r) => r.id);
+      const scanFileMap = new Map<string, string>();
+      if (caseIds.length > 0) {
+        const fileRows = await db
+          .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
+          .from(caseFiles)
+          .where(inArray(caseFiles.caseId, caseIds))
+          .orderBy(asc(caseFiles.createdAt));
+        for (const row of fileRows) {
+          if (!scanFileMap.has(row.caseId)) {
+            scanFileMap.set(row.caseId, row.fileName);
+          }
         }
+      }
+
+      baseCases = results.map(r => ({
+        ...r,
+        designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
+        scanFileName: scanFileMap.get(r.id) ?? null,
+      }));
+
+      if (cacheKey) {
+        await setCachedData(cacheKey, baseCases, 3600); // 1 hour TTL
       }
     }
 
-    const mappedResults = results.map(r => ({
+    const chatMetadata = await getCasesChatMetadata(baseCases.map((r) => r.id), profile.id);
+
+    const mappedResults = baseCases.map(r => ({
       ...r,
-      designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
       todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,
       hasUnreadChat: chatMetadata.get(r.id)?.hasUnreadChat ?? false,
-      scanFileName: scanFileMap.get(r.id) ?? null,
     }));
 
     return NextResponse.json({ data: mappedResults, hasMore });

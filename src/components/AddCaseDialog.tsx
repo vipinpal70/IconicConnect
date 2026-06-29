@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/src/components/ui/select"
 import { ToothChart } from "@/src/components/ToothChart"
 import { generateCaseId } from "@/src/lib/case-utils"
+import { uploadFileInChunks } from "@/src/lib/upload-utils"
 
 interface ClientRecord {
   id: string
@@ -111,12 +112,69 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
 
   const [generatedCaseId, setGeneratedCaseId] = useState<string>("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitCooldown, setSubmitCooldown] = useState(false)
+  const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null)
   const singleFileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
+
+  const [isDraggingCaseFile, setIsDraggingCaseFile] = useState(false)
+  const [isDraggingLibraryFile, setIsDraggingLibraryFile] = useState(false)
+
+  const handleCaseFileDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDraggingCaseFile(true)
+    } else if (e.type === "dragleave" || e.type === "drop") {
+      setIsDraggingCaseFile(false)
+    }
+  }
+
+  const handleCaseFileDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingCaseFile(false)
+    if (isSubmitting) return
+
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      handleFileSelect(file)
+    }
+  }
+
+  const handleLibraryFileDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDraggingLibraryFile(true)
+    } else if (e.type === "dragleave" || e.type === "drop") {
+      setIsDraggingLibraryFile(false)
+    }
+  }
+
+  const handleLibraryFileDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingLibraryFile(false)
+    if (isSubmitting) return
+
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      handleLibraryFileSelect(file)
+    }
+  }
 
   useEffect(() => {
     setGeneratedCaseId(generateCaseId(category))
   }, [category])
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current)
+      }
+    }
+  }, [])
 
   // Reset form when dialog opens/closes
   useEffect(() => {
@@ -137,13 +195,18 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       setUploadedLibraryFile(null)
       setGeneratedCaseId(generateCaseId("Crown & Bridge"))
       setIsSubmitting(false)
+      setSubmitCooldown(false)
+      if (cooldownTimerRef.current) {
+        clearTimeout(cooldownTimerRef.current)
+        cooldownTimerRef.current = null
+      }
     }
   }, [open])
 
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
-    const maxLimit = 2 * 1024 * 1024 * 1024 // 2GB
+    const maxLimit = 2.5 * 1024 * 1024 * 1024 // 2.5GB
     if (file.size > maxLimit) {
-      return { isValid: false, error: `File size exceeds the 2GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` }
+      return { isValid: false, error: `File size exceeds the 2.5GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` }
     }
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
     const allowedExtensions = [
@@ -168,40 +231,16 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     onSuccess: (res: { fileUrl: string; fileName: string; fileSize: number; fileType: string }) => void,
     onError: (err: string) => void
   ) => {
-    try {
-      let url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`
-      if (role === "admin" && selectedClientId) {
-        url += `&clientId=${encodeURIComponent(selectedClientId)}`
-      }
-
-      const xhr = new XMLHttpRequest()
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percentage = Math.round((event.loaded / event.total) * 100)
-          onProgress(percentage)
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const res = JSON.parse(xhr.responseText)
-            onSuccess(res)
-          } catch {
-            onError("Failed to parse response")
-          }
-        } else {
-          onError(`Upload failed with status ${xhr.status}`)
-        }
-      }
-
-      xhr.onerror = () => onError("Upload failed")
-      xhr.open("POST", url)
-      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream")
-      xhr.send(file)
-    } catch (err: any) {
-      onError(err.message || "Initialization failed")
-    }
+    await uploadFileInChunks(
+      file,
+      {
+        clientId: role === "admin" ? selectedClientId : null,
+        role: role
+      },
+      onProgress,
+      onSuccess,
+      onError
+    )
   }
 
   const handleFileSelect = async (file: File) => {
@@ -278,6 +317,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   }
 
   const handleSubmit = async () => {
+    if (submitCooldown || isSubmitting) return
+
     if (role === "admin" && !selectedClientId) {
       toast.error("Please select a client.")
       return
@@ -306,6 +347,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     }
 
     setIsSubmitting(true)
+    setSubmitCooldown(true)
+    if (cooldownTimerRef.current) {
+      clearTimeout(cooldownTimerRef.current)
+    }
+    cooldownTimerRef.current = setTimeout(() => {
+      setSubmitCooldown(false)
+    }, 5000)
 
     const formData = new FormData()
     const isArchBasedSubmit = ARCH_BASED_CATEGORIES.has(category)
@@ -483,7 +531,16 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 </div>
               </div>
             ) : (
-              <label className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors block border-border ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-800'}`}>
+              <label
+                onDragEnter={handleCaseFileDrag}
+                onDragOver={handleCaseFileDrag}
+                onDragLeave={handleCaseFileDrag}
+                onDrop={handleCaseFileDrop}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${isDraggingCaseFile
+                    ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
+                    : 'border-border hover:border-emerald-800'
+                  } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
                 <input
                   type="file"
                   className="hidden"
@@ -494,8 +551,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   }}
                 />
                 <div>
-                  <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
-                  <p className="text-sm font-medium text-foreground">Drop file here or click to upload</p>
+                  <Upload className={`h-6 w-6 mx-auto mb-1 transition-transform ${isDraggingCaseFile ? 'text-emerald-600 scale-110' : 'text-muted-foreground'}`} />
+                  <p className={`text-sm font-medium transition-colors ${isDraggingCaseFile ? 'text-emerald-700' : 'text-foreground'}`}>
+                    {isDraggingCaseFile ? 'Drop file here!' : 'Drop file here or click to upload'}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)</p>
                 </div>
               </label>
@@ -638,7 +697,16 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       </div>
                     </div>
                   ) : (
-                    <label className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors block border-border ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-800'}`}>
+                    <label
+                      onDragEnter={handleLibraryFileDrag}
+                      onDragOver={handleLibraryFileDrag}
+                      onDragLeave={handleLibraryFileDrag}
+                      onDrop={handleLibraryFileDrop}
+                      className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${isDraggingLibraryFile
+                          ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
+                          : 'border-border hover:border-emerald-800'
+                        } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
                       <input
                         type="file"
                         className="hidden"
@@ -649,8 +717,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                         }}
                       />
                       <div>
-                        <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
-                        <p className="text-sm font-medium text-foreground">Click to upload Custom Teeth Library</p>
+                        <Upload className={`h-6 w-6 mx-auto mb-1 transition-transform ${isDraggingLibraryFile ? 'text-emerald-600 scale-110' : 'text-muted-foreground'}`} />
+                        <p className={`text-sm font-medium transition-colors ${isDraggingLibraryFile ? 'text-emerald-700' : 'text-foreground'}`}>
+                          {isDraggingLibraryFile ? 'Drop file here!' : 'Click or drop to upload Custom Teeth Library'}
+                        </p>
                         <p className="text-xs text-muted-foreground mt-0.5">ZIP or DME (Max 2GB)</p>
                       </div>
                     </label>
@@ -863,12 +933,12 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           <Button
             className="w-full bg-emerald-800 text-white hover:bg-emerald-900 font-semibold h-9 rounded-md text-xs mt-2 flex items-center justify-center gap-1.5"
             onClick={handleSubmit}
-            disabled={isSubmitting || isUploading || isLibraryUploading}
+            disabled={isSubmitting || isUploading || isLibraryUploading || submitCooldown}
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Submitting Case...
+                Submitting...
               </>
             ) : isUploading || isLibraryUploading ? (
               "Uploading Files..."

@@ -9,6 +9,7 @@ import { logActivity } from '@/src/lib/activity-log';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
+import { invalidateCasesCache } from '@/src/lib/redis-cache';
 
 type CaseUpdateData = {
   caseNumber?: string
@@ -522,7 +523,7 @@ export async function PUT(
             }
           }
         } else {
-          await notifyCaseStatusChanged({
+          notifyCaseStatusChanged({
             actorUserId: actorUserId,
             targetUserId: caseRecord.clientId,
             caseId: id,
@@ -543,7 +544,7 @@ export async function PUT(
       }
     }
 
-    await logActivity({
+    logActivity({
       actor: profile,
       action: 'case.updated',
       caseId: id,
@@ -580,7 +581,11 @@ export async function PUT(
           clientMassage: updateData.clientMassage,
         },
       },
-    });
+    }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
+
+    if (updatedCase.length > 0) {
+      await invalidateCasesCache(updatedCase[0].clientId);
+    }
 
     return NextResponse.json({ data: updatedCase[0] });
   } catch (error: unknown) {
@@ -629,7 +634,7 @@ export async function DELETE(
       }
     }
 
-    await logActivity({
+    logActivity({
       actor: profile,
       action: 'case.deleted',
       caseId: id,
@@ -640,9 +645,11 @@ export async function DELETE(
         subuserId: caseRecord.subuserId,
         status: caseRecord.status,
       },
-    });
+    }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
 
     await db.delete(cases).where(eq(cases.id, id));
+
+    await invalidateCasesCache(caseRecord.clientId);
 
     return NextResponse.json({ message: 'Case deleted successfully' });
   } catch (error: unknown) {

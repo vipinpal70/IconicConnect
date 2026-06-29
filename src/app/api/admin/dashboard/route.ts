@@ -8,6 +8,7 @@ import { eq, inArray, notInArray, and, count, desc, isNotNull, asc, gte, sql } f
 import { isValidRoleForType } from "@/src/lib/auth/role";
 
 import { formatActivityLabel } from "@/src/lib/activity-log";
+import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -31,6 +32,12 @@ export async function GET(req: NextRequest) {
 
     if (!isValidRoleForType("admin_portal", profile.role)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const cacheKey = "dashboard:admin";
+    const cachedData = await getCachedData<any>(cacheKey);
+    if (cachedData) {
+      return NextResponse.json(cachedData);
     }
 
     // 1. Fetch KPI Counts
@@ -194,7 +201,7 @@ export async function GET(req: NextRequest) {
       .orderBy(desc(profiles.createdAt))
       .limit(6);
 
-    return NextResponse.json({
+    const dashboardResponse = {
       counts,
       recentActivities: recentCases,
       designerLoad: designerLoadResult.map((d) => ({
@@ -210,7 +217,11 @@ export async function GET(req: NextRequest) {
         onBoardedAt: c.onBoardedAt,
         createdAt: c.createdAt,
       })),
-    });
+    };
+
+    await setCachedData(cacheKey, dashboardResponse, 3600);
+
+    return NextResponse.json(dashboardResponse);
   } catch (error: unknown) {
     console.error("Admin dashboard fetch error:", error);
     const message = error instanceof Error ? error.message : "Internal Server Error";

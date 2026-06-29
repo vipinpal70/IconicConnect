@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useState } from "react"
 import { ClientLayout } from "@/src/components/ClientLayout"
 import { Button } from "@/src/components/ui/button"
+import { uploadFileInChunks } from "@/src/lib/upload-utils"
 import { Card, CardContent } from "@/src/components/ui/card"
 import { Input } from "@/src/components/ui/input"
+import { fetchProfileWithCache } from "@/src/lib/profile-cache"
 import { Label } from "@/src/components/ui/label"
+import { toast } from "sonner"
 import { Badge } from "@/src/components/ui/badge"
 import { createClient } from "@/src/lib/supabase/client"
 import {
@@ -59,9 +62,9 @@ export default function ClientPreferencesPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const maxLimit = 10 * 1024 * 1024 // 10MB
+    const maxLimit = 15 * 1024 * 1024 // 15MB
     if (file.size > maxLimit) {
-      alert("File size exceeds the 10MB limit.")
+      alert("File size exceeds the 15MB limit.")
       return
     }
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
@@ -73,24 +76,20 @@ export default function ClientPreferencesPage() {
 
     setUploadingFields((prev) => ({ ...prev, [field]: true }))
     try {
-      const url = `/api/cases/upload?fileName=${encodeURIComponent(file.name)}`
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
+      await uploadFileInChunks(
+        file,
+        {},
+        () => { },
+        (data) => {
+          updatePayload(field, {
+            fileUrl: data.fileUrl,
+            fileName: data.fileName,
+          })
         },
-        body: file,
-      })
-
-      if (!res.ok) {
-        throw new Error("Upload failed")
-      }
-
-      const data = await res.json()
-      updatePayload(field, {
-        fileUrl: data.fileUrl,
-        fileName: data.fileName,
-      })
+        (err) => {
+          alert(`Failed to upload image: ${err}`)
+        }
+      )
     } catch (err) {
       console.error(err)
       alert("Failed to upload image")
@@ -110,14 +109,13 @@ export default function ClientPreferencesPage() {
           return
         }
 
-        const [profileRes, formsRes] = await Promise.all([
-          fetch("/api/profile"),
+        const [profileData, formsRes] = await Promise.all([
+          fetchProfileWithCache(),
           fetch("/api/preference-forms", { cache: "no-store" }),
         ])
 
-        if (profileRes.ok) {
-          const profileData = await profileRes.json().catch(() => null)
-          setProfile(profileData)
+        if (profileData) {
+          setProfile(profileData as any)
         }
 
         if (formsRes.ok) {
@@ -136,6 +134,7 @@ export default function ClientPreferencesPage() {
 
   const saveForm = async () => {
     if (!draft.formName.trim()) {
+      toast.error("Form name is required")
       return
     }
 
@@ -162,11 +161,13 @@ export default function ClientPreferencesPage() {
         setForms(nextData?.data ?? [])
       }
 
+      toast.success(editingId ? "Preferences updated successfully" : "Preferences saved successfully")
       setDraft(emptyForm())
       setEditingId(null)
       setFormStep(1)
     } catch (error) {
       console.error(error)
+      toast.error(error instanceof Error ? error.message : "Failed to save preference form")
     } finally {
       setSaving(false)
     }
@@ -216,10 +217,10 @@ export default function ClientPreferencesPage() {
             <h1 className="text-xl font-semibold text-foreground">{headerName}</h1>
             <p className="text-xs text-muted-foreground mt-0.5">Create, edit, and manage multiple preference forms linked to your account.</p>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-1.5 h-8 text-xs w-fit" 
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-8 text-xs w-fit"
             onClick={() => {
               setDraft(emptyForm())
               setEditingId(null)
@@ -687,7 +688,7 @@ export default function ClientPreferencesPage() {
                     onClick={saveForm}
                     disabled={saving || uploadingFields.uploadedImage1 || uploadingFields.uploadedImage2}
                   >
-                    {editingId ? "Submit (Update)" : "Submit"}
+                    {saving ? "Submitting..." : editingId ? "Submit (Update)" : "Submit"}
                   </Button>
                 )}
               </div>

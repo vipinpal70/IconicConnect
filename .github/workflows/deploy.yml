@@ -76,7 +76,7 @@ jobs:
             
             # Install dependencies
             echo "Installing dependencies..."
-            npm install
+            npm install --include=dev
 
             # Apply committed Drizzle migrations on the server
             echo "Running database migrations..."

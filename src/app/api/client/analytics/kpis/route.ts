@@ -6,6 +6,7 @@ import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
 import { eq, and, isNotNull, gte, count, sql } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
+import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,6 +19,12 @@ export async function GET(req: NextRequest) {
     if (!isLabUser(profile)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const clientId = resolveClientId(profile);
+
+    const cacheKey = `analytics:client:${clientId}:kpis`;
+    const cachedData = await getCachedData<any>(cacheKey);
+    if (cachedData) {
+      return NextResponse.json(cachedData);
+    }
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -51,12 +58,16 @@ export async function GET(req: NextRequest) {
 
     const avgTatMinutes = tatResult[0]?.avg ? Number(tatResult[0].avg) : null;
 
-    return NextResponse.json({
+    const result = {
       totalCases: Number(totalResult[0]?.value ?? 0),
       avgTat: avgTatMinutes !== null ? `${(avgTatMinutes / 1440).toFixed(1)}d` : "N/A",
       casesOnHold: Number(holdResult[0]?.value ?? 0),
       currentMonthBilling: Number(billingResult[0]?.total ?? 0),
-    });
+    };
+
+    await setCachedData(cacheKey, result, 3600);
+
+    return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal Server Error";
     return NextResponse.json({ error: message }, { status: 500 });
