@@ -8,7 +8,7 @@ import {
   Bell, Check, Trash2, Settings, UserPlus, 
   CheckCircle2, XCircle, MessageSquare, AlertCircle, 
   PauseCircle, Info, MoreHorizontal,
-  Sliders, Mail, Sparkles, ArrowRight
+  Sliders, Mail, Sparkles, ArrowRight, Loader2
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { 
@@ -65,10 +65,10 @@ function NotificationsLayout({
 }) {
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-slate-500 text-sm font-medium">Securing session layout...</p>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-2">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground text-xs font-medium animate-pulse">Loading application layout...</p>
         </div>
       </div>
     )
