@@ -820,7 +820,15 @@ export default function CasesPage() {
                           </div>
                         </div>
                       ) : (
-                        <label className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800">
+                        <label
+                          className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors block border-border hover:border-emerald-800"
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) handleFileSelect(file);
+                          }}
+                        >
                           <input
                             type="file"
                             className="hidden"
@@ -1197,7 +1205,14 @@ export default function CasesPage() {
 
                   <TabsContent value="bulk" className="space-y-4 mt-4">
                     {bulkRows.length === 0 ? (
-                      <label className="border-2 border-dashed border-border rounded-lg p-10 text-center cursor-pointer hover:border-primary/50 transition-colors block">
+                      <label
+                        className="border-2 border-dashed border-border rounded-lg p-10 text-center cursor-pointer hover:border-primary/50 transition-colors block"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          onBulkFiles(e.dataTransfer.files);
+                        }}
+                      >
                         <input
                           ref={bulkFileRef}
                           type="file"
