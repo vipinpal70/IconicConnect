@@ -634,7 +634,7 @@ export async function DELETE(
       }
     }
 
-     logActivity({
+    logActivity({
       actor: profile,
       action: 'case.deleted',
       caseId: id,
