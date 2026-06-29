@@ -3,7 +3,7 @@ import { db } from '@/src/db';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
-import { createWriteStream, createReadStream, existsSync, mkdirSync, statSync, unlinkSync, readdirSync } from 'fs';
+import { createWriteStream, createReadStream, existsSync, mkdirSync, statSync, unlinkSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { createClient } from '@/src/lib/supabase/server';
 import { pipeline } from 'stream/promises';
@@ -146,25 +146,32 @@ export async function POST(req: NextRequest) {
             for (let i = 0; i < totalChunks; i++) {
               const currentChunkPath = join(tempChunksDir, i.toString());
               const chunkReader = createReadStream(currentChunkPath);
-              await pipeline(chunkReader, finalWriter, { end: false });
-            }
-            finalWriter.end();
-
-            // Cleanup chunk files
-            for (let i = 0; i < totalChunks; i++) {
-              const currentChunkPath = join(tempChunksDir, i.toString());
-              if (existsSync(currentChunkPath)) {
-                unlinkSync(currentChunkPath);
+              
+              for await (const chunk of chunkReader) {
+                const canWrite = finalWriter.write(chunk);
+                if (!canWrite) {
+                  await new Promise<void>((resolve) => finalWriter.once('drain', resolve));
+                }
               }
             }
-            // Cleanup chunk folder
+            finalWriter.end();
+            await new Promise<void>((resolve, reject) => {
+              finalWriter.on('finish', resolve);
+              finalWriter.on('error', reject);
+            });
+
+            // Cleanup chunk folder and files recursively
             if (existsSync(tempChunksDir)) {
-              unlinkSync(tempChunksDir);
+              rmSync(tempChunksDir, { recursive: true, force: true });
             }
           } catch (mergeError) {
             finalWriter.end();
             if (existsSync(filePath)) {
-              unlinkSync(filePath);
+              try {
+                unlinkSync(filePath);
+              } catch (cleanupErr) {
+                console.error('Failed to clean up merged file on error:', cleanupErr);
+              }
             }
             throw mergeError;
           }
