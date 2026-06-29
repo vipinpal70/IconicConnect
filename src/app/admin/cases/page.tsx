@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import React, { useMemo, useState } from "react"
+import React, { useMemo, useState, useRef, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent } from "@/src/components/ui/card"
@@ -199,12 +199,15 @@ export default function AdminCasesPage() {
   const [caseActionReason, setCaseActionReason] = useState("")
   const [holdReasonSelect, setHoldReasonSelect] = useState("")
   const [approveChecklist, setApproveChecklist] = useState<Record<string, boolean>>({})
+  const [pageLimit, setPageLimit] = useState(10)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const pageLimitChangedRef = useRef(false)
 
   // Fetch Cases list
-  const { data, isLoading, error, refetch } = useQuery<{ data: CaseRecord[] }>({
-    queryKey: ["admin-cases"],
+  const { data, isLoading, isFetching, error, refetch } = useQuery<{ data: CaseRecord[]; hasMore: boolean }>({
+    queryKey: ["admin-cases", pageLimit],
     queryFn: async () => {
-      const res = await fetch("/api/cases")
+      const res = await fetch(`/api/cases?limit=${pageLimit}&page=1`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || "Failed to load cases")
@@ -214,6 +217,21 @@ export default function AdminCasesPage() {
     refetchInterval: 30_000,
     staleTime: 20_000,
   })
+
+  const hasMore = data?.hasMore ?? false
+
+  useEffect(() => {
+    if (pageLimitChangedRef.current && !isFetching) {
+      pageLimitChangedRef.current = false
+      setIsLoadingMore(false)
+    }
+  }, [isFetching])
+
+  const handleLoadMore = () => {
+    pageLimitChangedRef.current = true
+    setIsLoadingMore(true)
+    setPageLimit((prev) => prev + 10)
+  }
 
   // Fetch Client profiles
   const { data: clientsData } = useQuery<ClientRecord[]>({
@@ -951,6 +969,18 @@ export default function AdminCasesPage() {
                 </tbody>
               </table>
             </div>
+            {!isLoading && hasMore && (
+              <div className="p-3 border-t border-border/50 flex justify-center">
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
+                  onClick={handleLoadMore} disabled={isLoadingMore}>
+                  {isLoadingMore ? (
+                    <><RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" />Loading...</>
+                  ) : (
+                    "Load more cases"
+                  )}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1215,7 +1245,7 @@ export default function AdminCasesPage() {
         onOpenChange={setIsAddOpen}
         role="admin"
         clients={clientsData}
-        onSuccess={() => refetch()}
+        onSuccess={() => { setPageLimit((prev) => prev + 1); }}
       />
     </AdminLayout>
   )
