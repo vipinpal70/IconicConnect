@@ -72,11 +72,12 @@ export async function uploadFileInChunks(
 
   // Queue of chunk indices to upload
   const chunkQueue = Array.from({ length: totalChunks }, (_, i) => i);
-  const activeUploads = new Set<Promise<any>>();
+  const activeUploads = new Set<Promise<void>>();
   let hasFailed = false;
+  let finalResponse: any = null;
 
-  const uploadNextChunk = async (): Promise<any> => {
-    if (chunkQueue.length === 0 || hasFailed) return null;
+  const uploadNextChunk = async (): Promise<void> => {
+    if (chunkQueue.length === 0 || hasFailed) return;
 
     const chunkIndex = chunkQueue.shift()!;
     const start = chunkIndex * CHUNK_SIZE;
@@ -88,7 +89,7 @@ export async function uploadFileInChunks(
       url += `&clientId=${encodeURIComponent(options.clientId)}`;
     }
 
-    const uploadPromise = new Promise((resolve, reject) => {
+    const uploadPromise = new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       
       xhr.upload.onprogress = (event) => {
@@ -104,7 +105,10 @@ export async function uploadFileInChunks(
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const res = JSON.parse(xhr.responseText);
-            resolve(res);
+            if (res && res.fileUrl) {
+              finalResponse = res;
+            }
+            resolve();
           } catch {
             reject(new Error("Failed to parse chunk response"));
           }
@@ -123,12 +127,11 @@ export async function uploadFileInChunks(
     activeUploads.add(uploadPromise);
     
     try {
-      const result = await uploadPromise;
+      await uploadPromise;
       activeUploads.delete(uploadPromise);
       
       // Request next chunk recursively
-      const nextResult = await uploadNextChunk();
-      return result || nextResult;
+      await uploadNextChunk();
     } catch (err) {
       hasFailed = true;
       activeUploads.delete(uploadPromise);
@@ -145,9 +148,8 @@ export async function uploadFileInChunks(
   }
 
   try {
-    const results = await Promise.all(uploadThreads);
-    // Find the final merge response containing file details
-    const finalResponse = results.flat().find((res) => res && res.fileUrl);
+    await Promise.all(uploadThreads);
+    // Use the final merge response containing file details
     if (finalResponse) {
       onProgress(100);
       onSuccess(finalResponse);

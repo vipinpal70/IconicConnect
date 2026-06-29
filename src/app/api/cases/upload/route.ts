@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       const uploadedChunks = readdirSync(tempChunksDir);
       if (uploadedChunks.length === totalChunks) {
         // Double check all indices from 0 to totalChunks-1 exist
-        const allChunksPresent = Array.from({ length: totalChunks }, (_, i) => 
+        const allChunksPresent = Array.from({ length: totalChunks }, (_, i) =>
           existsSync(join(tempChunksDir, i.toString()))
         ).every(Boolean);
 
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
             for (let i = 0; i < totalChunks; i++) {
               const currentChunkPath = join(tempChunksDir, i.toString());
               const chunkReader = createReadStream(currentChunkPath);
-              
+
               for await (const chunk of chunkReader) {
                 const canWrite = finalWriter.write(chunk);
                 if (!canWrite) {
