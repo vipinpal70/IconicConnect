@@ -35,6 +35,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
   const [forbidden, setForbidden] = useState(false)
   const [text, setText] = useState("")
   const [uploading, setUploading] = useState(false)
+  const [sending, setSending] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -95,8 +96,9 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
   // 3. Send Text Message
   const handleSend = async () => {
     const trimmed = text.trim()
-    if (!trimmed) return
+    if (!trimmed || sending) return
 
+    setSending(true)
     try {
       const res = await fetch(`/api/cases/${caseId}/chat`, {
         method: "POST",
@@ -111,6 +113,8 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
       await fetchMessages()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to send message")
+    } finally {
+      setSending(false)
     }
   }
 
@@ -347,19 +351,23 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
           <Input
             placeholder="Type a message…"
             value={text}
-            disabled={uploading}
+            disabled={uploading || sending}
             onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !sending) { e.preventDefault(); handleSend(); } }}
             className="bg-muted/10 h-8 text-xs"
           />
 
           <Button
             onClick={handleSend}
-            disabled={!text.trim() || uploading}
+            disabled={!text.trim() || uploading || sending}
             size="icon"
             className="h-8 w-8 shrink-0"
           >
-            <Send className="h-3.5 w-3.5" />
+            {sending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}
           </Button>
         </div>
       )}
