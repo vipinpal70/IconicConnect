@@ -536,11 +536,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 onDragOver={handleCaseFileDrag}
                 onDragLeave={handleCaseFileDrag}
                 onDrop={handleCaseFileDrop}
-                className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${
-                  isDraggingCaseFile
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${isDraggingCaseFile
                     ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
                     : 'border-border hover:border-emerald-800'
-                } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <input
                   type="file"
@@ -703,11 +702,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       onDragOver={handleLibraryFileDrag}
                       onDragLeave={handleLibraryFileDrag}
                       onDrop={handleLibraryFileDrop}
-                      className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${
-                        isDraggingLibraryFile
+                      className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${isDraggingLibraryFile
                           ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
                           : 'border-border hover:border-emerald-800'
-                      } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <input
                         type="file"

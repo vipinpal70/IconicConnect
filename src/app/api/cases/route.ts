@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
 
       const insertedCase = await db.insert(cases).values(newCase).returning().then(res => res[0]);
 
-      await notifyCaseSubmitted({
+      notifyCaseSubmitted({
         actorUserId: user.id,
         caseId: insertedCase.id,
         caseNumber: insertedCase.caseNumber ?? '',
@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      await logActivity({
+      logActivity({
         actor: profile,
         action: 'case.created',
         caseId: insertedCase.id,
@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
           status: insertedCase.status,
           hasUploadedFile: Boolean(caseData.uploadedFile || file),
         },
-      });
+      }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
 
       results.push(insertedCase);
     }

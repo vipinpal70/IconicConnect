@@ -523,7 +523,7 @@ export async function PUT(
             }
           }
         } else {
-          await notifyCaseStatusChanged({
+          notifyCaseStatusChanged({
             actorUserId: actorUserId,
             targetUserId: caseRecord.clientId,
             caseId: id,
@@ -544,7 +544,7 @@ export async function PUT(
       }
     }
 
-    await logActivity({
+    logActivity({
       actor: profile,
       action: 'case.updated',
       caseId: id,
@@ -581,7 +581,7 @@ export async function PUT(
           clientMassage: updateData.clientMassage,
         },
       },
-    });
+    }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
 
     if (updatedCase.length > 0) {
       await invalidateCasesCache(updatedCase[0].clientId);
@@ -634,7 +634,7 @@ export async function DELETE(
       }
     }
 
-    await logActivity({
+     logActivity({
       actor: profile,
       action: 'case.deleted',
       caseId: id,
@@ -645,7 +645,7 @@ export async function DELETE(
         subuserId: caseRecord.subuserId,
         status: caseRecord.status,
       },
-    });
+    }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
 
     await db.delete(cases).where(eq(cases.id, id));
 
