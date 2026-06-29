@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/src/lib/supabase/client";
 import { ClientLayout } from "@/src/components/ClientLayout";
+import { fetchProfileWithCache, invalidateProfileCache } from "@/src/lib/profile-cache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -54,10 +55,9 @@ export default function ProfilePage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const res = await fetch("/api/profile");
-        if (!res.ok) throw new Error("Failed to fetch profile");
-        const data: Profile = await res.json();
-        setProfile(data);
+        const data = await fetchProfileWithCache();
+        if (!data) throw new Error("Failed to fetch profile");
+        setProfile(data as any);
 
         if (data.role !== "subuser") {
           const priceRes = await fetch("/api/client/price-list");
@@ -129,6 +129,7 @@ export default function ProfilePage() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "Failed to update profile");
       setProfile((prev) => prev ? { ...prev, ...profileDraft } : prev);
+      invalidateProfileCache();
       toast.success("Profile updated");
       setEditingProfile(false);
     } catch (err: any) {

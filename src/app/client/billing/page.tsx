@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ClientLayout } from "@/src/components/ClientLayout"
+import { fetchProfileWithCache } from "@/src/lib/profile-cache"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
@@ -141,8 +142,7 @@ export default function ClientBillingPage() {
 
   // Sub-users cannot access billing
   useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.json())
+    fetchProfileWithCache()
       .then((p) => { if (p?.role === "subuser") router.replace("/client/dashboard") })
       .catch(() => {})
   }, [router])

@@ -6,6 +6,7 @@ import { Button } from "@/src/components/ui/button"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
 import { Card, CardContent } from "@/src/components/ui/card"
 import { Input } from "@/src/components/ui/input"
+import { fetchProfileWithCache } from "@/src/lib/profile-cache"
 import { Label } from "@/src/components/ui/label"
 import { Badge } from "@/src/components/ui/badge"
 import { createClient } from "@/src/lib/supabase/client"
@@ -107,14 +108,13 @@ export default function ClientPreferencesPage() {
           return
         }
 
-        const [profileRes, formsRes] = await Promise.all([
-          fetch("/api/profile"),
+        const [profileData, formsRes] = await Promise.all([
+          fetchProfileWithCache(),
           fetch("/api/preference-forms", { cache: "no-store" }),
         ])
 
-        if (profileRes.ok) {
-          const profileData = await profileRes.json().catch(() => null)
-          setProfile(profileData)
+        if (profileData) {
+          setProfile(profileData as any)
         }
 
         if (formsRes.ok) {

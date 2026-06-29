@@ -31,6 +31,7 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Logo from "@/public/IconicConnectLogo.png";
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
+import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 
 const NAV_ITEMS = [
   { title: "Dashboard",     url: "/dashboard",     icon: LayoutDashboard },
@@ -48,11 +49,7 @@ export function OpsSidebar() {
 
   const { data: profile } = useQuery({
     queryKey: ['my-profile'],
-    queryFn: async () => {
-      const res = await fetch('/api/profile')
-      if (!res.ok) return null
-      return res.json()
-    }
+    queryFn: fetchProfileWithCache,
   });
 
   // Mark the current page as seen whenever the route changes

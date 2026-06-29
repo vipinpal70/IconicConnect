@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
+import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { FolderOpen, CheckCircle2, PauseCircle, XCircle, ClipboardCheck, Timer, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -36,12 +37,7 @@ export default function Dashboard() {
 
   const { data: profile } = useQuery<{ fullName: string | null; role: string | null; labName: string | null }>({
     queryKey: ["my-profile"],
-    queryFn: async () => {
-      const res = await fetch("/api/profile");
-      if (!res.ok) return null;
-      return res.json();
-    },
-    staleTime: 5 * 60_000, // profile rarely changes
+    queryFn: fetchProfileWithCache as any,
   });
 
   const cases = casesData?.data ?? [];

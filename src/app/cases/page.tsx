@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
+import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 
 interface BulkRow {
   fileName: string;
@@ -319,12 +320,7 @@ export default function CasesPage() {
 
   const { data: currentUser } = useQuery<ProfileSummary | null>({
     queryKey: ["ops-me"],
-    queryFn: async () => {
-      const res = await fetch("/api/profile");
-      if (!res.ok) return null;
-      return res.json();
-    },
-    staleTime: 10 * 60_000,
+    queryFn: fetchProfileWithCache as any,
   });
 
   const handleUpdate = async (
@@ -612,13 +608,10 @@ export default function CasesPage() {
   useEffect(() => {
     async function fetchProfile() {
       try {
-        const res = await fetch("/api/profile");
-        if (res.ok) {
-          const profile = await res.json();
-          if (profile) {
-            setUserProfile({ id: profile.id, role: profile.role, fullName: profile.fullName || null });
-            if (profile.labName) setLabName(profile.labName);
-          }
+        const profile = await fetchProfileWithCache();
+        if (profile) {
+          setUserProfile({ id: profile.id, role: profile.role, fullName: profile.fullName || null });
+          if (profile.labName) setLabName(profile.labName);
         }
       } catch (err) {
         console.error("Error fetching operations profile:", err);

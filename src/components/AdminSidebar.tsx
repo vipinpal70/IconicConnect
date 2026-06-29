@@ -18,6 +18,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Button } from "@/src/components/ui/button";
+import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import {
   Sidebar,
   SidebarContent,
@@ -67,33 +68,14 @@ export function AdminSidebar() {
   useEffect(() => {
     let active = true
 
-    const fetchProfile = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user || !active) {
-        setProfile(null)
-        setLoading(false)
-        return
-      }
-
-      const res = await fetch(`/api/profile/${user.id}`, { cache: "no-store" })
+    const getProfile = async () => {
+      const data = await fetchProfileWithCache()
       if (!active) return
-
-      if (!res.ok) {
-        setProfile(null)
-        setLoading(false)
-        return
-      }
-
-      const data = await res.json().catch(() => null)
-      if (!active) return
-
-      setProfile(data)
+      setProfile(data as any)
       setLoading(false)
     }
 
-    fetchProfile()
+    getProfile()
     return () => { active = false }
   }, [])
 

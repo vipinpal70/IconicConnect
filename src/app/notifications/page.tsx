@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchProfileWithCache } from '@/src/lib/profile-cache'
 import { 
   Bell, Check, Trash2, Settings, UserPlus, 
   CheckCircle2, XCircle, MessageSquare, AlertCircle, 
@@ -98,10 +99,9 @@ export default function NotificationsPage() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const res = await fetch('/api/profile')
-        if (res.ok) {
-          const data = await res.json()
-          setProfile(data)
+        const data = await fetchProfileWithCache()
+        if (data) {
+          setProfile(data as any)
         }
       } catch (err) {
         console.error('Failed to load profile:', err)
