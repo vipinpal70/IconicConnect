@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-"use client"
+"use client";
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { createClient } from "@/src/lib/supabase/client";
@@ -672,6 +672,14 @@ export default function CasesPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Helper function to remove the extension from file name
+  const removeExtensionFromString = (str: string) => {
+    if (str.lastIndexOf(".") > 0) {
+      return str.substring(0, str.lastIndexOf("."));
+    }
+    return str;
   };
 
   return (
@@ -1482,7 +1490,7 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
-                    {["Case ID", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt"].map((h) => (
+                    {["Case ID", "Case Name", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt"].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-3.5 py-2">{h}</th>
                     ))}
                   </tr>
@@ -1491,6 +1499,7 @@ export default function CasesPage() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
+                        <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-20"></div></td>
                         <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-20"></div></td>
                         <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-24"></div></td>
                         <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-28"></div></td>
@@ -1545,6 +1554,9 @@ export default function CasesPage() {
                                 );
                               })()}
                             </div>
+                          </td>
+                          <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">
+                            {removeExtensionFromString(c.scanFileName || "—")}
                           </td>
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-3.5 py-2 text-[11px] text-foreground font-semibold">{restoration || "—"}</td>
