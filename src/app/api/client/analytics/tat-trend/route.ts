@@ -3,9 +3,10 @@ import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, and, isNotNull, gte, sql } from "drizzle-orm";
+import { eq, and, isNotNull, gte, lte, sql } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,20 +20,20 @@ export async function GET(req: NextRequest) {
 
     const clientId = resolveClientId(profile);
 
-    const cacheKey = `analytics:client:${clientId}:tat-trend`;
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate, truncUnit, format } = getAnalyticsDateRange(from, to);
+
+    const cacheKey = `analytics:client:${clientId}:tat-trend:${from || "default"}:${to || "default"}`;
     const cachedData = await getCachedData<any>(cacheKey);
     if (cachedData) {
       return NextResponse.json(cachedData);
     }
 
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-    sixMonthsAgo.setDate(1);
-    sixMonthsAgo.setHours(0, 0, 0, 0);
-
     const rows = await db
       .select({
-        month: sql<string>`to_char(date_trunc('month', ${cases.deliveredTime}), 'Mon')`,
+        month: sql<string>`to_char(date_trunc(${sql.raw(`'${truncUnit}'`)}, ${cases.deliveredTime}), ${sql.raw(`'${format}'`)})`,
         tat: sql<number>`ROUND(AVG(${cases.tat}) / 1440.0, 1)`,
       })
       .from(cases)
@@ -41,11 +42,12 @@ export async function GET(req: NextRequest) {
           eq(cases.clientId, clientId),
           isNotNull(cases.tat),
           isNotNull(cases.deliveredTime),
-          gte(cases.deliveredTime, sixMonthsAgo)
+          gte(cases.deliveredTime, fromDate),
+          lte(cases.deliveredTime, toDate)
         )
       )
-      .groupBy(sql`date_trunc('month', ${cases.deliveredTime})`)
-      .orderBy(sql`date_trunc('month', ${cases.deliveredTime})`);
+      .groupBy(sql`date_trunc(${sql.raw(`'${truncUnit}'`)}, ${cases.deliveredTime})`)
+      .orderBy(sql`date_trunc(${sql.raw(`'${truncUnit}'`)}, ${cases.deliveredTime})`);
 
     const result = rows.map((r) => ({ month: r.month, tat: Number(r.tat) }));
 

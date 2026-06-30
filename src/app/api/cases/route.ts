@@ -304,6 +304,7 @@ export async function GET(req: NextRequest) {
 
     const chatMetadata = await getCasesChatMetadata(results.map((r) => r.id), profile.id);
 
+    // Fetch first uploaded scan file name for each case
     const caseIds = results.map((r) => r.id);
     const scanFileMap = new Map<string, string>();
     if (caseIds.length > 0) {
@@ -313,7 +314,7 @@ export async function GET(req: NextRequest) {
         .where(inArray(caseFiles.caseId, caseIds))
         .orderBy(asc(caseFiles.createdAt));
       for (const row of fileRows) {
-        if (!scanFileMap.has(row.caseId)) {
+        if (row.caseId && !scanFileMap.has(row.caseId)) {
           scanFileMap.set(row.caseId, row.fileName);
         }
       }

@@ -1,8 +1,10 @@
 "use client"
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/src/components/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
+import { Input } from "@/src/components/ui/input";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -29,42 +31,51 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 export default function AnalyticsPage() {
   const now = new Date();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+
+  const [from, setFrom] = useState<string>(thirtyDaysAgo.toISOString().split("T")[0]);
+  const [to, setTo] = useState<string>(now.toISOString().split("T")[0]);
+
   const monthName = now.toLocaleString("default", { month: "long" });
 
   const { data: kpis, isLoading: kpisLoading } = useQuery<{
     totalCases: number; avgTat: string; casesOnHold: number; currentMonthBilling: number;
-  }>({ queryKey: ["analytics-kpis"], queryFn: () => fetch(`${BASE}/kpis`).then((r) => r.json()) });
+  }>({
+    queryKey: ["analytics-kpis", from, to],
+    queryFn: () => fetch(`${BASE}/kpis?from=${from}&to=${to}`).then((r) => r.json()),
+  });
 
   const { data: tatTrend, isLoading: tatLoading } = useQuery<{ month: string; tat: number }[]>({
-    queryKey: ["analytics-tat-trend"],
-    queryFn: () => fetch(`${BASE}/tat-trend`).then((r) => r.json()),
+    queryKey: ["analytics-tat-trend", from, to],
+    queryFn: () => fetch(`${BASE}/tat-trend?from=${from}&to=${to}`).then((r) => r.json()),
   });
 
   const { data: deliveryStatus, isLoading: deliveryLoading } = useQuery<{ name: string; value: number }[]>({
-    queryKey: ["analytics-delivery-status"],
-    queryFn: () => fetch(`${BASE}/delivery-status`).then((r) => r.json()),
+    queryKey: ["analytics-delivery-status", from, to],
+    queryFn: () => fetch(`${BASE}/delivery-status?from=${from}&to=${to}`).then((r) => r.json()),
   });
 
   const { data: monthlyBilling, isLoading: billingLoading } = useQuery<{ month: string; amount: number }[]>({
-    queryKey: ["analytics-monthly-billing"],
-    queryFn: () => fetch(`${BASE}/monthly-billing`).then((r) => r.json()),
+    queryKey: ["analytics-monthly-billing", from, to],
+    queryFn: () => fetch(`${BASE}/monthly-billing?from=${from}&to=${to}`).then((r) => r.json()),
   });
 
   const { data: typeMix, isLoading: typeLoading } = useQuery<{ name: string; value: number }[]>({
-    queryKey: ["analytics-type-mix"],
-    queryFn: () => fetch(`${BASE}/type-mix`).then((r) => r.json()),
+    queryKey: ["analytics-type-mix", from, to],
+    queryFn: () => fetch(`${BASE}/type-mix?from=${from}&to=${to}`).then((r) => r.json()),
   });
 
   const { data: onHoldReasons, isLoading: holdLoading } = useQuery<{ reason: string; count: number }[]>({
-    queryKey: ["analytics-on-hold-reasons"],
-    queryFn: () => fetch(`${BASE}/on-hold-reasons`).then((r) => r.json()),
+    queryKey: ["analytics-on-hold-reasons", from, to],
+    queryFn: () => fetch(`${BASE}/on-hold-reasons?from=${from}&to=${to}`).then((r) => r.json()),
   });
 
   const { data: recentInvoices, isLoading: invoicesLoading } = useQuery<{
     id: string; invoiceNumber: string; period: string; caseCount: number; amount: number; status: string;
   }[]>({
-    queryKey: ["analytics-recent-invoices"],
-    queryFn: () => fetch(`${BASE}/recent-invoices`).then((r) => r.json()),
+    queryKey: ["analytics-recent-invoices", from, to],
+    queryFn: () => fetch(`${BASE}/recent-invoices?from=${from}&to=${to}`).then((r) => r.json()),
   });
 
   const typeMixWithColors = (Array.isArray(typeMix) ? typeMix : []).map((t, i) => ({ ...t, color: PALETTE[i % PALETTE.length] }));
@@ -74,18 +85,57 @@ export default function AnalyticsPage() {
   }));
 
   const kpiCards = [
-    { label: "Total Cases", value: kpisLoading ? null : kpis?.totalCases, sub: "lifetime" },
-    { label: "Avg TAT", value: kpisLoading ? null : kpis?.avgTat, sub: "last 30 days", positive: true },
-    { label: "Cases On Hold", value: kpisLoading ? null : kpis?.casesOnHold, sub: "needs action" },
-    { label: `${monthName} Billing`, value: kpisLoading ? null : kpis && typeof kpis.currentMonthBilling === 'number' ? `$${kpis.currentMonthBilling.toLocaleString()}` : 'N/A', sub: "current month" },
+    {
+      label: "Total Cases",
+      value: kpisLoading ? null : kpis?.totalCases,
+      sub: "selected period"
+    },
+    {
+      label: "Avg TAT",
+      value: kpisLoading ? null : kpis?.avgTat,
+      sub: "selected period",
+      positive: true
+    },
+    {
+      label: "Cases On Hold",
+      value: kpisLoading ? null : kpis?.casesOnHold,
+      sub: "needs action"
+    },
+    {
+      label: "Period Billing",
+      value: kpisLoading ? null : kpis && typeof kpis.currentMonthBilling === 'number' ? `$${kpis.currentMonthBilling.toLocaleString()}` : 'N/A',
+      sub: "selected period"
+    },
   ];
 
   return (
     <AdminLayout>
       <div className="space-y-4 animate-fade-in">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Analytics & Reports</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Performance, delivery and billing insights for your account</p>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-lg font-semibold text-foreground">Analytics & Reports</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Performance, delivery and billing insights for your account</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground">From:</span>
+              <Input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="h-8 text-xs w-36 cursor-pointer bg-background"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground">To:</span>
+              <Input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="h-8 text-xs w-36 cursor-pointer bg-background"
+              />
+            </div>
+          </div>
         </div>
 
         {/* KPI Cards */}

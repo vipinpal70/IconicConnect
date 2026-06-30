@@ -3,8 +3,9 @@ import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, count, sql } from "drizzle-orm";
+import { eq, count, sql, gte, lte, and } from "drizzle-orm";
 import { isValidRoleForType } from "@/src/lib/auth/role";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 const STATUS_BUCKETS = [
   { name: "Completed",      statuses: ["approved", "delivered"] },
@@ -26,9 +27,15 @@ export async function GET(req: NextRequest) {
     if (!isValidRoleForType("admin_portal", profile.role))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate } = getAnalyticsDateRange(from, to);
+
     const rows = await db
       .select({ status: cases.status, cnt: count() })
       .from(cases)
+      .where(and(gte(cases.createdAt, fromDate), lte(cases.createdAt, toDate)))
       .groupBy(cases.status);
 
     const countMap = new Map(rows.map((r) => [r.status, Number(r.cnt)]));

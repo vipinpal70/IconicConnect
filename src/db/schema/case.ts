@@ -169,7 +169,7 @@ export const caseMessages = pgTable('case_messages', {
 
 export const caseFiles = pgTable('case_files', {
   id: uuid('id').primaryKey().defaultRandom(),
-  caseId: uuid('case_id').references(() => cases.id).notNull(),
+  caseId: uuid('case_id').references(() => cases.id),
   uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
   fileName: varchar('file_name', { length: 255 }).notNull(),
   fileUrl: text('file_url').notNull(),

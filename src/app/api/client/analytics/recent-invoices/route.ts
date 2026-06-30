@@ -3,9 +3,10 @@ import { db } from "@/src/db";
 import { invoices } from "@/src/db/schema/invoice";
 import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, gte, lte } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,7 +20,12 @@ export async function GET(req: NextRequest) {
 
     const clientId = resolveClientId(profile);
 
-    const cacheKey = `analytics:client:${clientId}:recent-invoices`;
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate } = getAnalyticsDateRange(from, to);
+
+    const cacheKey = `analytics:client:${clientId}:recent-invoices:${from || "default"}:${to || "default"}`;
     const cachedData = await getCachedData<any>(cacheKey);
     if (cachedData) {
       return NextResponse.json(cachedData);
@@ -36,7 +42,7 @@ export async function GET(req: NextRequest) {
         status: invoices.status,
       })
       .from(invoices)
-      .where(eq(invoices.clientId, clientId))
+      .where(and(eq(invoices.clientId, clientId), gte(invoices.createdAt, fromDate), lte(invoices.createdAt, toDate)))
       .orderBy(desc(invoices.createdAt))
       .limit(5);
 

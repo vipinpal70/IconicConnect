@@ -11,7 +11,8 @@
     "db:push": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
-    "db:clean": "node scripts/clean-test-data.mjs"
+    "db:clean": "node scripts/clean-test-data.mjs",
+    "db:clean-old-files": "node scripts/delete-old-case-files.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

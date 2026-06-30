@@ -3,9 +3,10 @@ import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, and, gte, count, sql, desc } from "drizzle-orm";
+import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,14 +20,16 @@ export async function GET(req: NextRequest) {
 
     const clientId = resolveClientId(profile);
 
-    const cacheKey = `analytics:client:${clientId}:on-hold-reasons`;
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate } = getAnalyticsDateRange(from, to);
+
+    const cacheKey = `analytics:client:${clientId}:on-hold-reasons:${from || "default"}:${to || "default"}`;
     const cachedData = await getCachedData<any>(cacheKey);
     if (cachedData) {
       return NextResponse.json(cachedData);
     }
-
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
     const rows = await db
       .select({
@@ -38,7 +41,8 @@ export async function GET(req: NextRequest) {
         and(
           eq(cases.clientId, clientId),
           eq(cases.status, "on_hold"),
-          gte(cases.createdAt, ninetyDaysAgo)
+          gte(cases.createdAt, fromDate),
+          lte(cases.createdAt, toDate)
         )
       )
       .groupBy(sql`COALESCE(${cases.holdReason}, 'Unspecified')`)

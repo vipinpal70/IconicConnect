@@ -188,7 +188,7 @@ export async function GET(
         .where(inArray(caseFiles.caseId, caseIdList))
         .orderBy(asc(caseFiles.createdAt))
       for (const row of fileRows) {
-        if (!scanFileMap.has(row.caseId)) {
+        if (row.caseId && !scanFileMap.has(row.caseId)) {
           scanFileMap.set(row.caseId, row.fileName)
         }
       }

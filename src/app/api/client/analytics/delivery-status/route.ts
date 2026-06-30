@@ -3,9 +3,10 @@ import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, gte, lte } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 const STATUS_BUCKETS = [
   { name: "Completed",      statuses: ["approved", "delivered"] },
@@ -28,7 +29,12 @@ export async function GET(req: NextRequest) {
 
     const clientId = resolveClientId(profile);
 
-    const cacheKey = `analytics:client:${clientId}:delivery-status`;
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate } = getAnalyticsDateRange(from, to);
+
+    const cacheKey = `analytics:client:${clientId}:delivery-status:${from || "default"}:${to || "default"}`;
     const cachedData = await getCachedData<any>(cacheKey);
     if (cachedData) {
       return NextResponse.json(cachedData);
@@ -37,7 +43,7 @@ export async function GET(req: NextRequest) {
     const rows = await db
       .select({ status: cases.status, cnt: count() })
       .from(cases)
-      .where(eq(cases.clientId, clientId))
+      .where(and(eq(cases.clientId, clientId), gte(cases.createdAt, fromDate), lte(cases.createdAt, toDate)))
       .groupBy(cases.status);
 
     const countMap = new Map(rows.map((r) => [r.status, Number(r.cnt)]));

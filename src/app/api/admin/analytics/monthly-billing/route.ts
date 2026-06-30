@@ -3,8 +3,9 @@ import { db } from "@/src/db";
 import { invoices } from "@/src/db/schema/invoice";
 import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, gte, sql } from "drizzle-orm";
+import { eq, gte, lte, sql, and } from "drizzle-orm";
 import { isValidRoleForType } from "@/src/lib/auth/role";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,21 +18,23 @@ export async function GET(req: NextRequest) {
     if (!isValidRoleForType("admin_portal", profile.role))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-    sixMonthsAgo.setDate(1);
-    const cutoff = sixMonthsAgo.toISOString().split("T")[0];
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate, truncUnit, format } = getAnalyticsDateRange(from, to);
+    
+    const fromDateStr = fromDate.toISOString().split("T")[0];
+    const toDateStr = toDate.toISOString().split("T")[0];
 
     const rows = await db
       .select({
-        yearMonth: sql<string>`to_char(date_trunc('month', ${invoices.startDate}::date), 'YYYY-MM')`,
-        month: sql<string>`to_char(date_trunc('month', ${invoices.startDate}::date), 'Mon')`,
+        month: sql<string>`to_char(date_trunc(${sql.raw(`'${truncUnit}'`)}, ${invoices.startDate}::date), ${sql.raw(`'${format}'`)})`,
         amount: sql<number>`ROUND(SUM(${invoices.total}::numeric), 2)`,
       })
       .from(invoices)
-      .where(gte(invoices.startDate, cutoff))
-      .groupBy(sql`date_trunc('month', ${invoices.startDate}::date)`)
-      .orderBy(sql`date_trunc('month', ${invoices.startDate}::date)`);
+      .where(and(gte(invoices.startDate, fromDateStr), lte(invoices.startDate, toDateStr)))
+      .groupBy(sql`date_trunc(${sql.raw(`'${truncUnit}'`)}, ${invoices.startDate}::date)`)
+      .orderBy(sql`date_trunc(${sql.raw(`'${truncUnit}'`)}, ${invoices.startDate}::date)`);
 
     return NextResponse.json(rows.map((r) => ({ month: r.month, amount: Number(r.amount) })));
   } catch (err) {

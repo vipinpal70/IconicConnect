@@ -6,6 +6,7 @@ import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
 import { eq, and, isNotNull, gte, lte, count, sql } from "drizzle-orm";
 import { isValidRoleForType } from "@/src/lib/auth/role";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,25 +19,25 @@ export async function GET(req: NextRequest) {
     if (!isValidRoleForType("admin_portal", profile.role))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate } = getAnalyticsDateRange(from, to);
 
-    const now = new Date();
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      .toISOString()
-      .split("T")[0];
+    const fromDateStr = fromDate.toISOString().split("T")[0];
+    const toDateStr = toDate.toISOString().split("T")[0];
 
     const [totalResult, holdResult, tatResult, billingResult] = await Promise.all([
-      db.select({ value: count() }).from(cases),
-      db.select({ value: count() }).from(cases).where(eq(cases.status, "on_hold")),
+      db.select({ value: count() }).from(cases).where(and(gte(cases.createdAt, fromDate), lte(cases.createdAt, toDate))),
+      db.select({ value: count() }).from(cases).where(and(eq(cases.status, "on_hold"), gte(cases.createdAt, fromDate), lte(cases.createdAt, toDate))),
       db
         .select({ avg: sql<number>`AVG(${cases.tat})` })
         .from(cases)
-        .where(and(isNotNull(cases.tat), gte(cases.deliveredTime, thirtyDaysAgo))),
+        .where(and(isNotNull(cases.tat), gte(cases.deliveredTime, fromDate), lte(cases.deliveredTime, toDate))),
       db
         .select({ total: sql<number>`COALESCE(SUM(${invoices.total}::numeric), 0)` })
         .from(invoices)
-        .where(gte(invoices.startDate, firstOfMonth)),
+        .where(and(gte(invoices.startDate, fromDateStr), lte(invoices.startDate, toDateStr))),
     ]);
 
     const avgTatMinutes = tatResult[0]?.avg ? Number(tatResult[0].avg) : null;

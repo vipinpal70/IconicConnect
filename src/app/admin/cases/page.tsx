@@ -30,6 +30,7 @@ import {
   Upload,
   Plus,
   Download,
+  Trash2,
 } from "lucide-react"
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv"
 
@@ -366,6 +367,29 @@ export default function AdminCasesPage() {
         // Refresh open case modal data
         const updated = await fetch(`/api/cases/${caseId}`).then(r => r.json()).then(r => r.data)
         if (updated) setOpenCase(updated)
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Something went wrong"
+      toast.error(msg)
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
+  const handleDeleteCase = async (caseId: string) => {
+    setUpdatingId(caseId)
+    try {
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to delete case")
+      }
+      toast.success("Case deleted successfully")
+      refetch()
+      if (openCase && openCase.id === caseId) {
+        setOpenCase(null)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong"
@@ -966,6 +990,28 @@ export default function AdminCasesPage() {
                                 </span>
                               )}
 
+                              {currentUser?.role === "admin" && (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={isMutating}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (
+                                      confirm(
+                                        `Are you sure you want to delete case ${caseItem.caseNumber || caseItem.id}? This will permanently delete the case.`
+                                      )
+                                    ) {
+                                      handleDeleteCase(caseItem.id);
+                                    }
+                                  }}
+                                  title="Delete Case"
+                                  className="h-7 text-[10px] px-2 bg-red-600/20 hover:bg-red-600 hover:text-white text-red-600 font-bold shadow-sm transition-all active:scale-95 hover:scale-105 shrink-0"
+                                >
+                                  <Trash2 className="h-3 w-3 mr-1" />
+                                  Delete
+                                </Button>
+                              )}
 
                             </div>
                           </td>

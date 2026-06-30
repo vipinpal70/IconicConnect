@@ -4,9 +4,10 @@ import { cases } from "@/src/db/schema/case";
 import { invoices } from "@/src/db/schema/invoice";
 import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, and, isNotNull, gte, count, sql } from "drizzle-orm";
+import { eq, and, isNotNull, gte, lte, count, sql } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,26 +21,26 @@ export async function GET(req: NextRequest) {
 
     const clientId = resolveClientId(profile);
 
-    const cacheKey = `analytics:client:${clientId}:kpis`;
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate } = getAnalyticsDateRange(from, to);
+
+    const cacheKey = `analytics:client:${clientId}:kpis:${from || "default"}:${to || "default"}`;
     const cachedData = await getCachedData<any>(cacheKey);
     if (cachedData) {
       return NextResponse.json(cachedData);
     }
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const now = new Date();
-    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      .toISOString()
-      .split("T")[0];
+    const fromDateStr = fromDate.toISOString().split("T")[0];
+    const toDateStr = toDate.toISOString().split("T")[0];
 
     const [totalResult, holdResult, tatResult, billingResult] = await Promise.all([
-      db.select({ value: count() }).from(cases).where(eq(cases.clientId, clientId)),
+      db.select({ value: count() }).from(cases).where(and(eq(cases.clientId, clientId), gte(cases.createdAt, fromDate), lte(cases.createdAt, toDate))),
       db
         .select({ value: count() })
         .from(cases)
-        .where(and(eq(cases.clientId, clientId), eq(cases.status, "on_hold"))),
+        .where(and(eq(cases.clientId, clientId), eq(cases.status, "on_hold"), gte(cases.createdAt, fromDate), lte(cases.createdAt, toDate))),
       db
         .select({ avg: sql<number>`AVG(${cases.tat})` })
         .from(cases)
@@ -47,13 +48,14 @@ export async function GET(req: NextRequest) {
           and(
             eq(cases.clientId, clientId),
             isNotNull(cases.tat),
-            gte(cases.deliveredTime, thirtyDaysAgo)
+            gte(cases.deliveredTime, fromDate),
+            lte(cases.deliveredTime, toDate)
           )
         ),
       db
         .select({ total: sql<number>`COALESCE(SUM(${invoices.total}::numeric), 0)` })
         .from(invoices)
-        .where(and(eq(invoices.clientId, clientId), gte(invoices.startDate, firstOfMonth))),
+        .where(and(eq(invoices.clientId, clientId), gte(invoices.startDate, fromDateStr), lte(invoices.startDate, toDateStr))),
     ]);
 
     const avgTatMinutes = tatResult[0]?.avg ? Number(tatResult[0].avg) : null;

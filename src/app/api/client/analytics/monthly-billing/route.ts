@@ -3,9 +3,10 @@ import { db } from "@/src/db";
 import { invoices } from "@/src/db/schema/invoice";
 import { profiles } from "@/src/db/schema/profile";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
+import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,26 +20,29 @@ export async function GET(req: NextRequest) {
 
     const clientId = resolveClientId(profile);
 
-    const cacheKey = `analytics:client:${clientId}:monthly-billing`;
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { fromDate, toDate, truncUnit, format } = getAnalyticsDateRange(from, to);
+    
+    const fromDateStr = fromDate.toISOString().split("T")[0];
+    const toDateStr = toDate.toISOString().split("T")[0];
+
+    const cacheKey = `analytics:client:${clientId}:monthly-billing:${from || "default"}:${to || "default"}`;
     const cachedData = await getCachedData<any>(cacheKey);
     if (cachedData) {
       return NextResponse.json(cachedData);
     }
 
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-    sixMonthsAgo.setDate(1);
-    const cutoff = sixMonthsAgo.toISOString().split("T")[0];
-
     const rows = await db
       .select({
-        month: sql<string>`to_char(date_trunc('month', ${invoices.startDate}::date), 'Mon')`,
+        month: sql<string>`to_char(date_trunc(${sql.raw(`'${truncUnit}'`)}, ${invoices.startDate}::date), ${sql.raw(`'${format}'`)})`,
         amount: sql<number>`ROUND(SUM(${invoices.total}::numeric), 2)`,
       })
       .from(invoices)
-      .where(and(eq(invoices.clientId, clientId), gte(invoices.startDate, cutoff)))
-      .groupBy(sql`date_trunc('month', ${invoices.startDate}::date)`)
-      .orderBy(sql`date_trunc('month', ${invoices.startDate}::date)`);
+      .where(and(eq(invoices.clientId, clientId), gte(invoices.startDate, fromDateStr), lte(invoices.startDate, toDateStr)))
+      .groupBy(sql`date_trunc(${sql.raw(`'${truncUnit}'`)}, ${invoices.startDate}::date)`)
+      .orderBy(sql`date_trunc(${sql.raw(`'${truncUnit}'`)}, ${invoices.startDate}::date)`);
 
     const result = rows.map((r) => ({ month: r.month, amount: Number(r.amount) }));
 

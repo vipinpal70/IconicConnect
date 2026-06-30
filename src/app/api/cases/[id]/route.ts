@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, CaseTimelineEvent, EDITABLE_STATUSES } from '@/src/db/schema/case';
+import { cases, CaseTimelineEvent, EDITABLE_STATUSES, caseMessages, caseFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or, like, sql } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { logActivity } from '@/src/lib/activity-log';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
 import { invalidateCasesCache } from '@/src/lib/redis-cache';
+import { chatMessages, chatReadStates } from '@/src/db/schema/chat';
+import { activityLogs } from '@/src/db/schema/activity-log';
+import { notifications } from '@/src/db/schema/notification';
 
 type CaseUpdateData = {
   caseNumber?: string
@@ -634,11 +637,13 @@ export async function DELETE(
       }
     }
 
-    logActivity({
+    // Log deletion activity first, but do NOT link to caseId to avoid constraint violations after deletion
+    await logActivity({
       actor: profile,
       action: 'case.deleted',
-      caseId: id,
+      caseId: null,
       details: {
+        caseId: id,
         caseNumber: caseRecord.caseNumber,
         category: caseRecord.category,
         clientId: caseRecord.clientId,
@@ -647,7 +652,35 @@ export async function DELETE(
       },
     }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
 
-    await db.delete(cases).where(eq(cases.id, id));
+    await db.transaction(async (tx) => {
+      // 1. Delete notifications related to the case
+      await tx.delete(notifications).where(
+        or(
+          eq(notifications.link, `/cases/${id}`),
+          eq(notifications.link, `/admin/cases/${id}`),
+          like(notifications.link, `%/cases/${id}%`),
+          sql`metadata->>'caseId' = ${id}`
+        )
+      );
+
+      // 2. Preserve activity logs by nullifying caseId references
+      await tx.update(activityLogs).set({ caseId: null }).where(eq(activityLogs.caseId, id));
+
+      // 3. Delete chat read states
+      await tx.delete(chatReadStates).where(eq(chatReadStates.caseId, id));
+
+      // 4. Delete chat messages
+      await tx.delete(chatMessages).where(eq(chatMessages.caseId, id));
+
+      // 5. Delete case messages
+      await tx.delete(caseMessages).where(eq(caseMessages.caseId, id));
+
+      // 6. Preserve case files records by nullifying caseId references
+      await tx.update(caseFiles).set({ caseId: null }).where(eq(caseFiles.caseId, id));
+
+      // 7. Finally delete the case
+      await tx.delete(cases).where(eq(cases.id, id));
+    });
 
     await invalidateCasesCache(caseRecord.clientId);
 
