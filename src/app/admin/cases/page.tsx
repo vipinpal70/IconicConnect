@@ -70,7 +70,6 @@ function shouldShowChatIcon(caseItem: CaseRecord, currentUser: ChatIndicatorUser
   return false;
 }
 
-
 type ClientRecord = {
   id: string
   fullName: string | null
@@ -183,6 +182,14 @@ function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
 
   return values.length ? values.join(" - ") : "—"
 }
+
+// Helper function to remove the extension from file name
+const removeExtensionFromString = (str: string) => {
+  if (str.lastIndexOf(".") > 0) {
+    return str.substring(0, str.lastIndexOf("."));
+  }
+  return str;
+};
 
 export default function AdminCasesPage() {
   const [isAddOpen, setIsAddOpen] = useState(false)
@@ -645,7 +652,7 @@ export default function AdminCasesPage() {
                               </Link>
                             </div>
                           </td>
-                          <td className="px-3.5 py-2 text-[11px] text-foreground">{clientDisplayName}</td>
+                          <td className="px-3.5 py-2 text-[11px] text-foreground">{clientDisplayName} <br/> {removeExtensionFromString(caseItem?.scanFileName || "—")}</td>
                           <td className="px-3.5 py-2">
                             <p className="font-semibold text-[11px] text-black">{restoration || "—"}</p>
                             {caseItem.category === "Implant" ? (

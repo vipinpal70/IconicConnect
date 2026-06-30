@@ -459,10 +459,13 @@ export default function CasesPage() {
           : c.category || ""
       ).toLowerCase();
 
+      const friendlyCaseName = (c.scanFileName || "").toLowerCase();
+
       const matchesSearch =
         !s ||
         friendlyId.includes(s) ||
-        friendlyRestoration.includes(s);
+        friendlyRestoration.includes(s) ||
+        friendlyCaseName.includes(s);
 
       const matchesStatus =
         statusFilter === "All" ||
