@@ -302,6 +302,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const clientIds = Array.from(new Set(results.map(r => r.clientId).filter(Boolean))) as string[];
+    const clientsMap = new Map<string, string>();
+    if (clientIds.length > 0) {
+      const clientsProfiles = await db.select().from(profiles).where(inArray(profiles.id, clientIds));
+      clientsProfiles.forEach(p => {
+        clientsMap.set(p.id, p.labName || p.fullName || p.email || '—');
+      });
+    }
+
     const chatMetadata = await getCasesChatMetadata(results.map((r) => r.id), profile.id);
 
     // Fetch first uploaded scan file name for each case
@@ -323,6 +332,7 @@ export async function GET(req: NextRequest) {
     const mappedResults = results.map(r => ({
       ...r,
       designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
+      clientDisplayName: r.clientId ? (clientsMap.get(r.clientId) || null) : null,
       todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,
       hasUnreadChat: chatMetadata.get(r.id)?.hasUnreadChat ?? false,
       scanFileName: scanFileMap.get(r.id) ?? null,

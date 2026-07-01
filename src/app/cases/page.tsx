@@ -69,6 +69,7 @@ type OpsCase = {
   createdAt?: string | Date | null;
   designerId?: string | null;
   designerName?: string | null;
+  clientDisplayName?: string | null;
   qcId?: string | null;
   accountManagerId?: string | null;
   subTypeData?: Record<string, string | number | number[] | null | undefined> & {
@@ -940,7 +941,7 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
-                    {["Case ID", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
+                    {["Case ID","Client", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold  text-muted-foreground px-3.5 py-2 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -949,7 +950,7 @@ export default function CasesPage() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
-                        {Array.from({ length: 8 }).map((__, col) => (
+                        {Array.from({ length: 9 }).map((__, col) => (
                           <td key={col} className="px-3.5 py-2"><div className="h-3 bg-muted rounded w-16" /></td>
                         ))}
                       </tr>
@@ -1030,7 +1031,8 @@ export default function CasesPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.category}</td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-black font-semibold whitespace-nowrap">{c.clientDisplayName || "—"}<br/> <span className="font-normal text-muted-foreground">{removeExtensionFromString(c.scanFileName || "—")}</span></td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.category || "—"}</td>
                           <td className="px-3.5 py-1.5 text-[11px] text-foreground font-semibold">{restoration || "—"}</td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground">
                             {c.category === "Implant" ? (
@@ -1375,7 +1377,7 @@ export default function CasesPage() {
                     })
                   )}
                   {!isLoading && filtered.length === 0 && (
-                    <tr><td colSpan={8} className="px-3.5 py-6 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
+                    <tr><td colSpan={9} className="px-3.5 py-6 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
