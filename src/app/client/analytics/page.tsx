@@ -143,13 +143,13 @@ export default function AnalyticsPage() {
           {kpiCards.map((k) => (
             <Card key={k.label} className="shadow-card border-border/50">
               <CardContent className="p-3.5">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{k.label}</p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{k.label}</p>
                 {k.value === null ? (
                   <Skeleton className="h-6 w-16 mt-1" />
                 ) : (
-                  <p className="text-xl font-black text-foreground mt-0.5">{k.value}</p>
+                  <p className="text-xl font-semibold text-foreground mt-0.5">{k.value}</p>
                 )}
-                <p className={`text-[10px] mt-0.5 ${k.positive ? "text-green-600 font-bold" : "text-muted-foreground"}`}>{k.sub}</p>
+                <p className={`text-[10px] mt-0.5 ${k.positive ? "text-green-600 font-semibold" : "text-muted-foreground"}`}>{k.sub}</p>
               </CardContent>
             </Card>
           ))}

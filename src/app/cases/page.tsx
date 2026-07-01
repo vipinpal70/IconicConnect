@@ -167,9 +167,9 @@ const uploadFileWithXHR = async (
 };
 
 const validateFile = (file: File): { isValid: boolean; error?: string } => {
-  const maxLimit = 2.5 * 1024 * 1024 * 1024;
+  const maxLimit = 5 * 1024 * 1024 * 1024;
   if (file.size > maxLimit) {
-    return { isValid: false, error: `File size exceeds the 2.5GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` };
+    return { isValid: false, error: `File size exceeds the 5GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` };
   }
   const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
   const allowedExtensions = [

@@ -6,6 +6,7 @@ import {
   pgEnum,
   text,
   integer,
+  bigint,
   jsonb,
   boolean,
 } from 'drizzle-orm/pg-core'
@@ -175,7 +176,8 @@ export const caseFiles = pgTable('case_files', {
   fileUrl: text('file_url').notNull(),
   note: text('note'),
   fileType: varchar('file_type', { length: 100 }),
-  fileSize: integer('file_size'),
+  // bigint: file_size can exceed the 2.14GB int4 max for multi-GB uploads
+  fileSize: bigint('file_size', { mode: 'number' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 

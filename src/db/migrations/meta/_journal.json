@@ -267,6 +267,13 @@
       "when": 1780440000000,
       "tag": "0040_enable_rls_and_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1780450000000,
+      "tag": "0044_case_file_size_bigint",
+      "breakpoints": true
     }
   ]
 }

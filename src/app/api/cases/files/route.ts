@@ -4,8 +4,12 @@ import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
-import { createReadStream, existsSync, statSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { r2, R2_BUCKET } from '@/src/lib/r2';
+
+function objectKey(labName: string, fileName: string) {
+  return `${labName}/${fileName}`;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -60,14 +64,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const filePath = join(process.cwd(), 'case_data', labName, fileName);
+    const key = objectKey(labName, fileName);
 
-    if (!existsSync(filePath)) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    let object;
+    try {
+      object = await r2.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    } catch (err: any) {
+      if (err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404) {
+        return NextResponse.json({ error: 'File not found' }, { status: 404 });
+      }
+      throw err;
     }
 
-    const stats = statSync(filePath);
-    const fileStream = createReadStream(filePath);
+    if (!object.Body) {
+      return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    }
 
     // Detect content type for proper browser rendering
     const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
@@ -75,23 +86,16 @@ export async function GET(req: NextRequest) {
     const contentType = isHtml ? 'text/html; charset=utf-8' : 'application/octet-stream';
     const disposition = isHtml ? `inline; filename="${encodeURIComponent(fileName)}"` : `attachment; filename="${encodeURIComponent(fileName)}"`;
 
-    // Convert fileReadStream to a Web readable stream so Next.js can send it
-    const webStream = new ReadableStream({
-      start(controller) {
-        fileStream.on('data', (chunk) => controller.enqueue(chunk));
-        fileStream.on('end', () => controller.close());
-        fileStream.on('error', (err) => controller.error(err));
-      },
-      cancel() {
-        fileStream.destroy();
-      }
-    });
+    // Stream the R2 object body straight through to the client
+    const webStream = (object.Body as any).transformToWebStream() as ReadableStream;
 
     const headers: Record<string, string> = {
       'Content-Type': contentType,
-      'Content-Length': stats.size.toString(),
       'Content-Disposition': disposition,
     };
+    if (typeof object.ContentLength === 'number') {
+      headers['Content-Length'] = object.ContentLength.toString();
+    }
 
     // Allow HTML files to be embedded in iframes
     if (isHtml) {
@@ -158,14 +162,11 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const filePath = join(process.cwd(), 'case_data', labName, fileName);
+    const key = objectKey(labName, fileName);
 
-    if (existsSync(filePath)) {
-      unlinkSync(filePath);
-      return NextResponse.json({ success: true, message: 'File deleted successfully' });
-    } else {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 });
-    }
+    // DeleteObject is idempotent on R2 — it succeeds whether or not the key exists.
+    await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return NextResponse.json({ success: true, message: 'File deleted successfully' });
   } catch (error: any) {
     console.error('File delete route error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });

@@ -3,227 +3,229 @@ import { db } from '@/src/db';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
-import { createWriteStream, createReadStream, existsSync, mkdirSync, statSync, unlinkSync, readdirSync, rmSync } from 'fs';
-import { join } from 'path';
 import { createClient } from '@/src/lib/supabase/server';
-import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
-import { open } from 'fs/promises';
+import {
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+} from '@aws-sdk/client-s3';
+import { r2, R2_BUCKET } from '@/src/lib/r2';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5GB
+
+const ALLOWED_EXTENSIONS = [
+  '.png', '.jpg', '.jpeg',
+  '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.flv', '.3gp', '.mpeg', '.mpg',
+  '.pdf',
+  '.zip',
+  '.dme',
+  '.doc', '.docx',
+  '.txt',
+  '.html', '.htm',
+];
+
+type AuthedProfile = NonNullable<Awaited<ReturnType<typeof getAuthedProfile>>['profile']>;
+
+/** Resolve the authenticated user + their profile. */
+async function getAuthedProfile() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+  const profileResult = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
+  const profile = profileResult[0];
+  if (!profile) {
+    return { error: NextResponse.json({ error: 'Profile not found' }, { status: 404 }) };
+  }
+  return { user, profile };
+}
+
+/** Determine which client (and lab) an upload belongs to, mirroring the legacy route. */
+async function resolveClientContext(profile: AuthedProfile, adminClientId: string | null) {
+  let clientId: string | undefined;
+  let labName = 'UnknownLab';
+
+  if (isValidRoleForType('admin_portal', profile.role)) {
+    clientId = adminClientId || profile.id;
+  } else if (profile.role === 'client') {
+    clientId = profile.id;
+    labName = profile.labName || 'UnknownLab';
+  } else if (profile.role === 'subuser') {
+    const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
+    if (!subUserRecord.length) {
+      return { error: NextResponse.json({ error: 'Subuser parent client not found' }, { status: 400 }) };
+    }
+    clientId = subUserRecord[0].clientId;
+  }
+
+  if (!clientId) {
+    return { error: NextResponse.json({ error: 'Failed to determine Client ID' }, { status: 400 }) };
+  }
+
+  if (profile.role !== 'client') {
+    if (clientId === profile.id) {
+      labName = profile.labName || 'UnknownLab';
+    } else {
+      const clientProfile = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1).then(r => r[0]);
+      labName = clientProfile?.labName || 'UnknownLab';
+    }
+  }
+
+  return { clientId, labName };
+}
+
+/** Object key inside the R2 bucket. Deterministic so the auth-protected download proxy can rebuild it. */
+function objectKey(labName: string, fileName: string) {
+  return `${labName}/${fileName}`;
+}
+
+/** Auth-protected download proxy URL stored in case_files.fileUrl (keeps role-based access control). */
+function buildFileUrl(labName: string, fileName: string) {
+  return `/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`;
+}
+
+// ── Step 1: initialise the multipart upload ──────────────────────────────────
+async function handleInit(req: NextRequest, profile: AuthedProfile) {
+  const { searchParams } = new URL(req.url);
+  const fileName = searchParams.get('fileName');
+  const fileType = searchParams.get('fileType') || 'application/octet-stream';
+  const fileSize = Number(searchParams.get('fileSize') || 0);
+  const adminClientId = searchParams.get('clientId');
+
+  if (!fileName) {
+    return NextResponse.json({ error: 'File Name is required' }, { status: 400 });
+  }
+  if (fileSize > MAX_FILE_SIZE) {
+    return NextResponse.json({ error: 'File size exceeds the 5GB limit' }, { status: 400 });
+  }
+  const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return NextResponse.json({ error: 'Unsupported file type.' }, { status: 400 });
+  }
+
+  const ctx = await resolveClientContext(profile, adminClientId);
+  if ('error' in ctx) return ctx.error;
+
+  const key = objectKey(ctx.labName, fileName);
+  const created = await r2.send(new CreateMultipartUploadCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    ContentType: fileType,
+  }));
+
+  return NextResponse.json({
+    success: true,
+    uploadId: created.UploadId,
+    key,
+    labName: ctx.labName,
+    fileName,
+    fileUrl: buildFileUrl(ctx.labName, fileName),
+  });
+}
+
+// ── Step 2: upload a single part (streamed, never fully buffered) ─────────────
+async function handlePart(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const key = searchParams.get('key');
+  const uploadId = searchParams.get('uploadId');
+  const partNumber = Number(searchParams.get('partNumber'));
+
+  if (!key || !uploadId || !partNumber) {
+    return NextResponse.json({ error: 'Missing key, uploadId or partNumber' }, { status: 400 });
+  }
+  if (!req.body) {
+    return NextResponse.json({ error: 'No chunk data received' }, { status: 400 });
+  }
+
+  const contentLength = Number(req.headers.get('content-length') || 0);
+
+  const uploaded = await r2.send(new UploadPartCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+    PartNumber: partNumber,
+    Body: Readable.fromWeb(req.body as any),
+    ContentLength: contentLength || undefined,
+  }));
+
+  return NextResponse.json({ success: true, partNumber, etag: uploaded.ETag });
+}
+
+// ── Step 3: assemble the object from the uploaded parts ──────────────────────
+async function handleComplete(req: NextRequest) {
+  const body = await req.json();
+  const { key, uploadId, labName, fileName, fileSize, fileType, parts } = body as {
+    key: string;
+    uploadId: string;
+    labName: string;
+    fileName: string;
+    fileSize?: number;
+    fileType?: string;
+    parts: Array<{ PartNumber: number; ETag: string }>;
+  };
+
+  if (!key || !uploadId || !Array.isArray(parts) || parts.length === 0) {
+    return NextResponse.json({ error: 'Missing key, uploadId or parts' }, { status: 400 });
+  }
+
+  const orderedParts = [...parts].sort((a, b) => a.PartNumber - b.PartNumber);
+
+  await r2.send(new CompleteMultipartUploadCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+    MultipartUpload: { Parts: orderedParts },
+  }));
+
+  return NextResponse.json({
+    success: true,
+    fileUrl: buildFileUrl(labName, fileName),
+    fileName,
+    fileSize: fileSize ?? null,
+    fileType: fileType ?? 'application/octet-stream',
+    storagePath: key,
+    key,
+  });
+}
+
+// ── Cleanup: abort a partially uploaded object ───────────────────────────────
+async function handleAbort(req: NextRequest) {
+  const { key, uploadId } = await req.json();
+  if (!key || !uploadId) {
+    return NextResponse.json({ error: 'Missing key or uploadId' }, { status: 400 });
+  }
+  await r2.send(new AbortMultipartUploadCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+  }));
+  return NextResponse.json({ success: true });
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const auth = await getAuthedProfile();
+    if ('error' in auth) return auth.error;
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const action = new URL(req.url).searchParams.get('action');
 
-    const profileResult = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
-    const profile = profileResult[0];
-
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const fileName = searchParams.get('fileName');
-    const adminClientId = searchParams.get('clientId'); // Optional: sent by admin
-
-    // Chunking parameters
-    const chunkIndexStr = searchParams.get('chunkIndex');
-    const totalChunksStr = searchParams.get('totalChunks');
-    const uploadId = searchParams.get('uploadId');
-
-    if (!fileName) {
-      return NextResponse.json({ error: 'File Name is required' }, { status: 400 });
-    }
-
-    // 1. File size verification (Max 2GB)
-    const contentLength = Number(req.headers.get('content-length') || 0);
-    const maxLimit = 2.5 * 1024 * 1024 * 1024; // 2.5GB
-    if (contentLength > maxLimit) {
-      return NextResponse.json({ error: 'File size exceeds the 2.5GB limit' }, { status: 400 });
-    }
-
-    // 2. File extension verification
-    const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
-    const allowedExtensions = [
-      '.png', '.jpg', '.jpeg',
-      '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.flv', '.3gp', '.mpeg', '.mpg',
-      '.pdf',
-      '.zip',
-      '.dme',
-      '.doc', '.docx',
-      '.txt',
-      '.html', '.htm'
-    ];
-    if (!allowedExtensions.includes(ext)) {
-      return NextResponse.json({ error: 'Unsupported file type. Allowed: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DME, DOC, DOCX, TXT, HTML' }, { status: 400 });
-    }
-
-    let clientId: string | undefined;
-    let labName = 'UnknownLab';
-
-    if (isValidRoleForType('admin_portal', profile.role)) {
-      clientId = adminClientId || profile.id; // Fallback to admin if not provided
-    } else if (profile.role === 'client') {
-      clientId = profile.id;
-      labName = profile.labName || 'UnknownLab';
-    } else if (profile.role === 'subuser') {
-      const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
-      if (!subUserRecord.length) {
-        return NextResponse.json({ error: 'Subuser parent client not found' }, { status: 400 });
-      }
-      clientId = subUserRecord[0].clientId;
-    }
-
-    if (!clientId) {
-      return NextResponse.json({ error: 'Failed to determine Client ID' }, { status: 400 });
-    }
-
-    // Optimize DB query: fetch client profile only if we don't already have it
-    if (profile.role !== 'client') {
-      if (clientId === profile.id) {
-        labName = profile.labName || 'UnknownLab';
-      } else {
-        const clientProfileResult = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1);
-        const clientProfile = clientProfileResult[0];
-        labName = clientProfile?.labName || 'UnknownLab';
-      }
-    }
-
-    if (!req.body) {
-      return NextResponse.json({ error: 'No file data received' }, { status: 400 });
-    }
-
-    const isChunked = chunkIndexStr !== null && totalChunksStr !== null && uploadId !== null;
-
-    if (isChunked) {
-      const chunkIndex = parseInt(chunkIndexStr!, 10);
-      const totalChunks = parseInt(totalChunksStr!, 10);
-      const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks
-      const offset = chunkIndex * CHUNK_SIZE;
-
-      // Ensure target directory exists
-      const dirPath = join(process.cwd(), 'case_data', labName);
-      if (!existsSync(dirPath)) {
-        mkdirSync(dirPath, { recursive: true });
-      }
-
-      const filePath = join(dirPath, fileName);
-      let fileHandle = null;
-
-      try {
-        if (!existsSync(filePath)) {
-          const tempFd = await open(filePath, 'w');
-          await tempFd.close();
-        }
-        fileHandle = await open(filePath, 'r+');
-        const chunkWriter = fileHandle.createWriteStream({ start: offset });
-        await pipeline(Readable.fromWeb(req.body as any), chunkWriter);
-      } catch (err) {
-        throw err;
-      } finally {
-        if (fileHandle) {
-          try {
-            await fileHandle.close();
-          } catch (e) {
-            console.error('Error closing file handle:', e);
-          }
-        }
-      }
-
-      // Temporary folder for tracking chunks
-      const tempChunksDir = join(process.cwd(), 'case_data', 'chunks', uploadId!);
-      if (!existsSync(tempChunksDir)) {
-        mkdirSync(tempChunksDir, { recursive: true });
-      }
-
-      // Write empty tracking file
-      const trackerPath = join(tempChunksDir, chunkIndex.toString());
-      const trackerFd = await open(trackerPath, 'w');
-      await trackerFd.close();
-
-      // Check if all chunks exist
-      const uploadedChunks = readdirSync(tempChunksDir);
-      if (uploadedChunks.length === totalChunks) {
-        // Double check all indices from 0 to totalChunks-1 exist
-        const allChunksPresent = Array.from({ length: totalChunks }, (_, i) =>
-          existsSync(join(tempChunksDir, i.toString()))
-        ).every(Boolean);
-
-        if (allChunksPresent) {
-          // Cleanup chunk tracking folder
-          if (existsSync(tempChunksDir)) {
-            rmSync(tempChunksDir, { recursive: true, force: true });
-          }
-
-          const stats = statSync(filePath);
-          const totalBytesWritten = stats.size;
-
-          // Local secure download URL
-          const fileUrl = `/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`;
-
-          return NextResponse.json({
-            success: true,
-            fileUrl,
-            fileName,
-            fileSize: totalBytesWritten,
-            fileType: req.headers.get('content-type') || 'application/octet-stream',
-            storagePath: `${labName}/${fileName}`,
-          });
-        }
-      }
-
-      // Chunk received and written successfully, but still waiting for other chunks
-      return NextResponse.json({
-        success: true,
-        chunkReceived: chunkIndex
-      });
-
-    } else {
-      // Legacy single-stream fallback upload (Optimized with highWaterMark write buffer)
-      const dirPath = join(process.cwd(), 'case_data', labName);
-      if (!existsSync(dirPath)) {
-        mkdirSync(dirPath, { recursive: true });
-      }
-
-      const filePath = join(dirPath, fileName);
-      const writer = createWriteStream(filePath, { highWaterMark: 1024 * 1024 }); // 1MB write buffer
-
-      try {
-        // Use pipeline to handle stream backpressure, saving memory and avoiding process/GC stalling
-        await pipeline(Readable.fromWeb(req.body as any), writer);
-      } catch (err) {
-        // Clean up partially written file if upload is aborted/failed
-        try {
-          if (existsSync(filePath)) {
-            unlinkSync(filePath);
-          }
-        } catch (cleanupErr) {
-          console.error('Failed to delete incomplete file:', cleanupErr);
-        }
-        throw err;
-      }
-
-      const stats = statSync(filePath);
-      const totalBytesWritten = stats.size;
-
-      // Local secure download URL
-      const fileUrl = `/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`;
-
-      return NextResponse.json({
-        success: true,
-        fileUrl,
-        fileName,
-        fileSize: totalBytesWritten,
-        fileType: req.headers.get('content-type') || 'application/octet-stream',
-        storagePath: `${labName}/${fileName}`,
-      });
+    switch (action) {
+      case 'init':
+        return await handleInit(req, auth.profile);
+      case 'part':
+        return await handlePart(req);
+      case 'complete':
+        return await handleComplete(req);
+      case 'abort':
+        return await handleAbort(req);
+      default:
+        return NextResponse.json({ error: 'Unknown or missing action' }, { status: 400 });
     }
   } catch (error: any) {
-    console.error('Immediate local upload route error:', error);
+    console.error('R2 multipart upload route error:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

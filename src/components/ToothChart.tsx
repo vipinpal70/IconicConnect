@@ -76,7 +76,7 @@
 
 
 
-import { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { cn } from "@/src/lib/utils";
 
 // Static arrays representing the visual left-to-right layout for both systems
@@ -97,6 +97,41 @@ const USA_TO_FDI: Record<number, number> = {
 const FDI_TO_USA: Record<number, number> = Object.fromEntries(
   Object.entries(USA_TO_FDI).map(([k, v]) => [v, Number(k)])
 );
+
+interface ToothButtonProps {
+  n: number;
+  active: boolean;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+}
+
+const ToothButton = React.memo(function ToothButton({ n, active, onClick }: ToothButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-col items-center justify-end gap-1 group transition-transform hover:-translate-y-0.5 shrink-0"
+      )}
+    >
+      <div
+        className={cn(
+          "w-6 h-8 sm:w-7 sm:h-9 rounded-md border-2 transition-all",
+          active
+            ? "bg-primary border-primary shadow-glow"
+            : "bg-card border-border group-hover:border-primary/50"
+        )}
+      />
+      <span
+        className={cn(
+          "text-[10px] font-medium",
+          active ? "text-primary" : "text-muted-foreground"
+        )}
+      >
+        {n}
+      </span>
+    </button>
+  );
+});
 
 interface Props {
   selected: number[];
@@ -163,30 +198,12 @@ export function ToothChart({ selected, onChange, system: controlledSystem, onCha
   const Tooth = ({ n }: { n: number }) => {
     const active = selected.includes(n);
     return (
-      <button
-        type="button"
+      <ToothButton
+        key={n}
+        n={n}
+        active={active}
         onClick={(e) => toggleTooth(n, e.ctrlKey)}
-        className={cn(
-          "flex flex-col items-center justify-end gap-1 group transition-transform hover:-translate-y-0.5 shrink-0"
-        )}
-      >
-        <div
-          className={cn(
-            "w-6 h-8 sm:w-7 sm:h-9 rounded-md border-2 transition-all",
-            active
-              ? "bg-primary border-primary shadow-glow"
-              : "bg-card border-border group-hover:border-primary/50"
-          )}
-        />
-        <span
-          className={cn(
-            "text-[10px] font-medium",
-            active ? "text-primary" : "text-muted-foreground"
-          )}
-        >
-          {n}
-        </span>
-      </button>
+      />
     );
   };
 

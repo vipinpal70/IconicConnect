@@ -204,9 +204,9 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   }, [open])
 
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
-    const maxLimit = 2.5 * 1024 * 1024 * 1024 // 2.5GB
+    const maxLimit = 5 * 1024 * 1024 * 1024 // 5GB
     if (file.size > maxLimit) {
-      return { isValid: false, error: `File size exceeds the 2.5GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` }
+      return { isValid: false, error: `File size exceeds the 5GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` }
     }
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
     const allowedExtensions = [
@@ -920,7 +920,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           )}
 
           <div className="space-y-2">
-            <Label className="text-xs font-semibold text-gray-700">Additional Notes</Label>
+            <Label className="text-xs font-semibold text-gray-700">Additional Notes (Optionals)</Label>
             <Textarea
               placeholder="Special instructions, shade reference, occlusion notes…"
               value={notes}
