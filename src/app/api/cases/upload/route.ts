@@ -4,13 +4,13 @@ import { profiles, subUsers } from '@/src/db/schema/profile';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { createClient } from '@/src/lib/supabase/server';
-import { Readable } from 'stream';
 import {
   CreateMultipartUploadCommand,
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5GB
@@ -126,32 +126,34 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
   });
 }
 
-// ── Step 2: upload a single part (streamed, never fully buffered) ─────────────
-async function handlePart(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const key = searchParams.get('key');
-  const uploadId = searchParams.get('uploadId');
-  const partNumber = Number(searchParams.get('partNumber'));
+// ── Step 2: hand the browser presigned UploadPart URLs ───────────────────────
+// The client PUTs each chunk straight to R2 (no relay through this server), so
+// upload bandwidth isn't doubled and parallel parts can saturate the client's uplink.
+const PART_URL_TTL = 6 * 60 * 60; // 6h — long enough for a multi-GB upload
 
-  if (!key || !uploadId || !partNumber) {
-    return NextResponse.json({ error: 'Missing key, uploadId or partNumber' }, { status: 400 });
+async function handleSign(req: NextRequest) {
+  const { key, uploadId, totalParts } = await req.json() as {
+    key: string;
+    uploadId: string;
+    totalParts: number;
+  };
+
+  if (!key || !uploadId || !totalParts || totalParts < 1) {
+    return NextResponse.json({ error: 'Missing key, uploadId or totalParts' }, { status: 400 });
   }
-  if (!req.body) {
-    return NextResponse.json({ error: 'No chunk data received' }, { status: 400 });
-  }
 
-  const contentLength = Number(req.headers.get('content-length') || 0);
+  const urls = await Promise.all(
+    Array.from({ length: totalParts }, (_, i) => {
+      const partNumber = i + 1;
+      return getSignedUrl(
+        r2,
+        new UploadPartCommand({ Bucket: R2_BUCKET, Key: key, UploadId: uploadId, PartNumber: partNumber }),
+        { expiresIn: PART_URL_TTL },
+      ).then((url) => ({ partNumber, url }));
+    }),
+  );
 
-  const uploaded = await r2.send(new UploadPartCommand({
-    Bucket: R2_BUCKET,
-    Key: key,
-    UploadId: uploadId,
-    PartNumber: partNumber,
-    Body: Readable.fromWeb(req.body as any),
-    ContentLength: contentLength || undefined,
-  }));
-
-  return NextResponse.json({ success: true, partNumber, etag: uploaded.ETag });
+  return NextResponse.json({ success: true, urls });
 }
 
 // ── Step 3: assemble the object from the uploaded parts ──────────────────────
@@ -215,8 +217,8 @@ export async function POST(req: NextRequest) {
     switch (action) {
       case 'init':
         return await handleInit(req, auth.profile);
-      case 'part':
-        return await handlePart(req);
+      case 'sign':
+        return await handleSign(req);
       case 'complete':
         return await handleComplete(req);
       case 'abort':

@@ -27,15 +27,17 @@ async function safeJson(res: Response): Promise<any> {
 }
 
 /**
- * Uploads a file to R2 via the /api/cases/upload multipart endpoint.
+ * Uploads a file to R2 via presigned multipart upload.
  *
  * Flow (mirrors S3/R2 multipart upload):
- *   1. init     → CreateMultipartUpload, returns { uploadId, key }
- *   2. part x N → UploadPart for each 64MB slice, uploaded in parallel, returns an ETag
- *   3. complete → CompleteMultipartUpload with the ordered { PartNumber, ETag } list
+ *   1. init     → server CreateMultipartUpload, returns { uploadId, key }
+ *   2. sign     → server returns a presigned UploadPart URL per part
+ *   3. PUT x N  → browser uploads each 64MB slice DIRECTLY to R2 in parallel,
+ *                 reading the ETag from each response
+ *   4. complete → server CompleteMultipartUpload with the ordered { PartNumber, ETag } list
  *
- * Nothing is buffered as a whole file: each request streams a single slice, and the
- * server streams it straight through to R2.
+ * Part bytes never pass through our server, so upload bandwidth isn't doubled and
+ * parallel parts can saturate the client's full uplink.
  */
 export async function uploadFileInChunks(
   file: File,
@@ -63,8 +65,21 @@ export async function uploadFileInChunks(
     initData = await initRes.json();
     const { uploadId, key } = initData!;
 
-    // 2. Upload every part in parallel
     const totalParts = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+
+    // 2. Get a presigned UploadPart URL for every part
+    const signRes = await fetch(`/api/cases/upload?action=sign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, uploadId, totalParts }),
+    });
+    if (!signRes.ok) {
+      throw new Error((await safeJson(signRes))?.error || `Failed to sign upload (${signRes.status})`);
+    }
+    const { urls } = (await signRes.json()) as { urls: Array<{ partNumber: number; url: string }> };
+    const urlByPart = new Map(urls.map((u) => [u.partNumber, u.url]));
+
+    // 3. PUT every part directly to R2, in parallel
     const loadedSizes = new Array(totalParts).fill(0);
     const etags = new Array<{ PartNumber: number; ETag: string } | null>(totalParts).fill(null);
     const queue = Array.from({ length: totalParts }, (_, i) => i);
@@ -76,13 +91,12 @@ export async function uploadFileInChunks(
         const end = Math.min(start + CHUNK_SIZE, file.size);
         const blob = file.slice(start, end);
         const partNumber = index + 1;
+        const signedUrl = urlByPart.get(partNumber);
 
-        const partParams = new URLSearchParams({
-          action: "part",
-          key,
-          uploadId,
-          partNumber: String(partNumber),
-        });
+        if (!signedUrl) {
+          reject(new Error(`Missing signed URL for part ${partNumber}`));
+          return;
+        }
 
         const xhr = new XMLHttpRequest();
 
@@ -97,14 +111,14 @@ export async function uploadFileInChunks(
 
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const res = JSON.parse(xhr.responseText);
-              if (!res.etag) throw new Error("missing ETag");
-              etags[index] = { PartNumber: partNumber, ETag: res.etag };
-              resolve();
-            } catch {
-              reject(new Error(`Failed to read part ${partNumber} response`));
+            // R2 returns the part's ETag in the response header (exposed via CORS)
+            const etag = xhr.getResponseHeader("ETag");
+            if (!etag) {
+              reject(new Error(`Part ${partNumber} did not return an ETag (check R2 CORS ExposeHeaders)`));
+              return;
             }
+            etags[index] = { PartNumber: partNumber, ETag: etag };
+            resolve();
           } else {
             reject(new Error(`Part ${partNumber} failed with status ${xhr.status}`));
           }
@@ -112,8 +126,8 @@ export async function uploadFileInChunks(
 
         xhr.onerror = () => reject(new Error("Network connection error"));
 
-        xhr.open("POST", `/api/cases/upload?${partParams.toString()}`, true);
-        xhr.setRequestHeader("Content-Type", "application/octet-stream");
+        // PUT straight to R2 — the auth is carried in the presigned URL query string
+        xhr.open("PUT", signedUrl, true);
         xhr.send(blob);
       });
 
