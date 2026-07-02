@@ -50,6 +50,7 @@ type CasePayload = {
   subTypeData?: Record<string, unknown>;
   dueDate?: string;
   uploadedFile?: { fileName: string; fileUrl: string; fileType: string; fileSize: number };
+  uploadedFiles?: Array<{ fileName: string; fileUrl: string; fileType: string; fileSize: number }>;
   preferredTeethLibrary?: string;
   teethLibraryFileUrl?: string | null;
   teethLibraryFileName?: string | null;
@@ -169,8 +170,19 @@ export async function POST(req: NextRequest) {
         clientName: clientProfile?.labName || clientProfile?.fullName || clientProfile?.email || 'Client',
       }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case submission notification:', err));
 
-      if (caseData.uploadedFile) {
-        // Already uploaded immediately by client
+      if (caseData.uploadedFiles && Array.isArray(caseData.uploadedFiles)) {
+        for (const uf of caseData.uploadedFiles) {
+          await db.insert(caseFiles).values({
+            caseId: insertedCase.id,
+            uploadedBy: user.id,
+            fileName: uf.fileName,
+            fileUrl: uf.fileUrl,
+            fileType: uf.fileType ?? null,
+            fileSize: uf.fileSize ? Number(uf.fileSize) : null,
+          });
+        }
+      } else if (caseData.uploadedFile) {
+        // Already uploaded immediately by client (fallback single file)
         await db.insert(caseFiles).values({
           caseId: insertedCase.id,
           uploadedBy: user.id,

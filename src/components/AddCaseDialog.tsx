@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Upload, FileArchive, RefreshCw, X, Plus, Loader2 } from "lucide-react"
+import { Upload, FileArchive, RefreshCw, X, Plus, Loader2, FolderOpen } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
 import { Label } from "@/src/components/ui/label"
@@ -88,16 +88,14 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   const [notes, setNotes] = useState("")
 
   // File Upload State
-  const [singleFile, setSingleFile] = useState<File | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null)
-  const [uploadedFile, setUploadedFile] = useState<{
+  const [uploadedFilesList, setUploadedFilesList] = useState<Array<{
     fileUrl: string
     fileName: string
     fileSize: number
     fileType: string
-  } | null>(null)
+  }>>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   // Teeth Library State
   const [preferredTeethLibrary, setPreferredTeethLibrary] = useState<string>("default")
@@ -115,10 +113,54 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   const [submitCooldown, setSubmitCooldown] = useState(false)
   const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null)
   const singleFileRef = useRef<HTMLInputElement>(null)
+  const folderFileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
 
   const [isDraggingCaseFile, setIsDraggingCaseFile] = useState(false)
   const [isDraggingLibraryFile, setIsDraggingLibraryFile] = useState(false)
+
+  const traverseFileTree = (item: any, path = ""): Promise<File[]> => {
+    return new Promise((resolve) => {
+      if (item.isFile) {
+        item.file((file: File) => {
+          const relativePath = path ? `${path}/${file.name}` : file.name;
+          Object.defineProperty(file, 'webkitRelativePath', {
+            value: relativePath,
+            writable: true,
+            configurable: true
+          });
+          resolve([file]);
+        });
+      } else if (item.isDirectory) {
+        const dirReader = item.createReader();
+        const readAllEntries = (): Promise<any[]> => {
+          return new Promise((resolveEntries) => {
+            const allEntries: any[] = [];
+            const readEntries = () => {
+              dirReader.readEntries((entries: any[]) => {
+                if (entries.length === 0) {
+                  resolveEntries(allEntries);
+                } else {
+                  allEntries.push(...entries);
+                  readEntries();
+                }
+              });
+            };
+            readEntries();
+          });
+        };
+        readAllEntries().then(async (entries) => {
+          const filesPromises = entries.map((entry) => 
+            traverseFileTree(entry, path ? `${path}/${item.name}` : item.name)
+          );
+          const filesArrays = await Promise.all(filesPromises);
+          resolve(filesArrays.flat());
+        });
+      } else {
+        resolve([]);
+      }
+    });
+  };
 
   const handleCaseFileDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -130,15 +172,31 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     }
   }
 
-  const handleCaseFileDrop = (e: React.DragEvent) => {
+  const handleCaseFileDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDraggingCaseFile(false)
-    if (isSubmitting) return
+    if (isSubmitting || isUploading) return
 
-    const file = e.dataTransfer.files?.[0]
-    if (file) {
-      handleFileSelect(file)
+    const items = e.dataTransfer.items
+    if (!items) return
+
+    const filesPromises: Array<Promise<File[]>> = []
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i].webkitGetAsEntry()
+      if (item) {
+        filesPromises.push(traverseFileTree(item))
+      }
+    }
+
+    try {
+      const filesArrays = await Promise.all(filesPromises)
+      const allFiles = filesArrays.flat()
+      if (allFiles.length > 0) {
+        await handleMultipleFilesSelect(allFiles)
+      }
+    } catch (err) {
+      toast.error("Failed to traverse dropped files/folders.")
     }
   }
 
@@ -188,9 +246,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       setCrownBridgeTeeth([])
       setToothSystem("USA")
       setNotes("")
-      setSingleFile(null)
-      setUploadedFileUrl(null)
-      setUploadedFile(null)
+      setUploadedFilesList([])
       setPreferredTeethLibrary("default")
       setUploadedLibraryFile(null)
       setGeneratedCaseId(generateCaseId("Crown & Bridge"))
@@ -243,37 +299,70 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     )
   }
 
-  const handleFileSelect = async (file: File) => {
+  const handleMultipleFilesSelect = async (files: File[]) => {
     if (role === "admin" && !selectedClientId) {
       toast.error("Please select a client before uploading files.")
       return
     }
 
-    const check = validateFile(file)
-    if (!check.isValid) {
-      toast.error(check.error || "Invalid file")
+    const validFiles: File[] = []
+    for (const file of files) {
+      const check = validateFile(file)
+      if (check.isValid) {
+        validFiles.push(file)
+      } else {
+        toast.warning(`Skipped "${file.webkitRelativePath || file.name}": ${check.error}`)
+      }
+    }
+
+    if (validFiles.length === 0) {
+      toast.error("No valid files selected for upload.")
       return
     }
 
-    setSingleFile(file)
     setIsUploading(true)
     setUploadProgress(0)
 
-    await uploadFileWithXHR(
-      file,
-      (progress) => setUploadProgress(progress),
-      (res) => {
-        setIsUploading(false)
-        setUploadedFileUrl(res.fileUrl)
-        setUploadedFile(res)
-        toast.success("File uploaded successfully!")
-      },
-      (err) => {
-        setIsUploading(false)
-        setSingleFile(null)
-        toast.error(`Upload error: ${err}`)
+    const uploadedResults: Array<{
+      fileUrl: string
+      fileName: string
+      fileSize: number
+      fileType: string
+    }> = []
+
+    try {
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i]
+        const onFileProgress = (pct: number) => {
+          const baseProgress = (i / validFiles.length) * 100
+          const fileContribution = (pct / 100) * (100 / validFiles.length)
+          setUploadProgress(Math.round(baseProgress + fileContribution))
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          uploadFileWithXHR(
+            file,
+            onFileProgress,
+            (res) => {
+              uploadedResults.push(res)
+              resolve()
+            },
+            (err) => {
+              reject(new Error(`Failed to upload ${file.webkitRelativePath || file.name}: ${err}`))
+            }
+          )
+        })
       }
-    )
+
+      setUploadedFilesList((prev) => [...prev, ...uploadedResults])
+      toast.success(`Successfully uploaded ${validFiles.length} file(s)!`)
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload one or more files.")
+    } finally {
+      setIsUploading(false)
+      if (singleFileRef.current) singleFileRef.current.value = ""
+      if (folderFileRef.current) folderFileRef.current.value = ""
+    }
   }
 
   const handleLibraryFileSelect = async (file: File) => {
@@ -336,8 +425,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     const teethValid = isArchBased ? true : teeth.length > 0
     const implantCrownBridgeValid = category === "Implant" && subTypeData.caseType2 !== "None" ? crownBridgeTeeth.length > 0 : true
 
-    if (!allFieldsFilled || !teethValid || !uploadedFileUrl || !implantCrownBridgeValid) {
-      toast.error("Please complete all fields, select teeth, and upload a file.")
+    if (!allFieldsFilled || !teethValid || uploadedFilesList.length === 0 || !implantCrownBridgeValid) {
+      toast.error("Please complete all fields, select teeth, and upload at least one file or folder.")
       return
     }
 
@@ -374,7 +463,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
         ),
       },
       caseNumber: generatedCaseId,
-      uploadedFile,
+      uploadedFile: uploadedFilesList[0] || null,
+      uploadedFiles: uploadedFilesList,
       preferredTeethLibrary,
       teethLibraryFileUrl: uploadedLibraryFile?.fileUrl || null,
       teethLibraryFileName: uploadedLibraryFile?.fileName || null
@@ -454,14 +544,29 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
 
           {/* Case File Dropzone */}
           <div className="space-y-2">
-            <Label className="text-xs font-semibold text-gray-700">Case File *</Label>
+            <Label className="text-xs font-semibold text-gray-700">Case Files / Folder *</Label>
             <input
               ref={singleFileRef}
               type="file"
+              multiple
               className="hidden"
               onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) handleFileSelect(file)
+                const files = e.target.files ? Array.from(e.target.files) : []
+                if (files.length > 0) handleMultipleFilesSelect(files)
+              }}
+            />
+            <input
+              ref={folderFileRef}
+              type="file"
+              // @ts-ignore
+              webkitdirectory=""
+              // @ts-ignore
+              directory=""
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = e.target.files ? Array.from(e.target.files) : []
+                if (files.length > 0) handleMultipleFilesSelect(files)
               }}
             />
             {isUploading ? (
@@ -474,64 +579,67 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   </div>
                 </div>
               </div>
-            ) : uploadedFileUrl ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg shadow-sm gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-md shrink-0">
-                    <FileArchive className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate max-w-[200px] sm:max-w-[280px] lg:max-w-[400px]">
-                      {singleFile?.name}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <p className="text-xs text-muted-foreground">
-                        ({singleFile ? (singleFile.size / 1024 / 1024).toFixed(2) : 0} MB)
-                      </p>
-                      <span className="inline-flex items-center text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 bg-emerald-500/20 rounded">
-                        ✓ Uploaded
-                      </span>
+            ) : uploadedFilesList.length > 0 ? (
+              <div className="space-y-3">
+                <div className="max-h-60 overflow-y-auto border border-emerald-500/20 bg-emerald-500/5 rounded-lg p-2 space-y-1.5 custom-scrollbar">
+                  {uploadedFilesList.map((file, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 bg-white/80 border border-zinc-100 rounded-md shadow-sm gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="p-1.5 bg-emerald-500/10 text-emerald-600 rounded shrink-0">
+                          <FileArchive className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-zinc-800 truncate max-w-[250px] md:max-w-[400px]">
+                            {file.fileName}
+                          </p>
+                          <p className="text-[10px] text-zinc-500">
+                            {(file.fileSize / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={isSubmitting || isUploading}
+                        onClick={async (e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          await handleDeleteUploadedFile(file.fileName)
+                          setUploadedFilesList((prev) => prev.filter((_, i) => i !== idx))
+                        }}
+                        className="h-7 w-7 text-zinc-400 hover:text-red-500 hover:bg-red-50 shrink-0"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
-                  </div>
+                  ))}
                 </div>
-                <div className="flex gap-2 shrink-0 justify-end w-full sm:w-auto">
+                <div className="flex gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     disabled={isSubmitting || isUploading}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      singleFileRef.current?.click()
-                    }}
-                    className="h-9 text-xs flex items-center gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-600 hover:text-white bg-white font-medium"
+                    onClick={() => singleFileRef.current?.click()}
+                    className="h-8 text-xs flex items-center gap-1.5 bg-white hover:bg-zinc-50 border-zinc-200"
                   >
-                    <RefreshCw className="h-3.5 w-3.5" /> Replace File
+                    <Upload className="h-3 w-3" /> Add Files
                   </Button>
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="icon"
+                    variant="outline"
+                    size="sm"
                     disabled={isSubmitting || isUploading}
-                    onClick={async (e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (uploadedFile) {
-                        await handleDeleteUploadedFile(uploadedFile.fileName)
-                      }
-                      setSingleFile(null)
-                      setUploadedFileUrl(null)
-                      setUploadedFile(null)
-                    }}
-                    className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
+                    onClick={() => folderFileRef.current?.click()}
+                    className="h-8 text-xs flex items-center gap-1.5 bg-white hover:bg-zinc-50 border-zinc-200"
                   >
-                    <X className="h-4 w-4" />
+                    <FolderOpen className="h-3 w-3" /> Add Folder
                   </Button>
                 </div>
               </div>
             ) : (
-              <label
+              <div
                 onDragEnter={handleCaseFileDrag}
                 onDragOver={handleCaseFileDrag}
                 onDragLeave={handleCaseFileDrag}
@@ -541,23 +649,42 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                     : 'border-border hover:border-emerald-800'
                   } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <input
-                  type="file"
-                  className="hidden"
-                  disabled={isSubmitting}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileSelect(file)
-                  }}
-                />
                 <div>
                   <Upload className={`h-6 w-6 mx-auto mb-1 transition-transform ${isDraggingCaseFile ? 'text-emerald-600 scale-110' : 'text-muted-foreground'}`} />
                   <p className={`text-sm font-medium transition-colors ${isDraggingCaseFile ? 'text-emerald-700' : 'text-foreground'}`}>
-                    {isDraggingCaseFile ? 'Drop file here!' : 'Drop file here or click to upload'}
+                    {isDraggingCaseFile ? 'Drop files/folders here!' : 'Drop files/folders here or choose upload below'}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 mb-3">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 5GB)</p>
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isSubmitting || isUploading}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        singleFileRef.current?.click()
+                      }}
+                      className="h-8 text-xs flex items-center gap-1.5 bg-white hover:bg-zinc-50 border-zinc-200"
+                    >
+                      <Upload className="h-3 w-3" /> Choose Files
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isSubmitting || isUploading}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        folderFileRef.current?.click()
+                      }}
+                      className="h-8 text-xs flex items-center gap-1.5 bg-white hover:bg-zinc-50 border-zinc-200"
+                    >
+                      <FolderOpen className="h-3 w-3" /> Choose Folder
+                    </Button>
+                  </div>
                 </div>
-              </label>
+              </div>
             )}
           </div>
 
