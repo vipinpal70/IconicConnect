@@ -177,7 +177,7 @@ export async function uploadFileInChunks(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: initData.key, uploadId: initData.uploadId }),
-      }).catch(() => {});
+      }).catch(() => { });
     }
     onError(err?.message || "Upload aborted");
   }

@@ -15,15 +15,8 @@ import { r2, R2_BUCKET } from '@/src/lib/r2';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5GB
 
-const ALLOWED_EXTENSIONS = [
-  '.png', '.jpg', '.jpeg',
-  '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.flv', '.3gp', '.mpeg', '.mpg',
-  '.pdf',
-  '.zip',
-  '.dme',
-  '.doc', '.docx',
-  '.txt',
-  '.html', '.htm',
+const BLOCKED_EXTENSIONS = [
+  '.exe', '.msi', '.bat', '.cmd', '.sh', '.lnk', '.scr', '.vbs', '.js'
 ];
 
 type AuthedProfile = NonNullable<Awaited<ReturnType<typeof getAuthedProfile>>['profile']>;
@@ -101,8 +94,9 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
   if (fileSize > MAX_FILE_SIZE) {
     return NextResponse.json({ error: 'File size exceeds the 5GB limit' }, { status: 400 });
   }
-  const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
-  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+  const lastDot = fileName.lastIndexOf('.');
+  const ext = lastDot !== -1 ? fileName.substring(lastDot).toLowerCase() : '';
+  if (BLOCKED_EXTENSIONS.includes(ext)) {
     return NextResponse.json({ error: 'Unsupported file type.' }, { status: 400 });
   }
 

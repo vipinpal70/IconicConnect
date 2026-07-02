@@ -155,7 +155,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           });
         };
         readAllEntries().then(async (entries) => {
-          const filesPromises = entries.map((entry) => 
+          const filesPromises = entries.map((entry) =>
             traverseFileTree(entry, path ? `${path}/${item.name}` : item.name)
           );
           const filesArrays = await Promise.all(filesPromises);
@@ -285,20 +285,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     if (file.size > maxLimit) {
       return { isValid: false, error: `File size exceeds the 5GB limit. Size: ${(file.size / 1024 / 1024 / 1024).toFixed(2)} GB` }
     }
-    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
-    const allowedExtensions = [
-      ".png", ".jpg", ".jpeg",
-      ".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".flv", ".3gp", ".mpeg", ".mpg",
-      ".pdf",
-      ".zip",
-      ".doc", ".docx",
-      ".txt",
-      ".html", ".htm",
-      ".dme",
-      ".stl", ".ply", ".obj", ".xml", ".manifest", ".json", ".constructioninfo"
+    const lastDot = file.name.lastIndexOf(".")
+    const ext = lastDot !== -1 ? file.name.substring(lastDot).toLowerCase() : ""
+    const blockedExtensions = [
+      ".exe", ".msi", ".bat", ".cmd", ".sh", ".lnk", ".scr", ".vbs", ".js"
     ]
-    if (!allowedExtensions.includes(ext)) {
-      return { isValid: false, error: `Unsupported file type. Allowed: ${allowedExtensions.join(", ").toUpperCase()}` }
+    if (blockedExtensions.includes(ext)) {
+      return { isValid: false, error: "Executable/script files are not allowed for security reasons." }
     }
     return { isValid: true }
   }
@@ -667,8 +660,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 onDragLeave={handleCaseFileDrag}
                 onDrop={handleCaseFileDrop}
                 className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${isDraggingCaseFile
-                    ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
-                    : 'border-border hover:border-emerald-800'
+                  ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
+                  : 'border-border hover:border-emerald-800'
                   } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <div>
@@ -676,7 +669,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   <p className={`text-sm font-medium transition-colors ${isDraggingCaseFile ? 'text-emerald-700' : 'text-foreground'}`}>
                     {isDraggingCaseFile ? 'Drop files/folders here!' : 'Drop files/folders here or choose upload below'}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5 mb-3">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 5GB)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 mb-3">Scans (STL, PLY, OBJ), Images, Videos, PDFs, ZIPs (Max 5GB)</p>
                   <div className="flex justify-center gap-2">
                     <Button
                       type="button"
@@ -852,8 +845,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       onDragLeave={handleLibraryFileDrag}
                       onDrop={handleLibraryFileDrop}
                       className={`border-2 border-dashed rounded-lg p-6 text-center transition-all block cursor-pointer ${isDraggingLibraryFile
-                          ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
-                          : 'border-border hover:border-emerald-800'
+                        ? 'border-emerald-600 bg-emerald-500/10 scale-[1.01] shadow-sm'
+                        : 'border-border hover:border-emerald-800'
                         } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <input
