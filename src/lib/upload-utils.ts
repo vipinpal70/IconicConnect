@@ -52,7 +52,7 @@ export async function uploadFileInChunks(
     // 1. Initialise the multipart upload
     const initParams = new URLSearchParams({
       action: "init",
-      fileName: file.webkitRelativePath || file.name,
+      fileName: (file as any).customRelativePath || file.webkitRelativePath || file.name,
       fileType: file.type || "application/octet-stream",
       fileSize: String(file.size),
     });

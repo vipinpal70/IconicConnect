@@ -551,8 +551,8 @@ export default function CasesPage() {
     if (!fileCheck.isValid) { toast.error(fileCheck.error || "Invalid file"); return; }
 
     if (designUploadExpectedFileName &&
-      designUploadFile.name.toLowerCase() !== designUploadExpectedFileName.toLowerCase()) {
-      toast.error(`Output file name must match the original case file: "${designUploadExpectedFileName}"`);
+      removeExtensionFromString(designUploadFile.name).toLowerCase() !== removeExtensionFromString(designUploadExpectedFileName).toLowerCase()) {
+      toast.error(`Output file name must match the original case file: "${removeExtensionFromString(designUploadExpectedFileName)}"`);
       return;
     }
 
@@ -1563,9 +1563,9 @@ export default function CasesPage() {
                 onChange={(e) => setDesignUploadFile(e.target.files?.[0] || null)}
                 className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-emerald-600 file:border-none file:rounded-md file:px-2 file:py-2" />
               {designUploadFile && (
-                <p className={`text-xs font-medium ${designUploadExpectedFileName && designUploadFile.name.toLowerCase() !== designUploadExpectedFileName.toLowerCase() ? "text-red-600" : "text-gray-700"}`}>
+                <p className={`text-xs font-medium ${designUploadExpectedFileName && removeExtensionFromString(designUploadFile.name).toLowerCase() !== removeExtensionFromString(designUploadExpectedFileName).toLowerCase() ? "text-red-600" : "text-gray-700"}`}>
                   Selected: {designUploadFile.name}
-                  {designUploadExpectedFileName && designUploadFile.name.toLowerCase() !== designUploadExpectedFileName.toLowerCase() && (
+                  {designUploadExpectedFileName && removeExtensionFromString(designUploadFile.name).toLowerCase() !== removeExtensionFromString(designUploadExpectedFileName).toLowerCase() && (
                     <span className="ml-1">— name must match case file</span>
                   )}
                 </p>

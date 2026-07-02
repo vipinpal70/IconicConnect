@@ -124,11 +124,16 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       if (item.isFile) {
         item.file((file: File) => {
           const relativePath = path ? `${path}/${file.name}` : file.name;
-          Object.defineProperty(file, 'webkitRelativePath', {
-            value: relativePath,
-            writable: true,
-            configurable: true
-          });
+          try {
+            Object.defineProperty(file, 'webkitRelativePath', {
+              value: relativePath,
+              writable: true,
+              configurable: true
+            });
+          } catch (e) {
+            // Safe fallback if read-only property throws TypeError
+          }
+          (file as any).customRelativePath = relativePath;
           resolve([file]);
         });
       } else if (item.isDirectory) {
@@ -179,14 +184,30 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     if (isSubmitting || isUploading) return
 
     const items = e.dataTransfer.items
-    if (!items) return
+    if (!items) {
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const files = Array.from(e.dataTransfer.files)
+        await handleMultipleFilesSelect(files)
+      }
+      return
+    }
 
     const filesPromises: Array<Promise<File[]>> = []
+    let hasEntries = false
     for (let i = 0; i < items.length; i++) {
-      const item = items[i].webkitGetAsEntry()
-      if (item) {
-        filesPromises.push(traverseFileTree(item))
+      if (typeof items[i].webkitGetAsEntry === "function") {
+        const item = items[i].webkitGetAsEntry()
+        if (item) {
+          hasEntries = true
+          filesPromises.push(traverseFileTree(item))
+        }
       }
+    }
+
+    if (!hasEntries && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files)
+      await handleMultipleFilesSelect(files)
+      return
     }
 
     try {
@@ -273,7 +294,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       ".doc", ".docx",
       ".txt",
       ".html", ".htm",
-      ".dme"
+      ".dme",
+      ".stl", ".ply", ".obj", ".xml", ".manifest", ".json", ".constructioninfo"
     ]
     if (!allowedExtensions.includes(ext)) {
       return { isValid: false, error: `Unsupported file type. Allowed: ${allowedExtensions.join(", ").toUpperCase()}` }

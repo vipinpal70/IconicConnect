@@ -430,6 +430,10 @@ export async function PUT(
       updateData.submittedToClientAt = new Date()
     }
 
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No updates permitted or values provided to set' }, { status: 400 });
+    }
+
     const updatedCase = await db.update(cases).set(updateData).where(eq(cases.id, id)).returning();
 
     // Dispatch Notifications after successful DB update
