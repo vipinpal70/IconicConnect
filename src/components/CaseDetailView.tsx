@@ -17,6 +17,32 @@ import { Textarea } from "@/src/components/ui/textarea"
 import { HOLD_REASONS } from "@/src/lib/case-utils"
 import { Eye } from "lucide-react"
 
+const getPreviewFileType = (url: string | null | undefined): 'html' | 'image' | 'zip' | 'other' => {
+  if (!url) return 'other';
+  try {
+    const decoded = decodeURIComponent(url);
+    let target = decoded;
+    if (decoded.includes('fileName=')) {
+      const match = decoded.match(/[?&]fileName=([^&]+)/);
+      if (match && match[1]) {
+        target = match[1];
+      }
+    } else {
+      target = decoded.split('?')[0];
+    }
+    const extIdx = target.lastIndexOf('.');
+    if (extIdx !== -1) {
+      const ext = target.substring(extIdx).toLowerCase();
+      if (['.html', '.htm'].includes(ext)) return 'html';
+      if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) return 'image';
+      if (ext === '.zip') return 'zip';
+    }
+  } catch (e) {
+    console.error("Error parsing preview file type:", e);
+  }
+  return 'other';
+};
+
 type CaseRecord = {
   id: string
   caseNumber: string | null
@@ -707,42 +733,82 @@ export function CaseDetailView({
                   </div>
                 )}
 
-                {caseRecord.previewFile && (
-                  <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-                    <div>
-                      <h4 className="text-sm font-semibold text-indigo-950">Interactive 3D Preview</h4>
-                      <p className="text-xs text-muted-foreground mt-1">HTML interactive 3D rendering of the case.</p>
+                {caseRecord.previewFile && (() => {
+                  const fileType = getPreviewFileType(caseRecord.previewFile);
+                  if (fileType === 'zip') {
+                    return (
+                      <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                        <div>
+                          <h4 className="text-sm font-semibold text-indigo-950">Design Preview Archive</h4>
+                          <p className="text-xs text-muted-foreground mt-1">ZIP archive containing preview assets.</p>
+                        </div>
+                        <div className="mt-4">
+                          <a href={caseRecord.previewFile} download target="_blank" rel="noreferrer" className="w-full block">
+                            <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium">
+                              <Download className="h-4 w-4" /> Download Preview ZIP
+                            </Button>
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                      <div>
+                        <h4 className="text-sm font-semibold text-indigo-950">
+                          {fileType === 'image' ? "Design Image Preview" : "Interactive 3D Preview"}
+                        </h4>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {fileType === 'image' ? "Image preview of the designed case." : "HTML interactive 3D rendering of the case."}
+                        </p>
+                      </div>
+                      <div className="mt-4">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowPreview(!showPreview)}
+                          className="w-full border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
+                        >
+                          <Eye className="w-4 h-4" />
+                          {showPreview ? "Hide Preview" : "Show Preview"}
+                        </Button>
+                      </div>
                     </div>
-                    <div className="mt-4">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowPreview(!showPreview)}
-                        className="w-full border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
-                      >
-                        <Eye className="w-4 h-4" />
-                        {showPreview ? "Hide Preview" : "Show Preview"}
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
-              {caseRecord.previewFile && showPreview && (
-                <div className="mt-4 border border-indigo-100 rounded-lg overflow-hidden bg-zinc-50 shadow-inner">
-                  <div className="bg-indigo-950/5 border-b border-indigo-100 px-4 py-2 flex items-center justify-between text-xs text-indigo-900 font-medium">
-                    <span>Interactive HTML Viewer</span>
-                    <a href={caseRecord.previewFile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-                      Open in New Tab ↗
-                    </a>
+              {caseRecord.previewFile && showPreview && (() => {
+                const fileType = getPreviewFileType(caseRecord.previewFile);
+                if (fileType === 'zip') return null;
+
+                return (
+                  <div className="mt-4 border border-indigo-100 rounded-lg overflow-hidden bg-zinc-50 shadow-inner">
+                    <div className="bg-indigo-950/5 border-b border-indigo-100 px-4 py-2 flex items-center justify-between text-xs text-indigo-900 font-medium">
+                      <span>{fileType === 'image' ? "Image Preview" : "Interactive HTML Viewer"}</span>
+                      <a href={caseRecord.previewFile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                        Open in New Tab ↗
+                      </a>
+                    </div>
+                    <div className="w-full flex items-center justify-center bg-zinc-900 overflow-auto" style={{ minHeight: "400px" }}>
+                      {fileType === 'image' ? (
+                        <img
+                          src={caseRecord.previewFile}
+                          alt="Design Preview"
+                          className="max-w-full max-h-[600px] object-contain p-2"
+                        />
+                      ) : (
+                        <iframe
+                          src={caseRecord.previewFile}
+                          className="w-full h-[500px] border-none bg-white"
+                          title="3D Design Preview"
+                        />
+                      )}
+                    </div>
                   </div>
-                  <iframe
-                    src={caseRecord.previewFile}
-                    className="w-full h-[400px] border-none"
-                    title="3D Design Preview"
-                  />
-                </div>
-              )}
+                );
+              })()}
             </CardContent>
           </Card>
         )}

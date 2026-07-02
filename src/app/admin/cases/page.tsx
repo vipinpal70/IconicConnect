@@ -761,15 +761,19 @@ export default function AdminCasesPage() {
                                               <UserPlus className="h-3 w-3 mr-0.5" /> Assign QC
                                             </Button>
                                           ) : (
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              disabled={isMutating}
-                                              onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
-                                              className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800"
-                                            >
-                                              <ClipboardCheck className="h-3 w-3 mr-0.5" /> Send to QC
-                                            </Button>
+                                            caseItem.outputFile ? (
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={isMutating}
+                                                onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
+                                                className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800"
+                                              >
+                                                <ClipboardCheck className="h-3 w-3 mr-0.5" /> Send to QC
+                                              </Button>
+                                            ) : (
+                                              <span className="text-[10px] text-amber-600/80 italic font-medium px-1">Awaiting design upload</span>
+                                            )
                                           )}
                                         </>
                                       )}

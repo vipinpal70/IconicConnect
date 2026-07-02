@@ -250,7 +250,15 @@ export async function PUT(
         if (body.designerId !== undefined) updateData.designerId = body.designerId;
         if (body.qcId !== undefined) updateData.qcId = body.qcId;
         if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
-        if (body.status) updateData.status = body.status;
+        if (body.status) {
+          if (body.status === 'internal_qc') {
+            const hasOutputFile = Boolean(body.outputFile || caseRecord.outputFile);
+            if (!hasOutputFile) {
+              return NextResponse.json({ error: 'Bad Request: Cannot send to QC without uploading a design output file' }, { status: 400 });
+            }
+          }
+          updateData.status = body.status;
+        }
         if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
         if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
 
@@ -291,11 +299,19 @@ export async function PUT(
         if (target) {
           if (target === 'scan_verified' && current === 'scan_received') {
             updateData.status = target;
-          } else if (target === 'in_progress' && (current === 'scan_verified' || current === 'allocated_to_designer') && (caseRecord.designerId === profile.id || updateData.designerId === profile.id)) {
+          } else if (target === 'in_progress' && (current === 'scan_verified' || current === 'allocated_to_designer' || current === 'client_feedback') && (caseRecord.designerId === profile.id || updateData.designerId === profile.id)) {
             updateData.status = target;
           } else if (target === 'in_progress' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;
-          } else if (target === 'internal_qc' && current === 'in_progress' && (caseRecord.qcId === profile.id || body.qcId === profile.id)) {
+          } else if (target === 'internal_qc' && current === 'in_progress' && (caseRecord.qcId === profile.id || body.qcId === profile.id || caseRecord.designerId === profile.id)) {
+            const finalQcId = body.qcId !== undefined ? body.qcId : caseRecord.qcId;
+            if (!finalQcId) {
+              return NextResponse.json({ error: 'Bad Request: Cannot send to QC without assigning a QC Lead first' }, { status: 400 });
+            }
+            const hasOutputFile = Boolean(body.outputFile || updateData.outputFile || caseRecord.outputFile);
+            if (!hasOutputFile) {
+              return NextResponse.json({ error: 'Bad Request: Cannot send to QC without uploading a design output file first' }, { status: 400 });
+            }
             updateData.status = target;
           } else if (target === 'submitted_to_client' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;
@@ -377,6 +393,10 @@ export async function PUT(
               const finalQcId = body.qcId !== undefined ? body.qcId : caseRecord.qcId;
               if (!finalQcId) {
                 return NextResponse.json({ error: 'Bad Request: Cannot send to QC without assigning a QC Lead first' }, { status: 400 });
+              }
+              const hasOutputFile = Boolean(body.outputFile || updateData.outputFile || caseRecord.outputFile);
+              if (!hasOutputFile) {
+                return NextResponse.json({ error: 'Bad Request: Cannot send to QC without uploading a design output file first' }, { status: 400 });
               }
               updateData.status = target;
             } else {

@@ -535,10 +535,11 @@ export default function CasesPage() {
     });
   };
 
-  const validateHtmlFile = (file: File): { isValid: boolean; error?: string } => {
+  const validatePreviewFile = (file: File): { isValid: boolean; error?: string } => {
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
-    if (ext !== ".html" && ext !== ".htm") {
-      return { isValid: false, error: "Only HTML files (.html, .htm) are allowed for 3D preview." };
+    const allowed = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".zip"];
+    if (!allowed.includes(ext)) {
+      return { isValid: false, error: "Only HTML, image (PNG, JPG, JPEG, WEBP, GIF), or ZIP files are allowed for preview." };
     }
     return { isValid: true };
   };
@@ -546,7 +547,6 @@ export default function CasesPage() {
   const confirmDesignUpload = async () => {
     if (!designUploadCaseId) return;
     if (!designUploadFile) { toast.error("Please select an output file."); return; }
-    if (!designUploadNote.trim()) { toast.error("Please add output note/details before uploading."); return; }
     const fileCheck = validateFile(designUploadFile);
     if (!fileCheck.isValid) { toast.error(fileCheck.error || "Invalid file"); return; }
 
@@ -557,7 +557,7 @@ export default function CasesPage() {
     }
 
     if (designUploadPreviewFile) {
-      const previewCheck = validateHtmlFile(designUploadPreviewFile);
+      const previewCheck = validatePreviewFile(designUploadPreviewFile);
       if (!previewCheck.isValid) { toast.error(previewCheck.error || "Invalid preview file"); return; }
     }
 
@@ -581,19 +581,21 @@ export default function CasesPage() {
       const patch = {
         outputFile: outputUrl,
         previewFile: previewUrl,
-        outputNote: designUploadNote.trim(),
+        outputNote: designUploadNote.trim() || null,
         ...(isFeedbackUpload ? { status: "in_progress" } : {}),
       };
 
       const updated = await handleUpdate(designUploadCaseId, patch, isFeedbackUpload ? "New design uploaded · case back in progress" : "Design output and preview files uploaded successfully");
       if (updated) {
         // Log design note as file/note attachment if note is provided
-        try {
-          const formData = new FormData();
-          formData.append("note", designUploadNote.trim());
-          await fetch(`/api/cases/${designUploadCaseId}/files`, { method: "POST", body: formData });
-        } catch (e) {
-          console.error("Failed to save design note as attachment:", e);
+        if (designUploadNote.trim()) {
+          try {
+            const formData = new FormData();
+            formData.append("note", designUploadNote.trim());
+            await fetch(`/api/cases/${designUploadCaseId}/files`, { method: "POST", body: formData });
+          } catch (e) {
+            console.error("Failed to save design note as attachment:", e);
+          }
         }
         closeDesignUploadDialog();
         fetchCases();
@@ -941,7 +943,7 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
-                    {["Case ID","Client", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
+                    {["Case ID", "Client", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold  text-muted-foreground px-3.5 py-2 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -1031,7 +1033,7 @@ export default function CasesPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3.5 py-1.5 text-[11px] text-black font-semibold whitespace-nowrap">{c.clientDisplayName || "—"}<br/> <span className="font-normal text-muted-foreground">{removeExtensionFromString(c.scanFileName || "—")}</span></td>
+                          <td className="px-3.5 py-1.5 text-[11px] text-black font-semibold whitespace-nowrap">{c.clientDisplayName || "—"}<br /> <span className="font-normal text-muted-foreground">{removeExtensionFromString(c.scanFileName || "—")}</span></td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground whitespace-nowrap">{c.category || "—"}</td>
                           <td className="px-3.5 py-1.5 text-[11px] text-foreground font-semibold">{restoration || "—"}</td>
                           <td className="px-3.5 py-1.5 text-[11px] text-muted-foreground">
@@ -1089,11 +1091,15 @@ export default function CasesPage() {
                                           <UserPlus className="h-3 w-3 mr-1" /> Assign QC
                                         </Button>
                                       ) : (
-                                        <Button size="sm" variant="outline" disabled={isMutating}
-                                          onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
-                                          className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
-                                          <ClipboardCheck className="h-3 w-3 mr-1" /> Send to QC
-                                        </Button>
+                                        c.outputFile ? (
+                                          <Button size="sm" variant="outline" disabled={isMutating}
+                                            onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
+                                            className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-primary border-primary/50 text-white hover:bg-zinc-800">
+                                            <ClipboardCheck className="h-3 w-3 mr-1" /> Send to QC
+                                          </Button>
+                                        ) : (
+                                          <span className="text-[10px] text-amber-600/80 italic font-medium px-1">Awaiting design upload</span>
+                                        )
                                       )
                                     )
                                   )}
@@ -1539,7 +1545,7 @@ export default function CasesPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="design-note" className="text-sm font-semibold text-gray-700">Case Note</Label>
+              <Label htmlFor="design-note" className="text-sm font-semibold text-gray-700">Case Note <span className="text-xs font-normal text-gray-500">(Optional)</span></Label>
               <Textarea id="design-note" value={designUploadNote} onChange={(e) => setDesignUploadNote(e.target.value)}
                 placeholder="Add case design notes..."
                 className="min-h-[120px] bg-gray-100 border-gray-200 text-gray-900 placeholder:text-zinc-400" />
@@ -1577,14 +1583,14 @@ export default function CasesPage() {
               )}
             </div>
             <div className="grid gap-2 mt-1">
-              <Label htmlFor="preview-file" className="text-sm font-semibold text-gray-700">Preview File (HTML Only - Optional)</Label>
-              <Input id="preview-file" ref={previewUploadInputRef} type="file" accept=".html,.htm"
+              <Label htmlFor="preview-file" className="text-sm font-semibold text-gray-700">Preview File (HTML, Image, or ZIP - Optional)</Label>
+              <Input id="preview-file" ref={previewUploadInputRef} type="file" accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.zip"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   if (file) {
-                    const check = validateHtmlFile(file);
+                    const check = validatePreviewFile(file);
                     if (!check.isValid) {
-                      toast.error(check.error || "Only HTML files are allowed");
+                      toast.error(check.error || "Only HTML, image, or ZIP files are allowed");
                       if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
                       setDesignUploadPreviewFile(null);
                     } else {
@@ -1595,7 +1601,7 @@ export default function CasesPage() {
                   }
                 }}
                 className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-indigo-600 file:border-none file:rounded-md file:px-3 file:py-2" />
-              {designUploadPreviewFile && <p className="text-xs text-gray-700">Selected HTML: {designUploadPreviewFile.name}</p>}
+              {designUploadPreviewFile && <p className="text-xs text-gray-700">Selected file: {designUploadPreviewFile.name}</p>}
               {isDesignUploading && designUploadPreviewFile && previewUploadProgress > 0 && (
                 <div className="space-y-1 pt-1">
                   <div className="flex justify-between text-[11px] text-gray-500">
