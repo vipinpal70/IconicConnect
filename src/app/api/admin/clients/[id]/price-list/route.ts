@@ -5,6 +5,7 @@ import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
 import { getPriceListForClient, updateClientPriceList } from '@/src/lib/price-list'
 import { logActivity } from '@/src/lib/activity-log'
+import { deleteCachedData } from '@/src/lib/redis-cache'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -86,6 +87,7 @@ export async function PUT(
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
     await updateClientPriceList(id, validated, auth.profile.id)
+    await deleteCachedData(`price-list:client:${id}`)
 
     const data = await getPriceListForClient(id)
 

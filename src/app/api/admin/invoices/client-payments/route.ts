@@ -4,6 +4,10 @@ import { invoices } from '@/src/db/schema/invoice'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 import { createClient } from '@/src/lib/supabase/server'
+import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
+
+const PAYMENTS_KEY = 'invoices:payments:admin'
+const PAYMENTS_TTL = 1800 // 30 minutes
 
 // GET /api/admin/invoices/client-payments
 // Returns per-client latest invoice payment status for the clients list indicator
@@ -17,6 +21,9 @@ export async function GET() {
     if (!admin || admin.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+
+    const cached = await getCachedData<Record<string, unknown>>(PAYMENTS_KEY)
+    if (cached) return NextResponse.json(cached)
 
     const rows = await db
       .select({
@@ -74,7 +81,9 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json(Object.fromEntries(map))
+    const result = Object.fromEntries(map)
+    await setCachedData(PAYMENTS_KEY, result, PAYMENTS_TTL)
+    return NextResponse.json(result)
   } catch (err) {
     console.error('[api/admin/invoices/client-payments GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

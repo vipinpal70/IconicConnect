@@ -66,6 +66,27 @@ export async function deleteKeysByPattern(pattern: string): Promise<void> {
 }
 
 /**
+ * Invalidates invoice and billing caches for a given client.
+ * Pass invoiceId to also clear the single-invoice entry.
+ */
+export async function invalidateInvoiceCache(clientId: string, invoiceId?: string): Promise<void> {
+  if (connection.status !== 'ready') return
+  try {
+    const keys: string[] = [
+      'invoices:admin:all',
+      'invoices:payments:admin',
+      'billing:all',
+      `invoices:client:${clientId}`,
+    ]
+    if (invoiceId) keys.push(`invoice:${invoiceId}`)
+    await connection.del(...keys)
+    await deleteKeysByPattern(`billing:client:${clientId}:*`)
+  } catch (error) {
+    console.error('[invalidateInvoiceCache]', error)
+  }
+}
+
+/**
  * Invalidates cases and dashboard caches for clients and admins
  */
 export async function invalidateCasesCache(clientId?: string | null): Promise<void> {

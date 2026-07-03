@@ -6,6 +6,7 @@ import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
 import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone';
+import { deleteCachedData } from '@/src/lib/redis-cache';
 
 type MemberUpdateData = {
   fullName?: string
@@ -151,6 +152,12 @@ export async function PATCH(
       });
     }
 
+    await Promise.all([
+      deleteCachedData(`profile:${id}`),
+      deleteCachedData(`client:${id}`),
+      deleteCachedData('clients:list'),
+    ])
+
     await logActivity({
       actor: currentProfile,
       action: 'member.updated',
@@ -233,6 +240,12 @@ export async function DELETE(
 
     // 2. Delete from Profile (Cascade should handle relations, but let's be explicit if needed)
     await db.delete(profiles).where(eq(profiles.id, id));
+
+    await Promise.all([
+      deleteCachedData(`profile:${id}`),
+      deleteCachedData(`client:${id}`),
+      deleteCachedData('clients:list'),
+    ])
 
     return NextResponse.json({ success: true });
   } catch (error) {

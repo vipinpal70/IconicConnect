@@ -5,6 +5,9 @@ import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 import { createClient } from '@/src/lib/supabase/server'
 import { formatInvoiceRow } from '@/src/lib/invoice'
+import { getCachedData, setCachedData, invalidateInvoiceCache } from '@/src/lib/redis-cache'
+
+const INVOICE_TTL = 1800 // 30 minutes
 
 async function resolveClientId(userId: string): Promise<string | null> {
   const [profile] = await db.select().from(profiles).where(eq(profiles.id, userId)).limit(1)
@@ -26,12 +29,21 @@ export async function GET(
     if (!clientId) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
 
     const { id } = await params
+    const cacheKey = `invoice:${id}`
+    const cached = await getCachedData<ReturnType<typeof formatInvoiceRow>>(cacheKey)
+    if (cached) {
+      if (cached.clientId !== clientId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json(cached)
+    }
+
     const [inv] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1)
     if (!inv) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     if (inv.clientId !== clientId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
-    return NextResponse.json(formatInvoiceRow(inv, client))
+    const result = formatInvoiceRow(inv, client)
+    await setCachedData(cacheKey, result, INVOICE_TTL)
+    return NextResponse.json(result)
   } catch (err) {
     console.error('[api/client/invoices/[id] GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -84,6 +96,7 @@ export async function PATCH(
       .returning()
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
+    await invalidateInvoiceCache(clientId, id)
     return NextResponse.json(formatInvoiceRow(updated, client))
   } catch (err) {
     console.error('[api/client/invoices/[id] PATCH]', err)

@@ -10,6 +10,7 @@ import { NotificationService } from '@/src/lib/notifications/notification-servic
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { queueEmail } from '@/src/lib/queue/jobs';
 import { handleProfileCreated } from '@/src/lib/price-list';
+import { deleteCachedData } from '@/src/lib/redis-cache';
 
 // Helper to check if current user is admin
 async function isAdmin() {
@@ -160,6 +161,9 @@ export async function POST(req: NextRequest) {
         phone,
       },
     });
+
+    // Invalidate clients list so the next fetch reflects the new member
+    await deleteCachedData('clients:list').catch(() => {})
 
     return NextResponse.json({ success: true, user: authData.user });
   } catch (error) {

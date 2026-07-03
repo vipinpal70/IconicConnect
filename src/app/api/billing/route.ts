@@ -11,6 +11,10 @@ import { profiles } from '@/src/db/schema/profile'
 import { eq, or } from 'drizzle-orm'
 import { createClient } from '@/src/lib/supabase/server'
 import { mapCaseToPricingInput, calculateCasePrice } from '@/src/lib/pricing'
+import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
+
+const BILLING_ALL_KEY = 'billing:all'
+const BILLING_TTL = 1800 // 30 minutes
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,6 +30,9 @@ export async function GET(req: NextRequest) {
     if (!adminProfile || adminProfile.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+
+    const cached = await getCachedData<unknown[]>(BILLING_ALL_KEY)
+    if (cached) return NextResponse.json(cached)
 
     // Fetch all cases that are completed (approved or delivered)
     const completedCases = await db.select()
@@ -92,6 +99,7 @@ export async function GET(req: NextRequest) {
       }
     })
 
+    await setCachedData(BILLING_ALL_KEY, invoices, BILLING_TTL)
     return NextResponse.json(invoices)
   } catch (err) {
     console.error('[api/billing GET]', err)

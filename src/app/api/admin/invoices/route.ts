@@ -12,6 +12,9 @@ import {
   formatInvoiceRow,
 } from '@/src/lib/invoice'
 import type { AdjustmentType } from '@/src/db/schema/invoice'
+import { getCachedData, setCachedData, invalidateInvoiceCache } from '@/src/lib/redis-cache'
+
+const INVOICE_TTL = 1800 // 30 minutes
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -29,6 +32,10 @@ export async function GET() {
   try {
     const auth = await requireAdmin()
     if ('error' in auth) return auth.error
+
+    const cacheKey = 'invoices:admin:all'
+    const cached = await getCachedData<ReturnType<typeof formatInvoiceRow>[]>(cacheKey)
+    if (cached) return NextResponse.json(cached)
 
     const rows = await db
       .select()
@@ -52,6 +59,7 @@ export async function GET() {
       return formatInvoiceRow(inv, client)
     }).filter(Boolean)
 
+    await setCachedData(cacheKey, result, INVOICE_TTL)
     return NextResponse.json(result)
   } catch (err) {
     console.error('[api/admin/invoices GET]', err)
@@ -140,6 +148,7 @@ export async function POST(req: NextRequest) {
       })
       .returning()
 
+    await invalidateInvoiceCache(clientId, saved.id)
     return NextResponse.json(formatInvoiceRow(saved, client), { status: 201 })
   } catch (err) {
     console.error('[api/admin/invoices POST]', err)

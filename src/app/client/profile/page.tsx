@@ -15,6 +15,7 @@ import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
 import { ClientPriceListModal } from "@/src/components/ClientPriceListModal";
 import type { PriceListRow } from "@/src/components/PriceListTable";
 import type { PriceListEntryFull } from "@/src/lib/price-list";
+import { fetchPriceListWithCache } from "@/src/lib/price-list-cache";
 import { toast } from "sonner";
 import {
   Building2, Mail, Phone, MapPin, Plus, Eye, EyeOff,
@@ -60,22 +61,18 @@ export default function ProfilePage() {
         setProfile(data as any);
 
         if (data.role !== "subuser") {
-          const priceRes = await fetch("/api/client/price-list");
-          if (priceRes.ok) {
-            const priceJson = await priceRes.json();
-            const items: PriceListEntryFull[] = Array.isArray(priceJson.data) ? priceJson.data : [];
-            setPriceList(items.map((item) => ({
-              id: item.id,
-              catalogItemId: item.catalogItemId,
-              category: item.category,
-              subCategory: item.subCategory,
-              unitType: item.unitType,
-              defaultPrice: item.defaultPrice,
-              price: item.price,
-              notes: item.notes,
-              sortOrder: item.sortOrder,
-            })));
-          }
+          const items = await fetchPriceListWithCache(data.id);
+          setPriceList(items.map((item) => ({
+            id: item.id,
+            catalogItemId: item.catalogItemId,
+            category: item.category,
+            subCategory: item.subCategory,
+            unitType: item.unitType,
+            defaultPrice: item.defaultPrice,
+            price: item.price,
+            notes: item.notes,
+            sortOrder: item.sortOrder,
+          })));
         }
 
         if (data.role !== "subuser") {

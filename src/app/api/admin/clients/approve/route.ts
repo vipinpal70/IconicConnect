@@ -7,6 +7,7 @@ import { NotificationService } from '@/src/lib/notifications/notification-servic
 import { NotificationType } from '@/src/lib/notifications/notification-events'
 import { logActivity } from '@/src/lib/activity-log'
 import { seedClientPriceList } from '@/src/lib/price-list'
+import { deleteCachedData } from '@/src/lib/redis-cache'
 
 export async function POST(req: NextRequest) {
   try {
@@ -58,6 +59,12 @@ export async function POST(req: NextRequest) {
     } catch (notifyError) {
       console.error('Failed to send approval notifications:', notifyError);
     }
+
+    await Promise.all([
+      deleteCachedData(`profile:${clientId}`),
+      deleteCachedData(`client:${clientId}`),
+      deleteCachedData('clients:list'),
+    ])
 
     await logActivity({
       actor: adminProfile,

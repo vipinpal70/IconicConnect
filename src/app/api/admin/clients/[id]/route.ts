@@ -3,6 +3,10 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
+import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
+
+const CLIENT_TTL = 3600 // 1 hour
+const clientKey = (id: string) => `client:${id}`
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -33,12 +37,20 @@ export async function GET(
     if ('error' in auth) return auth.error
 
     const { id } = await params
+    const key = clientKey(id)
+
+    const cached = await getCachedData<typeof profiles.$inferSelect>(key)
+    if (cached) {
+      return NextResponse.json({ data: cached })
+    }
+
     const [client] = await db.select().from(profiles).where(eq(profiles.id, id)).limit(1)
 
     if (!client || client.role !== 'client') {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
 
+    await setCachedData(key, client, CLIENT_TTL)
     return NextResponse.json({ data: client })
   } catch (error) {
     console.error('[admin/clients/[id] GET]', error)

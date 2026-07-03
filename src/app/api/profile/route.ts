@@ -3,6 +3,9 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
+import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
+
+const PROFILE_TTL = 3600 // 1 hour
 
 export async function GET() {
   try {
@@ -11,6 +14,12 @@ export async function GET() {
 
     if (error || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const key = `profile:${user.id}`
+    const cached = await getCachedData<typeof profiles.$inferSelect>(key)
+    if (cached) {
+      return NextResponse.json(cached)
     }
 
     const results = await db
@@ -25,6 +34,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
+    await setCachedData(key, profile, PROFILE_TTL)
     return NextResponse.json(profile)
   } catch (error) {
     console.error('[api/profile] Error:', error)

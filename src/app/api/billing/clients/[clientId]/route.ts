@@ -12,6 +12,9 @@ import { profiles } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
 import { eq, and, gte, lte, inArray, asc } from 'drizzle-orm'
 import { createClient } from '@/src/lib/supabase/server'
+import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
+
+const BILLING_TTL = 1800 // 30 minutes
 
 // ── Price map helpers ──────────────────────────────────────────────────────────
 
@@ -129,6 +132,10 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    const cacheKey = `billing:client:${clientId}:${startDateParam ?? 'all'}:${endDateParam ?? 'all'}`
+    const cached = await getCachedData<unknown>(cacheKey)
+    if (cached) return NextResponse.json(cached)
+
     // Client profile
     let clientProfile = null
     if (clientId !== 'all') {
@@ -211,7 +218,7 @@ export async function GET(
       }
     })
 
-    return NextResponse.json({
+    const payload = {
       client: clientProfile
         ? {
             id: clientProfile.id,
@@ -227,7 +234,9 @@ export async function GET(
         : { id: 'all', fullName: 'All Clients', labName: 'All Clients', email: '', phone: '', city: '', state: '', postalCode: '', country: '' },
       cases: detailedCases,
       totalPrice: parseFloat(totalPrice.toFixed(2)),
-    })
+    }
+    await setCachedData(cacheKey, payload, BILLING_TTL)
+    return NextResponse.json(payload)
   } catch (err) {
     console.error('[api/billing/clients/[clientId] GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -10,6 +10,9 @@ import {
   formatInvoiceRow,
 } from '@/src/lib/invoice'
 import type { AdjustmentType } from '@/src/db/schema/invoice'
+import { getCachedData, setCachedData, invalidateInvoiceCache } from '@/src/lib/redis-cache'
+
+const INVOICE_TTL = 1800 // 30 minutes
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -32,13 +35,19 @@ export async function GET(
     if ('error' in auth) return auth.error
 
     const { id } = await params
+    const cacheKey = `invoice:${id}`
+    const cached = await getCachedData<ReturnType<typeof formatInvoiceRow>>(cacheKey)
+    if (cached) return NextResponse.json(cached)
+
     const [inv] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1)
     if (!inv) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, inv.clientId)).limit(1)
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
 
-    return NextResponse.json(formatInvoiceRow(inv, client))
+    const result = formatInvoiceRow(inv, client)
+    await setCachedData(cacheKey, result, INVOICE_TTL)
+    return NextResponse.json(result)
   } catch (err) {
     console.error('[api/admin/invoices/[id] GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -146,6 +155,7 @@ export async function PATCH(
       .returning()
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, updated.clientId)).limit(1)
+    await invalidateInvoiceCache(updated.clientId, id)
     return NextResponse.json(formatInvoiceRow(updated, client))
   } catch (err) {
     console.error('[api/admin/invoices/[id] PATCH]', err)
