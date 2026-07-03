@@ -48,3 +48,6 @@ referencecode/
 # local uploaded cases data
 /case_data/
 /scratch
+
+# r2 retention scheduler state
+/.r2-retention-state.json
