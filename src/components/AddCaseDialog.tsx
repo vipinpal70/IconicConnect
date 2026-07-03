@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Upload, FileArchive, RefreshCw, X, Plus, Loader2, FolderOpen } from "lucide-react"
+import { Upload, FileArchive, RefreshCw, X, Plus, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
 import { Label } from "@/src/components/ui/label"
@@ -113,59 +113,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   const [submitCooldown, setSubmitCooldown] = useState(false)
   const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null)
   const singleFileRef = useRef<HTMLInputElement>(null)
-  const folderFileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
 
   const [isDraggingCaseFile, setIsDraggingCaseFile] = useState(false)
   const [isDraggingLibraryFile, setIsDraggingLibraryFile] = useState(false)
-
-  const traverseFileTree = (item: any, path = ""): Promise<File[]> => {
-    return new Promise((resolve) => {
-      if (item.isFile) {
-        item.file((file: File) => {
-          const relativePath = path ? `${path}/${file.name}` : file.name;
-          try {
-            Object.defineProperty(file, 'webkitRelativePath', {
-              value: relativePath,
-              writable: true,
-              configurable: true
-            });
-          } catch (e) {
-            // Safe fallback if read-only property throws TypeError
-          }
-          (file as any).customRelativePath = relativePath;
-          resolve([file]);
-        });
-      } else if (item.isDirectory) {
-        const dirReader = item.createReader();
-        const readAllEntries = (): Promise<any[]> => {
-          return new Promise((resolveEntries) => {
-            const allEntries: any[] = [];
-            const readEntries = () => {
-              dirReader.readEntries((entries: any[]) => {
-                if (entries.length === 0) {
-                  resolveEntries(allEntries);
-                } else {
-                  allEntries.push(...entries);
-                  readEntries();
-                }
-              });
-            };
-            readEntries();
-          });
-        };
-        readAllEntries().then(async (entries) => {
-          const filesPromises = entries.map((entry) =>
-            traverseFileTree(entry, path ? `${path}/${item.name}` : item.name)
-          );
-          const filesArrays = await Promise.all(filesPromises);
-          resolve(filesArrays.flat());
-        });
-      } else {
-        resolve([]);
-      }
-    });
-  };
 
   const handleCaseFileDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -184,40 +135,32 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     if (isSubmitting || isUploading) return
 
     const items = e.dataTransfer.items
-    if (!items) {
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const files = Array.from(e.dataTransfer.files)
-        await handleMultipleFilesSelect(files)
-      }
-      return
-    }
+    const filesOnly: File[] = []
 
-    const filesPromises: Array<Promise<File[]>> = []
-    let hasEntries = false
-    for (let i = 0; i < items.length; i++) {
-      if (typeof items[i].webkitGetAsEntry === "function") {
-        const item = items[i].webkitGetAsEntry()
-        if (item) {
-          hasEntries = true
-          filesPromises.push(traverseFileTree(item))
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (typeof items[i].webkitGetAsEntry === "function") {
+          const item = items[i].webkitGetAsEntry()
+          if (item) {
+            if (item.isFile) {
+              const file = items[i].getAsFile()
+              if (file) filesOnly.push(file)
+            }
+          }
+        } else {
+          const file = items[i].getAsFile()
+          if (file) filesOnly.push(file)
         }
       }
-    }
-
-    if (!hasEntries && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files)
-      await handleMultipleFilesSelect(files)
-      return
+      filesOnly.push(...files)
     }
 
-    try {
-      const filesArrays = await Promise.all(filesPromises)
-      const allFiles = filesArrays.flat()
-      if (allFiles.length > 0) {
-        await handleMultipleFilesSelect(allFiles)
-      }
-    } catch (err) {
-      toast.error("Failed to traverse dropped files/folders.")
+    if (filesOnly.length > 0) {
+      await handleMultipleFilesSelect(filesOnly)
+    } else {
+      toast.error("No valid files dropped. Folder uploads are not supported.")
     }
   }
 
@@ -326,7 +269,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       if (check.isValid) {
         validFiles.push(file)
       } else {
-        toast.warning(`Skipped "${file.webkitRelativePath || file.name}": ${check.error}`)
+        toast.warning(`Skipped "${file.name}": ${check.error}`)
       }
     }
 
@@ -363,7 +306,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               resolve()
             },
             (err) => {
-              reject(new Error(`Failed to upload ${file.webkitRelativePath || file.name}: ${err}`))
+              reject(new Error(`Failed to upload ${file.name}: ${err}`))
             }
           )
         })
@@ -376,7 +319,6 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     } finally {
       setIsUploading(false)
       if (singleFileRef.current) singleFileRef.current.value = ""
-      if (folderFileRef.current) folderFileRef.current.value = ""
     }
   }
 
@@ -441,7 +383,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     const implantCrownBridgeValid = category === "Implant" && subTypeData.caseType2 !== "None" ? crownBridgeTeeth.length > 0 : true
 
     if (!allFieldsFilled || !teethValid || uploadedFilesList.length === 0 || !implantCrownBridgeValid) {
-      toast.error("Please complete all fields, select teeth, and upload at least one file or folder.")
+      toast.error("Please complete all fields, select teeth, and upload at least one file.")
       return
     }
 
@@ -559,24 +501,10 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
 
           {/* Case File Dropzone */}
           <div className="space-y-2">
-            <Label className="text-xs font-semibold text-gray-700">Case Files / Folder *</Label>
+            <Label className="text-xs font-semibold text-gray-700">Case Files *</Label>
             <input
               ref={singleFileRef}
               type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                const files = e.target.files ? Array.from(e.target.files) : []
-                if (files.length > 0) handleMultipleFilesSelect(files)
-              }}
-            />
-            <input
-              ref={folderFileRef}
-              type="file"
-              // @ts-ignore
-              webkitdirectory=""
-              // @ts-ignore
-              directory=""
               multiple
               className="hidden"
               onChange={(e) => {
@@ -641,16 +569,6 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   >
                     <Upload className="h-3 w-3" /> Add Files
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isSubmitting || isUploading}
-                    onClick={() => folderFileRef.current?.click()}
-                    className="h-8 text-xs flex items-center gap-1.5 bg-white hover:bg-zinc-50 border-zinc-200"
-                  >
-                    <FolderOpen className="h-3 w-3" /> Add Folder
-                  </Button>
                 </div>
               </div>
             ) : (
@@ -667,7 +585,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 <div>
                   <Upload className={`h-6 w-6 mx-auto mb-1 transition-transform ${isDraggingCaseFile ? 'text-emerald-600 scale-110' : 'text-muted-foreground'}`} />
                   <p className={`text-sm font-medium transition-colors ${isDraggingCaseFile ? 'text-emerald-700' : 'text-foreground'}`}>
-                    {isDraggingCaseFile ? 'Drop files/folders here!' : 'Drop files/folders here or choose upload below'}
+                    {isDraggingCaseFile ? 'Drop files here!' : 'Drop files here or choose upload below'}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5 mb-3">Scans (STL, PLY, OBJ), Images, Videos, PDFs, ZIPs (Max 5GB)</p>
                   <div className="flex justify-center gap-2">
@@ -683,19 +601,6 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       className="h-8 text-xs flex items-center gap-1.5 bg-white hover:bg-zinc-50 border-zinc-200"
                     >
                       <Upload className="h-3 w-3" /> Choose Files
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isSubmitting || isUploading}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        folderFileRef.current?.click()
-                      }}
-                      className="h-8 text-xs flex items-center gap-1.5 bg-white hover:bg-zinc-50 border-zinc-200"
-                    >
-                      <FolderOpen className="h-3 w-3" /> Choose Folder
                     </Button>
                   </div>
                 </div>
