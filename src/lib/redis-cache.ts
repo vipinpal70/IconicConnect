@@ -115,6 +115,7 @@ export async function invalidateCasesCache(clientId?: string | null): Promise<vo
       await Promise.all([
         connection.del(...keysToDelete),
         deleteKeysByPattern(`cases:list:client:${clientId}:*`),
+        deleteKeysByPattern('cases:list:admin:*'),   // admin view must also refresh
         deleteKeysByPattern(`analytics:client:${clientId}:*`),
       ]);
     } else {
