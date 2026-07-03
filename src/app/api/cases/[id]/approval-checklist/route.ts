@@ -7,6 +7,7 @@ import { createClient } from '@/src/lib/supabase/server'
 import { logActivity } from '@/src/lib/activity-log'
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher'
 import { CASE_APPROVAL_CHECKLIST, normalizeCaseApprovalChecklist } from '@/src/lib/case-approval'
+import { invalidateCasesCache, deleteCachedData } from '@/src/lib/redis-cache'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error'
@@ -108,6 +109,11 @@ export async function POST(
 
     const caseUrl = `/cases/${id}`
     const caseNumber = updatedCase.caseNumber ?? caseRecord.caseNumber ?? ''
+
+    await Promise.all([
+      invalidateCasesCache(caseRecord.clientId),
+      deleteCachedData(`case:detail:${id}`),
+    ])
 
     await notifyCaseStatusChanged({
       actorUserId: profile.id,

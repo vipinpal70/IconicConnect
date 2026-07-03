@@ -4,6 +4,7 @@ import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 import { createClient } from '@/src/lib/supabase/server'
 import { logActivity } from '@/src/lib/activity-log'
+import { deleteCachedData } from '@/src/lib/redis-cache'
 
 export async function POST(req: NextRequest) {
   try {
@@ -60,6 +61,12 @@ export async function POST(req: NextRequest) {
     await db.update(profiles)
       .set(updateData)
       .where(eq(profiles.id, clientId))
+
+    await Promise.all([
+      deleteCachedData(`profile:${clientId}`),
+      deleteCachedData(`client:${clientId}`),
+      deleteCachedData('clients:list'),
+    ])
 
     await logActivity({
       actor: adminProfile,
