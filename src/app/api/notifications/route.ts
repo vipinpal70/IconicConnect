@@ -3,6 +3,9 @@ import { db } from '@/src/db';
 import { notifications } from '@/src/db/schema/notification';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and, desc } from 'drizzle-orm';
+import { getCachedData, setCachedData } from '@/src/lib/redis-cache';
+
+const NOTIF_LIST_TTL = 60 // 1 minute
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,6 +20,10 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Number(searchParams.get('limit') || '20'), 100);
     const offset = Math.max(Number(searchParams.get('offset') || '0'), 0);
 
+    const cacheKey = `notifications:${user.id}:list:${limit}:${offset}`
+    const cached = await getCachedData<{ data: unknown[] }>(cacheKey)
+    if (cached) return NextResponse.json(cached)
+
     // Retrieve active (non-dismissed) notifications sorted by latest first
     const list = await db
       .select()
@@ -26,7 +33,9 @@ export async function GET(req: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    return NextResponse.json({ data: list });
+    const payload = { data: list }
+    await setCachedData(cacheKey, payload, NOTIF_LIST_TTL)
+    return NextResponse.json(payload);
   } catch (error: unknown) {
     console.error('Fetch notifications error:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 });

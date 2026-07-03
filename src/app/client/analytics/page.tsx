@@ -39,36 +39,44 @@ export default function AnalyticsPage() {
 
   const monthName = now.toLocaleString("default", { month: "long" });
 
+  const STALE = 5 * 60 * 1000 // 5 minutes — matches server Redis TTL
+
   const { data: kpis, isLoading: kpisLoading } = useQuery<{
     totalCases: number; avgTat: string; casesOnHold: number; currentMonthBilling: number;
   }>({
     queryKey: ["client-analytics-kpis", from, to],
-    queryFn: () => fetch(`${BASE}/kpis?from=${from}&to=${to}`).then((r) => r.json())
+    queryFn: () => fetch(`${BASE}/kpis?from=${from}&to=${to}`).then((r) => r.json()),
+    staleTime: STALE,
   });
 
   const { data: tatTrend, isLoading: tatLoading } = useQuery<{ month: string; tat: number }[]>({
     queryKey: ["client-analytics-tat-trend", from, to],
     queryFn: () => fetch(`${BASE}/tat-trend?from=${from}&to=${to}`).then((r) => r.json()),
+    staleTime: STALE,
   });
 
   const { data: deliveryStatus, isLoading: deliveryLoading } = useQuery<{ name: string; value: number }[]>({
     queryKey: ["client-analytics-delivery-status", from, to],
     queryFn: () => fetch(`${BASE}/delivery-status?from=${from}&to=${to}`).then((r) => r.json()),
+    staleTime: STALE,
   });
 
   const { data: monthlyBilling, isLoading: billingLoading } = useQuery<{ month: string; amount: number }[]>({
     queryKey: ["client-analytics-monthly-billing", from, to],
     queryFn: () => fetch(`${BASE}/monthly-billing?from=${from}&to=${to}`).then((r) => r.json()),
+    staleTime: STALE,
   });
 
   const { data: typeMix, isLoading: typeLoading } = useQuery<{ name: string; value: number }[]>({
     queryKey: ["client-analytics-type-mix", from, to],
     queryFn: () => fetch(`${BASE}/type-mix?from=${from}&to=${to}`).then((r) => r.json()),
+    staleTime: STALE,
   });
 
   const { data: onHoldReasons, isLoading: holdLoading } = useQuery<{ reason: string; count: number }[]>({
     queryKey: ["client-analytics-on-hold-reasons", from, to],
     queryFn: () => fetch(`${BASE}/on-hold-reasons?from=${from}&to=${to}`).then((r) => r.json()),
+    staleTime: STALE,
   });
 
   const { data: recentInvoices, isLoading: invoicesLoading } = useQuery<{
@@ -76,6 +84,7 @@ export default function AnalyticsPage() {
   }[]>({
     queryKey: ["client-analytics-recent-invoices", from, to],
     queryFn: () => fetch(`${BASE}/recent-invoices?from=${from}&to=${to}`).then((r) => r.json()),
+    staleTime: STALE,
   });
 
   const typeMixWithColors = (Array.isArray(typeMix) ? typeMix : []).map((t, i) => ({ ...t, color: PALETTE[i % PALETTE.length] }));

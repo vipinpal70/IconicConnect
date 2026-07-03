@@ -3,6 +3,7 @@ import { db } from '@/src/db';
 import { notifications } from '@/src/db/schema/notification';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and } from 'drizzle-orm';
+import { invalidateNotificationCache } from '@/src/lib/redis-cache';
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -25,6 +26,7 @@ export async function PATCH(req: NextRequest) {
         )
       );
 
+    await invalidateNotificationCache(user.id)
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error('Mark all notifications read error:', error);

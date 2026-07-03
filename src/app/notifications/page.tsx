@@ -120,7 +120,8 @@ export default function NotificationsPage() {
       if (!res.ok) throw new Error('Failed to fetch notifications')
       const json: { data?: NotificationRecord[] } = await res.json()
       return json.data || []
-    }
+    },
+    staleTime: 60_000, // matches 1-minute server cache TTL
   })
 
   // Fetch Unread Count
@@ -131,7 +132,8 @@ export default function NotificationsPage() {
       if (!res.ok) throw new Error('Failed to fetch unread count')
       const json: { count?: number } = await res.json()
       return json.count || 0
-    }
+    },
+    staleTime: 25_000,
   })
 
   const unreadCount = typeof unreadCountData === 'number' ? unreadCountData : notifications.filter((n) => !n.read).length
@@ -144,7 +146,8 @@ export default function NotificationsPage() {
       if (!res.ok) throw new Error('Failed to fetch notification preferences')
       const json: { data?: NotificationPreferencesRecord } = await res.json()
       return json.data || {}
-    }
+    },
+    staleTime: 5 * 60_000,
   })
 
   // Update Specific Preference Mutation

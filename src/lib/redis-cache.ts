@@ -87,6 +87,18 @@ export async function invalidateInvoiceCache(clientId: string, invoiceId?: strin
 }
 
 /**
+ * Invalidates notification caches for a user (list + unread count).
+ */
+export async function invalidateNotificationCache(userId: string): Promise<void> {
+  if (connection.status !== 'ready') return
+  try {
+    await deleteKeysByPattern(`notifications:${userId}:*`)
+  } catch (error) {
+    console.error('[invalidateNotificationCache]', error)
+  }
+}
+
+/**
  * Invalidates cases and dashboard caches for clients and admins
  */
 export async function invalidateCasesCache(clientId?: string | null): Promise<void> {
@@ -100,20 +112,21 @@ export async function invalidateCasesCache(clientId?: string | null): Promise<vo
     if (clientId) {
       keysToDelete.push(`cases:base:client:${clientId}`);
       keysToDelete.push(`dashboard:client:${clientId}`);
-      await deleteKeysByPattern(`analytics:client:${clientId}:*`);
+      await Promise.all([
+        connection.del(...keysToDelete),
+        deleteKeysByPattern(`cases:list:client:${clientId}:*`),
+        deleteKeysByPattern(`analytics:client:${clientId}:*`),
+      ]);
+    } else {
+      await connection.del(...keysToDelete);
+      await Promise.all([
+        deleteKeysByPattern('cases:list:client:*'),
+        deleteKeysByPattern('cases:list:admin:*'),
+        deleteKeysByPattern('dashboard:client:*'),
+        deleteKeysByPattern('analytics:client:*'),
+      ]);
     }
 
-    // Direct deletion for specific keys
-    await connection.del(...keysToDelete);
-
-    // If client ID is not known (e.g. general updates or multiple updates), we might need to invalidate client caches.
-    // In ordinary flows, we always have a clientId, so specific key invalidation is sufficient and fast.
-    if (!clientId) {
-      await deleteKeysByPattern('cases:base:client:*');
-      await deleteKeysByPattern('dashboard:client:*');
-      await deleteKeysByPattern('analytics:client:*');
-    }
-    
     console.log(`[Redis Cache Invalidation] Invalidated cache for Client: ${clientId || 'ALL'}`);
   } catch (error) {
     console.error('[Redis Cache Invalidation Error]', error);

@@ -16,6 +16,7 @@ export function OpsLayout({ children }: { children: React.ReactNode }) {
       return res.json()
     },
     refetchInterval: 30000,
+    staleTime: 25000,
   });
 
   const hasUnread = unreadData?.count ? unreadData.count > 0 : false;

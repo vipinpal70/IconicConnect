@@ -9,7 +9,9 @@ import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
-import { invalidateCasesCache } from '@/src/lib/redis-cache';
+import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
+
+const CASES_LIST_TTL = 300 // 5 minutes
 
 const caseListSelection = {
   id: cases.id,
@@ -274,12 +276,23 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Math.max(Number(searchParams.get('limit') || 10), 1), 200);
     const page = Math.max(Number(searchParams.get('page') || 1), 1);
     const offset = (page - 1) * limit;
+
+    // Determine cache key before hitting DB
+    const isAdmin = isValidRoleForType('admin_portal', profile.role)
+    const cacheClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id
+    const casesCacheKey = isAdmin
+      ? `cases:list:admin:p${page}:l${limit}`
+      : `cases:list:client:${cacheClientId}:p${page}:l${limit}`
+
+    const cachedCases = await getCachedData<{ data: unknown[]; hasMore: boolean }>(casesCacheKey)
+    if (cachedCases) return NextResponse.json(cachedCases)
+
     // Fetch one extra row to determine whether another page exists
     const fetchLimit = limit + 1;
 
     let results;
 
-    if (isValidRoleForType('admin_portal', profile.role)) {
+    if (isAdmin) {
       results = await db.select(caseListSelection).from(cases)
         .orderBy(desc(cases.createdAt))
         .limit(fetchLimit)
@@ -291,9 +304,8 @@ export async function GET(req: NextRequest) {
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'subuser') {
-      const parentClientId = profile.createdBy ?? profile.id;
       results = await db.select(caseListSelection).from(cases)
-        .where(eq(cases.clientId, parentClientId))
+        .where(eq(cases.clientId, cacheClientId))
         .orderBy(desc(cases.createdAt))
         .limit(fetchLimit)
         .offset(offset);
@@ -350,7 +362,9 @@ export async function GET(req: NextRequest) {
       scanFileName: scanFileMap.get(r.id) ?? null,
     }));
 
-    return NextResponse.json({ data: mappedResults, hasMore });
+    const payload = { data: mappedResults, hasMore }
+    await setCachedData(casesCacheKey, payload, CASES_LIST_TTL)
+    return NextResponse.json(payload);
   } catch (error: unknown) {
     console.error('Get cases error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });

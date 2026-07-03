@@ -16,6 +16,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
       return res.json()
     },
     refetchInterval: 30000,
+    staleTime: 25000, // skip refetch on navigation if data is <25s old
   });
 
   const hasUnread = unreadData?.count ? unreadData.count > 0 : false;

@@ -9,7 +9,9 @@ import { logActivity } from '@/src/lib/activity-log';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
-import { invalidateCasesCache } from '@/src/lib/redis-cache';
+import { invalidateCasesCache, getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache';
+
+const CASE_DETAIL_TTL = 300 // 5 minutes
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat';
 import { activityLogs } from '@/src/db/schema/activity-log';
 import { notifications } from '@/src/db/schema/notification';
@@ -86,6 +88,17 @@ export async function GET(
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
+    const detailCacheKey = `case:detail:${id}`
+    const cachedDetail = await getCachedData<Record<string, unknown>>(detailCacheKey)
+    if (cachedDetail) {
+      // Enforce ownership even on cache hit
+      const effectiveClientIdCheck = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+      if ((profile.role === 'client' || profile.role === 'subuser') && cachedDetail.clientId !== effectiveClientIdCheck) {
+        return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 });
+      }
+      return NextResponse.json({ data: cachedDetail });
+    }
+
     const caseRecord = await db.select().from(cases).where(eq(cases.id, id)).limit(1).then(res => res[0]);
 
     if (!caseRecord) {
@@ -116,14 +129,9 @@ export async function GET(
       accountManagerName = amProfile?.fullName || null;
     }
 
-    return NextResponse.json({
-      data: {
-        ...caseRecord,
-        designerName,
-        qcName,
-        accountManagerName,
-      }
-    });
+    const detailPayload = { ...caseRecord, designerName, qcName, accountManagerName }
+    await setCachedData(detailCacheKey, detailPayload, CASE_DETAIL_TTL)
+    return NextResponse.json({ data: detailPayload });
   } catch (error: unknown) {
     console.error('Get case error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
@@ -611,7 +619,10 @@ export async function PUT(
     }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
 
     if (updatedCase.length > 0) {
-      await invalidateCasesCache(updatedCase[0].clientId);
+      await Promise.all([
+        invalidateCasesCache(updatedCase[0].clientId),
+        deleteCachedData(`case:detail:${id}`),
+      ])
     }
 
     return NextResponse.json({ data: updatedCase[0] });
@@ -706,7 +717,10 @@ export async function DELETE(
       await tx.delete(cases).where(eq(cases.id, id));
     });
 
-    await invalidateCasesCache(caseRecord.clientId);
+    await Promise.all([
+      invalidateCasesCache(caseRecord.clientId),
+      deleteCachedData(`case:detail:${id}`),
+    ])
 
     return NextResponse.json({ message: 'Case deleted successfully' });
   } catch (error: unknown) {
