@@ -54,6 +54,32 @@ module.exports = {
         NODE_ENV: 'production',
       },
     },
+    {
+      name: 'iconic-connect-r2-cleanup',
+      script: 'npx',
+      args: 'tsx src/lib/queue/r2-cleanup-scheduler.ts',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '200M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
+    {
+      name: 'iconic-connect-r2-retention',
+      script: 'npx',
+      args: 'tsx src/lib/queue/r2-retention-scheduler.ts',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '200M',
+      env: {
+        NODE_ENV: 'production',
+      },
+    },
   ],
 };
 

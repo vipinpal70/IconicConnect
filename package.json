@@ -12,7 +12,13 @@
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "db:clean": "node scripts/clean-test-data.mjs",
-    "db:clean-old-files": "node scripts/delete-old-case-files.mjs"
+    "db:clean-old-files": "node scripts/delete-old-case-files.mjs",
+    "r2:clean": "tsx src/lib/queue/r2-cleanup-task.ts",
+    "r2:clean:dry": "tsx src/lib/queue/r2-cleanup-task.ts --dry-run",
+    "r2:clean:schedule": "tsx src/lib/queue/r2-cleanup-scheduler.ts",
+    "r2:retention": "tsx src/lib/queue/r2-retention-task.ts",
+    "r2:retention:dry": "tsx src/lib/queue/r2-retention-task.ts --dry-run",
+    "r2:retention:schedule": "tsx src/lib/queue/r2-retention-scheduler.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1077.0",
