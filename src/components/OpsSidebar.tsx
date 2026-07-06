@@ -27,7 +27,8 @@ import {
   SidebarTrigger,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import Logo from "@/public/IconicConnectLogo.png";
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
@@ -45,6 +46,7 @@ export function OpsSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
+  const [loggingOut, setLoggingOut] = useState(false);
   const { badges, markSeen } = useSidebarBadges()
 
   const { data: profile } = useQuery({
@@ -67,16 +69,26 @@ export function OpsSidebar() {
     : 'OP';
 
   const handleLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c
-        .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.href = "/auth/sign-in";
+    if (loggingOut) return;
+    setLoggingOut(true);
+    const toastId = toast.loading("Logging out...");
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+
+      localStorage.clear();
+      sessionStorage.clear();
+      toast.dismiss(toastId);
+      window.location.href = "/auth/sign-in";
+    }
   };
 
   return (
@@ -140,8 +152,16 @@ export function OpsSidebar() {
             collapsed && "justify-start px-0"
           )}
           onClick={handleLogout}
+          disabled={loggingOut}
         >
-          <LogOut className="h-4 w-4" />
+          {loggingOut ? (
+            <span className="text-[10px] font-medium animate-pulse">Logging out...</span>
+          ) : (
+            <>
+              <LogOut className="h-4 w-4" />
+              {!collapsed && <span className="text-xs font-medium">Log Out</span>}
+            </>
+          )}
         </Button>
       </SidebarFooter>
     </Sidebar>

@@ -17,6 +17,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Button } from "@/src/components/ui/button";
+import { toast } from "sonner";
 import {
   Sidebar,
   SidebarContent,
@@ -68,6 +69,7 @@ export function ClientSidebar() {
   const collapsed = state === "collapsed";
   const pathname = usePathname();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
   const { badges, markSeen } = useSidebarBadges()
 
   useEffect(() => {
@@ -89,18 +91,26 @@ export function ClientSidebar() {
   }, [pathname, markSeen])
 
   const handleLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    if (loggingOut) return;
+    setLoggingOut(true);
+    const toastId = toast.loading("Logging out...");
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
 
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c
-        .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
-
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.href = "/auth/sign-in";
+      localStorage.clear();
+      sessionStorage.clear();
+      toast.dismiss(toastId);
+      window.location.href = "/auth/sign-in";
+    }
   };
 
   return (
@@ -174,8 +184,16 @@ export function ClientSidebar() {
               collapsed && "justify-end px-0"
             )}
             onClick={handleLogout}
+            disabled={loggingOut}
           >
-            <LogOut className="h-4 w-4" />
+            {loggingOut ? (
+              <span className="text-[10px] font-medium animate-pulse">Logging out...</span>
+            ) : (
+              <>
+                <LogOut className="h-4 w-4" />
+                {!collapsed && <span className="text-xs font-medium">Log Out</span>}
+              </>
+            )}
           </Button>
         </div>
       </SidebarFooter>

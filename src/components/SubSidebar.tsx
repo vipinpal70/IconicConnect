@@ -24,8 +24,9 @@ import {
   useSidebar,
 } from "@/src/components/ui/sidebar";
 import { cn } from "@/src/lib/utils";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
+import { toast } from "sonner";
 
 const NAV_ITEMS = [
   { title: "Dashboard",     url: "/dashboard",     icon: LayoutDashboard },
@@ -38,6 +39,7 @@ export function SubSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
+  const [loggingOut, setLoggingOut] = useState(false);
   const { badges, markSeen } = useSidebarBadges()
 
   // Mark the current page as seen whenever the route changes
@@ -51,16 +53,26 @@ export function SubSidebar() {
   }, [pathname, markSeen])
 
   const handleLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c
-        .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.href = "/auth/sign-in";
+    if (loggingOut) return;
+    setLoggingOut(true);
+    const toastId = toast.loading("Logging out...");
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+
+      localStorage.clear();
+      sessionStorage.clear();
+      toast.dismiss(toastId);
+      window.location.href = "/auth/sign-in";
+    }
   };
 
   return (
@@ -127,9 +139,16 @@ export function SubSidebar() {
             collapsed && "justify-center px-0"
           )}
           onClick={handleLogout}
+          disabled={loggingOut}
         >
-          <LogOut className="h-4 w-4" />
-          {!collapsed && <span className="text-xs font-medium">Log Out</span>}
+          {loggingOut ? (
+            <span className="text-xs font-medium animate-pulse ml-6">Logging out...</span>
+          ) : (
+            <>
+              <LogOut className="h-4 w-4" />
+              {!collapsed && <span className="text-xs font-medium">Log Out</span>}
+            </>
+          )}
         </Button>
       </SidebarFooter>
     </Sidebar>

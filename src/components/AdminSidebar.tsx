@@ -19,6 +19,7 @@ import { usePathname } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Button } from "@/src/components/ui/button";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
+import { toast } from "sonner";
 import {
   Sidebar,
   SidebarContent,
@@ -39,17 +40,17 @@ import logo from "@/public/IconicConnectLogo.png"
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
 
 const NAV_ITEMS = [
-  { title: "Dashboard",     url: "/admin/dashboard",     icon: LayoutDashboard },
-  { title: "Cases",         url: "/admin/cases",         icon: ClipboardList,  badgeKey: "cases" },
-  { title: "Analytics",     url: "/admin/analytics",     icon: BarChart3 },
-  { title: "Clients",       url: "/admin/clients",       icon: Building2,      badgeKey: "clients" },
-  { title: "Billing",       url: "/admin/billing",       icon: CreditCard,     badgeKey: "billing" },
-  { title: "Team",          url: "/admin/team",          icon: Users },
-  { title: "Tutorials",     url: "/admin/tutorials",     icon: PlayCircle },
-  { title: "Offers",        url: "/admin/offers",        icon: Tag,            badgeKey: "offers" },
-  { title: "Support",       url: "/admin/support",       icon: Headset,        badgeKey: "support" },
-  { title: "Notifications", url: "/admin/notifications", icon: Bell,           badgeKey: "notifications" },
-  { title: "Profile",       url: "/admin/profile",       icon: UserCircle },
+  { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
+  { title: "Cases", url: "/admin/cases", icon: ClipboardList, badgeKey: "cases" },
+  { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
+  { title: "Clients", url: "/admin/clients", icon: Building2, badgeKey: "clients" },
+  { title: "Billing", url: "/admin/billing", icon: CreditCard, badgeKey: "billing" },
+  { title: "Team", url: "/admin/team", icon: Users },
+  { title: "Tutorials", url: "/admin/tutorials", icon: PlayCircle },
+  { title: "Offers", url: "/admin/offers", icon: Tag, badgeKey: "offers" },
+  { title: "Support", url: "/admin/support", icon: Headset, badgeKey: "support" },
+  { title: "Notifications", url: "/admin/notifications", icon: Bell, badgeKey: "notifications" },
+  { title: "Profile", url: "/admin/profile", icon: UserCircle },
 ]
 
 export function AdminSidebar() {
@@ -64,6 +65,7 @@ export function AdminSidebar() {
     labName: string | null
   } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -71,7 +73,7 @@ export function AdminSidebar() {
     const getProfile = async () => {
       const data = await fetchProfileWithCache()
       if (!active) return
-      setProfile(data as any)
+      setProfile(data as { fullName: string | null; role: string | null; labName: string | null })
       setLoading(false)
     }
 
@@ -97,18 +99,26 @@ export function AdminSidebar() {
   })
 
   const handleLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    if (loggingOut) return
+    setLoggingOut(true)
+    const toastId = toast.loading("Logging out...")
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Logout error:", err)
+    } finally {
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
 
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c
-        .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
-
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.href = "/auth/sign-in";
+      localStorage.clear();
+      sessionStorage.clear();
+      toast.dismiss(toastId)
+      window.location.href = "/auth/sign-in";
+    }
   };
 
   return (
@@ -179,8 +189,16 @@ export function AdminSidebar() {
             collapsed && "justify-start px-0"
           )}
           onClick={handleLogout}
+          disabled={loggingOut}
         >
-          <LogOut className="h-4 w-4" />
+          {loggingOut ? (
+            <span className="text-[10px] font-medium animate-pulse">Logging out...</span>
+          ) : (
+            <>
+              <LogOut className="h-4 w-4" />
+              {!collapsed && <span className="text-xs font-medium">Log Out</span>}
+            </>
+          )}
         </Button>
       </SidebarFooter>
     </Sidebar>
