@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client"
 
 import type { ReactNode } from "react"
@@ -92,6 +93,12 @@ export default function ClientProfilePage() {
       return json.data ?? []
     },
   })
+
+  // Reset price list state when client ID changes to prevent showing stale data from previously visited profiles
+  useEffect(() => {
+    setPriceRows([])
+    setPriceListInitialized(false)
+  }, [clientId])
 
   // Populate price rows from the fetched price list (or fall back to catalog defaults)
   useEffect(() => {
@@ -324,7 +331,10 @@ export default function ClientProfilePage() {
 function Info({ label, value, icon }: { label: string; value: string; icon?: ReactNode }) {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-      <p className="text-xs font-semibold text-primary/70 flex items-center gap-1">{label}</p>
+      <p className="text-xs font-semibold text-primary/70 flex items-center gap-1">
+        {icon}
+        {label}
+      </p>
       <p className="mt-0.5 truncate text-xs font-semibold text-foreground">{value}</p>
     </div>
   )

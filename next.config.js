@@ -19,7 +19,7 @@ const nextConfig = {
   },
   turbopack: {},
   experimental: {
-    proxyClientMaxBodySize: '2gb',
+    proxyClientMaxBodySize: '3gb',
   }
 };
 
