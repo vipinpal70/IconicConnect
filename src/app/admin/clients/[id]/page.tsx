@@ -65,7 +65,7 @@ export default function ClientProfilePage() {
     queryKey: ["admin-client", clientId],
     enabled: !!clientId,
     queryFn: async () => {
-      const res = await fetch(`/api/admin/clients/${clientId}`)
+      const res = await fetch(`/api/admin/clients/${clientId}`, { cache: "no-store" })
       if (!res.ok) throw new Error("Failed to load client")
       const json = await res.json()
       return json.data
@@ -76,7 +76,7 @@ export default function ClientProfilePage() {
     queryKey: ["admin-client-price-list", clientId],
     enabled: !!clientId,
     queryFn: async () => {
-      const res = await fetch(`/api/admin/clients/${clientId}/price-list`)
+      const res = await fetch(`/api/admin/clients/${clientId}/price-list`, { cache: "no-store" })
       if (!res.ok) throw new Error("Failed to load price list")
       const json = await res.json()
       return json.data ?? []
@@ -87,7 +87,7 @@ export default function ClientProfilePage() {
     queryKey: ["admin-service-catalog"],
     enabled: priceListQuery.isSuccess && priceListQuery.data?.length === 0,
     queryFn: async () => {
-      const res = await fetch("/api/admin/service-catalog")
+      const res = await fetch("/api/admin/service-catalog", { cache: "no-store" })
       if (!res.ok) throw new Error("Failed to load catalog")
       const json = await res.json()
       return json.data ?? []
@@ -111,12 +111,20 @@ export default function ClientProfilePage() {
   }, [priceListQuery.isSuccess, priceListQuery.data, priceListInitialized])
 
   useEffect(() => {
-    if (!catalogQuery.isSuccess || priceListInitialized) return
-    if (catalogQuery.data.length > 0) {
-      setPriceRows(catalogQuery.data.map(toPriceListRow))
-      setPriceListInitialized(true)
+    if (priceListQuery.isSuccess && priceListQuery.data?.length === 0) {
+      if (!catalogQuery.isSuccess || priceListInitialized) return
+      if (catalogQuery.data.length > 0) {
+        setPriceRows(catalogQuery.data.map(toPriceListRow))
+        setPriceListInitialized(true)
+      }
     }
-  }, [catalogQuery.isSuccess, catalogQuery.data, priceListInitialized])
+  }, [
+    catalogQuery.isSuccess,
+    catalogQuery.data,
+    priceListInitialized,
+    priceListQuery.isSuccess,
+    priceListQuery.data,
+  ])
 
   const saveMutation = useMutation({
     mutationFn: async (items: PriceListRow[]) => {
@@ -158,7 +166,7 @@ export default function ClientProfilePage() {
     queryKey: ["admin-client-pref-forms", clientId],
     enabled: !!clientId,
     queryFn: async () => {
-      const res = await fetch(`/api/preference-forms?clientId=${clientId}`)
+      const res = await fetch(`/api/preference-forms?clientId=${clientId}`, { cache: "no-store" })
       if (!res.ok) throw new Error("Failed to load preference forms")
       const json = await res.json()
       return json.data ?? []

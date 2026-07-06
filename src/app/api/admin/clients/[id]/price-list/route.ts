@@ -48,7 +48,11 @@ export async function GET(
     }
 
     const data = await getPriceListForClient(id)
-    return NextResponse.json({ data })
+    return NextResponse.json({ data }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      }
+    })
   } catch (error) {
     console.error('[admin/clients/[id]/price-list GET]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
