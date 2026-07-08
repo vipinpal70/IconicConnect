@@ -710,8 +710,8 @@ export async function DELETE(
       // 5. Delete case messages
       await tx.delete(caseMessages).where(eq(caseMessages.caseId, id));
 
-      // 6. Preserve case files records by nullifying caseId references
-      await tx.update(caseFiles).set({ caseId: null }).where(eq(caseFiles.caseId, id));
+      // 6. Delete case files records associated with the case
+      await tx.delete(caseFiles).where(eq(caseFiles.caseId, id));
 
       // 7. Finally delete the case
       await tx.delete(cases).where(eq(cases.id, id));

@@ -34,7 +34,7 @@ const getPreviewFileType = (url: string | null | undefined): 'html' | 'image' | 
     if (extIdx !== -1) {
       const ext = target.substring(extIdx).toLowerCase();
       if (['.html', '.htm'].includes(ext)) return 'html';
-      if (['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) return 'image';
+      if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.heic', '.heif', '.ico'].includes(ext)) return 'image';
       if (ext === '.zip') return 'zip';
     }
   } catch (e) {

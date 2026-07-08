@@ -552,7 +552,7 @@ export default function AdminCasesPage() {
                 downloadCSV(headers, rows, `cases-${date}.csv`)
               }}
             >
-              <Download className="h-3.5 w-3.5" /> 
+              <Download className="h-3.5 w-3.5" />
               <span className="hidden md:block">Export</span>
             </Button>
             <Button
@@ -560,7 +560,7 @@ export default function AdminCasesPage() {
               className="h-8 text-xs bg-emerald-800 text-white hover:bg-emerald-900 flex items-center gap-1.5"
               onClick={() => setIsAddOpen(true)}
             >
-              <Plus className="h-3.5 w-3.5" /> 
+              <Plus className="h-3.5 w-3.5" />
               <span className="hidden md:block">Add New Case</span>
             </Button>
           </div>
@@ -676,7 +676,7 @@ export default function AdminCasesPage() {
                               </Link>
                             </div>
                           </td>
-                          <td className="px-3.5 py-2 text-[11px] text-black font-semibold">{clientDisplayName} <br/> <span className="font-normal text-muted-foreground">{removeExtensionFromString(caseItem?.scanFileName || "—")}</span></td>
+                          <td className="px-3.5 py-2 text-[11px] text-black font-semibold">{clientDisplayName} <br /> <span className="font-normal text-muted-foreground">{removeExtensionFromString(caseItem?.scanFileName || "—")}</span></td>
                           <td className="px-3.5 py-2">
                             <p className="font-semibold text-[11px] text-black">{restoration || "—"}</p>
                             {caseItem.category === "Implant" ? (

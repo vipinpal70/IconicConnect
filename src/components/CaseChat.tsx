@@ -136,14 +136,14 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
 
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
     const allowedExtensions = [
-      ".png", ".jpg", ".jpeg",
+      ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico",
       ".mp4", ".mkv", ".avi", ".mov", ".webm",
       ".pdf",
       ".zip",
       ".doc", ".docx"
     ]
     if (!allowedExtensions.includes(ext)) {
-      toast.error("Unsupported type. Allowed: PNG, JPG, JPEG, MP4/Video, PDF, ZIP, DOC, DOCX")
+      toast.error("Unsupported file type")
       return
     }
 
@@ -333,7 +333,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
                 className="hidden"
                 onChange={handleFileChange}
                 id="chat-file-input"
-                accept=".png,.jpg,.jpeg,.mp4,.mkv,.avi,.mov,.webm,.pdf,.zip,.doc,.docx"
+                accept=".png,.jpg,.jpeg,.mp4,.mkv,.avi,.mov,.webm,.pdf,.zip,.doc,.docx,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico"
               />
               <Button
                 size="icon"

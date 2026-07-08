@@ -67,7 +67,7 @@ const validateFile = (file: File): { isValid: boolean; error?: string } => {
 
   const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
   const allowedExtensions = [
-    '.png', '.jpg', '.jpeg',
+    '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.tif', '.svg', '.heic', '.heif', '.ico',
     '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.flv', '.3gp', '.mpeg', '.mpg',
     '.pdf',
     '.zip',
@@ -77,7 +77,7 @@ const validateFile = (file: File): { isValid: boolean; error?: string } => {
   ];
 
   if (!allowedExtensions.includes(ext)) {
-    return { isValid: false, error: `File type "${ext}" is not supported. Allowed formats: PNG, JPG, JPEG, MP4/video, PDF, ZIP, DOC, DOCX, TXT, HTML` };
+    return { isValid: false, error: `File type "${ext}" is not supported.` };
   }
 
   return { isValid: true };

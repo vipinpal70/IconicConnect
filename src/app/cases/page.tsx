@@ -174,7 +174,7 @@ const validateFile = (file: File): { isValid: boolean; error?: string } => {
   }
   const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
   const allowedExtensions = [
-    ".png", ".jpg", ".jpeg",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico",
     ".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".flv", ".3gp", ".mpeg", ".mpg",
     ".pdf", ".zip", ".doc", ".docx", ".txt", ".html", ".htm",
   ];
@@ -537,9 +537,9 @@ export default function CasesPage() {
 
   const validatePreviewFile = (file: File): { isValid: boolean; error?: string } => {
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
-    const allowed = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".zip"];
+    const allowed = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico", ".zip"];
     if (!allowed.includes(ext)) {
-      return { isValid: false, error: "Only HTML, image (PNG, JPG, JPEG, WEBP, GIF), or ZIP files are allowed for preview." };
+      return { isValid: false, error: "Only HTML, image, or ZIP files are allowed for preview." };
     }
     return { isValid: true };
   };
@@ -1584,7 +1584,7 @@ export default function CasesPage() {
             </div>
             <div className="grid gap-2 mt-1">
               <Label htmlFor="preview-file" className="text-sm font-semibold text-gray-700">Preview File (HTML, Image, or ZIP - Optional)</Label>
-              <Input id="preview-file" ref={previewUploadInputRef} type="file" accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.zip"
+              <Input id="preview-file" ref={previewUploadInputRef} type="file" accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico,.zip"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   if (file) {

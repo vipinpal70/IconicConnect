@@ -68,9 +68,9 @@ export default function ClientPreferencesPage() {
       return
     }
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
-    const allowedExtensions = [".png", ".jpg", ".jpeg", ".gif"]
+    const allowedExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico"]
     if (!allowedExtensions.includes(ext)) {
-      alert("Unsupported file type. Allowed: PNG, JPG, JPEG, GIF")
+      alert("Unsupported file type.")
       return
     }
 
