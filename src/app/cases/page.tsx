@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
+import { BulkOutputUploadModal } from "@/src/components/BulkOutputUploadModal";
 
 interface BulkRow {
   fileName: string;
@@ -642,6 +643,9 @@ export default function CasesPage() {
   const activeUserRole = activeUser?.role || "";
   const activeUserId = activeUser?.id || "";
 
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const canBulkUpload = ["designer", "qc", "admin"].includes(activeUserRole);
+
   useEffect(() => {
     async function fetchProfile() {
       try {
@@ -872,6 +876,15 @@ export default function CasesPage() {
             <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} shown · {cases.length} loaded{hasMore ? " · more available" : ""}</p>
           </div>
           <div className="flex gap-2">
+            {canBulkUpload && (
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                onClick={() => setBulkUploadOpen(true)}
+              >
+                <Upload className="h-3.5 w-3.5" /> Bulk Upload
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -1666,6 +1679,13 @@ export default function CasesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <BulkOutputUploadModal
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        userRole={activeUserRole}
+        onCompleted={() => fetchCases()}
+      />
     </OpsLayout>
   );
 }
