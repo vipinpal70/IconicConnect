@@ -49,6 +49,7 @@ export const offerClaims = pgTable(
     return {
       offerClientUniqueIdx: uniqueIndex("offer_claims_offer_client_idx").on(table.offerId, table.clientId),
       createdAtIdx: index("offer_claims_created_at_idx").on(table.createdAt),
+      clientIdIdx: index("offer_claims_client_id_idx").on(table.clientId),
     }
   }
 )

@@ -9,6 +9,7 @@ import {
   bigint,
   jsonb,
   boolean,
+  index,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { profiles } from './profile'
@@ -158,7 +159,13 @@ export const cases = pgTable('cases', {
   teethLibraryFileName: varchar('teeth_library_file_name', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+}, (table) => ({
+  clientIdCreatedAtIdx: index('cases_client_id_created_at_idx').on(table.clientId, table.createdAt),
+  createdAtIdx: index('cases_created_at_idx').on(table.createdAt),
+  updatedAtIdx: index('cases_updated_at_idx').on(table.updatedAt),
+  designerIdIdx: index('cases_designer_id_idx').on(table.designerId),
+  qcIdIdx: index('cases_qc_id_idx').on(table.qcId),
+}))
 
 export const caseMessages = pgTable('case_messages', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -179,7 +186,9 @@ export const caseFiles = pgTable('case_files', {
   // bigint: file_size can exceed the 2.14GB int4 max for multi-GB uploads
   fileSize: bigint('file_size', { mode: 'number' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-})
+}, (table) => ({
+  caseIdIdx: index('case_files_case_id_idx').on(table.caseId),
+}))
 
 export type Case = typeof cases.$inferSelect
 export type NewCase = typeof cases.$inferInsert

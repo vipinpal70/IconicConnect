@@ -70,6 +70,7 @@ export const profiles = pgTable('profiles', {
   return {
     roleIdx: index('role_idx').on(table.role),
     emailIdx: index('email_idx').on(table.email),
+    createdByIdx: index('profiles_created_by_idx').on(table.createdBy),
   }
 })
 
@@ -79,6 +80,10 @@ export const subUsers = pgTable('sub_users', {
   clientId: uuid('client_id').references(() => profiles.id).notNull(), // Parent client
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => {
+  return {
+    clientIdx: index('sub_users_client_id_idx').on(table.clientId),
+  }
 })
 
 export type Profile = typeof profiles.$inferSelect

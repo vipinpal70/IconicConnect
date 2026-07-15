@@ -274,6 +274,20 @@
       "when": 1780450000000,
       "tag": "0044_case_file_size_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784106547157,
+      "tag": "0039_add_cases_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784106600000,
+      "tag": "0045_add_other_indexes",
+      "breakpoints": true
     }
   ]
 }

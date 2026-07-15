@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat'
@@ -60,38 +60,58 @@ export async function getCasesChatMetadata(caseIds: string[], userId: string) {
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
 
-  const [messages, readStates] = await Promise.all([
+  const [todayCounts, latestMessages, readStates] = await Promise.all([
     db
       .select({
         caseId: chatMessages.caseId,
-        senderId: chatMessages.senderId,
-        createdAt: chatMessages.createdAt,
+        count: sql<number>`count(*)::int`,
       })
       .from(chatMessages)
-      .where(inArray(chatMessages.caseId, caseIds)),
+      .where(and(
+        inArray(chatMessages.caseId, caseIds),
+        sql`${chatMessages.createdAt} >= ${todayStart}`
+      ))
+      .groupBy(chatMessages.caseId),
+    db
+      .select({
+        caseId: chatMessages.caseId,
+        maxCreatedAt: sql<Date>`max(${chatMessages.createdAt})`,
+      })
+      .from(chatMessages)
+      .where(and(
+        inArray(chatMessages.caseId, caseIds),
+        sql`${chatMessages.senderId} <> ${userId}`
+      ))
+      .groupBy(chatMessages.caseId),
     db
       .select({
         caseId: chatReadStates.caseId,
         lastReadAt: chatReadStates.lastReadAt,
       })
       .from(chatReadStates)
-      .where(and(eq(chatReadStates.userId, userId), inArray(chatReadStates.caseId, caseIds))),
+      .where(and(
+        eq(chatReadStates.userId, userId),
+        inArray(chatReadStates.caseId, caseIds)
+      )),
   ])
 
+  const todayCountsMap = new Map(todayCounts.map((c) => [c.caseId, c.count]))
+  const maxCreatedAtMap = new Map(latestMessages.map((m) => [m.caseId, m.maxCreatedAt]))
   const readAtByCase = new Map(readStates.map((state) => [state.caseId, state.lastReadAt]))
 
-  messages.forEach((message) => {
-    const current = metadata.get(message.caseId)
+  caseIds.forEach((caseId) => {
+    const current = metadata.get(caseId)
     if (!current) return
 
-    if (message.createdAt >= todayStart) {
-      current.todayMessagesCount += 1
-    }
+    current.todayMessagesCount = todayCountsMap.get(caseId) ?? 0
 
-    const lastReadAt = readAtByCase.get(message.caseId)
-    const isUnreadForUser = message.senderId !== userId && (!lastReadAt || message.createdAt > lastReadAt)
-    if (isUnreadForUser) {
-      current.hasUnreadChat = true
+    const maxCreatedAt = maxCreatedAtMap.get(caseId)
+    if (maxCreatedAt) {
+      const lastReadAt = readAtByCase.get(caseId)
+      const isUnreadForUser = !lastReadAt || maxCreatedAt > lastReadAt
+      if (isUnreadForUser) {
+        current.hasUnreadChat = true
+      }
     }
   })
 
