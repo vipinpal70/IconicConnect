@@ -542,9 +542,9 @@ export default function CasesPage() {
 
   const validatePreviewFile = (file: File): { isValid: boolean; error?: string } => {
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
-    const allowed = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico", ".zip"];
+    const allowed = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico"];
     if (!allowed.includes(ext)) {
-      return { isValid: false, error: "Only HTML, image, or ZIP files are allowed for preview." };
+      return { isValid: false, error: "Only HTML, image files are allowed for preview." };
     }
     return { isValid: true };
   };
