@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, ne, sql } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat'
@@ -69,7 +69,7 @@ export async function getCasesChatMetadata(caseIds: string[], userId: string) {
       .from(chatMessages)
       .where(and(
         inArray(chatMessages.caseId, caseIds),
-        sql`${chatMessages.createdAt} >= ${todayStart}`
+        gte(chatMessages.createdAt, todayStart)
       ))
       .groupBy(chatMessages.caseId),
     db
@@ -80,7 +80,7 @@ export async function getCasesChatMetadata(caseIds: string[], userId: string) {
       .from(chatMessages)
       .where(and(
         inArray(chatMessages.caseId, caseIds),
-        sql`${chatMessages.senderId} <> ${userId}`
+        ne(chatMessages.senderId, userId)
       ))
       .groupBy(chatMessages.caseId),
     db
