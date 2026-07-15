@@ -32,6 +32,7 @@ type EligibleCase = {
   category: string | null;
   scanFileName: string | null;
   clientDisplayName: string | null;
+  qcId: string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
         caseNumber: cases.caseNumber,
         category: cases.category,
         clientId: cases.clientId,
+        qcId: cases.qcId,
       })
       .from(cases)
       .where(eq(cases.status, 'in_progress'));
@@ -98,6 +100,7 @@ export async function POST(req: NextRequest) {
       category: r.category,
       scanFileName: scanFileMap.get(r.id) ?? null,
       clientDisplayName: r.clientId ? (clientMap.get(r.clientId) ?? null) : null,
+      qcId: r.qcId ?? null,
     }));
 
     // 4. Index cases by normalized scan file name.

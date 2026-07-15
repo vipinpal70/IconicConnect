@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles } from '@/src/db/schema/case';
+import { cases } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => null) as { items?: ConfirmItem[] } | null;
+    const body = await req.json().catch(() => null) as { items?: ConfirmItem[]; qcId?: string | null } | null;
     const items = body?.items;
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'No items provided' }, { status: 400 });
@@ -64,6 +64,18 @@ export async function POST(req: NextRequest) {
     // designer → internal_qc; everyone else allowed here (qc/admin) → submitted_to_client
     const targetStatus: 'internal_qc' | 'submitted_to_client' =
       profile.role === 'designer' ? 'internal_qc' : 'submitted_to_client';
+
+    // Optional batch QC — designers use this to assign a QC to any matched case that
+    // doesn't already have one. Validate it points to an active QC before trusting it.
+    let batchQcId: string | null = null;
+    if (profile.role === 'designer' && body?.qcId) {
+      const qcProfile = await db.select({ id: profiles.id, role: profiles.role, status: profiles.status })
+        .from(profiles).where(eq(profiles.id, body.qcId)).limit(1).then(r => r[0]);
+      if (!qcProfile || qcProfile.role !== 'qc' || qcProfile.status !== 'active') {
+        return NextResponse.json({ error: 'Invalid QC selected' }, { status: 400 });
+      }
+      batchQcId = qcProfile.id;
+    }
 
     const results: Array<{ caseId: string; ok: boolean; error?: string }> = [];
 
@@ -83,6 +95,15 @@ export async function POST(req: NextRequest) {
           throw new Error(`Case is no longer in progress (status: ${caseRecord.status})`);
         }
 
+        // Designer route must land on a QC: keep the case's existing QC, else use the
+        // one picked for this batch. No QC anywhere → refuse (never park a case unowned).
+        const finalQcId = targetStatus === 'internal_qc'
+          ? (caseRecord.qcId ?? batchQcId)
+          : caseRecord.qcId;
+        if (targetStatus === 'internal_qc' && !finalQcId) {
+          throw new Error('No QC assigned — pick a QC lead before sending to QC');
+        }
+
         const client = await db.select({ labName: profiles.labName }).from(profiles)
           .where(eq(profiles.id, caseRecord.clientId)).limit(1).then(r => r[0]);
         const labName = client?.labName || 'UnknownLab';
@@ -100,25 +121,16 @@ export async function POST(req: NextRequest) {
         const fileUrl = buildFileUrl(labName, item.fileName);
         const note = item.note?.trim() || null;
 
-        await db.transaction(async (tx) => {
-          await tx.update(cases).set({
-            outputFile: fileUrl,
-            outputNote: note,
-            status: targetStatus,
-            ...(targetStatus === 'submitted_to_client' ? { submittedToClientAt: new Date() } : {}),
-            updatedAt: new Date(),
-          }).where(eq(cases.id, item.caseId));
-
-          await tx.insert(caseFiles).values({
-            caseId: item.caseId,
-            uploadedBy: user.id,
-            fileName: item.fileName,
-            fileUrl,
-            note,
-            fileType: item.fileType ?? null,
-            fileSize: item.fileSize != null ? Number(item.fileSize) : null,
-          });
-        });
+        // Output lives only on the case record (same as the single-upload flow) — a
+        // case_files row would wrongly show the output in the "Case Files" section.
+        await db.update(cases).set({
+          outputFile: fileUrl,
+          outputNote: note,
+          status: targetStatus,
+          ...(targetStatus === 'internal_qc' ? { qcId: finalQcId } : {}),
+          ...(targetStatus === 'submitted_to_client' ? { submittedToClientAt: new Date() } : {}),
+          updatedAt: new Date(),
+        }).where(eq(cases.id, item.caseId));
 
         // ── Post-commit side effects (best-effort, never fail the item) ──
         logActivity({
@@ -141,11 +153,11 @@ export async function POST(req: NextRequest) {
           status: targetStatus,
         }).catch((err) => console.error('[BulkConfirm] client notification failed:', err));
 
-        if (targetStatus === 'internal_qc' && caseRecord.qcId) {
+        if (targetStatus === 'internal_qc' && finalQcId) {
           NotificationService.dispatch({
             type: NotificationType.CASE_STATUS_CHANGED,
             actorUserId: profile.id,
-            targetUserId: caseRecord.qcId,
+            targetUserId: finalQcId,
             entityId: item.caseId,
             entityType: 'case',
             title: 'Case Ready for QC Review',

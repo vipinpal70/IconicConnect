@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/components/ui/select";
-import { UploadCloud, X, Trash2, Loader2 } from "lucide-react";
+import { UploadCloud, X, Trash2, Loader2, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBulkFile } from "@/src/lib/upload-utils";
 
@@ -31,6 +31,12 @@ interface EligibleCase {
   category: string | null;
   scanFileName: string | null;
   clientDisplayName: string | null;
+  qcId: string | null;
+}
+
+interface QcOption {
+  id: string;
+  name: string;
 }
 
 interface Row {
@@ -55,6 +61,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** Uploader role — decides where confirmed cases are routed (QC vs Client). */
   userRole?: string;
+  /** Active QC members — used by designers to assign a QC before sending. */
+  qcOptions?: QcOption[];
   /** Called after at least one case was successfully confirmed. */
   onCompleted?: () => void;
 }
@@ -70,15 +78,19 @@ const STATUS_META: Record<MatchStatus, { label: string; variant: "default" | "se
   duplicate: { label: "Duplicate", variant: "secondary" },
 };
 
-export function BulkOutputUploadModal({ open, onOpenChange, userRole, onCompleted }: Props) {
+export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions = [], onCompleted }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
   const [eligibleCases, setEligibleCases] = useState<EligibleCase[]>([]);
   const [isMatching, setIsMatching] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [selectedQcId, setSelectedQcId] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const routesTo = userRole === "designer" ? "Internal QC" : "Client Review";
+  const isDesigner = userRole === "designer";
+  const routesTo = isDesigner ? "Internal QC" : "Client Review";
+  const sendLabel = isDesigner ? "Send to QC" : "Send to Client";
 
   const patchRow = useCallback((tempId: string, patch: Partial<Row>) => {
     setRows((prev) => prev.map((r) => (r.tempId === tempId ? { ...r, ...patch } : r)));
@@ -171,6 +183,16 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, onComplete
 
   const anyUploading = rows.some((r) => r.isUploading);
 
+  // Designers must route through QC: a matched case with no QC assigned needs one picked here.
+  const needsQcAssignment = useMemo(() => {
+    if (!isDesigner) return false;
+    return rows.some((r) => {
+      if (!r.matchedCaseId) return false;
+      const c = casesById.get(r.matchedCaseId);
+      return !!c && !c.qcId;
+    });
+  }, [isDesigner, rows, casesById]);
+
   const resetAndClose = useCallback(() => {
     // Purge any still-staged objects the user never confirmed.
     for (const r of rows) {
@@ -184,6 +206,8 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, onComplete
     }
     setRows([]);
     setEligibleCases([]);
+    setSelectedQcId("");
+    setMinimized(false);
     onOpenChange(false);
   }, [rows, onOpenChange]);
 
@@ -208,12 +232,20 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, onComplete
       seen.add(r.matchedCaseId!);
     }
 
+    // Designers can't send to QC until every matched case has a QC — either already
+    // assigned on the case or picked here for the ones that don't.
+    if (needsQcAssignment && !selectedQcId) {
+      toast.error("Assign a QC before sending. Select a QC lead below.");
+      return;
+    }
+
     setIsConfirming(true);
     try {
       const res = await fetch("/api/cases/bulk/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          qcId: isDesigner ? (selectedQcId || null) : null,
           items: ready.map((r) => ({
             caseId: r.matchedCaseId,
             storageKey: r.storageKey,
@@ -243,13 +275,38 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, onComplete
     } finally {
       setIsConfirming(false);
     }
-  }, [rows, routesTo, onCompleted, resetAndClose]);
+  }, [rows, routesTo, onCompleted, resetAndClose, needsQcAssignment, selectedQcId, isDesigner]);
+
+  const uploadedCount = rows.filter((r) => !r.isUploading).length;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) resetAndClose(); else onOpenChange(o); }}>
+    <>
+    <Dialog
+      open={open && !minimized}
+      onOpenChange={(o) => {
+        if (o) { onOpenChange(o); return; }
+        // Closing mid-upload minimizes instead of discarding the in-flight batch.
+        if (anyUploading || isConfirming) setMinimized(true);
+        else resetAndClose();
+      }}
+    >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Bulk Upload Design Output</DialogTitle>
+          <div className="flex items-center justify-between pr-8">
+            <DialogTitle>Bulk Upload Design Output</DialogTitle>
+            {rows.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setMinimized(true)}
+                title="Minimize — uploads continue in the background"
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
           <DialogDescription>
             Drop finished output files. Each is matched to an in-progress case by its original
             scan file name. Confirmed cases are sent to <span className="font-medium">{routesTo}</span>.
@@ -360,16 +417,57 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, onComplete
           </div>
         )}
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-2 pb-2 sm:items-center">
+          {isDesigner && needsQcAssignment && (
+            <div className="mr-auto flex items-center gap-2">
+              <span className={`text-xs font-semibold whitespace-nowrap ${!selectedQcId ? "text-green-600" : "text-muted-foreground"}`}>Assign QC</span>
+              <Select value={selectedQcId} onValueChange={setSelectedQcId}>
+                <SelectTrigger className={`h-8 w-[200px] text-xs ${!selectedQcId ? "border-green-500 ring-1 ring-green-500/40 text-green-700" : ""}`}>
+                  <SelectValue placeholder="Select QC lead…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {qcOptions.map((qc) => (
+                    <SelectItem key={qc.id} value={qc.id} className="text-xs">{qc.name}</SelectItem>
+                  ))}
+                  {qcOptions.length === 0 && (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">No active QC leads found.</div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <Button variant="ghost" onClick={resetAndClose} disabled={isConfirming}>Cancel</Button>
           <Button
             onClick={handleConfirm}
             disabled={isConfirming || anyUploading || isMatching || rows.length === 0}
           >
-            {isConfirming ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</> : "Confirm & Send to Client"}
+            {isConfirming ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</> : sendLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Minimized indicator — uploads keep running; click to restore the modal. */}
+    {open && minimized && (
+      <button
+        type="button"
+        onClick={() => setMinimized(false)}
+        className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2.5 text-xs font-medium text-foreground shadow-lg hover:bg-accent transition-colors"
+        title="Restore bulk upload"
+      >
+        {anyUploading || isMatching || isConfirming ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            {isConfirming ? "Sending…" : isMatching ? "Matching cases…" : `Uploading ${uploadedCount}/${rows.length}…`}
+          </>
+        ) : (
+          <>
+            <UploadCloud className="h-4 w-4 text-primary" />
+            {rows.length} file(s) ready — click to review
+          </>
+        )}
+      </button>
+    )}
+    </>
   );
 }

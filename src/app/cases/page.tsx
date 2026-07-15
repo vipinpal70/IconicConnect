@@ -327,6 +327,10 @@ export default function CasesPage() {
   const [caseActionReason, setCaseActionReason] = useState("");
   const [holdReasonSelect, setHoldReasonSelect] = useState("");
   const [approveChecklist, setApproveChecklist] = useState<Record<string, boolean>>({});
+  const [approveSelectMode, setApproveSelectMode] = useState(false);
+  const [selectedApproveIds, setSelectedApproveIds] = useState<Set<string>>(new Set());
+  const [showApproveAllModal, setShowApproveAllModal] = useState(false);
+  const [isBulkApproving, setIsBulkApproving] = useState(false);
   const [designUploadCaseId, setDesignUploadCaseId] = useState<string | null>(null);
   const [designUploadCaseNumber, setDesignUploadCaseNumber] = useState<string | null>(null);
   const [designUploadClientId, setDesignUploadClientId] = useState<string | null>(null);
@@ -774,6 +778,79 @@ export default function CasesPage() {
     });
   }, [cases, search, statusFilter, typeFilter, from, to]);
 
+  // ── QC "Approve all" (bulk approval, bypasses the checklist) ──────────────
+  // A case is bulk-approvable when it sits in Internal QC and the current user
+  // is authorised to approve it: an admin (any case) or the assigned QC who is
+  // not also the designer (no self-review).
+  const canBulkApprove = activeUserRole === "qc" || activeUserRole === "admin";
+  const approvableCases = useMemo(() => {
+    if (!canBulkApprove) return [];
+    return filtered.filter((c) => {
+      if (c.status !== "internal_qc") return false;
+      if (activeUserRole === "admin") return true;
+      return c.qcId === activeUserId && c.designerId !== activeUserId;
+    });
+  }, [filtered, canBulkApprove, activeUserRole, activeUserId]);
+  const approvableIdSet = useMemo(() => new Set(approvableCases.map((c) => c.id)), [approvableCases]);
+
+  const toggleApproveSelection = (id: string) =>
+    setSelectedApproveIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const allApprovableSelected =
+    approvableCases.length > 0 && approvableCases.every((c) => selectedApproveIds.has(c.id));
+
+  const toggleSelectAllApprovable = () =>
+    setSelectedApproveIds(allApprovableSelected ? new Set() : new Set(approvableCases.map((c) => c.id)));
+
+  const exitApproveSelectMode = () => {
+    setApproveSelectMode(false);
+    setSelectedApproveIds(new Set());
+    setShowApproveAllModal(false);
+  };
+
+  // Bulk-approve every selected case straight to client review, bypassing the QC
+  // checklist. Reuses the authorised internal_qc → submitted_to_client transition
+  // on PUT /api/cases/[id]; each case is sent independently so one failure never
+  // blocks the rest.
+  const handleApproveAllSelected = async () => {
+    const ids = Array.from(selectedApproveIds).filter((id) => approvableIdSet.has(id));
+    if (ids.length === 0) {
+      toast.error("Select at least one case to approve.");
+      return;
+    }
+    setIsBulkApproving(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`/api/cases/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "submitted_to_client" }),
+          }).then(async (res) => {
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || "Failed to approve case");
+            }
+          })
+        )
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - ok;
+      if (ok > 0) toast.success(`${ok} case(s) sent to client review.`);
+      if (failed > 0) toast.error(`${failed} case(s) could not be approved.`);
+    } catch {
+      toast.error("Failed to approve the selected cases.");
+    } finally {
+      setIsBulkApproving(false);
+      exitApproveSelectMode();
+      fetchCases();
+    }
+  };
+
   const handleSubmit = async () => {
     if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile)) {
       toast.error("Please complete all fields, select teeth, and upload a file.");
@@ -875,7 +952,36 @@ export default function CasesPage() {
             <h1 className="text-xl font-semibold text-foreground">Cases</h1>
             <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} shown · {cases.length} loaded{hasMore ? " · more available" : ""}</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {canBulkApprove && (approvableCases.length > 0 || approveSelectMode) && (
+              approveSelectMode ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                    {selectedApproveIds.size} selected
+                  </span>
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={selectedApproveIds.size === 0}
+                    onClick={() => setShowApproveAllModal(true)}
+                  >
+                    <ClipboardCheck className="h-3.5 w-3.5" /> Proceed
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={exitApproveSelectMode}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={() => setApproveSelectMode(true)}
+                >
+                  <ClipboardCheck className="h-3.5 w-3.5" /> Approve all
+                </Button>
+              )
+            )}
             {canBulkUpload && (
               <Button
                 size="sm"
@@ -956,6 +1062,17 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
+                    {approveSelectMode && (
+                      <th className="w-8 px-3.5 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all approvable cases"
+                          checked={allApprovableSelected}
+                          onChange={toggleSelectAllApprovable}
+                          className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </th>
+                    )}
                     {["Case ID", "Client", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold  text-muted-foreground px-3.5 py-2 whitespace-nowrap">{h}</th>
                     ))}
@@ -965,7 +1082,7 @@ export default function CasesPage() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
-                        {Array.from({ length: 9 }).map((__, col) => (
+                        {Array.from({ length: approveSelectMode ? 10 : 9 }).map((__, col) => (
                           <td key={col} className="px-3.5 py-2"><div className="h-3 bg-muted rounded w-16" /></td>
                         ))}
                       </tr>
@@ -1026,6 +1143,21 @@ export default function CasesPage() {
                           className={`cursor-pointer transition-colors border-l-2 ${c.status === "on_hold" ? "bg-red-50 hover:bg-red-100/80 border-l-red-500" : c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-[10px]" : "hover:bg-muted/10 border-l-transparent"}`}
                           onClick={() => router.push(`/cases/${c.id}`)}
                         >
+                          {approveSelectMode && (
+                            <td className="w-8 px-3.5 py-1.5" onClick={(e) => e.stopPropagation()}>
+                              {approvableIdSet.has(c.id) ? (
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select case ${c.caseNumber || c.id}`}
+                                  checked={selectedApproveIds.has(c.id)}
+                                  onChange={() => toggleApproveSelection(c.id)}
+                                  className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                              ) : (
+                                <input type="checkbox" disabled className="h-4 w-4 rounded border-border opacity-30 cursor-not-allowed" />
+                              )}
+                            </td>
+                          )}
                           <td className="px-3.5 py-1.5 text-[11px] font-semibold  text-primary">
                             <div className="flex items-center gap-1.5">
                               <span>{c.caseNumber || c.id}</span>
@@ -1396,7 +1528,7 @@ export default function CasesPage() {
                     })
                   )}
                   {!isLoading && filtered.length === 0 && (
-                    <tr><td colSpan={9} className="px-3.5 py-6 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
+                    <tr><td colSpan={approveSelectMode ? 10 : 9} className="px-3.5 py-6 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1637,6 +1769,38 @@ export default function CasesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Approve All (bypass checklist) Confirmation Dialog */}
+      <Dialog open={showApproveAllModal} onOpenChange={(o) => { if (!o && !isBulkApproving) setShowApproveAllModal(false); }}>
+        <DialogContent className="sm:max-w-[480px] bg-primary border-primary/50 text-white shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-white flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-emerald-500" /> Approve Selected Cases
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-zinc-200 py-2">
+            Approve all {selectedApproveIds.size} selected case{selectedApproveIds.size === 1 ? "" : "s"} at once,
+            bypassing the QC checklist. Their status will change to <span className="font-semibold text-emerald-400">Client Review</span>.
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="ghost"
+              onClick={exitApproveSelectMode}
+              disabled={isBulkApproving}
+              className="text-white hover:bg-zinc-800"
+            >
+              Approve manually
+            </Button>
+            <Button
+              onClick={handleApproveAllSelected}
+              disabled={isBulkApproving || selectedApproveIds.size === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+            >
+              {isBulkApproving ? "Approving…" : "Approve all"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Assign QC Dialog */}
       <Dialog open={!!assignQcCaseId} onOpenChange={(o) => { if (!o) { setAssignQcCaseId(null); setSelectedQcId(""); } }}>
         <DialogContent className="sm:max-w-[425px] bg-primary border-primary/50 text-white shadow-xl">
@@ -1684,6 +1848,7 @@ export default function CasesPage() {
         open={bulkUploadOpen}
         onOpenChange={setBulkUploadOpen}
         userRole={activeUserRole}
+        qcOptions={qcs.map((q) => ({ id: q.id, name: q.fullName || q.email || "QC" }))}
         onCompleted={() => fetchCases()}
       />
     </OpsLayout>
