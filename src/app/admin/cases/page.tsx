@@ -1,1458 +1,2111 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import React, { useMemo, useState, useRef, useEffect } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { AdminLayout } from "@/src/components/AdminLayout"
-import { Card, CardContent } from "@/src/components/ui/card"
-import { Input } from "@/src/components/ui/input"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/src/components/ui/select"
-import { Button } from "@/src/components/ui/button"
-import { StatusBadge } from "@/src/components/StatusBadge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
-import { Label } from "@/src/components/ui/label"
-import { Textarea } from "@/src/components/ui/textarea"
-import { CaseChat } from "@/src/components/CaseChat"
-import { HOLD_REASONS } from "@/src/lib/case-utils"
-import type { PreferenceFormRecord, PreferenceFormPayload } from "@/src/lib/preference-forms"
-import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval"
-import { toast } from "sonner"
-import { AddCaseDialog } from "@/src/components/AddCaseDialog"
+import Link from "next/link";
+import React, { useMemo, useState, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { AdminLayout } from "@/src/components/AdminLayout";
+import { Card, CardContent } from "@/src/components/ui/card";
+import { Input } from "@/src/components/ui/input";
 import {
-  Search,
-  ShieldCheck,
-  UserPlus,
-  ClipboardCheck,
-  MessageSquare,
-  FileText,
-  RefreshCw,
-  Upload,
-  Plus,
-  Download,
-  Trash2,
-} from "lucide-react"
-import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv"
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectLabel,
+	SelectSeparator,
+	SelectTrigger,
+	SelectValue,
+} from "@/src/components/ui/select";
+import { Button } from "@/src/components/ui/button";
+import { StatusBadge } from "@/src/components/StatusBadge";
+import {
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from "@/src/components/ui/dialog";
+import {
+	Tabs,
+	TabsContent,
+	TabsList,
+	TabsTrigger,
+} from "@/src/components/ui/tabs";
+import { Label } from "@/src/components/ui/label";
+import { Textarea } from "@/src/components/ui/textarea";
+import { CaseChat } from "@/src/components/CaseChat";
+import { HOLD_REASONS } from "@/src/lib/case-utils";
+import type {
+	PreferenceFormRecord,
+	PreferenceFormPayload,
+} from "@/src/lib/preference-forms";
+import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval";
+import { toast } from "sonner";
+import { AddCaseDialog } from "@/src/components/AddCaseDialog";
+import {
+	Search,
+	ShieldCheck,
+	UserPlus,
+	ClipboardCheck,
+	MessageSquare,
+	FileText,
+	RefreshCw,
+	Upload,
+	Plus,
+	Download,
+	Trash2,
+} from "lucide-react";
+import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 
 type CaseRecord = {
-  id: string
-  caseNumber: string | null
-  clientId: string
-  subuserId: string | null
-  category: string | null
-  subTypeData: Record<string, unknown> | null
-  status: string
-  designerId: string | null
-  qcId: string | null
-  accountManagerId: string | null
-  dueDate: string | null
-  createdAt: string
-  updatedAt: string
-  todayMessagesCount?: number
-  hasUnreadChat?: boolean
-  outputFile?: string | null
-  previewFile?: string | null
-  outputNote?: string | null
-  scanFileName?: string | null
-}
+	id: string;
+	caseNumber: string | null;
+	clientId: string;
+	subuserId: string | null;
+	category: string | null;
+	subTypeData: Record<string, unknown> | null;
+	status: string;
+	designerId: string | null;
+	qcId: string | null;
+	accountManagerId: string | null;
+	dueDate: string | null;
+	createdAt: string;
+	updatedAt: string;
+	todayMessagesCount?: number;
+	hasUnreadChat?: boolean;
+	outputFile?: string | null;
+	previewFile?: string | null;
+	outputNote?: string | null;
+	scanFileName?: string | null;
+};
 
-type ChatIndicatorUser = {
-  id: string
-  role: string
-  createdBy?: string | null
-} | null | undefined
+type ChatIndicatorUser =
+	| {
+			id: string;
+			role: string;
+			createdBy?: string | null;
+	  }
+	| null
+	| undefined;
 
-function shouldShowChatIcon(caseItem: CaseRecord, currentUser: ChatIndicatorUser) {
-  if (!currentUser) return false;
-  if (currentUser.role === 'admin') return true;
-  if (currentUser.role === 'client' && caseItem.clientId === currentUser.id) return true;
-  if (currentUser.role === 'subuser' && (caseItem.subuserId === currentUser.id || caseItem.clientId === currentUser.createdBy)) return true;
-  if (caseItem.designerId === currentUser.id || caseItem.qcId === currentUser.id || caseItem.accountManagerId === currentUser.id) return true;
-  return false;
+function shouldShowChatIcon(
+	caseItem: CaseRecord,
+	currentUser: ChatIndicatorUser,
+) {
+	if (!currentUser) return false;
+	if (currentUser.role === "admin") return true;
+	if (currentUser.role === "client" && caseItem.clientId === currentUser.id)
+		return true;
+	if (
+		currentUser.role === "subuser" &&
+		(caseItem.subuserId === currentUser.id ||
+			caseItem.clientId === currentUser.createdBy)
+	)
+		return true;
+	if (
+		caseItem.designerId === currentUser.id ||
+		caseItem.qcId === currentUser.id ||
+		caseItem.accountManagerId === currentUser.id
+	)
+		return true;
+	return false;
 }
 
 type ClientRecord = {
-  id: string
-  fullName: string | null
-  labName: string | null
-  email: string
-  status: string
-}
+	id: string;
+	fullName: string | null;
+	labName: string | null;
+	email: string;
+	status: string;
+};
 
 type MemberRecord = {
-  id: string
-  fullName: string | null
-  role: string
-  email: string
-  status: string
-}
+	id: string;
+	fullName: string | null;
+	role: string;
+	email: string;
+	status: string;
+};
 
-type CaseActionType = "approve" | "reject" | "feedback" | "hold"
+type CaseActionType = "approve" | "reject" | "feedback" | "hold";
 
 type CaseActionDialogState = {
-  caseId: string
-  action: CaseActionType
-  caseNumber?: string | null
-} | null
+	caseId: string;
+	action: CaseActionType;
+	caseNumber?: string | null;
+} | null;
 
 const CASE_ACTIONS: Record<
-  CaseActionType,
-  {
-    title: string
-    description: string
-    status: string
-    successMessage: string
-    reasonKey?: string
-    reasonLabel?: string
-    confirmLabel: string
-  }
+	CaseActionType,
+	{
+		title: string;
+		description: string;
+		status: string;
+		successMessage: string;
+		reasonKey?: string;
+		reasonLabel?: string;
+		confirmLabel: string;
+	}
 > = {
-  approve: {
-    title: "Approve Case",
-    description: "Complete the QC checklist before approving and sending to the client.",
-    status: "submitted_to_client",
-    successMessage: "Approved QC and sent design to client",
-    confirmLabel: "Confirm",
-  },
-  reject: {
-    title: "Reject Case",
-    description: "Add the reason before sending the case back to the designer.",
-    status: "in_progress",
-    successMessage: "Rejected design; sent back to designer",
-    reasonKey: "rejectReason",
-    reasonLabel: "Reject reason",
-    confirmLabel: "Confirm",
-  },
-  feedback: {
-    title: "Add Feedback",
-    description: "Add the feedback reason before sending the case back to the designer.",
-    status: "in_progress",
-    successMessage: "Feedback logged; sent back to designer",
-    reasonKey: "feedbackReason",
-    reasonLabel: "Feedback reason",
-    confirmLabel: "Send",
-  },
-  hold: {
-    title: "Hold Case",
-    description: "Add the hold reason before putting this case on hold.",
-    status: "on_hold",
-    successMessage: "Case put on hold by QC Lead",
-    reasonKey: "holdReason",
-    reasonLabel: "Hold reason",
-    confirmLabel: "Confirm",
-  },
-}
+	approve: {
+		title: "Approve Case",
+		description:
+			"Complete the QC checklist before approving and sending to the client.",
+		status: "submitted_to_client",
+		successMessage: "Approved QC and sent design to client",
+		confirmLabel: "Confirm",
+	},
+	reject: {
+		title: "Reject Case",
+		description: "Add the reason before sending the case back to the designer.",
+		status: "in_progress",
+		successMessage: "Rejected design; sent back to designer",
+		reasonKey: "rejectReason",
+		reasonLabel: "Reject reason",
+		confirmLabel: "Confirm",
+	},
+	feedback: {
+		title: "Add Feedback",
+		description:
+			"Add the feedback reason before sending the case back to the designer.",
+		status: "in_progress",
+		successMessage: "Feedback logged; sent back to designer",
+		reasonKey: "feedbackReason",
+		reasonLabel: "Feedback reason",
+		confirmLabel: "Send",
+	},
+	hold: {
+		title: "Hold Case",
+		description: "Add the hold reason before putting this case on hold.",
+		status: "on_hold",
+		successMessage: "Case put on hold by QC Lead",
+		reasonKey: "holdReason",
+		reasonLabel: "Hold reason",
+		confirmLabel: "Confirm",
+	},
+};
 
 const statusFilters = [
-  "All",
-  "scan_received",
-  "allocated_to_designer",
-  "scan_verified",
-  "scan_not_verified",
-  "in_progress",
-  "internal_qc",
-  "submitted_to_client",
-  "on_hold",
-  "client_feedback",
-  "approved",
-  "delivered",
-  "change_requested",
-]
+	"All",
+	"scan_received",
+	"allocated_to_designer",
+	"scan_verified",
+	"scan_not_verified",
+	"in_progress",
+	"internal_qc",
+	"submitted_to_client",
+	"on_hold",
+	"client_feedback",
+	"approved",
+	"delivered",
+	"change_requested",
+];
 
 const STATUS_LABELS: Record<string, string> = {
-  scan_received: "Submitted",
-  scan_verified: "Scan Verified",
-  scan_not_verified: "Scan Not Verified",
-  allocated_to_designer: "Allocated to Designer",
-  in_progress: "In Design",
-  internal_qc: "Internal QC",
-  submitted_to_client: "Pending Client Approval",
-  on_hold: "On Hold",
-  client_feedback: "Client Feedback",
-  approved: "Approved",
-  delivered: "Delivered",
-  change_requested: "Change Requested",
-}
+	scan_received: "Submitted",
+	scan_verified: "Scan Verified",
+	scan_not_verified: "Scan Not Verified",
+	allocated_to_designer: "Allocated to Designer",
+	in_progress: "In Design",
+	internal_qc: "Internal QC",
+	submitted_to_client: "Pending Client Approval",
+	on_hold: "On Hold",
+	client_feedback: "Client Feedback",
+	approved: "Approved",
+	delivered: "Delivered",
+	change_requested: "Change Requested",
+};
 
 function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
-  if (!subTypeData) return "—"
+	if (!subTypeData) return "—";
 
-  const values = Object.entries(subTypeData)
-    .filter(([key, value]) => key !== "teeth" && key !== "toothSystem" && key !== "notes" && key !== "modelRequired" && typeof value === "string" && value)
-    .map(([, value]) => value as string)
+	const values = Object.entries(subTypeData)
+		.filter(
+			([key, value]) =>
+				key !== "teeth" &&
+				key !== "toothSystem" &&
+				key !== "notes" &&
+				key !== "modelRequired" &&
+				typeof value === "string" &&
+				value,
+		)
+		.map(([, value]) => value as string);
 
-  return values.length ? values.join(" - ") : "—"
+	return values.length ? values.join(" - ") : "—";
 }
 
 // Helper function to remove the extension from file name
 const removeExtensionFromString = (str: string) => {
-  if (str.lastIndexOf(".") > 0) {
-    return str.substring(0, str.lastIndexOf("."));
-  }
-  return str;
+	if (str.lastIndexOf(".") > 0) {
+		return str.substring(0, str.lastIndexOf("."));
+	}
+	return str;
 };
 
 export default function AdminCasesPage() {
-  const [isAddOpen, setIsAddOpen] = useState(false)
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("All")
-  const [clientFilter, setClientFilter] = useState("All")
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
-  const [openCase, setOpenCase] = useState<CaseRecord | null>(null)
-  const [updatingId, setUpdatingId] = useState<string | null>(null)
-  const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null)
-  const [selectedQcId, setSelectedQcId] = useState<string>("")
-  const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null)
-  const [caseActionReason, setCaseActionReason] = useState("")
-  const [holdReasonSelect, setHoldReasonSelect] = useState("")
-  const [approveChecklist, setApproveChecklist] = useState<Record<string, boolean>>({})
-  const [pageLimit, setPageLimit] = useState(10)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const pageLimitChangedRef = useRef(false)
+	const [isAddOpen, setIsAddOpen] = useState(false);
+	const [search, setSearch] = useState("");
+	const [statusFilter, setStatusFilter] = useState("All");
+	const [clientFilter, setClientFilter] = useState("All");
+	const [from, setFrom] = useState("");
+	const [to, setTo] = useState("");
+	const [openCase, setOpenCase] = useState<CaseRecord | null>(null);
+	const [updatingId, setUpdatingId] = useState<string | null>(null);
+	const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
+	const [selectedQcId, setSelectedQcId] = useState<string>("");
+	const [pendingCaseAction, setPendingCaseAction] =
+		useState<CaseActionDialogState>(null);
+	const [caseActionReason, setCaseActionReason] = useState("");
+	const [holdReasonSelect, setHoldReasonSelect] = useState("");
+	const [approveChecklist, setApproveChecklist] = useState<
+		Record<string, boolean>
+	>({});
+	const [pageLimit, setPageLimit] = useState(10);
+	const [isLoadingMore, setIsLoadingMore] = useState(false);
+	const pageLimitChangedRef = useRef(false);
 
-  // Fetch Cases list
-  const { data, isLoading, isFetching, error, refetch } = useQuery<{ data: CaseRecord[]; hasMore: boolean }>({
-    queryKey: ["admin-cases", pageLimit],
-    queryFn: async () => {
-      const res = await fetch(`/api/cases?limit=${pageLimit}&page=1`)
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to load cases")
-      }
-      return res.json()
-    },
-    refetchInterval: 30_000,
-    staleTime: 20_000,
-  })
+	// Fetch Cases list
+	const { data, isLoading, isFetching, error, refetch } = useQuery<{
+		data: CaseRecord[];
+		hasMore: boolean;
+	}>({
+		queryKey: ["admin-cases", pageLimit],
+		queryFn: async () => {
+			const res = await fetch(`/api/cases?limit=${pageLimit}&page=1`);
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error(err.error || "Failed to load cases");
+			}
+			return res.json();
+		},
+		refetchInterval: 30_000,
+		staleTime: 20_000,
+	});
 
-  const hasMore = data?.hasMore ?? false
+	const hasMore = data?.hasMore ?? false;
 
-  useEffect(() => {
-    if (pageLimitChangedRef.current && !isFetching) {
-      pageLimitChangedRef.current = false
-      setIsLoadingMore(false)
-    }
-  }, [isFetching])
+	useEffect(() => {
+		if (pageLimitChangedRef.current && !isFetching) {
+			pageLimitChangedRef.current = false;
+			setIsLoadingMore(false);
+		}
+	}, [isFetching]);
 
-  const handleLoadMore = () => {
-    pageLimitChangedRef.current = true
-    setIsLoadingMore(true)
-    setPageLimit((prev) => prev + 10)
-  }
+	const handleLoadMore = () => {
+		pageLimitChangedRef.current = true;
+		setIsLoadingMore(true);
+		setPageLimit((prev) => prev + 10);
+	};
 
-  // Fetch Client profiles
-  const { data: clientsData } = useQuery<ClientRecord[]>({
-    queryKey: ["admin-clients-list"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/clients")
-      if (!res.ok) return []
-      return res.json()
-    },
-    staleTime: 5 * 60_000, // clients list rarely changes
-  })
+	// Fetch Client profiles
+	const { data: clientsData } = useQuery<ClientRecord[]>({
+		queryKey: ["admin-clients-list"],
+		queryFn: async () => {
+			const res = await fetch("/api/admin/clients");
+			if (!res.ok) return [];
+			return res.json();
+		},
+		staleTime: 5 * 60_000, // clients list rarely changes
+	});
 
-  // Fetch Team members
-  const { data: membersData } = useQuery<MemberRecord[]>({
-    queryKey: ["admin-members-list"],
-    queryFn: async () => {
-      try {
-        const res = await fetch("/api/admin/members")
-        if (!res.ok) return []
-        const data = await res.json()
-        return data
-      } catch {
-        return []
-      }
-    },
-    staleTime: 5 * 60_000, // team roster rarely changes
-  })
+	// Fetch Team members
+	const { data: membersData } = useQuery<MemberRecord[]>({
+		queryKey: ["admin-members-list"],
+		queryFn: async () => {
+			try {
+				const res = await fetch("/api/admin/members");
+				if (!res.ok) return [];
+				const data = await res.json();
+				return data;
+			} catch {
+				return [];
+			}
+		},
+		staleTime: 5 * 60_000, // team roster rarely changes
+	});
 
-  // Fetch current logged in user
-  const { data: currentUser } = useQuery<{ id: string; role: string; fullName: string | null }>({
-    queryKey: ["admin-me"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/me")
-      if (!res.ok) return null
-      return res.json()
-    },
-    staleTime: 10 * 60_000, // current user identity never changes mid-session
-  })
+	// Fetch current logged in user
+	const { data: currentUser } = useQuery<{
+		id: string;
+		role: string;
+		fullName: string | null;
+	}>({
+		queryKey: ["admin-me"],
+		queryFn: async () => {
+			const res = await fetch("/api/admin/me");
+			if (!res.ok) return null;
+			return res.json();
+		},
+		staleTime: 10 * 60_000, // current user identity never changes mid-session
+	});
 
-  // Mappings to translate UUIDs to descriptive names
-  const clientsMap = useMemo(() => {
-    const map = new Map<string, { labName: string; fullName: string; email: string }>()
-    if (clientsData) {
-      clientsData.forEach((c) => {
-        map.set(c.id, {
-          labName: c.labName || "",
-          fullName: c.fullName || "",
-          email: c.email || ""
-        })
-      })
-    }
-    return map
-  }, [clientsData])
+	// Mappings to translate UUIDs to descriptive names
+	const clientsMap = useMemo(() => {
+		const map = new Map<
+			string,
+			{ labName: string; fullName: string; email: string }
+		>();
+		if (clientsData) {
+			clientsData.forEach((c) => {
+				map.set(c.id, {
+					labName: c.labName || "",
+					fullName: c.fullName || "",
+					email: c.email || "",
+				});
+			});
+		}
+		return map;
+	}, [clientsData]);
 
-  const membersMap = useMemo(() => {
-    const map = new Map<string, { fullName: string; role: string; email: string }>()
-    if (membersData) {
-      membersData.forEach((m) => {
-        map.set(m.id, {
-          fullName: m.fullName || "",
-          role: m.role || "",
-          email: m.email || ""
-        })
-      })
-    }
-    return map
-  }, [membersData])
+	const membersMap = useMemo(() => {
+		const map = new Map<
+			string,
+			{ fullName: string; role: string; email: string }
+		>();
+		if (membersData) {
+			membersData.forEach((m) => {
+				map.set(m.id, {
+					fullName: m.fullName || "",
+					role: m.role || "",
+					email: m.email || "",
+				});
+			});
+		}
+		return map;
+	}, [membersData]);
 
-  // Extract active designers for the allocate dropdown
-  const designers = useMemo(() => {
-    if (!membersData) return []
-    return membersData.filter((m) => m.role === "designer" && m.status === "active")
-  }, [membersData])
+	// Extract active designers for the allocate dropdown
+	const designers = useMemo(() => {
+		if (!membersData) return [];
+		return membersData.filter(
+			(m) => m.role === "designer" && m.status === "active",
+		);
+	}, [membersData]);
 
-  // Extract active QCs for the allocate dropdown
-  const qcs = useMemo(() => {
-    if (!membersData) return []
-    return membersData.filter((m) => m.role === "qc" && m.status === "active")
-  }, [membersData])
+	// Extract active QCs for the allocate dropdown
+	const qcs = useMemo(() => {
+		if (!membersData) return [];
+		return membersData.filter((m) => m.role === "qc" && m.status === "active");
+	}, [membersData]);
 
-  const filtered = useMemo(() => {
-    const cases = data?.data || []
-    const term = search.toLowerCase()
+	const filtered = useMemo(() => {
+		const cases = data?.data || [];
+		const term = search.toLowerCase();
 
-    return cases.filter((caseItem) => {
-      const client = clientsMap.get(caseItem.clientId)
-      const clientName = (client?.labName || client?.fullName || "").toLowerCase()
-      const restoration = renderSubTypeSummary(caseItem.subTypeData).toLowerCase()
+		return cases.filter((caseItem) => {
+			const client = clientsMap.get(caseItem.clientId);
+			const clientName = (
+				client?.labName ||
+				client?.fullName ||
+				""
+			).toLowerCase();
+			const restoration = renderSubTypeSummary(
+				caseItem.subTypeData,
+			).toLowerCase();
 
-      const matchesSearch =
-        !term ||
-        (caseItem.caseNumber || caseItem.id).toLowerCase().includes(term) ||
-        (caseItem.category || "").toLowerCase().includes(term) ||
-        restoration.includes(term) ||
-        clientName.includes(term)
+			const matchesSearch =
+				!term ||
+				(caseItem.caseNumber || caseItem.id).toLowerCase().includes(term) ||
+				(caseItem.category || "").toLowerCase().includes(term) ||
+				restoration.includes(term) ||
+				clientName.includes(term);
 
-      const matchesStatus = statusFilter === "All" || caseItem.status === statusFilter
-      const matchesClient = clientFilter === "All" || caseItem.clientId === clientFilter
-      const createdAtDate = caseItem.createdAt ? new Date(caseItem.createdAt).toISOString().split("T")[0] : ""
-      const matchesFrom = !from || createdAtDate >= from
-      const matchesTo = !to || createdAtDate <= to
+			const matchesStatus =
+				statusFilter === "All" || caseItem.status === statusFilter;
+			const matchesClient =
+				clientFilter === "All" || caseItem.clientId === clientFilter;
+			const createdAtDate = caseItem.createdAt
+				? new Date(caseItem.createdAt).toISOString().split("T")[0]
+				: "";
+			const matchesFrom = !from || createdAtDate >= from;
+			const matchesTo = !to || createdAtDate <= to;
 
-      return matchesSearch && matchesStatus && matchesClient && matchesFrom && matchesTo
-    })
-  }, [data, search, statusFilter, clientFilter, clientsMap, from, to])
+			return (
+				matchesSearch &&
+				matchesStatus &&
+				matchesClient &&
+				matchesFrom &&
+				matchesTo
+			);
+		});
+	}, [data, search, statusFilter, clientFilter, clientsMap, from, to]);
 
-  // Live database updates
-  const handleUpdate = async (caseId: string, patch: Record<string, string | number | boolean | null>, successMessage: string) => {
-    setUpdatingId(caseId)
-    try {
-      const res = await fetch(`/api/cases/${caseId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(patch),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to update case")
-      }
-      toast.success(successMessage)
-      refetch()
-      if (openCase && openCase.id === caseId) {
-        // Refresh open case modal data
-        const updated = await fetch(`/api/cases/${caseId}`).then(r => r.json()).then(r => r.data)
-        if (updated) setOpenCase(updated)
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Something went wrong"
-      toast.error(msg)
-    } finally {
-      setUpdatingId(null)
-    }
-  }
+	// Live database updates
+	const handleUpdate = async (
+		caseId: string,
+		patch: Record<string, string | number | boolean | null>,
+		successMessage: string,
+	) => {
+		setUpdatingId(caseId);
+		try {
+			const res = await fetch(`/api/cases/${caseId}`, {
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(patch),
+			});
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error(err.error || "Failed to update case");
+			}
+			toast.success(successMessage);
+			refetch();
+			if (openCase && openCase.id === caseId) {
+				// Refresh open case modal data
+				const updated = await fetch(`/api/cases/${caseId}`)
+					.then((r) => r.json())
+					.then((r) => r.data);
+				if (updated) setOpenCase(updated);
+			}
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Something went wrong";
+			toast.error(msg);
+		} finally {
+			setUpdatingId(null);
+		}
+	};
 
-  const handleDeleteCase = async (caseId: string) => {
-    setUpdatingId(caseId)
-    try {
-      const res = await fetch(`/api/cases/${caseId}`, {
-        method: "DELETE",
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to delete case")
-      }
-      toast.success("Case deleted successfully")
-      refetch()
-      if (openCase && openCase.id === caseId) {
-        setOpenCase(null)
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Something went wrong"
-      toast.error(msg)
-    } finally {
-      setUpdatingId(null)
-    }
-  }
+	const handleDeleteCase = async (caseId: string) => {
+		setUpdatingId(caseId);
+		try {
+			const res = await fetch(`/api/cases/${caseId}`, {
+				method: "DELETE",
+			});
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error(err.error || "Failed to delete case");
+			}
+			toast.success("Case deleted successfully");
+			refetch();
+			if (openCase && openCase.id === caseId) {
+				setOpenCase(null);
+			}
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Something went wrong";
+			toast.error(msg);
+		} finally {
+			setUpdatingId(null);
+		}
+	};
 
-  const openCaseActionDialog = (caseId: string, action: CaseActionType, caseNumber?: string | null) => {
-    setPendingCaseAction({ caseId, action, caseNumber })
-    setCaseActionReason("")
-    setHoldReasonSelect("")
-    setApproveChecklist({})
+	const openCaseActionDialog = (
+		caseId: string,
+		action: CaseActionType,
+		caseNumber?: string | null,
+	) => {
+		setPendingCaseAction({ caseId, action, caseNumber });
+		setCaseActionReason("");
+		setHoldReasonSelect("");
+		setApproveChecklist({});
 
-    if (action === "approve") {
-      void (async () => {
-        try {
-          const res = await fetch(`/api/cases/${caseId}/approval-checklist`)
-          if (!res.ok) return
-          const payload = await res.json().catch(() => ({}))
-          const values = Array.isArray(payload?.data) ? payload.data : []
-          const selected = new Set(values)
-          setApproveChecklist(
-            Object.fromEntries(QC_CHECKLIST.map((item) => [item, selected.has(item)]))
-          )
-        } catch {
-          // Leave checklist empty if it cannot be loaded.
-        }
-      })()
-    }
-  }
+		if (action === "approve") {
+			void (async () => {
+				try {
+					const res = await fetch(`/api/cases/${caseId}/approval-checklist`);
+					if (!res.ok) return;
+					const payload = await res.json().catch(() => ({}));
+					const values = Array.isArray(payload?.data) ? payload.data : [];
+					const selected = new Set(values);
+					setApproveChecklist(
+						Object.fromEntries(
+							QC_CHECKLIST.map((item) => [item, selected.has(item)]),
+						),
+					);
+				} catch {
+					// Leave checklist empty if it cannot be loaded.
+				}
+			})();
+		}
+	};
 
-  const closeCaseActionDialog = () => {
-    setPendingCaseAction(null)
-    setCaseActionReason("")
-    setHoldReasonSelect("")
-    setApproveChecklist({})
-  }
+	const closeCaseActionDialog = () => {
+		setPendingCaseAction(null);
+		setCaseActionReason("");
+		setHoldReasonSelect("");
+		setApproveChecklist({});
+	};
 
-  const confirmCaseAction = async () => {
-    if (!pendingCaseAction) return
-    const actionConfig = CASE_ACTIONS[pendingCaseAction.action]
-    let reason = caseActionReason.trim()
+	const confirmCaseAction = async () => {
+		if (!pendingCaseAction) return;
+		const actionConfig = CASE_ACTIONS[pendingCaseAction.action];
+		let reason = caseActionReason.trim();
 
-    if (pendingCaseAction.action === "approve") {
-      const allChecked = QC_CHECKLIST.every((item) => approveChecklist[item])
-      if (!allChecked) {
-        toast.error("Please complete all QC checklist items before approving.")
-        return
-      }
+		if (pendingCaseAction.action === "approve") {
+			const allChecked = QC_CHECKLIST.every((item) => approveChecklist[item]);
+			if (!allChecked) {
+				toast.error("Please complete all QC checklist items before approving.");
+				return;
+			}
 
-      setUpdatingId(pendingCaseAction.caseId)
-      try {
-        const checkedItems = QC_CHECKLIST.filter((item) => approveChecklist[item])
-        const res = await fetch(`/api/cases/${pendingCaseAction.caseId}/approval-checklist`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ checkedItems }),
-        })
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err.error || "Failed to approve case")
-        }
+			setUpdatingId(pendingCaseAction.caseId);
+			try {
+				const checkedItems = QC_CHECKLIST.filter(
+					(item) => approveChecklist[item],
+				);
+				const res = await fetch(
+					`/api/cases/${pendingCaseAction.caseId}/approval-checklist`,
+					{
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ checkedItems }),
+					},
+				);
+				if (!res.ok) {
+					const err = await res.json().catch(() => ({}));
+					throw new Error(err.error || "Failed to approve case");
+				}
 
-        toast.success(actionConfig.successMessage)
-        refetch()
-        if (openCase && openCase.id === pendingCaseAction.caseId) {
-          const updated = await fetch(`/api/cases/${pendingCaseAction.caseId}`).then(r => r.json()).then(r => r.data)
-          if (updated) setOpenCase(updated)
-        }
-        closeCaseActionDialog()
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Something went wrong"
-        toast.error(msg)
-      } finally {
-        setUpdatingId(null)
-      }
-      return
-    } else if (pendingCaseAction.action === "hold") {
-      if (!holdReasonSelect) {
-        toast.error("Please select a hold reason.")
-        return
-      }
-      if (holdReasonSelect === "Other (please specify)") {
-        if (!reason) {
-          toast.error("Please specify your reason for holding the case.")
-          return
-        }
-      } else {
-        reason = holdReasonSelect
-      }
-    } else {
-      if (actionConfig.reasonKey && !reason) {
-        toast.error(`Please enter a ${actionConfig.reasonLabel?.toLowerCase()}.`)
-        return
-      }
-    }
+				toast.success(actionConfig.successMessage);
+				refetch();
+				if (openCase && openCase.id === pendingCaseAction.caseId) {
+					const updated = await fetch(`/api/cases/${pendingCaseAction.caseId}`)
+						.then((r) => r.json())
+						.then((r) => r.data);
+					if (updated) setOpenCase(updated);
+				}
+				closeCaseActionDialog();
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : "Something went wrong";
+				toast.error(msg);
+			} finally {
+				setUpdatingId(null);
+			}
+			return;
+		} else if (pendingCaseAction.action === "hold") {
+			if (!holdReasonSelect) {
+				toast.error("Please select a hold reason.");
+				return;
+			}
+			if (holdReasonSelect === "Other (please specify)") {
+				if (!reason) {
+					toast.error("Please specify your reason for holding the case.");
+					return;
+				}
+			} else {
+				reason = holdReasonSelect;
+			}
+		} else {
+			if (actionConfig.reasonKey && !reason) {
+				toast.error(
+					`Please enter a ${actionConfig.reasonLabel?.toLowerCase()}.`,
+				);
+				return;
+			}
+		}
 
-    const patch = actionConfig.reasonKey
-      ? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
-      : { status: actionConfig.status }
-    await handleUpdate(pendingCaseAction.caseId, patch, actionConfig.successMessage)
-    closeCaseActionDialog()
-  }
+		const patch = actionConfig.reasonKey
+			? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
+			: { status: actionConfig.status };
+		await handleUpdate(
+			pendingCaseAction.caseId,
+			patch,
+			actionConfig.successMessage,
+		);
+		closeCaseActionDialog();
+	};
 
-  // Onboarding Preference forms details
-  const clientProfile = openCase ? clientsData?.find((c) => c.id === openCase.clientId) : null
+	// Onboarding Preference forms details
+	const clientProfile = openCase
+		? clientsData?.find((c) => c.id === openCase.clientId)
+		: null;
 
-  const { data: prefFormsData, isLoading: prefFormsLoading } = useQuery<{ data: PreferenceFormRecord[] }>({
-    queryKey: ["preference-forms", openCase?.clientId],
-    queryFn: async () => {
-      const res = await fetch(`/api/preference-forms?clientId=${openCase!.clientId}`)
-      if (!res.ok) return { data: [] }
-      return res.json()
-    },
-    enabled: !!openCase?.clientId,
-    staleTime: 30_000,
-  })
-  const clientPreferenceForms = prefFormsData?.data ?? []
+	const { data: prefFormsData, isLoading: prefFormsLoading } = useQuery<{
+		data: PreferenceFormRecord[];
+	}>({
+		queryKey: ["preference-forms", openCase?.clientId],
+		queryFn: async () => {
+			const res = await fetch(
+				`/api/preference-forms?clientId=${openCase!.clientId}`,
+			);
+			if (!res.ok) return { data: [] };
+			return res.json();
+		},
+		enabled: !!openCase?.clientId,
+		staleTime: 30_000,
+	});
+	const clientPreferenceForms = prefFormsData?.data ?? [];
 
-  return (
-    <AdminLayout>
-      <div className="space-y-4 animate-fade-in text-xs">
-        <div className="flex justify-between items-center">
-          <div className="space-y-0.5">
-            <h1 className="text-xl font-semibold text-foreground">Cases — Review & Allocation</h1>
-            <p className="text-xs text-muted-foreground">Triage incoming cases, allocate to designers and route through QC</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs gap-1.5"
-              onClick={() => {
-                const headers = ["Case Name", "Case #", "Client", "Category", "Type / Restoration", "Teeth / Arch Selection", "Unit Count", "Numbering System", "Status", "Designer", "Due Date", "Created At"]
-                const rows = filtered.map((c) => {
-                  const client = clientsMap.get(c.clientId)
-                  const clientName = client?.labName || client?.fullName || "—"
-                  const designer = membersMap.get(c.designerId || "")?.fullName || "—"
-                  const teeth = extractCaseTeethInfo(c.category, c.subTypeData as Record<string, unknown>)
-                  return [
-                    c.scanFileName || "—",
-                    c.caseNumber || "—",
-                    clientName,
-                    c.category || "—",
-                    renderSubTypeSummary(c.subTypeData),
-                    teeth.selection,
-                    teeth.unitCount,
-                    teeth.numberingSystem,
-                    c.status,
-                    designer,
-                    c.dueDate ? new Date(c.dueDate).toLocaleDateString("en-IN") : "—",
-                    new Date(c.createdAt).toLocaleDateString("en-IN"),
-                  ]
-                })
-                const date = new Date().toISOString().split("T")[0]
-                downloadCSV(headers, rows, `cases-${date}.csv`)
-              }}
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span className="hidden md:block">Export</span>
-            </Button>
-            <Button
-              size="sm"
-              className="h-8 text-xs bg-emerald-800 text-white hover:bg-emerald-900 flex items-center gap-1.5"
-              onClick={() => setIsAddOpen(true)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span className="hidden md:block">Add New Case</span>
-            </Button>
-          </div>
-        </div>
+	return (
+		<AdminLayout>
+			<div className="space-y-4 animate-fade-in text-xs">
+				<div className="flex justify-between items-center">
+					<div className="space-y-0.5">
+						<h1 className="text-xl font-semibold text-foreground">
+							Cases — Review & Allocation
+						</h1>
+						<p className="text-xs text-muted-foreground">
+							Triage incoming cases, allocate to designers and route through QC
+						</p>
+					</div>
+					<div className="flex items-center gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							className="h-8 text-xs gap-1.5"
+							onClick={() => {
+								const headers = [
+									"Case Name",
+									"Case #",
+									"Client",
+									"Category",
+									"Type / Restoration",
+									"Teeth / Arch Selection",
+									"Unit Count",
+									"Numbering System",
+									"Status",
+									"Designer",
+									"Due Date",
+									"Created At",
+								];
+								const rows = filtered.map((c) => {
+									const client = clientsMap.get(c.clientId);
+									const clientName = client?.labName || client?.fullName || "—";
+									const designer =
+										membersMap.get(c.designerId || "")?.fullName || "—";
+									const teeth = extractCaseTeethInfo(
+										c.category,
+										c.subTypeData as Record<string, unknown>,
+									);
+									return [
+										c.scanFileName || "—",
+										c.caseNumber || "—",
+										clientName,
+										c.category || "—",
+										renderSubTypeSummary(c.subTypeData),
+										teeth.selection,
+										teeth.unitCount,
+										teeth.numberingSystem,
+										c.status,
+										designer,
+										c.dueDate
+											? new Date(c.dueDate).toLocaleDateString("en-IN")
+											: "—",
+										new Date(c.createdAt).toLocaleDateString("en-IN"),
+									];
+								});
+								const date = new Date().toISOString().split("T")[0];
+								downloadCSV(headers, rows, `cases-${date}.csv`);
+							}}
+						>
+							<Download className="h-3.5 w-3.5" />
+							<span className="hidden md:block">Export</span>
+						</Button>
+						<Button
+							size="sm"
+							className="h-8 text-xs bg-emerald-800 text-white hover:bg-emerald-900 flex items-center gap-1.5"
+							onClick={() => setIsAddOpen(true)}
+						>
+							<Plus className="h-3.5 w-3.5" />
+							<span className="hidden md:block">Add New Case</span>
+						</Button>
+					</div>
+				</div>
 
-        <Card className="shadow-card border-border/50">
-          <CardContent className="p-2.5 flex flex-col lg:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                className="pl-8 h-8 text-xs"
-                placeholder="Search by case number, category or subtype..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <Select value={clientFilter} onValueChange={setClientFilter}>
-              <SelectTrigger className="w-full lg:w-48 h-8 text-xs">
-                <SelectValue placeholder="All clients" />
-              </SelectTrigger>
-              <SelectContent className="bg-primary border-primary/50 text-white">
-                <SelectItem className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs" value="All">All clients</SelectItem>
-                {clientsData?.map((c) => (
-                  <SelectItem className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs" key={c.id} value={c.id}>
-                    {c.labName || c.fullName || c.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full lg:w-48 h-8 text-xs">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent className="bg-primary border-primary/50 text-white">
-                {statusFilters.map((status) => (
-                  <SelectItem key={status} value={status} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
-                    {status === "All" ? "All Statuses" : (STATUS_LABELS[status] || status)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-36 h-8 text-xs" title="Start date" />
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-36 h-8 text-xs" title="End date" />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => { setSearch(""); setStatusFilter("All"); setClientFilter("All"); setFrom(""); setTo(""); }}
-            >
-              Clear
-            </Button>
-          </CardContent>
-        </Card>
+				<Card className="shadow-card border-border/50">
+					<CardContent className="p-2.5 flex flex-col lg:flex-row gap-2">
+						<div className="relative flex-1">
+							<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+							<Input
+								className="pl-8 h-8 text-xs"
+								placeholder="Search by case number, category or subtype..."
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+							/>
+						</div>
+						<Select value={clientFilter} onValueChange={setClientFilter}>
+							<SelectTrigger className="w-full lg:w-48 h-8 text-xs">
+								<SelectValue placeholder="All clients" />
+							</SelectTrigger>
+							<SelectContent className="bg-primary border-primary/50 text-white">
+								<SelectItem
+									className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+									value="All"
+								>
+									All clients
+								</SelectItem>
+								{clientsData?.map((c) => (
+									<SelectItem
+										className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+										key={c.id}
+										value={c.id}
+									>
+										{c.labName || c.fullName || c.email}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<Select value={statusFilter} onValueChange={setStatusFilter}>
+							<SelectTrigger className="w-full lg:w-48 h-8 text-xs">
+								<SelectValue placeholder="All statuses" />
+							</SelectTrigger>
+							<SelectContent className="bg-primary border-primary/50 text-white">
+								{statusFilters.map((status) => (
+									<SelectItem
+										key={status}
+										value={status}
+										className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+									>
+										{status === "All"
+											? "All Statuses"
+											: STATUS_LABELS[status] || status}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<Input
+							type="date"
+							value={from}
+							onChange={(e) => setFrom(e.target.value)}
+							className="w-full lg:w-36 h-8 text-xs"
+							title="Start date"
+						/>
+						<Input
+							type="date"
+							value={to}
+							onChange={(e) => setTo(e.target.value)}
+							className="w-full lg:w-36 h-8 text-xs"
+							title="End date"
+						/>
+						<Button
+							variant="outline"
+							size="sm"
+							className="h-8 text-xs"
+							onClick={() => {
+								setSearch("");
+								setStatusFilter("All");
+								setClientFilter("All");
+								setFrom("");
+								setTo("");
+							}}
+						>
+							Clear
+						</Button>
+					</CardContent>
+				</Card>
 
-        <Card className="shadow-card border-border/50 overflow-hidden">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border bg-muted/30">
-                    {["Case", "Client", "Type/Teeth", "Status", "Designer", "Created At", "Actions"].map((heading) => (
-                      <th key={heading} className="text-left px-3.5 py-2 text-xs font-semibold text-muted-foreground">
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {isLoading ? (
-                    Array.from({ length: 5 }).map((_, index) => (
-                      <tr key={index} className="animate-pulse">
-                        <td className="px-3.5 py-2"><div className="h-3.5 bg-muted rounded w-16" /></td>
-                        <td className="px-3.5 py-2"><div className="h-3.5 bg-muted rounded w-20" /></td>
-                        <td className="px-3.5 py-2"><div className="h-3.5 bg-muted rounded w-28" /></td>
-                        <td className="px-3.5 py-2"><div className="h-5.5 bg-muted rounded-full w-20" /></td>
-                        <td className="px-3.5 py-2"><div className="h-3.5 bg-muted rounded w-20" /></td>
-                        <td className="px-3.5 py-2"><div className="h-3.5 bg-muted rounded w-12" /></td>
-                        <td className="px-3.5 py-2"><div className="h-7 bg-muted rounded w-24" /></td>
-                      </tr>
-                    ))
-                  ) : error ? (
-                    <tr>
-                      <td colSpan={7} className="px-3.5 py-8 text-center text-xs text-red-500">
-                        {(error as Error).message}
-                      </td>
-                    </tr>
-                  ) : filtered.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-3.5 py-8 text-center text-xs text-muted-foreground">
-                        No cases found.
-                      </td>
-                    </tr>
-                  ) : (
-                    filtered.map((caseItem) => {
-                      const client = clientsMap.get(caseItem.clientId)
-                      const clientDisplayName = client?.labName || client?.fullName || "—"
-                      const restoration = renderSubTypeSummary(caseItem.subTypeData)
-                      const teeth = (caseItem.subTypeData?.teeth as number[]) || []
-                      const toothSystem = (caseItem.subTypeData?.toothSystem as string) || "USA"
-                      const designerName = membersMap.get(caseItem.designerId || "")?.fullName || "—"
-                      const isMutating = updatingId === caseItem.id
-                      const hasUnreadChat = Boolean(caseItem.hasUnreadChat);
+				<Card className="shadow-card border-border/50 overflow-hidden">
+					<CardContent className="p-0">
+						<div className="overflow-x-auto">
+							<table className="w-full text-xs">
+								<thead>
+									<tr className="border-b border-border bg-muted/30">
+										{[
+											"Case",
+											"Client",
+											"Type/Teeth",
+											"Status",
+											"Designer",
+											"Created At",
+											"Actions",
+										].map((heading) => (
+											<th
+												key={heading}
+												className="text-left px-3.5 py-2 text-xs font-semibold text-muted-foreground"
+											>
+												{heading}
+											</th>
+										))}
+									</tr>
+								</thead>
+								<tbody className="divide-y divide-border/50">
+									{isLoading ? (
+										Array.from({ length: 5 }).map((_, index) => (
+											<tr key={index} className="animate-pulse">
+												<td className="px-3.5 py-2">
+													<div className="h-3.5 bg-muted rounded w-16" />
+												</td>
+												<td className="px-3.5 py-2">
+													<div className="h-3.5 bg-muted rounded w-20" />
+												</td>
+												<td className="px-3.5 py-2">
+													<div className="h-3.5 bg-muted rounded w-28" />
+												</td>
+												<td className="px-3.5 py-2">
+													<div className="h-5.5 bg-muted rounded-full w-20" />
+												</td>
+												<td className="px-3.5 py-2">
+													<div className="h-3.5 bg-muted rounded w-20" />
+												</td>
+												<td className="px-3.5 py-2">
+													<div className="h-3.5 bg-muted rounded w-12" />
+												</td>
+												<td className="px-3.5 py-2">
+													<div className="h-7 bg-muted rounded w-24" />
+												</td>
+											</tr>
+										))
+									) : error ? (
+										<tr>
+											<td
+												colSpan={7}
+												className="px-3.5 py-8 text-center text-xs text-red-500"
+											>
+												{(error as Error).message}
+											</td>
+										</tr>
+									) : filtered.length === 0 ? (
+										<tr>
+											<td
+												colSpan={7}
+												className="px-3.5 py-8 text-center text-xs text-muted-foreground"
+											>
+												No cases found.
+											</td>
+										</tr>
+									) : (
+										filtered.map((caseItem) => {
+											const client = clientsMap.get(caseItem.clientId);
+											const clientDisplayName =
+												client?.labName || client?.fullName || "—";
+											const restoration = renderSubTypeSummary(
+												caseItem.subTypeData,
+											);
+											const teeth =
+												(caseItem.subTypeData?.teeth as number[]) || [];
+											const toothSystem =
+												(caseItem.subTypeData?.toothSystem as string) || "USA";
+											const designerName =
+												membersMap.get(caseItem.designerId || "")?.fullName ||
+												"—";
+											const isMutating = updatingId === caseItem.id;
+											const hasUnreadChat = Boolean(caseItem.hasUnreadChat);
 
-                      return (
-                        <tr
-                          key={caseItem.id}
-                          className={`transition-colors border-l-2 ${caseItem.status === "on_hold" ? "bg-red-50 hover:bg-red-100/80 border-l-red-500" : caseItem.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "hover:bg-muted/10 border-l-transparent"}`}
-                        >
-                          <td className="px-3.5 py-2">
-                            <div className="flex items-center gap-1.5">
-                              <Link href={`/admin/cases/${caseItem.id}`} className="hover:underline cursor-pointer font-semibold text-xs text-black">
-                                {caseItem.caseNumber || caseItem.id}
-                              </Link>
-                            </div>
-                          </td>
-                          <td className="px-3.5 py-2 text-[11px] text-black font-semibold">{clientDisplayName} <br /> <span className="font-normal text-muted-foreground">{removeExtensionFromString(caseItem?.scanFileName || "—")}</span></td>
-                          <td className="px-3.5 py-2">
-                            <p className="font-semibold text-[11px] text-black">{restoration || "—"}</p>
-                            {caseItem.category === "Implant" ? (
-                              <div className="text-[10px] text-muted-foreground mt-0.5">
-                                <span>Imp: {teeth.length ? `#${teeth.join(", #")}` : "—"}</span>
-                                {(() => {
-                                  const cbTeeth = (caseItem.subTypeData?.crownBridgeTeeth as number[]) || [];
-                                  return cbTeeth.length > 0 && (
-                                    <span className="ml-2">| C&B: #{cbTeeth.join(", #")}</span>
-                                  );
-                                })()}
-                              </div>
-                            ) : (
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                {caseItem.category} · {teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-3.5 py-2">
-                            <div className="scale-90 origin-left">
-                              <StatusBadge status={caseItem.status} role="internal" />
-                            </div>
-                          </td>
-                          <td className="px-3.5 py-2 text-[11px] text-muted-foreground">{designerName}</td>
-                          <td className="px-3.5 py-2 text-[10px] text-muted-foreground whitespace-nowrap">
-                            {new Date(caseItem.createdAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-3.5 py-2">
-                            <div className="flex gap-1.5 items-center flex-wrap">
-                              {/* 1. Admin and QC Lead actions */}
-                              {(currentUser?.role === "admin" || currentUser?.role === "qc") && (
-                                <>
-                                  {caseItem.status === "scan_received" && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={isMutating}
-                                        onClick={() => handleUpdate(caseItem.id, { status: "scan_verified" }, `Scan validated · ready for allocation`)}
-                                        title="Validate scan"
-                                        className="h-7 text-[10px] px-2.5"
-                                      >
-                                        <ShieldCheck className="h-3 w-3 mr-0.5" />Validate
-                                      </Button>
-                                      <AllocateMenu
-                                        designers={designers}
-                                        qcs={qcs}
-                                        disabled={isMutating}
-                                        onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId }, `Allocated designer to case`)}
-                                      />
-                                    </>
-                                  )}
+											return (
+												<tr
+													key={caseItem.id}
+													className={`transition-colors border-l-2 ${caseItem.status === "on_hold" ? "bg-red-50 hover:bg-red-100/80 border-l-red-500" : caseItem.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "hover:bg-muted/10 border-l-transparent"}`}
+												>
+													<td className="px-3.5 py-2">
+														<div className="flex items-center gap-1.5">
+															<Link
+																href={`/admin/cases/${caseItem.id}`}
+																className="hover:underline cursor-pointer font-semibold text-xs text-black"
+															>
+																{caseItem.caseNumber || caseItem.id}
+															</Link>
+														</div>
+													</td>
+													<td className="px-3.5 py-2 text-[11px] text-black font-semibold">
+														{clientDisplayName} <br />{" "}
+														<span className="font-normal text-muted-foreground">
+															{removeExtensionFromString(
+																caseItem?.scanFileName || "—",
+															)}
+														</span>
+													</td>
+													<td className="px-3.5 py-2">
+														<p className="font-semibold text-[11px] text-black">
+															{restoration || "—"}
+														</p>
+														{caseItem.category === "Implant" ? (
+															<div className="text-[10px] text-muted-foreground mt-0.5">
+																<span>
+																	Imp:{" "}
+																	{teeth.length ? `#${teeth.join(", #")}` : "—"}
+																</span>
+																{(() => {
+																	const cbTeeth =
+																		(caseItem.subTypeData
+																			?.crownBridgeTeeth as number[]) || [];
+																	return (
+																		cbTeeth.length > 0 && (
+																			<span className="ml-2">
+																				| C&B: #{cbTeeth.join(", #")}
+																			</span>
+																		)
+																	);
+																})()}
+															</div>
+														) : (
+															<p className="text-[10px] text-muted-foreground mt-0.5">
+																{caseItem.category} ·{" "}
+																{teeth.length
+																	? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})`
+																	: "—"}
+															</p>
+														)}
+													</td>
+													<td className="px-3.5 py-2">
+														<div className="scale-90 origin-left">
+															<StatusBadge
+																status={caseItem.status}
+																role="internal"
+															/>
+														</div>
+													</td>
+													<td className="px-3.5 py-2 text-[11px] text-muted-foreground">
+														{designerName}
+													</td>
+													<td className="px-3.5 py-2 text-[10px] text-muted-foreground whitespace-nowrap">
+														{new Date(caseItem.createdAt).toLocaleDateString()}
+													</td>
+													<td className="px-3.5 py-2">
+														<div className="flex gap-1.5 items-center flex-wrap">
+															{/* 1. Admin and QC Lead actions */}
+															{(currentUser?.role === "admin" ||
+																currentUser?.role === "qc") && (
+																<>
+																	{caseItem.status === "scan_received" && (
+																		<>
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ status: "scan_verified" },
+																						`Scan validated · ready for allocation`,
+																					)
+																				}
+																				title="Validate scan"
+																				className="h-7 text-[10px] px-2.5"
+																			>
+																				<ShieldCheck className="h-3 w-3 mr-0.5" />
+																				Validate
+																			</Button>
+																			<AllocateMenu
+																				designers={designers}
+																				qcs={qcs}
+																				disabled={isMutating}
+																				onPick={(dId) =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ designerId: dId },
+																						`Allocated designer to case`,
+																					)
+																				}
+																			/>
+																		</>
+																	)}
 
-                                  {caseItem.status === "scan_not_verified" && (
-                                    <AllocateMenu
-                                      designers={designers}
-                                      qcs={qcs}
-                                      disabled={isMutating}
-                                      onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId }, `Allocated designer to case`)}
-                                    />
-                                  )}
+																	{caseItem.status === "scan_not_verified" && (
+																		<AllocateMenu
+																			designers={designers}
+																			qcs={qcs}
+																			disabled={isMutating}
+																			onPick={(dId) =>
+																				handleUpdate(
+																					caseItem.id,
+																					{ designerId: dId },
+																					`Allocated designer to case`,
+																				)
+																			}
+																		/>
+																	)}
 
-                                  {(caseItem.status === "scan_verified" || caseItem.status === "allocated_to_designer" || caseItem.status === "in_progress") && (
-                                    <>
-                                      {!caseItem.designerId ? (
-                                        <AllocateMenu
-                                          designers={designers}
-                                          qcs={qcs}
-                                          disabled={isMutating}
-                                          onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId }, `Allocated designer to case`)}
-                                        />
-                                      ) : (
-                                        <>
-                                          {!caseItem.qcId ? (
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              disabled={isMutating}
-                                              onClick={() => setAssignQcCaseId(caseItem.id)}
-                                              className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold"
-                                            >
-                                              <UserPlus className="h-3 w-3 mr-0.5" /> Assign QC
-                                            </Button>
-                                          ) : (
-                                            caseItem.outputFile ? (
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                disabled={isMutating}
-                                                onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, `Submitted case to Internal QC`)}
-                                                className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800"
-                                              >
-                                                <ClipboardCheck className="h-3 w-3 mr-0.5" /> Send to QC
-                                              </Button>
-                                            ) : (
-                                              <span className="text-[10px] text-amber-600/80 italic font-medium px-1">Awaiting design upload</span>
-                                            )
-                                          )}
-                                        </>
-                                      )}
-                                    </>
-                                  )}
+																	{(caseItem.status === "scan_verified" ||
+																		caseItem.status ===
+																			"allocated_to_designer" ||
+																		caseItem.status === "in_progress") && (
+																		<>
+																			{!caseItem.designerId ? (
+																				<AllocateMenu
+																					designers={designers}
+																					qcs={qcs}
+																					disabled={isMutating}
+																					onPick={(dId) =>
+																						handleUpdate(
+																							caseItem.id,
+																							{ designerId: dId },
+																							`Allocated designer to case`,
+																						)
+																					}
+																				/>
+																			) : (
+																				<>
+																					{!caseItem.qcId ? (
+																						<Button
+																							size="sm"
+																							variant="outline"
+																							disabled={isMutating}
+																							onClick={() =>
+																								setAssignQcCaseId(caseItem.id)
+																							}
+																							className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold"
+																						>
+																							<UserPlus className="h-3 w-3 mr-0.5" />{" "}
+																							Assign QC
+																						</Button>
+																					) : caseItem.outputFile ? (
+																						<Button
+																							size="sm"
+																							variant="outline"
+																							disabled={isMutating}
+																							onClick={() =>
+																								handleUpdate(
+																									caseItem.id,
+																									{ status: "internal_qc" },
+																									`Submitted case to Internal QC`,
+																								)
+																							}
+																							className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800"
+																						>
+																							<ClipboardCheck className="h-3 w-3 mr-0.5" />{" "}
+																							Send to QC
+																						</Button>
+																					) : (
+																						<span className="text-[10px] text-amber-600/80 italic font-medium px-1">
+																							Awaiting design upload
+																						</span>
+																					)}
+																				</>
+																			)}
+																		</>
+																	)}
 
-                                  {caseItem.status === "internal_qc" && (
-                                    <div className="flex flex-wrap gap-1 items-center">
-                                      <Button
-                                        size="sm"
-                                        disabled={isMutating || !!pendingCaseAction}
-                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(caseItem.id, "approve", caseItem.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
-                                      >
-                                        ✓ Approve
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        disabled={isMutating || !!pendingCaseAction}
-                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(caseItem.id, "reject", caseItem.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 font-bold bg-red-600 hover:bg-red-700 shadow-sm transition-all"
-                                      >
-                                        ✗ Reject
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        disabled={isMutating || !!pendingCaseAction}
-                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(caseItem.id, "feedback", caseItem.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
-                                      >
-                                        💬 Feedback
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        disabled={isMutating || !!pendingCaseAction}
-                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(caseItem.id, "hold", caseItem.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 font-bold bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
-                                      >
-                                        ⏸ Hold
-                                      </Button>
-                                    </div>
-                                  )}
+																	{caseItem.status === "internal_qc" && (
+																		<div className="flex flex-wrap gap-1 items-center">
+																			<Button
+																				size="sm"
+																				disabled={
+																					isMutating || !!pendingCaseAction
+																				}
+																				onClick={(e) => {
+																					e.stopPropagation();
+																					openCaseActionDialog(
+																						caseItem.id,
+																						"approve",
+																						caseItem.caseNumber,
+																					);
+																				}}
+																				className="h-7 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+																			>
+																				✓ Approve
+																			</Button>
+																			<Button
+																				size="sm"
+																				variant="destructive"
+																				disabled={
+																					isMutating || !!pendingCaseAction
+																				}
+																				onClick={(e) => {
+																					e.stopPropagation();
+																					openCaseActionDialog(
+																						caseItem.id,
+																						"reject",
+																						caseItem.caseNumber,
+																					);
+																				}}
+																				className="h-7 text-[10px] px-2 font-bold bg-red-600 hover:bg-red-700 shadow-sm transition-all"
+																			>
+																				✗ Reject
+																			</Button>
+																			<Button
+																				size="sm"
+																				disabled={
+																					isMutating || !!pendingCaseAction
+																				}
+																				onClick={(e) => {
+																					e.stopPropagation();
+																					openCaseActionDialog(
+																						caseItem.id,
+																						"feedback",
+																						caseItem.caseNumber,
+																					);
+																				}}
+																				className="h-7 text-[10px] px-2 font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
+																			>
+																				💬 Feedback
+																			</Button>
+																			<Button
+																				size="sm"
+																				disabled={
+																					isMutating || !!pendingCaseAction
+																				}
+																				onClick={(e) => {
+																					e.stopPropagation();
+																					openCaseActionDialog(
+																						caseItem.id,
+																						"hold",
+																						caseItem.caseNumber,
+																					);
+																				}}
+																				className="h-7 text-[10px] px-2 font-bold bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
+																			>
+																				⏸ Hold
+																			</Button>
+																		</div>
+																	)}
 
-                                  {caseItem.status === "client_feedback" && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, `Sent case back to design`)}
-                                      className="h-7 text-[10px] px-2"
-                                    >
-                                      Back to designer
-                                    </Button>
-                                  )}
-                                  {caseItem.status === "on_hold" && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        disabled={isMutating}
-                                        onClick={() => handleUpdate(caseItem.id, { status: "scan_received" }, `Case resumed to active queue`)}
-                                        className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
-                                      >
-                                        <RefreshCw className="h-3 w-3 mr-0.5" /> Resume Case
-                                      </Button>
-                                      <AllocateMenu
-                                        designers={designers}
-                                        qcs={qcs}
-                                        disabled={isMutating}
-                                        onPick={(dId) => handleUpdate(caseItem.id, { designerId: dId }, `Allocated designer to on-hold case`)}
-                                      />
-                                    </>
-                                  )}
-                                </>
-                              )}
+																	{caseItem.status === "client_feedback" && (
+																		<Button
+																			size="sm"
+																			variant="outline"
+																			disabled={isMutating}
+																			onClick={() =>
+																				handleUpdate(
+																					caseItem.id,
+																					{ status: "in_progress" },
+																					`Sent case back to design`,
+																				)
+																			}
+																			className="h-7 text-[10px] px-2"
+																		>
+																			Back to designer
+																		</Button>
+																	)}
+																	{caseItem.status === "on_hold" && (
+																		<>
+																			<Button
+																				size="sm"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ status: "scan_received" },
+																						`Case resumed to active queue`,
+																					)
+																				}
+																				className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+																			>
+																				<RefreshCw className="h-3 w-3 mr-0.5" />{" "}
+																				Resume Case
+																			</Button>
+																			<AllocateMenu
+																				designers={designers}
+																				qcs={qcs}
+																				disabled={isMutating}
+																				onPick={(dId) =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ designerId: dId },
+																						`Allocated designer to on-hold case`,
+																					)
+																				}
+																			/>
+																		</>
+																	)}
+																</>
+															)}
 
-                              {/* 2. Designer actions */}
-                              {currentUser?.role === "designer" && (
-                                <>
-                                  {/* If case is on hold, show Resume */}
-                                  {caseItem.designerId === currentUser?.id && caseItem.status === "on_hold" && (
-                                    <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { status: "scan_received" }, "Case resumed to active queue")}
-                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
-                                      <RefreshCw className="h-3 w-3 mr-0.5" /> Resume Case
-                                    </Button>
-                                  )}
+															{/* 2. Designer actions */}
+															{currentUser?.role === "designer" && (
+																<>
+																	{/* If case is on hold, show Resume */}
+																	{caseItem.designerId === currentUser?.id &&
+																		caseItem.status === "on_hold" && (
+																			<Button
+																				size="sm"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ status: "scan_received" },
+																						"Case resumed to active queue",
+																					)
+																				}
+																				className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+																			>
+																				<RefreshCw className="h-3 w-3 mr-0.5" />{" "}
+																				Resume Case
+																			</Button>
+																		)}
 
-                                  {/* If case has client feedback, show Apply Feedback */}
-                                  {caseItem.designerId === currentUser?.id && caseItem.status === "client_feedback" && (
-                                    <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Restarted design to apply feedback")}
-                                      className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
-                                      Apply Feedback
-                                    </Button>
-                                  )}
+																	{/* If case has client feedback, show Apply Feedback */}
+																	{caseItem.designerId === currentUser?.id &&
+																		caseItem.status === "client_feedback" && (
+																			<Button
+																				size="sm"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ status: "in_progress" },
+																						"Restarted design to apply feedback",
+																					)
+																				}
+																				className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm"
+																			>
+																				Apply Feedback
+																			</Button>
+																		)}
 
-                                  {/* Step 1: Validate (if scan received and no designer is allocated yet) */}
-                                  {!caseItem.designerId && caseItem.status === "scan_received" && (
-                                    <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { status: "scan_verified" }, "Scan validated · ready for allocation")}
-                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
-                                      <ShieldCheck className="h-3 w-3 mr-0.5" /> Validate
-                                    </Button>
-                                  )}
+																	{/* Step 1: Validate (if scan received and no designer is allocated yet) */}
+																	{!caseItem.designerId &&
+																		caseItem.status === "scan_received" && (
+																			<Button
+																				size="sm"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ status: "scan_verified" },
+																						"Scan validated · ready for allocation",
+																					)
+																				}
+																				className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+																			>
+																				<ShieldCheck className="h-3 w-3 mr-0.5" />{" "}
+																				Validate
+																			</Button>
+																		)}
 
-                                  {/* Step 2: Allocate to Self (if scan is verified and no designer is allocated yet) */}
-                                  {!caseItem.designerId && caseItem.status === "scan_verified" && (
-                                    <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { designerId: currentUser.id }, "Allocated case to yourself")}
-                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all">
-                                      <UserPlus className="h-3 w-3 mr-0.5" /> Allocate to Self
-                                    </Button>
-                                  )}
+																	{/* Step 2: Allocate to Self (if scan is verified and no designer is allocated yet) */}
+																	{!caseItem.designerId &&
+																		caseItem.status === "scan_verified" && (
+																			<Button
+																				size="sm"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ designerId: currentUser.id },
+																						"Allocated case to yourself",
+																					)
+																				}
+																				className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+																			>
+																				<UserPlus className="h-3 w-3 mr-0.5" />{" "}
+																				Allocate to Self
+																			</Button>
+																		)}
 
-                                  {/* Step 3: Start Work — requires validation done and designer assigned */}
-                                  {caseItem.designerId === currentUser?.id && (caseItem.status === "scan_verified" || caseItem.status === "allocated_to_designer") && (
-                                    <Button size="sm" disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { status: "in_progress" }, "Started design work")}
-                                      className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
-                                      Start Work
-                                    </Button>
-                                  )}
+																	{/* Step 3: Start Work — requires validation done and designer assigned */}
+																	{caseItem.designerId === currentUser?.id &&
+																		(caseItem.status === "scan_verified" ||
+																			caseItem.status ===
+																				"allocated_to_designer") && (
+																			<Button
+																				size="sm"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ status: "in_progress" },
+																						"Started design work",
+																					)
+																				}
+																				className="h-7 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm"
+																			>
+																				Start Work
+																			</Button>
+																		)}
 
-                                  {/* Step 4: Upload Design (if in progress and no design files are uploaded yet) */}
-                                  {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && !caseItem.outputFile && (
-                                    <Button size="sm" variant="outline" disabled={isMutating}
-                                      onClick={() => toast.info("Please use your main /cases queue dashboard to upload design files.")}
-                                      className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800">
-                                      <Upload className="h-3 w-3 mr-0.5" /> Upload Design
-                                    </Button>
-                                  )}
+																	{/* Step 4: Upload Design (if in progress and no design files are uploaded yet) */}
+																	{caseItem.designerId === currentUser?.id &&
+																		caseItem.status === "in_progress" &&
+																		!caseItem.outputFile && (
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				disabled={isMutating}
+																				onClick={() =>
+																					toast.info(
+																						"Please use your main /cases queue dashboard to upload design files.",
+																					)
+																				}
+																				className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800"
+																			>
+																				<Upload className="h-3 w-3 mr-0.5" />{" "}
+																				Upload Design
+																			</Button>
+																		)}
 
-                                  {/* Step 5a: Assign QC (if in progress, design is uploaded, and no QC assigned yet) */}
-                                  {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && caseItem.outputFile && !caseItem.qcId && (
-                                    <Button size="sm" variant="outline" disabled={isMutating}
-                                      onClick={() => setAssignQcCaseId(caseItem.id)}
-                                      className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold">
-                                      <UserPlus className="h-3 w-3 mr-0.5" /> Assign QC
-                                    </Button>
-                                  )}
+																	{/* Step 5a: Assign QC (if in progress, design is uploaded, and no QC assigned yet) */}
+																	{caseItem.designerId === currentUser?.id &&
+																		caseItem.status === "in_progress" &&
+																		caseItem.outputFile &&
+																		!caseItem.qcId && (
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				disabled={isMutating}
+																				onClick={() =>
+																					setAssignQcCaseId(caseItem.id)
+																				}
+																				className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm font-bold"
+																			>
+																				<UserPlus className="h-3 w-3 mr-0.5" />{" "}
+																				Assign QC
+																			</Button>
+																		)}
 
-                                  {/* Step 5b: Send to QC (if in progress, design is uploaded, and QC is assigned) */}
-                                  {caseItem.designerId === currentUser?.id && caseItem.status === "in_progress" && caseItem.outputFile && caseItem.qcId && (
-                                    <Button size="sm" variant="outline" disabled={isMutating}
-                                      onClick={() => handleUpdate(caseItem.id, { status: "internal_qc" }, "Submitted case to Internal QC")}
-                                      className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800">
-                                      <ClipboardCheck className="h-3 w-3 mr-0.5" /> Send to QC
-                                    </Button>
-                                  )}
+																	{/* Step 5b: Send to QC (if in progress, design is uploaded, and QC is assigned) */}
+																	{caseItem.designerId === currentUser?.id &&
+																		caseItem.status === "in_progress" &&
+																		caseItem.outputFile &&
+																		caseItem.qcId && (
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ status: "internal_qc" },
+																						"Submitted case to Internal QC",
+																					)
+																				}
+																				className="h-7 text-[10px] px-2.5 bg-primary border-primary/50 text-white font-bold hover:bg-zinc-800"
+																			>
+																				<ClipboardCheck className="h-3 w-3 mr-0.5" />{" "}
+																				Send to QC
+																			</Button>
+																		)}
 
-                                  {/* If in internal_qc review, show status */}
-                                  {caseItem.designerId === currentUser?.id && caseItem.status === "internal_qc" && (
-                                    <span className="text-[10px] text-amber-600 italic px-1">In QC Review</span>
-                                  )}
-                                </>
-                              )}
+																	{/* If in internal_qc review, show status */}
+																	{caseItem.designerId === currentUser?.id &&
+																		caseItem.status === "internal_qc" && (
+																			<span className="text-[10px] text-amber-600 italic px-1">
+																				In QC Review
+																			</span>
+																		)}
+																</>
+															)}
 
-                              {/* 3b. Change requested actions for admin/qc */}
-                              {caseItem.status === "change_requested" && (currentUser?.role === "admin" || currentUser?.role === "qc") && (
-                                <div className="flex gap-1.5">
-                                  <Button
-                                    size="sm"
-                                    disabled={isMutating}
-                                    onClick={() => handleUpdate(caseItem.id, { status: "client_feedback" }, "Accepted change request")}
-                                    className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
-                                  >
-                                    Accept Request
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={isMutating}
-                                    onClick={() => handleUpdate(caseItem.id, { status: "submitted_to_client" }, "Declined change request")}
-                                    className="h-7 text-[10px] px-2.5 text-red-600 border-red-200 hover:bg-red-50 font-bold shadow-sm"
-                                  >
-                                    Decline Request
-                                  </Button>
-                                </div>
-                              )}
+															{/* 3b. Change requested actions for admin/qc */}
+															{caseItem.status === "change_requested" &&
+																(currentUser?.role === "admin" ||
+																	currentUser?.role === "qc") && (
+																	<div className="flex gap-1.5">
+																		<Button
+																			size="sm"
+																			disabled={isMutating}
+																			onClick={() =>
+																				handleUpdate(
+																					caseItem.id,
+																					{ status: "client_feedback" },
+																					"Accepted change request",
+																				)
+																			}
+																			className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+																		>
+																			Accept Request
+																		</Button>
+																		<Button
+																			size="sm"
+																			variant="outline"
+																			disabled={isMutating}
+																			onClick={() =>
+																				handleUpdate(
+																					caseItem.id,
+																					{ status: "submitted_to_client" },
+																					"Declined change request",
+																				)
+																			}
+																			className="h-7 text-[10px] px-2.5 text-red-600 border-red-200 hover:bg-red-50 font-bold shadow-sm"
+																		>
+																			Decline Request
+																		</Button>
+																	</div>
+																)}
 
-                              {/* 3. Awaiting client status display (visible to admin/qc, and designer if assigned) */}
-                              {caseItem.status === "submitted_to_client" &&
-                                ((currentUser?.role === "admin" || currentUser?.role === "qc") || caseItem.designerId === currentUser?.id) && (
-                                  <span className="text-[10px] text-muted-foreground italic px-1">awaiting client…</span>
-                                )}
+															{/* 3. Awaiting client status display (visible to admin/qc, and designer if assigned) */}
+															{caseItem.status === "submitted_to_client" &&
+																(currentUser?.role === "admin" ||
+																	currentUser?.role === "qc" ||
+																	caseItem.designerId === currentUser?.id) && (
+																	<span className="text-[10px] text-muted-foreground italic px-1">
+																		awaiting client…
+																	</span>
+																)}
 
-                              {/* 4. Completed status display (visible to admin/qc, and designer if assigned) */}
-                              {(caseItem.status === "approved" || caseItem.status === "delivered") &&
-                                ((currentUser?.role === "admin" || currentUser?.role === "qc") || caseItem.designerId === currentUser?.id) && (
-                                  <span className="text-[10px] text-green-600 font-bold px-1">Completed</span>
-                                )}
+															{/* 4. Completed status display (visible to admin/qc, and designer if assigned) */}
+															{(caseItem.status === "approved" ||
+																caseItem.status === "delivered") &&
+																(currentUser?.role === "admin" ||
+																	currentUser?.role === "qc" ||
+																	caseItem.designerId === currentUser?.id) && (
+																	<span className="text-[10px] text-green-600 font-bold px-1">
+																		Completed
+																	</span>
+																)}
 
+															{shouldShowChatIcon(caseItem, currentUser) &&
+																(hasUnreadChat ||
+																	(caseItem.todayMessagesCount || 0) > 0) && (
+																	<span
+																		className="relative inline-flex items-center shrink-0"
+																		title={
+																			hasUnreadChat
+																				? "New Messages"
+																				: `${caseItem.todayMessagesCount} messages today`
+																		}
+																	>
+																		<Button
+																			size="sm"
+																			variant="ghost"
+																			onClick={() => setOpenCase(caseItem)}
+																			title="Open case · chat & preferences"
+																			className="h-4 w-4 p-0"
+																		>
+																			<MessageSquare
+																				className={`h-4 w-4 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`}
+																			/>
+																		</Button>
+																		{hasUnreadChat ? (
+																			<span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+																				<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+																				<span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+																			</span>
+																		) : (
+																			<span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold border border-white leading-none">
+																				{caseItem.todayMessagesCount}
+																			</span>
+																		)}
+																	</span>
+																)}
 
-                              {shouldShowChatIcon(caseItem, currentUser) && (hasUnreadChat || (caseItem.todayMessagesCount || 0) > 0) && (
-                                <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${caseItem.todayMessagesCount} messages today`}>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => setOpenCase(caseItem)}
-                                    title="Open case · chat & preferences"
-                                    className="h-4 w-4 p-0"
-                                  >
-                                    <MessageSquare className={`h-4 w-4 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
+															{currentUser?.role === "admin" && (
+																<Button
+																	size="sm"
+																	variant="destructive"
+																	disabled={isMutating}
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		if (
+																			confirm(
+																				`Are you sure you want to delete case ${caseItem.caseNumber || caseItem.id}? This will permanently delete the case.`,
+																			)
+																		) {
+																			handleDeleteCase(caseItem.id);
+																		}
+																	}}
+																	title="Delete Case"
+																	className="h-7 text-[10px] px-2 bg-red-600/20 hover:bg-red-600 hover:text-white text-red-600 font-bold shadow-sm transition-all active:scale-95 hover:scale-105 shrink-0"
+																>
+																	<Trash2 className="h-3 w-3 mr-1" />
+																</Button>
+															)}
+														</div>
+													</td>
+												</tr>
+											);
+										})
+									)}
+								</tbody>
+							</table>
+						</div>
+						{!isLoading && hasMore && (
+							<div className="p-3 border-t border-border/50 flex justify-center">
+								<Button
+									variant="outline"
+									size="sm"
+									className="h-8 text-xs gap-1.5"
+									onClick={handleLoadMore}
+									disabled={isLoadingMore}
+								>
+									{isLoadingMore ? (
+										<>
+											<RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" />
+											Loading...
+										</>
+									) : (
+										"Load more cases"
+									)}
+								</Button>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+			</div>
 
+			<Dialog open={!!openCase} onOpenChange={(o) => !o && setOpenCase(null)}>
+				<DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto text-xs">
+					{openCase && (
+						<>
+							<DialogHeader>
+								<DialogTitle className="flex items-center gap-2 text-sm font-bold">
+									{openCase.caseNumber || openCase.id} ·{" "}
+									{renderSubTypeSummary(openCase.subTypeData)}
+									<div className="scale-90 origin-left">
+										<StatusBadge status={openCase.status} role="internal" />
+									</div>
+								</DialogTitle>
+								<p className="text-[11px] text-muted-foreground">
+									{clientsMap.get(openCase.clientId)?.labName || "—"} ·{" "}
+									{openCase.category} · Due{" "}
+									{openCase.dueDate
+										? new Date(openCase.dueDate).toLocaleDateString()
+										: "—"}
+								</p>
+							</DialogHeader>
 
-                                  </Button>
-                                  {hasUnreadChat ? (
-                                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                                    </span>
-                                  ) : (
-                                    <span className="absolute -top-1.5 -right-1.5 min-w-3 h-3 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] font-bold border border-white leading-none">
-                                      {caseItem.todayMessagesCount}
-                                    </span>
-                                  )}
-                                </span>
-                              )}
+							<Tabs defaultValue="chat" className="mt-2 text-xs">
+								<TabsList className="grid w-full grid-cols-3 h-8">
+									<TabsTrigger value="chat" className="text-xs h-7">
+										<MessageSquare className="h-3.5 w-3.5 mr-1" />
+										Chat
+									</TabsTrigger>
+									<TabsTrigger value="prefs" className="text-xs h-7">
+										<FileText className="h-3.5 w-3.5 mr-1" />
+										Lab preferences
+									</TabsTrigger>
+									<TabsTrigger value="details" className="text-xs h-7">
+										Details
+									</TabsTrigger>
+								</TabsList>
 
-                              {currentUser?.role === "admin" && (
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  disabled={isMutating}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (
-                                      confirm(
-                                        `Are you sure you want to delete case ${caseItem.caseNumber || caseItem.id}? This will permanently delete the case.`
-                                      )
-                                    ) {
-                                      handleDeleteCase(caseItem.id);
-                                    }
-                                  }}
-                                  title="Delete Case"
-                                  className="h-7 text-[10px] px-2 bg-red-600/20 hover:bg-red-600 hover:text-white text-red-600 font-bold shadow-sm transition-all active:scale-95 hover:scale-105 shrink-0"
-                                >
-                                  <Trash2 className="h-3 w-3 mr-1" />
-                                  Delete
-                                </Button>
-                              )}
+								<TabsContent value="chat" className="mt-3">
+									<CaseChat
+										caseId={openCase.id}
+										side="admin"
+										heightClass="h-[400px]"
+									/>
+								</TabsContent>
 
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {!isLoading && hasMore && (
-              <div className="p-3 border-t border-border/50 flex justify-center">
-                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
-                  onClick={handleLoadMore} disabled={isLoadingMore}>
-                  {isLoadingMore ? (
-                    <><RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" />Loading...</>
-                  ) : (
-                    "Load more cases"
-                  )}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+								<TabsContent value="prefs" className="mt-3 space-y-2 text-xs">
+									{prefFormsLoading && (
+										<p className="text-xs text-muted-foreground">
+											Loading preference forms…
+										</p>
+									)}
+									{!prefFormsLoading &&
+										clientProfile &&
+										clientPreferenceForms.length === 0 && (
+											<p className="text-xs text-muted-foreground">
+												{clientProfile.labName || clientProfile.fullName} has
+												not added any preference forms yet.
+											</p>
+										)}
+									{!prefFormsLoading &&
+										clientPreferenceForms.map((form) => (
+											<PreferenceFormCard key={form.id} form={form} />
+										))}
+									{clientProfile && (
+										<div className="p-3 bg-muted/20 border rounded-lg space-y-1">
+											<p className="text-xs font-bold text-foreground">
+												Lab Details
+											</p>
+											<p className="text-xs text-muted-foreground">
+												Lab Name:{" "}
+												<span className="text-foreground font-medium">
+													{clientProfile.labName || "—"}
+												</span>
+											</p>
+											<p className="text-xs text-muted-foreground">
+												Contact:{" "}
+												<span className="text-foreground font-medium">
+													{clientProfile.fullName || "—"} ({clientProfile.email}
+													)
+												</span>
+											</p>
+											<p className="text-xs text-muted-foreground">
+												Status:{" "}
+												<span className="text-foreground font-medium">
+													{clientProfile.status || "—"}
+												</span>
+											</p>
+										</div>
+									)}
+								</TabsContent>
 
-      <Dialog open={!!openCase} onOpenChange={(o) => !o && setOpenCase(null)}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto text-xs">
-          {openCase && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-sm font-bold">
-                  {openCase.caseNumber || openCase.id} · {renderSubTypeSummary(openCase.subTypeData)}
-                  <div className="scale-90 origin-left">
-                    <StatusBadge status={openCase.status} role="internal" />
-                  </div>
-                </DialogTitle>
-                <p className="text-[11px] text-muted-foreground">
-                  {clientsMap.get(openCase.clientId)?.labName || "—"} · {openCase.category} · Due {openCase.dueDate ? new Date(openCase.dueDate).toLocaleDateString() : "—"}
-                </p>
-              </DialogHeader>
+								<TabsContent
+									value="details"
+									className="mt-3 space-y-1.5 text-xs"
+								>
+									<Row
+										k="Designer"
+										v={
+											membersMap.get(openCase.designerId || "")?.fullName ||
+											"Not allocated"
+										}
+									/>
+									<Row
+										k="QC Lead"
+										v={membersMap.get(openCase.qcId || "")?.fullName || "—"}
+									/>
+									<Row
+										k="Model required"
+										v={openCase.subTypeData?.modelRequired ? "Yes" : "No"}
+									/>
+									{openCase.category === "Implant" ? (
+										<>
+											<Row
+												k="Implant Teeth"
+												v={
+													((openCase.subTypeData?.teeth as number[]) || [])
+														.length
+														? `#${((openCase.subTypeData?.teeth as number[]) || []).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})`
+														: "—"
+												}
+											/>
+											{Array.isArray(openCase.subTypeData?.crownBridgeTeeth) &&
+												(openCase.subTypeData.crownBridgeTeeth as number[])
+													.length > 0 && (
+													<Row
+														k="Crown & Bridge Teeth"
+														v={`#${(openCase.subTypeData.crownBridgeTeeth as number[]).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})`}
+													/>
+												)}
+										</>
+									) : (
+										<Row
+											k="Teeth"
+											v={
+												((openCase.subTypeData?.teeth as number[]) || []).length
+													? `#${((openCase.subTypeData?.teeth as number[]) || []).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})`
+													: "—"
+											}
+										/>
+									)}
+									<Row
+										k="Submitted"
+										v={new Date(openCase.createdAt).toLocaleString()}
+									/>
+									<Row
+										k="Last update"
+										v={new Date(openCase.updatedAt).toLocaleString()}
+									/>
+									<div className="pt-1.5 border-t border-border mt-2">
+										<p className="text-muted-foreground mb-0.5">Notes</p>
+										<p className="text-foreground whitespace-pre-wrap">
+											{(openCase.subTypeData?.notes as string) || "—"}
+										</p>
+									</div>
+								</TabsContent>
+							</Tabs>
+						</>
+					)}
+				</DialogContent>
+			</Dialog>
 
-              <Tabs defaultValue="chat" className="mt-2 text-xs">
-                <TabsList className="grid w-full grid-cols-3 h-8">
-                  <TabsTrigger value="chat" className="text-xs h-7">
-                    <MessageSquare className="h-3.5 w-3.5 mr-1" />Chat
-                  </TabsTrigger>
-                  <TabsTrigger value="prefs" className="text-xs h-7">
-                    <FileText className="h-3.5 w-3.5 mr-1" />Lab preferences
-                  </TabsTrigger>
-                  <TabsTrigger value="details" className="text-xs h-7">Details</TabsTrigger>
-                </TabsList>
+			<Dialog
+				open={!!pendingCaseAction}
+				onOpenChange={(open) => {
+					if (!open) closeCaseActionDialog();
+				}}
+			>
+				<DialogContent className="sm:max-w-[560px] bg-white text-gray-900 shadow-xl text-xs">
+					<DialogHeader>
+						<DialogTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
+							{pendingCaseAction
+								? CASE_ACTIONS[pendingCaseAction.action].title
+								: "Case Action"}
+						</DialogTitle>
+						<p className="text-xs text-gray-700 mt-0.5">
+							{pendingCaseAction
+								? CASE_ACTIONS[pendingCaseAction.action].description
+								: ""}
+							{pendingCaseAction?.caseNumber
+								? ` Case ${pendingCaseAction.caseNumber}.`
+								: ""}
+						</p>
+					</DialogHeader>
+					{pendingCaseAction?.action === "approve" && (
+						<div className="grid gap-2.5 py-3 border-t border-b border-gray-200">
+							<p className="text-xs font-semibold text-gray-600">
+								Quality Checklist
+							</p>
+							<div className="grid gap-2">
+								{QC_CHECKLIST.map((item) => {
+									const itemId = `admin-approve-check-${item.replace(/\s+/g, "-").toLowerCase()}`;
+									return (
+										<label
+											key={item}
+											htmlFor={itemId}
+											className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-800"
+										>
+											<input
+												id={itemId}
+												type="checkbox"
+												checked={!!approveChecklist[item]}
+												onChange={(e) =>
+													setApproveChecklist((current) => ({
+														...current,
+														[item]: e.target.checked,
+													}))
+												}
+												className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+											/>
+											<span className="text-xs font-medium leading-5">
+												{item}
+											</span>
+										</label>
+									);
+								})}
+							</div>
+						</div>
+					)}
+					{pendingCaseAction &&
+						CASE_ACTIONS[pendingCaseAction.action].reasonKey && (
+							<div className="grid gap-2.5 py-3">
+								<Label
+									htmlFor="admin-case-action-reason"
+									className="text-xs font-bold text-gray-700"
+								>
+									{CASE_ACTIONS[pendingCaseAction.action].reasonLabel}
+								</Label>{" "}
+								{pendingCaseAction.action === "hold" ? (
+									<div className="space-y-2">
+										<Select
+											value={holdReasonSelect}
+											onValueChange={setHoldReasonSelect}
+										>
+											<SelectTrigger className="w-full h-8 text-xs bg-gray-50 border text-gray-900 focus:ring-primary/80">
+												<SelectValue placeholder="Select a hold reason..." />
+											</SelectTrigger>
+											<SelectContent className="bg-white border text-gray-900 shadow-lg">
+												{HOLD_REASONS.map((reason) => (
+													<SelectItem
+														key={reason}
+														value={reason}
+														className="hover:bg-gray-100 focus:bg-gray-100 text-xs"
+													>
+														{reason}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 
-                <TabsContent value="chat" className="mt-3">
-                  <CaseChat caseId={openCase.id} side="admin" heightClass="h-[400px]" />
-                </TabsContent>
+										{holdReasonSelect === "Other (please specify)" && (
+											<Textarea
+												id="admin-case-action-reason"
+												value={caseActionReason}
+												onChange={(e) => setCaseActionReason(e.target.value)}
+												placeholder="Please specify other hold reason details..."
+												className="min-h-[80px] text-xs bg-gray-100 border text-gray-900 placeholder:text-gray-400 focus-visible:ring-primary/80"
+											/>
+										)}
+									</div>
+								) : (
+									<Textarea
+										id="admin-case-action-reason"
+										value={caseActionReason}
+										onChange={(e) => setCaseActionReason(e.target.value)}
+										placeholder={`Add ${CASE_ACTIONS[pendingCaseAction.action].reasonLabel?.toLowerCase()}`}
+										className="min-h-[100px] text-xs bg-gray-100 border text-gray-900 placeholder:text-gray-400 focus-visible:ring-primary/80"
+									/>
+								)}
+							</div>
+						)}
+					<div className="flex justify-end gap-2 mt-3">
+						<Button
+							variant="ghost"
+							onClick={closeCaseActionDialog}
+							className="text-gray-900 bg-gray-300 font-normal h-8 text-xs px-3"
+							disabled={updatingId === pendingCaseAction?.caseId}
+						>
+							Cancel
+						</Button>
+						<Button
+							disabled={
+								updatingId === pendingCaseAction?.caseId ||
+								(pendingCaseAction
+									? pendingCaseAction.action === "hold"
+										? !holdReasonSelect ||
+											(holdReasonSelect === "Other (please specify)" &&
+												!caseActionReason.trim())
+										: pendingCaseAction.action === "approve"
+											? !QC_CHECKLIST.every((item) => approveChecklist[item])
+											: Boolean(
+													CASE_ACTIONS[pendingCaseAction.action].reasonKey &&
+													!caseActionReason.trim(),
+												)
+									: true)
+							}
+							onClick={confirmCaseAction}
+							className={"text-white bg-primary font-normal h-8 text-xs px-3"}
+						>
+							{pendingCaseAction
+								? CASE_ACTIONS[pendingCaseAction.action].confirmLabel
+								: "Confirm"}
+						</Button>
+					</div>
+				</DialogContent>
+			</Dialog>
 
-                <TabsContent value="prefs" className="mt-3 space-y-2 text-xs">
-                  {prefFormsLoading && (
-                    <p className="text-xs text-muted-foreground">Loading preference forms…</p>
-                  )}
-                  {!prefFormsLoading && clientProfile && clientPreferenceForms.length === 0 && (
-                    <p className="text-xs text-muted-foreground">{clientProfile.labName || clientProfile.fullName} has not added any preference forms yet.</p>
-                  )}
-                  {!prefFormsLoading && clientPreferenceForms.map((form) => (
-                    <PreferenceFormCard key={form.id} form={form} />
-                  ))}
-                  {clientProfile && (
-                    <div className="p-3 bg-muted/20 border rounded-lg space-y-1">
-                      <p className="text-xs font-bold text-foreground">Lab Details</p>
-                      <p className="text-xs text-muted-foreground">Lab Name: <span className="text-foreground font-medium">{clientProfile.labName || "—"}</span></p>
-                      <p className="text-xs text-muted-foreground">Contact: <span className="text-foreground font-medium">{clientProfile.fullName || "—"} ({clientProfile.email})</span></p>
-                      <p className="text-xs text-muted-foreground">Status: <span className="text-foreground font-medium">{clientProfile.status || "—"}</span></p>
-                    </div>
-                  )}
-                </TabsContent>
+			<Dialog
+				open={!!assignQcCaseId}
+				onOpenChange={(o) => {
+					if (!o) {
+						setAssignQcCaseId(null);
+						setSelectedQcId("");
+					}
+				}}
+			>
+				<DialogContent className="sm:max-w-[425px] bg-primary border-primary/50 text-white shadow-xl text-xs">
+					<DialogHeader>
+						<DialogTitle className="text-sm font-bold text-white flex items-center gap-1.5">
+							<ShieldCheck className="h-4 w-4 text-emerald-500" /> Assign QC
+							Lead
+						</DialogTitle>
+						<p className="text-[11px] text-zinc-300 mt-0.5">
+							Select an active Quality Control team member to allocate to this
+							case and transition it to QC review.
+						</p>
+					</DialogHeader>
+					<div className="grid gap-3 py-3">
+						<div className="grid gap-1">
+							<label
+								htmlFor="qc-select"
+								className="text-xs font-bold text-zinc-200"
+							>
+								QC Member
+							</label>
+							<Select value={selectedQcId} onValueChange={setSelectedQcId}>
+								<SelectTrigger
+									id="qc-select"
+									className="bg-primary/80 border-primary-50/50 text-white focus:bg-emerald-600 focus:text-white h-8 text-xs"
+								>
+									<SelectValue placeholder="Select QC Lead" />
+								</SelectTrigger>
+								<SelectContent className="bg-primary border-primary-50/50 text-white">
+									{qcs.map((qc) => (
+										<SelectItem
+											key={qc.id}
+											value={qc.id}
+											className="text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+										>
+											{qc.fullName}
+										</SelectItem>
+									))}
+									{qcs.length === 0 && (
+										<p className="text-xs p-2 text-zinc-400">
+											No active QC leads found.
+										</p>
+									)}
+								</SelectContent>
+							</Select>
+						</div>
+					</div>
+					<div className="flex justify-end gap-2 mt-3">
+						<Button
+							variant="ghost"
+							onClick={() => {
+								setAssignQcCaseId(null);
+								setSelectedQcId("");
+							}}
+							className="text-white hover:bg-zinc-800 h-8 text-xs px-3"
+						>
+							Cancel
+						</Button>
+						<Button
+							disabled={!selectedQcId || updatingId === assignQcCaseId}
+							onClick={async () => {
+								if (!assignQcCaseId || !selectedQcId) return;
+								await handleUpdate(
+									assignQcCaseId,
+									{ qcId: selectedQcId, status: "internal_qc" },
+									"Successfully assigned QC lead and transitioned case status to Internal QC",
+								);
+								setAssignQcCaseId(null);
+								setSelectedQcId("");
+							}}
+							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-8 text-xs px-3"
+						>
+							Assign & Transition
+						</Button>
+					</div>
+				</DialogContent>
+			</Dialog>
 
-                <TabsContent value="details" className="mt-3 space-y-1.5 text-xs">
-                  <Row k="Designer" v={membersMap.get(openCase.designerId || "")?.fullName || "Not allocated"} />
-                  <Row k="QC Lead" v={membersMap.get(openCase.qcId || "")?.fullName || "—"} />
-                  <Row k="Model required" v={openCase.subTypeData?.modelRequired ? "Yes" : "No"} />
-                  {openCase.category === "Implant" ? (
-                    <>
-                      <Row k="Implant Teeth" v={((openCase.subTypeData?.teeth as number[]) || []).length ? `#${((openCase.subTypeData?.teeth as number[]) || []).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})` : "—"} />
-                      {Array.isArray(openCase.subTypeData?.crownBridgeTeeth) && (openCase.subTypeData.crownBridgeTeeth as number[]).length > 0 && (
-                        <Row k="Crown & Bridge Teeth" v={`#${(openCase.subTypeData.crownBridgeTeeth as number[]).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})`} />
-                      )}
-                    </>
-                  ) : (
-                    <Row k="Teeth" v={((openCase.subTypeData?.teeth as number[]) || []).length ? `#${((openCase.subTypeData?.teeth as number[]) || []).join(", #")} (${(openCase.subTypeData?.toothSystem as string) || "USA"})` : "—"} />
-                  )}
-                  <Row k="Submitted" v={new Date(openCase.createdAt).toLocaleString()} />
-                  <Row k="Last update" v={new Date(openCase.updatedAt).toLocaleString()} />
-                  <div className="pt-1.5 border-t border-border mt-2">
-                    <p className="text-muted-foreground mb-0.5">Notes</p>
-                    <p className="text-foreground whitespace-pre-wrap">{openCase.subTypeData?.notes as string || "—"}</p>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!pendingCaseAction} onOpenChange={(open) => { if (!open) closeCaseActionDialog(); }}>
-        <DialogContent className="sm:max-w-[560px] bg-white text-gray-900 shadow-xl text-xs">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].title : "Case Action"}
-            </DialogTitle>
-            <p className="text-xs text-gray-700 mt-0.5">
-              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].description : ""}
-              {pendingCaseAction?.caseNumber ? ` Case ${pendingCaseAction.caseNumber}.` : ""}
-            </p>
-          </DialogHeader>
-          {pendingCaseAction?.action === "approve" && (
-            <div className="grid gap-2.5 py-3 border-t border-b border-gray-200">
-              <p className="text-xs font-semibold text-gray-600">
-                Quality Checklist
-              </p>
-              <div className="grid gap-2">
-                {QC_CHECKLIST.map((item) => {
-                  const itemId = `admin-approve-check-${item.replace(/\s+/g, "-").toLowerCase()}`
-                  return (
-                    <label
-                      key={item}
-                      htmlFor={itemId}
-                      className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-gray-800"
-                    >
-                      <input
-                        id={itemId}
-                        type="checkbox"
-                        checked={!!approveChecklist[item]}
-                        onChange={(e) =>
-                          setApproveChecklist((current) => ({
-                            ...current,
-                            [item]: e.target.checked,
-                          }))
-                        }
-                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                      />
-                      <span className="text-xs font-medium leading-5">{item}</span>
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-          {pendingCaseAction && CASE_ACTIONS[pendingCaseAction.action].reasonKey && (
-            <div className="grid gap-2.5 py-3">
-              <Label htmlFor="admin-case-action-reason" className="text-xs font-bold text-gray-700">
-                {CASE_ACTIONS[pendingCaseAction.action].reasonLabel}
-              </Label>              {pendingCaseAction.action === "hold" ? (
-                <div className="space-y-2">
-                  <Select value={holdReasonSelect} onValueChange={setHoldReasonSelect}>
-                    <SelectTrigger className="w-full h-8 text-xs bg-gray-50 border text-gray-900 focus:ring-primary/80">
-                      <SelectValue placeholder="Select a hold reason..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border text-gray-900 shadow-lg">
-                      {HOLD_REASONS.map((reason) => (
-                        <SelectItem key={reason} value={reason} className="hover:bg-gray-100 focus:bg-gray-100 text-xs">
-                          {reason}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {holdReasonSelect === "Other (please specify)" && (
-                    <Textarea
-                      id="admin-case-action-reason"
-                      value={caseActionReason}
-                      onChange={(e) => setCaseActionReason(e.target.value)}
-                      placeholder="Please specify other hold reason details..."
-                      className="min-h-[80px] text-xs bg-gray-100 border text-gray-900 placeholder:text-gray-400 focus-visible:ring-primary/80"
-                    />
-                  )}
-                </div>
-              ) : (
-                <Textarea
-                  id="admin-case-action-reason"
-                  value={caseActionReason}
-                  onChange={(e) => setCaseActionReason(e.target.value)}
-                  placeholder={`Add ${CASE_ACTIONS[pendingCaseAction.action].reasonLabel?.toLowerCase()}`}
-                  className="min-h-[100px] text-xs bg-gray-100 border text-gray-900 placeholder:text-gray-400 focus-visible:ring-primary/80"
-                />
-              )}
-            </div>
-          )}
-          <div className="flex justify-end gap-2 mt-3">
-            <Button
-              variant="ghost"
-              onClick={closeCaseActionDialog}
-              className="text-gray-900 bg-gray-300 font-normal h-8 text-xs px-3"
-              disabled={updatingId === pendingCaseAction?.caseId}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={
-                updatingId === pendingCaseAction?.caseId ||
-                (pendingCaseAction
-                  ? pendingCaseAction.action === "hold"
-                    ? !holdReasonSelect || (holdReasonSelect === "Other (please specify)" && !caseActionReason.trim())
-                    : pendingCaseAction.action === "approve"
-                      ? !QC_CHECKLIST.every((item) => approveChecklist[item])
-                      : Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim())
-                  : true)
-              }
-              onClick={confirmCaseAction}
-              className={"text-white bg-primary font-normal h-8 text-xs px-3"}
-            >
-              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].confirmLabel : "Confirm"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!assignQcCaseId} onOpenChange={(o) => { if (!o) { setAssignQcCaseId(null); setSelectedQcId(""); } }}>
-        <DialogContent className="sm:max-w-[425px] bg-primary border-primary/50 text-white shadow-xl text-xs">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-bold text-white flex items-center gap-1.5">
-              <ShieldCheck className="h-4 w-4 text-emerald-500" /> Assign QC Lead
-            </DialogTitle>
-            <p className="text-[11px] text-zinc-300 mt-0.5">
-              Select an active Quality Control team member to allocate to this case and transition it to QC review.
-            </p>
-          </DialogHeader>
-          <div className="grid gap-3 py-3">
-            <div className="grid gap-1">
-              <label htmlFor="qc-select" className="text-xs font-bold text-zinc-200">
-                QC Member
-              </label>
-              <Select value={selectedQcId} onValueChange={setSelectedQcId}>
-                <SelectTrigger id="qc-select" className="bg-primary/80 border-primary-50/50 text-white focus:bg-emerald-600 focus:text-white h-8 text-xs">
-                  <SelectValue placeholder="Select QC Lead" />
-                </SelectTrigger>
-                <SelectContent className="bg-primary border-primary-50/50 text-white">
-                  {qcs.map((qc) => (
-                    <SelectItem
-                      key={qc.id}
-                      value={qc.id}
-                      className="text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
-                    >
-                      {qc.fullName}
-                    </SelectItem>
-                  ))}
-                  {qcs.length === 0 && (
-                    <p className="text-xs p-2 text-zinc-400">No active QC leads found.</p>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-3">
-            <Button
-              variant="ghost"
-              onClick={() => { setAssignQcCaseId(null); setSelectedQcId(""); }}
-              className="text-white hover:bg-zinc-800 h-8 text-xs px-3"
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={!selectedQcId || updatingId === assignQcCaseId}
-              onClick={async () => {
-                if (!assignQcCaseId || !selectedQcId) return
-                await handleUpdate(
-                  assignQcCaseId,
-                  { qcId: selectedQcId, status: "internal_qc" },
-                  "Successfully assigned QC lead and transitioned case status to Internal QC"
-                )
-                setAssignQcCaseId(null)
-                setSelectedQcId("")
-              }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-8 text-xs px-3"
-            >
-              Assign & Transition
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <AddCaseDialog
-        open={isAddOpen}
-        onOpenChange={setIsAddOpen}
-        role="admin"
-        clients={clientsData}
-        onSuccess={() => { setPageLimit((prev) => prev + 1); }}
-      />
-    </AdminLayout>
-  )
+			<AddCaseDialog
+				open={isAddOpen}
+				onOpenChange={setIsAddOpen}
+				role="admin"
+				clients={clientsData}
+				onSuccess={() => {
+					setPageLimit((prev) => prev + 1);
+				}}
+			/>
+		</AdminLayout>
+	);
 }
 
 const Row = React.memo(function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex justify-between gap-3 py-1 border-b border-border/40 last:border-0 text-xs">
-      <span className="text-muted-foreground">{k}</span>
-      <span className="text-foreground font-medium text-right">{v}</span>
-    </div>
-  )
-})
+	return (
+		<div className="flex justify-between gap-3 py-1 border-b border-border/40 last:border-0 text-xs">
+			<span className="text-muted-foreground">{k}</span>
+			<span className="text-foreground font-medium text-right">{v}</span>
+		</div>
+	);
+});
 
 const AllocateMenu = React.memo(function AllocateMenu({
-  designers,
-  qcs,
-  onPick,
-  disabled
+	designers,
+	qcs,
+	onPick,
+	disabled,
 }: {
-  designers: MemberRecord[]
-  qcs: MemberRecord[]
-  onPick: (memberId: string) => void
-  disabled?: boolean
+	designers: MemberRecord[];
+	qcs: MemberRecord[];
+	onPick: (memberId: string) => void;
+	disabled?: boolean;
 }) {
-  const hasAny = designers.length > 0 || qcs.length > 0
-  return (
-    <Select onValueChange={onPick} disabled={disabled}>
-      <SelectTrigger className="h-7 text-[10px] w-[120px] border-border/80 px-2">
-        <span className="flex items-center">
-          <UserPlus className="h-3 w-3 mr-1" /> Allocate
-        </span>
-      </SelectTrigger>
-      <SelectContent className="bg-primary border-primary/50 text-white">
-        {!hasAny && (
-          <SelectItem value="none" disabled className="bg-primary text-white/50 cursor-not-allowed text-xs">
-            No active members
-          </SelectItem>
-        )}
-        {designers.length > 0 && (
-          <SelectGroup>
-            <SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">Designers</SelectLabel>
-            {designers.map((d) => (
-              <SelectItem key={d.id} value={d.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
-                {d.fullName || d.email}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        )}
-        {designers.length > 0 && qcs.length > 0 && <SelectSeparator className="bg-white/20" />}
-        {qcs.length > 0 && (
-          <SelectGroup>
-            <SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">QC</SelectLabel>
-            {qcs.map((q) => (
-              <SelectItem key={q.id} value={q.id} className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
-                {q.fullName || q.email}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        )}
-      </SelectContent>
-    </Select>
-  )
-})
+	const hasAny = designers.length > 0 || qcs.length > 0;
+	return (
+		<Select onValueChange={onPick} disabled={disabled}>
+			<SelectTrigger className="h-7 text-[10px] w-[120px] border-border/80 px-2">
+				<span className="flex items-center">
+					<UserPlus className="h-3 w-3 mr-1" /> Allocate
+				</span>
+			</SelectTrigger>
+			<SelectContent className="bg-primary border-primary/50 text-white">
+				{!hasAny && (
+					<SelectItem
+						value="none"
+						disabled
+						className="bg-primary text-white/50 cursor-not-allowed text-xs"
+					>
+						No active members
+					</SelectItem>
+				)}
+				{designers.length > 0 && (
+					<SelectGroup>
+						<SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">
+							Designers
+						</SelectLabel>
+						{designers.map((d) => (
+							<SelectItem
+								key={d.id}
+								value={d.id}
+								className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+							>
+								{d.fullName || d.email}
+							</SelectItem>
+						))}
+					</SelectGroup>
+				)}
+				{designers.length > 0 && qcs.length > 0 && (
+					<SelectSeparator className="bg-white/20" />
+				)}
+				{qcs.length > 0 && (
+					<SelectGroup>
+						<SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">
+							QC
+						</SelectLabel>
+						{qcs.map((q) => (
+							<SelectItem
+								key={q.id}
+								value={q.id}
+								className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+							>
+								{q.fullName || q.email}
+							</SelectItem>
+						))}
+					</SelectGroup>
+				)}
+			</SelectContent>
+		</Select>
+	);
+});
 
-const PreferenceFormCard = React.memo(function PreferenceFormCard({ form }: { form: PreferenceFormRecord }) {
-  const p = form.payload
+const PreferenceFormCard = React.memo(function PreferenceFormCard({
+	form,
+}: {
+	form: PreferenceFormRecord;
+}) {
+	const p = form.payload;
 
-  const sections: { label: string; lines: string[] }[] = []
+	const sections: { label: string; lines: string[] }[] = [];
 
-  if (p.occlusion?.defaultValues || p.occlusion?.comments) {
-    const lines: string[] = []
-    if (p.occlusion.defaultValues) lines.push(`Default: ${p.occlusion.defaultValues}`)
-    if (p.occlusion.comments) lines.push(`Notes: ${p.occlusion.comments}`)
-    sections.push({ label: "Occlusion", lines })
-  }
+	if (p.occlusion?.defaultValues || p.occlusion?.comments) {
+		const lines: string[] = [];
+		if (p.occlusion.defaultValues)
+			lines.push(`Default: ${p.occlusion.defaultValues}`);
+		if (p.occlusion.comments) lines.push(`Notes: ${p.occlusion.comments}`);
+		sections.push({ label: "Occlusion", lines });
+	}
 
-  if (p.proximalContacts?.defaultValues || p.proximalContacts?.comments) {
-    const lines: string[] = []
-    if (p.proximalContacts.defaultValues) lines.push(`Default: ${p.proximalContacts.defaultValues}`)
-    if (p.proximalContacts.comments) lines.push(`Notes: ${p.proximalContacts.comments}`)
-    sections.push({ label: "Proximal Contacts", lines })
-  }
+	if (p.proximalContacts?.defaultValues || p.proximalContacts?.comments) {
+		const lines: string[] = [];
+		if (p.proximalContacts.defaultValues)
+			lines.push(`Default: ${p.proximalContacts.defaultValues}`);
+		if (p.proximalContacts.comments)
+			lines.push(`Notes: ${p.proximalContacts.comments}`);
+		sections.push({ label: "Proximal Contacts", lines });
+	}
 
-  if (p.distalMostCrownContact?.defaultValues || p.distalMostCrownContact?.comments) {
-    const lines: string[] = []
-    if (p.distalMostCrownContact.defaultValues) lines.push(`Default: ${p.distalMostCrownContact.defaultValues}`)
-    if (p.distalMostCrownContact.comments) lines.push(`Notes: ${p.distalMostCrownContact.comments}`)
-    sections.push({ label: "Distal-Most Crown Contact", lines })
-  }
+	if (
+		p.distalMostCrownContact?.defaultValues ||
+		p.distalMostCrownContact?.comments
+	) {
+		const lines: string[] = [];
+		if (p.distalMostCrownContact.defaultValues)
+			lines.push(`Default: ${p.distalMostCrownContact.defaultValues}`);
+		if (p.distalMostCrownContact.comments)
+			lines.push(`Notes: ${p.distalMostCrownContact.comments}`);
+		sections.push({ label: "Distal-Most Crown Contact", lines });
+	}
 
-  if (p.anatomy?.option || p.anatomy?.comments) {
-    const lines: string[] = []
-    if (p.anatomy.option) lines.push(`Option: ${p.anatomy.option}`)
-    if (p.anatomy.comments) lines.push(`Notes: ${p.anatomy.comments}`)
-    sections.push({ label: "Anatomy", lines })
-  }
+	if (p.anatomy?.option || p.anatomy?.comments) {
+		const lines: string[] = [];
+		if (p.anatomy.option) lines.push(`Option: ${p.anatomy.option}`);
+		if (p.anatomy.comments) lines.push(`Notes: ${p.anatomy.comments}`);
+		sections.push({ label: "Anatomy", lines });
+	}
 
-  if (p.smileLibrary?.option || p.smileLibrary?.libraryName || p.smileLibrary?.comments) {
-    const lines: string[] = []
-    if (p.smileLibrary.option) lines.push(`Option: ${p.smileLibrary.option}`)
-    if (p.smileLibrary.libraryName) lines.push(`Library: ${p.smileLibrary.libraryName}`)
-    if (p.smileLibrary.comments) lines.push(`Notes: ${p.smileLibrary.comments}`)
-    sections.push({ label: "Smile Library", lines })
-  }
+	if (
+		p.smileLibrary?.option ||
+		p.smileLibrary?.libraryName ||
+		p.smileLibrary?.comments
+	) {
+		const lines: string[] = [];
+		if (p.smileLibrary.option) lines.push(`Option: ${p.smileLibrary.option}`);
+		if (p.smileLibrary.libraryName)
+			lines.push(`Library: ${p.smileLibrary.libraryName}`);
+		if (p.smileLibrary.comments)
+			lines.push(`Notes: ${p.smileLibrary.comments}`);
+		sections.push({ label: "Smile Library", lines });
+	}
 
-  if (p.ponticType?.option || p.ponticType?.comments) {
-    const lines: string[] = []
-    if (p.ponticType.option) lines.push(`Option: ${p.ponticType.option}`)
-    if (p.ponticType.comments) lines.push(`Notes: ${p.ponticType.comments}`)
-    sections.push({ label: "Pontic Type", lines })
-  }
+	if (p.ponticType?.option || p.ponticType?.comments) {
+		const lines: string[] = [];
+		if (p.ponticType.option) lines.push(`Option: ${p.ponticType.option}`);
+		if (p.ponticType.comments) lines.push(`Notes: ${p.ponticType.comments}`);
+		sections.push({ label: "Pontic Type", lines });
+	}
 
-  if (p.ponticDistanceFromTissue?.option || p.ponticDistanceFromTissue?.distanceMm || p.ponticDistanceFromTissue?.comments) {
-    const lines: string[] = []
-    if (p.ponticDistanceFromTissue.option) lines.push(`Option: ${p.ponticDistanceFromTissue.option}`)
-    if (p.ponticDistanceFromTissue.distanceMm) lines.push(`Distance: ${p.ponticDistanceFromTissue.distanceMm} mm`)
-    if (p.ponticDistanceFromTissue.comments) lines.push(`Notes: ${p.ponticDistanceFromTissue.comments}`)
-    sections.push({ label: "Pontic Distance from Tissue", lines })
-  }
+	if (
+		p.ponticDistanceFromTissue?.option ||
+		p.ponticDistanceFromTissue?.distanceMm ||
+		p.ponticDistanceFromTissue?.comments
+	) {
+		const lines: string[] = [];
+		if (p.ponticDistanceFromTissue.option)
+			lines.push(`Option: ${p.ponticDistanceFromTissue.option}`);
+		if (p.ponticDistanceFromTissue.distanceMm)
+			lines.push(`Distance: ${p.ponticDistanceFromTissue.distanceMm} mm`);
+		if (p.ponticDistanceFromTissue.comments)
+			lines.push(`Notes: ${p.ponticDistanceFromTissue.comments}`);
+		sections.push({ label: "Pontic Distance from Tissue", lines });
+	}
 
-  if (p.matchMarginalRidge?.option || p.matchMarginalRidge?.comments) {
-    const lines: string[] = []
-    if (p.matchMarginalRidge.option) lines.push(`Option: ${p.matchMarginalRidge.option}`)
-    if (p.matchMarginalRidge.comments) lines.push(`Notes: ${p.matchMarginalRidge.comments}`)
-    sections.push({ label: "Match Marginal Ridge", lines })
-  }
+	if (p.matchMarginalRidge?.option || p.matchMarginalRidge?.comments) {
+		const lines: string[] = [];
+		if (p.matchMarginalRidge.option)
+			lines.push(`Option: ${p.matchMarginalRidge.option}`);
+		if (p.matchMarginalRidge.comments)
+			lines.push(`Notes: ${p.matchMarginalRidge.comments}`);
+		sections.push({ label: "Match Marginal Ridge", lines });
+	}
 
-  return (
-    <Card className="shadow-card">
-      <CardContent className="p-3 space-y-2">
-        <div className="flex items-start justify-between">
-          <p className="font-semibold text-foreground text-xs">{form.formName}</p>
-          <span className="text-[10px] text-muted-foreground">{new Date(form.createdAt).toLocaleDateString()}</span>
-        </div>
-        {sections.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground">No preferences filled in.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {sections.map((s) => (
-              <div key={s.label} className="text-[10px]">
-                <p className="font-medium text-foreground/80 mb-0.5">{s.label}</p>
-                {s.lines.map((line, i) => (
-                  <p key={i} className="text-muted-foreground pl-2">{line}</p>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-})
+	return (
+		<Card className="shadow-card">
+			<CardContent className="p-3 space-y-2">
+				<div className="flex items-start justify-between">
+					<p className="font-semibold text-foreground text-xs">
+						{form.formName}
+					</p>
+					<span className="text-[10px] text-muted-foreground">
+						{new Date(form.createdAt).toLocaleDateString()}
+					</span>
+				</div>
+				{sections.length === 0 ? (
+					<p className="text-[10px] text-muted-foreground">
+						No preferences filled in.
+					</p>
+				) : (
+					<div className="space-y-1.5">
+						{sections.map((s) => (
+							<div key={s.label} className="text-[10px]">
+								<p className="font-medium text-foreground/80 mb-0.5">
+									{s.label}
+								</p>
+								{s.lines.map((line, i) => (
+									<p key={i} className="text-muted-foreground pl-2">
+										{line}
+									</p>
+								))}
+							</div>
+						))}
+					</div>
+				)}
+			</CardContent>
+		</Card>
+	);
+});
