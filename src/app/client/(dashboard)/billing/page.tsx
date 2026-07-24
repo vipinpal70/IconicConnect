@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { ClientLayout } from "@/src/components/ClientLayout"
 import { fetchProfileWithCache } from "@/src/lib/profile-cache"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
@@ -186,7 +185,7 @@ export default function ClientBillingPage() {
   const confirmedCount = invoiceList.filter((i) => i.received).length
 
   return (
-    <ClientLayout>
+    <>
       <div className="space-y-4 animate-fade-in">
 
         {/* Header */}
@@ -378,6 +377,6 @@ export default function ClientBillingPage() {
         onConfirm={() => confirmInvoice && markPaidMutation.mutate(confirmInvoice.id)}
         loading={markPaidMutation.isPending}
       />
-    </ClientLayout>
+    </>
   )
 }

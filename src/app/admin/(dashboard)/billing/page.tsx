@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
@@ -322,7 +321,7 @@ export default function BillingPage() {
   const receivedCount = displayedInvoices.filter(i => i.received).length
 
   return (
-    <AdminLayout>
+    
       <div className="space-y-4 animate-fade-in">
 
         {/* Header */}
@@ -683,6 +682,6 @@ export default function BillingPage() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
+    
   )
 }

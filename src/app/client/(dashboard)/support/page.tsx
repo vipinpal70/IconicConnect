@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ClientLayout } from "@/src/components/ClientLayout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
@@ -126,7 +125,7 @@ export default function ClientSupportPage() {
   }
 
   return (
-    <ClientLayout>
+    
       <div className="space-y-4 animate-fade-in">
         <div className="relative overflow-hidden rounded-lg border border-border/50 bg-primary p-4 text-white shadow-xl">
           <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -324,7 +323,7 @@ export default function ClientSupportPage() {
           </CardContent>
         </Card>
       </div>
-    </ClientLayout>
+    
   )
 }
 

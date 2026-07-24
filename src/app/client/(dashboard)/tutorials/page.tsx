@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import Image from "next/image"
-import { ClientLayout } from "@/src/components/ClientLayout"
 import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent } from "@/src/components/ui/card"
@@ -118,7 +117,7 @@ export default function ClientTutorialsPage() {
   }, [search, tutorials, categoryFilter])
 
   return (
-    <ClientLayout>
+    
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -241,6 +240,6 @@ export default function ClientTutorialsPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </ClientLayout>
+    
   )
 }

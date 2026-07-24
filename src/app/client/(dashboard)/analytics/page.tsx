@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ClientLayout } from "@/src/components/ClientLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Input } from "@/src/components/ui/input";
 import {
@@ -118,7 +117,7 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <ClientLayout>
+    
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
@@ -339,6 +338,6 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-    </ClientLayout>
+    
   );
 }

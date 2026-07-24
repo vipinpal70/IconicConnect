@@ -47,6 +47,7 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
   if (action === 'preference_form.created') return 'Preference form created'
   if (action === 'preference_form.updated') return 'Preference form updated'
   if (action === 'preference_form.deleted') return 'Preference form deleted'
+  if (action === 'client.registered') return 'Client registered'
   if (action === 'client.approved') return 'Client account approved'
   if (action === 'client.plan_updated') return 'Client plan updated'
   if (action === 'price_list.updated') return 'Price list updated'

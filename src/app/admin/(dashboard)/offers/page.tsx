@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent } from "@/src/components/ui/card"
@@ -320,7 +319,7 @@ export default function AdminOffers() {
   }
 
   return (
-    <AdminLayout>
+    
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="space-y-0.5">
@@ -723,6 +722,6 @@ export default function AdminOffers() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
+    
   )
 }

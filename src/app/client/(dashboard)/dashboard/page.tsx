@@ -1,6 +1,5 @@
 "use client";
 
-import { ClientLayout } from "@/src/components/ClientLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { CheckCircle2, ClipboardCheck, Timer, TrendingUp, Inbox } from "lucide-react";
@@ -61,7 +60,7 @@ export default function ClientDashboard() {
   ];
 
   return (
-    <ClientLayout>
+    
       <div className="space-y-4 animate-fade-in text-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
@@ -225,6 +224,6 @@ export default function ClientDashboard() {
           </Card>
         </div>
       </div>
-    </ClientLayout>
+    
   );
 }

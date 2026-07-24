@@ -3,7 +3,6 @@
 import * as React from "react"
 import { useState, useMemo, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent, CardHeader } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
@@ -134,16 +133,16 @@ export default function TeamPage() {
     }
   }, [members])
 
-  if (isUserLoading) return <AdminLayout><div className="p-8 text-center">Loading session...</div></AdminLayout>
-  if (userError) return <AdminLayout><div className="p-8 text-center text-red-500">Error: {(userError as Error).message}</div></AdminLayout>
+  if (isUserLoading) return <div className="p-8 text-center">Loading session...</div>
+  if (userError) return <div className="p-8 text-center text-red-500">Error: {(userError as Error).message}</div>
   
   // If not admin, the useEffect will handle the redirect. 
   // We return null here to avoid rendering the table for non-admins.
   if (currentUser && currentUser.role !== 'admin') return null
-  if (!currentUser) return <AdminLayout><div className="p-8 text-center">Loading session...</div></AdminLayout>
+  if (!currentUser) return <div className="p-8 text-center">Loading session...</div>
 
   return (
-    <AdminLayout>
+    
       <div className="space-y-4 animate-in fade-in duration-500">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-0.5">
@@ -384,6 +383,6 @@ export default function TeamPage() {
           member={credMember}
         />
       </div>
-    </AdminLayout>
+    
   )
 }

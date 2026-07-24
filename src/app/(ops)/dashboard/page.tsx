@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo } from "react";
-import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { StatusBadge } from "@/src/components/StatusBadge";
@@ -134,7 +133,7 @@ export default function Dashboard() {
   const greeting = greetingName ? `Welcome back, ${greetingName}` : "Welcome back";
 
   return (
-    <OpsLayout>
+    
       <div className="space-y-6 animate-fade-in">
         <div>
           <h1 className="text-xl font-semibold text-foreground">{greeting}</h1>
@@ -288,6 +287,6 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
-    </OpsLayout>
+    
   );
 }

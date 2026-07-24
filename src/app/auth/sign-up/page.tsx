@@ -5,9 +5,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
-import { COUNTRY_CODES, formatPhoneForStorage, validateNationalPhone } from "@/src/lib/phone";
+import {
+	COUNTRY_CODES,
+	formatPhoneForStorage,
+	validateNationalPhone,
+} from "@/src/lib/phone";
 import { Eye, EyeOff } from "lucide-react";
-import Logo from '@/public/IconicConnectLogo.png'
+import Logo from "@/public/IconicConnectLogo.png";
 
 type FormData = {
 	name: string;
@@ -78,7 +82,7 @@ export default function SignUpPage() {
 		const { data, error: signUpError } = await supabase.auth.signUp({
 			email: form.email,
 			password: form.password,
-			phone: fullPhone
+			phone: fullPhone,
 		});
 
 		if (signUpError) {
@@ -103,6 +107,7 @@ export default function SignUpPage() {
 					city: form.city,
 					state: form.state,
 					country: form.country,
+					password: form.password,
 				}),
 			});
 
@@ -121,7 +126,7 @@ export default function SignUpPage() {
 		setLoading(false);
 		router.replace("/auth/sign-in?registered=1");
 		return;
-	}
+	};
 
 	return (
 		<div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
@@ -134,7 +139,12 @@ export default function SignUpPage() {
 						</h1>
 					</div> */}
 
-					<Image src={Logo} alt="Iconic Connect Logo" width={100} height={100} />
+					<Image
+						src={Logo}
+						alt="Iconic Connect Logo"
+						width={100}
+						height={100}
+					/>
 
 					<div className="">
 						<h2 className="text-lg font-semibold text-gray-900">
@@ -160,7 +170,12 @@ export default function SignUpPage() {
 								onChange={handleChange}
 								required
 							/>
-							<Field label="Job Title" name="title" value={form.title} onChange={handleChange} />
+							<Field
+								label="Job Title"
+								name="title"
+								value={form.title}
+								onChange={handleChange}
+							/>
 							<Field
 								label="Email"
 								name="email"
@@ -180,7 +195,10 @@ export default function SignUpPage() {
 										className="px-3 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 max-w-[100px]"
 									>
 										{COUNTRY_CODES.map((entry) => (
-											<option key={`${entry.code}-${entry.label}`} value={entry.code}>
+											<option
+												key={`${entry.code}-${entry.label}`}
+												value={entry.code}
+											>
 												{entry.code} {entry.label}
 											</option>
 										))}
@@ -192,12 +210,18 @@ export default function SignUpPage() {
 										onChange={handleChange}
 										inputMode="numeric"
 										maxLength={countryCode === "+91" ? 10 : 15}
-										placeholder={countryCode === "+91" ? "10 digit mobile number" : "Phone number"}
+										placeholder={
+											countryCode === "+91"
+												? "10 digit mobile number"
+												: "Phone number"
+										}
 										className="flex-1 px-3 py-2.5 text-gray-900 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
 									/>
 								</div>
 								<p className="mt-1 text-xs text-gray-400">
-									{countryCode === "+91" ? "Enter exactly 10 digits." : "Digits only."}
+									{countryCode === "+91"
+										? "Enter exactly 10 digits."
+										: "Digits only."}
 								</p>
 							</div>
 						</div>
@@ -328,7 +352,11 @@ function Field({
 }) {
 	const [showPassword, setShowPassword] = useState(false);
 	const isPasswordType = type === "password";
-	const inputType = isPasswordType ? (showPassword ? "text" : "password") : type;
+	const inputType = isPasswordType
+		? showPassword
+			? "text"
+			: "password"
+		: type;
 
 	return (
 		<div>
@@ -343,7 +371,7 @@ function Field({
 					onChange={onChange}
 					placeholder={placeholder}
 					required={required}
-					className={`w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition ${isPasswordType ? 'pr-10' : ''}`}
+					className={`w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition ${isPasswordType ? "pr-10" : ""}`}
 				/>
 				{isPasswordType && (
 					<button

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AdminLayout } from "@/src/components/AdminLayout";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Input } from "@/src/components/ui/input";
 import {
@@ -628,7 +627,7 @@ export default function AdminCasesPage() {
 	const clientPreferenceForms = prefFormsData?.data ?? [];
 
 	return (
-		<AdminLayout>
+		<>
 			<div className="space-y-4 animate-fade-in text-xs">
 				<div className="flex justify-between items-center">
 					<div className="space-y-0.5">
@@ -1902,7 +1901,7 @@ export default function AdminCasesPage() {
 					setPageLimit((prev) => prev + 1);
 				}}
 			/>
-		</AdminLayout>
+		</>
 	);
 }
 

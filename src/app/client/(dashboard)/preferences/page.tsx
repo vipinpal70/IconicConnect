@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ClientLayout } from "@/src/components/ClientLayout"
 import { Button } from "@/src/components/ui/button"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
 import { Card, CardContent } from "@/src/components/ui/card"
@@ -210,7 +209,7 @@ export default function ClientPreferencesPage() {
   }
 
   return (
-    <ClientLayout>
+    
       <div className="mx-auto max-w-5xl space-y-4 animate-fade-in">
         <div className="flex flex-col gap-1.5 md:flex-row md:items-end md:justify-between">
           <div>
@@ -698,7 +697,7 @@ export default function ClientPreferencesPage() {
 
 
       </div>
-    </ClientLayout>
+    
   )
 }
 

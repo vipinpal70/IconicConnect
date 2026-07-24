@@ -1,6 +1,5 @@
 "use client"
 
-import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { invoices, cases } from "@/src/data/demoData";
@@ -20,7 +19,7 @@ export default function BillingPage() {
   const overdue = invoices.filter((i) => i.status === "Overdue").length;
 
   return (
-    <OpsLayout>
+    
       <div className="space-y-4 animate-fade-in">
         <div>
           <h1 className="text-lg font-bold text-foreground">Billing & Invoices</h1>
@@ -117,6 +116,6 @@ export default function BillingPage() {
           </CardContent>
         </Card>
       </div>
-    </OpsLayout>
+    
   );
 }

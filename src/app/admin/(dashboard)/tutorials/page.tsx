@@ -4,7 +4,6 @@ import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import Image from "next/image"
 import { toast } from "sonner"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
@@ -255,7 +254,7 @@ export default function AdminTutorialsPage() {
   }
 
   return (
-    <AdminLayout>
+    
       <div className="space-y-4 animate-in fade-in duration-500">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-0.5">
@@ -520,6 +519,6 @@ export default function AdminTutorialsPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </AdminLayout>
+    
   )
 }

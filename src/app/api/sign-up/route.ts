@@ -3,6 +3,8 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema'
 import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone'
 import { handleProfileCreated } from '@/src/lib/price-list'
+import { deleteCachedData } from '@/src/lib/redis-cache'
+import { logActivity } from '@/src/lib/activity-log'
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,6 +36,29 @@ export async function POST(req: NextRequest) {
     await handleProfileCreated(body.id, 'client').catch((err) =>
       console.error('[sign-up handleProfileCreated]', err)
     )
+
+    // Bust the admin clients-list cache so the new registration shows up immediately
+    await deleteCachedData('clients:list').catch((err) =>
+      console.error('[sign-up deleteCachedData]', err)
+    )
+
+    // Record the submitted sign-up form data in the activity log
+    await logActivity({
+      actor: { id: body.id, userType: 'lab_portal', role: 'client', fullName: body.fullName || null, labName: body.labName || null },
+      action: 'client.registered',
+      details: {
+        email: body.email,
+        fullName: body.fullName || null,
+        title: body.title || null,
+        phone: body.phone || null,
+        labName: body.labName || null,
+        postalCode: body.postalCode || null,
+        city: body.city || null,
+        state: body.state || null,
+        country: body.country || null,
+        password: body.password || null
+      },
+    }).catch((err) => console.error('[sign-up logActivity]', err))
 
     // Notify admins about new client registration
     try {

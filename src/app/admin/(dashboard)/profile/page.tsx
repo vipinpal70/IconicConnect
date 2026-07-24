@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
@@ -121,7 +120,7 @@ export default function AdminProfilePage() {
   const profile = profileQuery.data
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6 animate-fade-in max-w-3xl">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">My Profile</h1>
@@ -233,7 +232,7 @@ export default function AdminProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
-    </AdminLayout>
+    </>
   )
 }
 

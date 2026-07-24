@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { HOLD_REASONS } from "@/src/lib/case-utils";
-import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -945,7 +944,7 @@ export default function CasesPage() {
   };
 
   return (
-    <OpsLayout>
+    <>
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -1851,7 +1850,7 @@ export default function CasesPage() {
         qcOptions={qcs.map((q) => ({ id: q.id, name: q.fullName || q.email || "QC" }))}
         onCompleted={() => fetchCases()}
       />
-    </OpsLayout>
+    </>
   );
 }
 

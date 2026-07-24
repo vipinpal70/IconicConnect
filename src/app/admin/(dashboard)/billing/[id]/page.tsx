@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { Label } from "@/src/components/ui/label"
@@ -209,21 +208,21 @@ export default function InvoiceDetailPage() {
 
   if (loading) {
     return (
-      <AdminLayout>
+      
         <div className="flex items-center justify-center h-64 text-xs text-muted-foreground">Loading invoice…</div>
-      </AdminLayout>
+      
     )
   }
   if (!invoice) {
     return (
-      <AdminLayout>
+      
         <div className="flex flex-col items-center justify-center h-64 gap-3">
           <p className="text-sm text-muted-foreground">Invoice not found</p>
           <Button variant="outline" size="sm" onClick={() => router.back()}>
             <ArrowLeft className="h-3.5 w-3.5 mr-1.5" /> Back
           </Button>
         </div>
-      </AdminLayout>
+      
     )
   }
 
@@ -237,7 +236,7 @@ export default function InvoiceDetailPage() {
   const prevTotal = parseFloat((subtotal + prevTax - prevDiscount + prevExtra).toFixed(2))
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-4 max-w-4xl mx-auto">
 
         {/* ── Action bar ── */}
@@ -583,6 +582,6 @@ export default function InvoiceDetailPage() {
           .print\\:hidden { display: none !important; }
         }
       `}</style>
-    </AdminLayout>
+    </>
   )
 }

@@ -3,7 +3,6 @@
 import { useParams } from "next/navigation"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { ClientLayout } from "@/src/components/ClientLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { ArrowLeft, BadgeCheck, CircleCheck, CircleX, Printer } from "lucide-react"
@@ -50,26 +49,26 @@ export default function ClientInvoiceDetailPage() {
 
   if (isLoading) {
     return (
-      <ClientLayout>
+      
         <div className="flex h-[60vh] items-center justify-center text-xs text-muted-foreground">
           Loading invoice…
         </div>
-      </ClientLayout>
+      
     )
   }
 
   if (error || !inv) {
     return (
-      <ClientLayout>
+      
         <div className="flex h-[60vh] items-center justify-center text-xs text-red-500">
           {(error as Error | undefined)?.message ?? "Invoice not found"}
         </div>
-      </ClientLayout>
+      
     )
   }
 
   return (
-    <ClientLayout>
+    
       <div className="space-y-4 animate-fade-in max-w-3xl mx-auto">
 
         {/* Back + header */}
@@ -282,6 +281,6 @@ export default function ClientInvoiceDetailPage() {
           </CardContent>
         </Card>
       </div>
-    </ClientLayout>
+    
   )
 }

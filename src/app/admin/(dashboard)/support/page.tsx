@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
@@ -161,7 +160,7 @@ export default function AdminSupportPage() {
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-4 animate-fade-in">
         <div className="relative overflow-hidden rounded-lg border border-border/60 bg-primary p-4 text-white">
           <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -437,7 +436,7 @@ export default function AdminSupportPage() {
           )}
         </DialogContent>
       </Dialog>
-    </AdminLayout>
+    </>
   )
 }
 

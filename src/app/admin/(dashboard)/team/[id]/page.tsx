@@ -3,7 +3,6 @@
 import * as React from "react"
 import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
@@ -96,12 +95,12 @@ export default function MemberDetailPage() {
   const isInitialLoading = isUserLoading || isMemberLoading
   const anyError = userError || memberError
 
-  if (isInitialLoading) return <AdminLayout><div className="p-8 text-center">Loading...</div></AdminLayout>
-  if (anyError) return <AdminLayout><div className="p-8 text-center text-red-500">Error: {(anyError as Error).message}</div></AdminLayout>
-  if (!member) return <AdminLayout><div className="p-8 text-center">Member not found</div></AdminLayout>
+  if (isInitialLoading) return <div className="p-8 text-center">Loading...</div>
+  if (anyError) return <div className="p-8 text-center text-red-500">Error: {(anyError as Error).message}</div>
+  if (!member) return <div className="p-8 text-center">Member not found</div>
 
   return (
-    <AdminLayout>
+    
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
         <div className="flex items-center justify-between">
           {currentUser?.role === 'admin' ? (
@@ -123,7 +122,7 @@ export default function MemberDetailPage() {
           onSave={(data) => mutation.mutate(data)}
         />
       </div>
-    </AdminLayout>
+    
   )
 }
 

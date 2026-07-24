@@ -4,7 +4,6 @@ import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Card, CardContent } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
@@ -92,7 +91,7 @@ export default function AdminClients() {
   if (error) return <ErrorMessage message={(error as Error).message} />
 
   return (
-    <AdminLayout>
+    
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-0.5">
@@ -259,32 +258,32 @@ export default function AdminClients() {
           </DialogContent>
         </Dialog>
       </div>
-    </AdminLayout>
+    
   )
 }
 
 function LoadingSpinner() {
   return (
-    <AdminLayout>
+    
       <div className="flex h-[60vh] items-center justify-center">
         <div className="relative flex items-center justify-center">
           <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-primary" />
           <div className="absolute h-8 w-8 animate-pulse rounded-full bg-primary/10" />
         </div>
       </div>
-    </AdminLayout>
+    
   )
 }
 
 function ErrorMessage({ message }: { message: string }) {
   return (
-    <AdminLayout>
+    
       <div className="flex h-[60vh] items-center justify-center p-4">
         <div className="max-w-md rounded-2xl border border-red-100 bg-red-50 p-6 text-center shadow-sm">
           <h3 className="mb-1 text-lg font-semibold text-red-900">Error Loading Clients</h3>
           <p className="text-sm text-red-700">{message}</p>
         </div>
       </div>
-    </AdminLayout>
+    
   )
 }

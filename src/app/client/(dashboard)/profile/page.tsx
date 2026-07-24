@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/src/lib/supabase/client";
-import { ClientLayout } from "@/src/components/ClientLayout";
 import { fetchProfileWithCache, invalidateProfileCache } from "@/src/lib/profile-cache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
@@ -182,7 +181,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <ClientLayout>
+    
       <div className="space-y-4 animate-fade-in max-w-5xl mx-auto">
         {/* Header banner */}
         <Card className="shadow-card overflow-hidden border-border/50">
@@ -399,7 +398,7 @@ export default function ProfilePage() {
           items={priceList}
         />
       </div>
-    </ClientLayout>
+    
   );
 }
 

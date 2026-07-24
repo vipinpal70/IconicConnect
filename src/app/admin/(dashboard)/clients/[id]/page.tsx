@@ -6,7 +6,6 @@ import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useParams, useRouter } from "next/navigation"
 import { format } from "date-fns"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Badge } from "@/src/components/ui/badge"
@@ -178,7 +177,7 @@ export default function ClientProfilePage() {
   const isDefaultPrices = priceListQuery.isSuccess && priceListQuery.data?.length === 0 && priceRows.length > 0
 
   return (
-    <AdminLayout>
+    
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
@@ -332,7 +331,7 @@ export default function ClientProfilePage() {
           </Card>
         </div>
       </div>
-    </AdminLayout>
+    
   )
 }
 

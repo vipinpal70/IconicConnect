@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { OpsLayout } from "@/src/components/OpsLayout"
 import { fetchProfileWithCache, invalidateProfileCache } from "@/src/lib/profile-cache"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
@@ -78,7 +77,7 @@ export default function ProfilePage() {
     : "OP"
 
   return (
-    <OpsLayout>
+    
       <div className="space-y-4 animate-fade-in max-w-2xl mx-auto">
         {/* Header Card */}
         <Card className="shadow-card overflow-hidden border-border/50">
@@ -174,7 +173,7 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
-    </OpsLayout>
+    
   )
 }
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { AdminLayout } from "@/src/components/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Inbox, Layers, ShieldCheck, ClipboardCheck, Users, MapPin, Building2, CalendarDays, Timer } from "lucide-react";
@@ -63,7 +62,7 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <AdminLayout>
+    
       <div className="space-y-4 animate-fade-in text-xs">
         <div className="space-y-0.5">
           <h1 className="text-xl font-semibold text-foreground">Iconic Connect — Admin</h1>
@@ -287,6 +286,6 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
+    
   );
 }

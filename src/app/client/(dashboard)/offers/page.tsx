@@ -2,7 +2,6 @@
 
 import { ReactNode, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ClientLayout } from "@/src/components/ClientLayout"
 import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent } from "@/src/components/ui/card"
@@ -122,7 +121,7 @@ export default function Offers() {
   }
 
   return (
-    <ClientLayout>
+    <>
       <div className="space-y-4 animate-fade-in">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Partner Offers</h1>
@@ -271,6 +270,6 @@ export default function Offers() {
           </p>
         </DialogContent>
       </Dialog>
-    </ClientLayout>
+    </>
   )
 }

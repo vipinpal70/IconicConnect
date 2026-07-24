@@ -1,7 +1,6 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query";
-import { OpsLayout } from "@/src/components/OpsLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -81,7 +80,7 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <OpsLayout>
+    
       <div className="space-y-4 animate-fade-in">
         <div>
           <h1 className="text-lg font-bold text-foreground">Analytics & Reports</h1>
@@ -280,6 +279,6 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
-    </OpsLayout>
+    
   );
 }

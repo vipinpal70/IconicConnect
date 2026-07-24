@@ -1,7 +1,6 @@
 "use client"
 
 import { use } from "react"
-import { AdminLayout } from "@/src/components/AdminLayout"
 import { CaseDetailView } from "@/src/components/CaseDetailView"
 
 export default function AdminCaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -12,7 +11,7 @@ export default function AdminCaseDetailPage({ params }: { params: Promise<{ id: 
       caseId={id}
       backHref="/admin/cases"
       chatSide="admin"
-      shell={(children) => <AdminLayout>{children}</AdminLayout>}
+      shell={(children) => children}
     />
   )
 }

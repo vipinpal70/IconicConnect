@@ -3,7 +3,6 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { createClient } from "@/src/lib/supabase/client";
-import { ClientLayout } from "@/src/components/ClientLayout";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -686,7 +685,7 @@ export default function CasesPage() {
   };
 
   return (
-    <ClientLayout>
+    
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -1610,6 +1609,6 @@ export default function CasesPage() {
           </CardContent>
         </Card>
       </div>
-    </ClientLayout>
+    
   );
 }
