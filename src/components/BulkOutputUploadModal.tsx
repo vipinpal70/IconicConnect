@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/components/ui/select";
-import { UploadCloud, X, Trash2, Loader2, Minus } from "lucide-react";
+import { UploadCloud, X, Trash2, Loader2, Minus, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import { uploadBulkFile } from "@/src/lib/upload-utils";
 
@@ -54,6 +54,25 @@ interface Row {
   matchedCaseId: string | null;
   candidateIds: string[];
   note: string;
+  // preview file (optional, only offered once a case is matched)
+  previewFileName: string | null;
+  previewFileType: string | null;
+  previewFileSize: number | null;
+  previewIsUploading: boolean;
+  previewUploadProgress: number;
+  previewUploadError: string | null;
+  previewStorageKey: string | null;
+}
+
+const PREVIEW_EXTENSIONS = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico"];
+
+function validatePreviewFile(file: File): { isValid: boolean; error?: string } {
+  const dot = file.name.lastIndexOf(".");
+  const ext = dot !== -1 ? file.name.substring(dot).toLowerCase() : "";
+  if (!PREVIEW_EXTENSIONS.includes(ext)) {
+    return { isValid: false, error: "Only HTML or image files are allowed for preview." };
+  }
+  return { isValid: true };
 }
 
 interface Props {
@@ -86,7 +105,9 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
   const [isDragging, setIsDragging] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [selectedQcId, setSelectedQcId] = useState<string>("");
+  const [activePreviewRowId, setActivePreviewRowId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewFileInputRef = useRef<HTMLInputElement>(null);
 
   const isDesigner = userRole === "designer";
   const routesTo = isDesigner ? "Internal QC" : "Client Review";
@@ -146,6 +167,13 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
       matchedCaseId: null,
       candidateIds: [],
       note: "",
+      previewFileName: null,
+      previewFileType: null,
+      previewFileSize: null,
+      previewIsUploading: false,
+      previewUploadProgress: 0,
+      previewUploadError: null,
+      previewStorageKey: null,
     }));
     setRows((prev) => [...prev, ...newRows]);
 
@@ -172,8 +200,56 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
         body: JSON.stringify({ storageKey: row.storageKey }),
       }).catch(() => {});
     }
+    if (row.previewStorageKey) {
+      fetch("/api/cases/bulk/upload", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageKey: row.previewStorageKey }),
+      }).catch(() => {});
+    }
     setRows((prev) => prev.filter((r) => r.tempId !== row.tempId));
   }, []);
+
+  const addPreviewFile = useCallback((tempId: string, file: File) => {
+    const check = validatePreviewFile(file);
+    if (!check.isValid) {
+      toast.error(check.error || "Invalid preview file");
+      return;
+    }
+    patchRow(tempId, {
+      previewFileName: file.name,
+      previewFileType: file.type || "application/octet-stream",
+      previewFileSize: file.size,
+      previewIsUploading: true,
+      previewUploadProgress: 0,
+      previewUploadError: null,
+      previewStorageKey: null,
+    });
+    uploadBulkFile(file, (p) => patchRow(tempId, { previewUploadProgress: p }))
+      .then((res) => patchRow(tempId, { previewIsUploading: false, previewUploadProgress: 100, previewStorageKey: res.storageKey }))
+      .catch((err: unknown) => patchRow(tempId, {
+        previewIsUploading: false,
+        previewUploadError: err instanceof Error ? err.message : "Upload failed",
+      }));
+  }, [patchRow]);
+
+  const removePreviewFile = useCallback((row: Row) => {
+    if (row.previewStorageKey) {
+      fetch("/api/cases/bulk/upload", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageKey: row.previewStorageKey }),
+      }).catch(() => {});
+    }
+    patchRow(row.tempId, {
+      previewFileName: null,
+      previewFileType: null,
+      previewFileSize: null,
+      previewUploadProgress: 0,
+      previewUploadError: null,
+      previewStorageKey: null,
+    });
+  }, [patchRow]);
 
   const casesById = useMemo(() => {
     const m = new Map<string, EligibleCase>();
@@ -181,7 +257,7 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
     return m;
   }, [eligibleCases]);
 
-  const anyUploading = rows.some((r) => r.isUploading);
+  const anyUploading = rows.some((r) => r.isUploading || r.previewIsUploading);
 
   // Designers must route through QC: a matched case with no QC assigned needs one picked here.
   const needsQcAssignment = useMemo(() => {
@@ -201,6 +277,13 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ storageKey: r.storageKey }),
+        }).catch(() => {});
+      }
+      if (r.previewStorageKey) {
+        fetch("/api/cases/bulk/upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ storageKey: r.previewStorageKey }),
         }).catch(() => {});
       }
     }
@@ -253,6 +336,8 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
             fileType: r.fileType,
             fileSize: r.fileSize,
             note: r.note.trim() || null,
+            previewStorageKey: r.previewStorageKey,
+            previewFileName: r.previewFileName,
           })),
         }),
       });
@@ -333,6 +418,18 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
             className="hidden"
             onChange={(e) => { addFiles(e.target.files ?? []); e.target.value = ""; }}
           />
+          <input
+            ref={previewFileInputRef}
+            type="file"
+            accept={PREVIEW_EXTENSIONS.join(",")}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file && activePreviewRowId) addPreviewFile(activePreviewRowId, file);
+              e.target.value = "";
+              setActivePreviewRowId(null);
+            }}
+          />
         </div>
 
         {/* Results table */}
@@ -344,6 +441,7 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
                   <th className="px-3 py-2 text-left font-medium">File</th>
                   <th className="px-3 py-2 text-left font-medium">Status</th>
                   <th className="px-3 py-2 text-left font-medium">Matched Case</th>
+                  <th className="px-3 py-2 text-left font-medium">Preview</th>
                   <th className="px-3 py-2 text-left font-medium">Note</th>
                   <th className="px-3 py-2 w-8"></th>
                 </tr>
@@ -389,6 +487,40 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
                             </SelectContent>
                           </Select>
                         )}
+                      </td>
+                      <td className="px-3 py-2 min-w-[160px]">
+                        {!row.matchedCaseId ? (
+                          <span className="text-muted-foreground">Assign a case first</span>
+                        ) : row.previewIsUploading ? (
+                          <div className="w-32">
+                            <div className="truncate text-foreground">{row.previewFileName}</div>
+                            <div className="mt-1 h-1.5 w-32 rounded-full bg-muted overflow-hidden">
+                              <div className="h-full bg-primary transition-all" style={{ width: `${row.previewUploadProgress}%` }} />
+                            </div>
+                          </div>
+                        ) : row.previewStorageKey ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate max-w-[100px]" title={row.previewFileName ?? undefined}>{row.previewFileName}</span>
+                            <button
+                              type="button"
+                              onClick={() => removePreviewFile(row)}
+                              className="text-muted-foreground hover:text-destructive"
+                              title="Remove preview file"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setActivePreviewRowId(row.tempId); previewFileInputRef.current?.click(); }}
+                            className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                            title="Attach preview file (HTML or image)"
+                          >
+                            <Paperclip className="h-3.5 w-3.5" /> Add preview
+                          </button>
+                        )}
+                        {row.previewUploadError && <div className="mt-1 text-destructive">{row.previewUploadError}</div>}
                       </td>
                       <td className="px-3 py-2 min-w-[160px]">
                         <Input

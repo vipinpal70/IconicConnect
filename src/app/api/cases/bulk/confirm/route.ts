@@ -33,6 +33,8 @@ type ConfirmItem = {
   fileType?: string | null;
   fileSize?: number | null;
   note?: string | null;
+  previewStorageKey?: string | null;
+  previewFileName?: string | null;
 };
 
 function objectKey(labName: string, fileName: string) {
@@ -121,11 +123,28 @@ export async function POST(req: NextRequest) {
         const fileUrl = buildFileUrl(labName, item.fileName);
         const note = item.note?.trim() || null;
 
+        // Optional preview file — same staging→client-namespace move as the output file.
+        let previewFileUrl: string | null = null;
+        if (item.previewStorageKey && item.previewFileName) {
+          if (!item.previewStorageKey.startsWith(`${STAGING_PREFIX}/`)) {
+            throw new Error('Invalid previewStorageKey');
+          }
+          const previewDestKey = objectKey(labName, item.previewFileName);
+          await r2.send(new CopyObjectCommand({
+            Bucket: R2_BUCKET,
+            CopySource: `${R2_BUCKET}/${item.previewStorageKey.split('/').map(encodeURIComponent).join('/')}`,
+            Key: previewDestKey,
+          }));
+          await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: item.previewStorageKey }));
+          previewFileUrl = buildFileUrl(labName, item.previewFileName);
+        }
+
         // Output lives only on the case record (same as the single-upload flow) — a
         // case_files row would wrongly show the output in the "Case Files" section.
         await db.update(cases).set({
           outputFile: fileUrl,
           outputNote: note,
+          ...(previewFileUrl ? { previewFile: previewFileUrl } : {}),
           status: targetStatus,
           ...(targetStatus === 'internal_qc' ? { qcId: finalQcId } : {}),
           ...(targetStatus === 'submitted_to_client' ? { submittedToClientAt: new Date() } : {}),
@@ -140,7 +159,7 @@ export async function POST(req: NextRequest) {
           details: {
             caseNumber: caseRecord.caseNumber,
             before: { status: caseRecord.status },
-            changes: { status: targetStatus, outputFile: fileUrl, outputNote: note },
+            changes: { status: targetStatus, outputFile: fileUrl, outputNote: note, ...(previewFileUrl ? { previewFile: previewFileUrl } : {}) },
             bulkUpload: true,
           },
         }).catch((err) => console.error('[BulkConfirm] activity log failed:', err));

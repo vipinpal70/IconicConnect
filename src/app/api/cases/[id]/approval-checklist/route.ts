@@ -99,6 +99,7 @@ export async function POST(
       .set({
         approvalChecklist: normalizedChecklist,
         status: 'submitted_to_client',
+        submittedToClientAt: new Date(),
       })
       .where(eq(cases.id, id))
       .returning()

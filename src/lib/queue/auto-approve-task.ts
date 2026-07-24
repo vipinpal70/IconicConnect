@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { db } from '../../db'
 import { cases } from '../../db/schema/case'
 import { profiles } from '../../db/schema/profile'
-import { eq, and, lte, isNotNull } from 'drizzle-orm'
+import { eq, and, lte, isNotNull, isNull } from 'drizzle-orm'
 import { NotificationService } from '../notifications/notification-service'
 import { NotificationType } from '../notifications/notification-events'
 
@@ -13,6 +13,20 @@ export async function runAutoApprove() {
 
   const threshold = new Date()
   threshold.setDate(threshold.getDate() - AUTO_APPROVE_DAYS)
+
+  // Defense-in-depth: a case stuck here never starts its 7-day clock and will
+  // never appear in the query below. Surface it instead of failing silently.
+  const orphanedCases = await db
+    .select({ id: cases.id, caseNumber: cases.caseNumber })
+    .from(cases)
+    .where(and(eq(cases.status, 'submitted_to_client'), isNull(cases.submittedToClientAt)))
+
+  if (orphanedCases.length > 0) {
+    console.warn(
+      `[AutoApprove] WARNING: ${orphanedCases.length} case(s) are 'submitted_to_client' with no submittedToClientAt — they will never auto-approve:`,
+      orphanedCases.map(c => c.caseNumber ?? c.id).join(', ')
+    )
+  }
 
   const pendingCases = await db
     .select()
