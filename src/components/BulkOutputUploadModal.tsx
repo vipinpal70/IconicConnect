@@ -418,19 +418,20 @@ export function BulkOutputUploadModal({ open, onOpenChange, userRole, qcOptions 
             className="hidden"
             onChange={(e) => { addFiles(e.target.files ?? []); e.target.value = ""; }}
           />
-          <input
-            ref={previewFileInputRef}
-            type="file"
-            accept={PREVIEW_EXTENSIONS.join(",")}
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file && activePreviewRowId) addPreviewFile(activePreviewRowId, file);
-              e.target.value = "";
-              setActivePreviewRowId(null);
-            }}
-          />
         </div>
+
+        <input
+          ref={previewFileInputRef}
+          type="file"
+          accept={PREVIEW_EXTENSIONS.join(",")}
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file && activePreviewRowId) addPreviewFile(activePreviewRowId, file);
+            e.target.value = "";
+            setActivePreviewRowId(null);
+          }}
+        />
 
         {/* Results table */}
         {rows.length > 0 && (
