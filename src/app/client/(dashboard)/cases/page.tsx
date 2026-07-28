@@ -24,6 +24,7 @@ import { uploadFileInChunks } from "@/src/lib/upload-utils";
 interface BulkRow {
   fileName: string;
   file: File;
+  serviceType: "design_only" | "design_milling";
   category: string;
   subTypeData: Record<string, any>;
   modelRequired: "yes" | "no";
@@ -238,6 +239,7 @@ export default function CasesPage() {
     return () => { window.clearTimeout(timeoutId); window.clearInterval(intervalId); };
   }, []);
 
+  const [serviceType, setServiceType] = useState<"design_only" | "design_milling">("design_only");
   const [category, setCategory] = useState<string>("Crown & Bridges");
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({});
   const [modelRequired, setModelRequired] = useState("no");
@@ -504,6 +506,7 @@ export default function CasesPage() {
 
     const formData = new FormData();
     const caseData = {
+      serviceType,
       category,
       subTypeData: {
         ...subTypeData,
@@ -534,6 +537,7 @@ export default function CasesPage() {
         setTeeth([]);
         setCrownBridgeTeeth([]);
         setModelRequired("no");
+        setServiceType("design_only");
         setCategory("Crown & Bridges");
         setSubTypeData({});
         setSingleFile(null);
@@ -574,6 +578,7 @@ export default function CasesPage() {
       return {
         fileName: f.name,
         file: f,
+        serviceType: "design_only",
         category: "Crown & Bridges",
         subTypeData: {},
         modelRequired: "no",
@@ -637,6 +642,7 @@ export default function CasesPage() {
     const formData = new FormData();
 
     const casesData = bulkRows.map(row => ({
+      serviceType: row.serviceType,
       category: row.category,
       subTypeData: {
         ...row.subTypeData,
@@ -854,6 +860,38 @@ export default function CasesPage() {
                           </div>
                         </label>
                       )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Service Type</Label>
+                      <RadioGroup
+                        value={serviceType}
+                        onValueChange={(v) => setServiceType(v as "design_only" | "design_milling")}
+                        className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
+                      >
+                        <label
+                          htmlFor="client-service-design-only"
+                          className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === "design_only" ? "border-emerald-600 bg-emerald-50" : "border-border"
+                            }`}
+                        >
+                          <RadioGroupItem value="design_only" id="client-service-design-only" className="mt-0.5" />
+                          <span>
+                            <span className="block text-xs font-semibold text-foreground">Design Only</span>
+                            <span className="block text-[11px] text-muted-foreground">Iconic delivers design files digitally</span>
+                          </span>
+                        </label>
+                        <label
+                          htmlFor="client-service-design-milling"
+                          className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === "design_milling" ? "border-emerald-600 bg-emerald-50" : "border-border"
+                            }`}
+                        >
+                          <RadioGroupItem value="design_milling" id="client-service-design-milling" className="mt-0.5" />
+                          <span>
+                            <span className="block text-xs font-semibold text-foreground">Design + Milling</span>
+                            <span className="block text-[11px] text-muted-foreground">Iconic designs, then mills and ships the physical product</span>
+                          </span>
+                        </label>
+                      </RadioGroup>
                     </div>
 
                     {category === "Implant" ? (
@@ -1304,6 +1342,16 @@ export default function CasesPage() {
                                     <p className="text-[10px] text-muted-foreground text-right">Uploading... {row.uploadProgress}%</p>
                                   </div>
                                 )}
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Service Type</Label>
+                                  <Select value={row.serviceType} onValueChange={(v) => updateBulkRow(i, { serviceType: v as "design_only" | "design_milling" })}>
+                                    <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
+                                    <SelectContent className="bg-emerald-800 text-white">
+                                      <SelectItem value="design_only" className="focus:bg-emerald-700 focus:text-white">Design Only</SelectItem>
+                                      <SelectItem value="design_milling" className="focus:bg-emerald-700 focus:text-white">Design + Milling</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1">
                                     <Label className="text-xs">Category</Label>
