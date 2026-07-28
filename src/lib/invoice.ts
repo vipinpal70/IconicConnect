@@ -69,10 +69,11 @@ function extractUnitCount(unitType: 'per_tooth' | 'per_arch', subTypeData: any):
 
 // ── Client price lookup ─────────────────────────────────────────────────────
 
-async function getUnitPrice(
+export async function getUnitPrice(
   clientId: string,
   category: string,
-  subCategory: string
+  subCategory: string,
+  serviceType: 'design_only' | 'design_milling' = 'design_only'
 ): Promise<number> {
   // Try client-specific price first
   const [row] = await db
@@ -86,7 +87,11 @@ async function getUnitPrice(
       )
     )
     .where(
-      and(eq(serviceCatalog.category, category), eq(serviceCatalog.subCategory, subCategory))
+      and(
+        eq(serviceCatalog.category, category),
+        eq(serviceCatalog.subCategory, subCategory),
+        eq(serviceCatalog.serviceType, serviceType)
+      )
     )
     .limit(1)
 
@@ -107,11 +112,14 @@ export async function buildInvoiceItems(
     .from(cases)
     .where(inArray(cases.id, caseIds))
 
-  // Group cases by normalized category + subCategory
+  // Group cases by normalized category + subCategory + serviceType — a
+  // Design Only and a Design + Milling case of the same restoration price
+  // differently, so they can never share a line item.
   type Group = {
     category: string
     subCategory: string
     unitType: 'per_tooth' | 'per_arch'
+    serviceType: 'design_only' | 'design_milling'
     totalUnits: number
   }
   const groupMap = new Map<string, Group>()
@@ -119,6 +127,8 @@ export async function buildInvoiceItems(
   for (const c of selectedCases) {
     const input = mapCaseToPricingInput(c.category || '', c.subTypeData)
     if (!input) continue
+
+    const serviceType = c.serviceType === 'design_milling' ? 'design_milling' : 'design_only'
 
     // Implants are handled separately because they can produce two distinct
     // line items: one for the implant device component (Robotic/Ti-Base/Custom)
@@ -130,10 +140,10 @@ export async function buildInvoiceItems(
       // 1. Implant device component (Robotic / Ti-Base / Custom)
       const implantCount = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
       if (implantCount > 0) {
-        const key = `Implants:${input.subCategory}`
+        const key = `Implants:${input.subCategory}:${serviceType}`
         const g = groupMap.get(key)
         if (g) g.totalUnits += implantCount
-        else groupMap.set(key, { category: 'Implants', subCategory: input.subCategory, unitType: 'per_tooth', totalUnits: implantCount })
+        else groupMap.set(key, { category: 'Implants', subCategory: input.subCategory, unitType: 'per_tooth', serviceType, totalUnits: implantCount })
       }
 
       // 2. Optional Crown / Bridge component — priced from Crown & Bridge catalog
@@ -141,10 +151,10 @@ export async function buildInvoiceItems(
       if (cbType && cbType !== 'None' && input.type) {
         const cbCount = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
         if (cbCount > 0) {
-          const key = `Crown & Bridge:${input.type}`
+          const key = `Crown & Bridge:${input.type}:${serviceType}`
           const g = groupMap.get(key)
           if (g) g.totalUnits += cbCount
-          else groupMap.set(key, { category: 'Crown & Bridge', subCategory: input.type, unitType: 'per_tooth', totalUnits: cbCount })
+          else groupMap.set(key, { category: 'Crown & Bridge', subCategory: input.type, unitType: 'per_tooth', serviceType, totalUnits: cbCount })
         }
       }
 
@@ -171,14 +181,14 @@ export async function buildInvoiceItems(
       continue
     }
 
-    const key = `${category}:${subCategory}`
+    const key = `${category}:${subCategory}:${serviceType}`
     const existing = groupMap.get(key)
     const units = extractUnitCount(unitType, c.subTypeData)
 
     if (existing) {
       existing.totalUnits += units
     } else {
-      groupMap.set(key, { category, subCategory, unitType, totalUnits: units })
+      groupMap.set(key, { category, subCategory, unitType, serviceType, totalUnits: units })
     }
   }
 
@@ -188,35 +198,45 @@ export async function buildInvoiceItems(
   let sno = 1
 
   for (const group of groupMap.values()) {
-    const unitPrice = await getUnitPrice(clientId, group.category, group.subCategory)
+    const unitPrice = await getUnitPrice(clientId, group.category, group.subCategory, group.serviceType)
     const totalPrice = parseFloat((group.totalUnits * unitPrice).toFixed(2))
     subtotal += totalPrice
 
     items.push({
       sno: sno++,
-      description: `${group.category} - ${group.subCategory}`,
+      description: `${group.category} - ${group.subCategory}${group.serviceType === 'design_milling' ? ' (Design + Milling)' : ''}`,
       qty: group.totalUnits,
       unitPrice,
       totalPrice,
+      category: group.category,
+      subCategory: group.subCategory,
+      serviceType: group.serviceType,
     })
   }
 
-  // Model billing — count cases where modelRequired = "yes" (per_case charge)
-  const modelCount = selectedCases.filter((c) => {
+  // Model billing — count cases where modelRequired = "yes" (per_case charge),
+  // split by serviceType since Design+Milling models price differently too.
+  const modelCountByServiceType = new Map<'design_only' | 'design_milling', number>()
+  for (const c of selectedCases) {
     const data = (c.subTypeData as Record<string, any>) || {}
-    return data.modelRequired === 'yes'
-  }).length
+    if (data.modelRequired !== 'yes') continue
+    const serviceType = c.serviceType === 'design_milling' ? 'design_milling' : 'design_only'
+    modelCountByServiceType.set(serviceType, (modelCountByServiceType.get(serviceType) ?? 0) + 1)
+  }
 
-  if (modelCount > 0) {
-    const modelUnitPrice = await getUnitPrice(clientId, 'Model', '3D Model')
+  for (const [serviceType, modelCount] of modelCountByServiceType) {
+    const modelUnitPrice = await getUnitPrice(clientId, 'Model', '3D Model', serviceType)
     const modelTotalPrice = parseFloat((modelCount * modelUnitPrice).toFixed(2))
     subtotal += modelTotalPrice
     items.push({
       sno: sno++,
-      description: 'Model - 3D Model',
+      description: `Model - 3D Model${serviceType === 'design_milling' ? ' (Design + Milling)' : ''}`,
       qty: modelCount,
       unitPrice: modelUnitPrice,
       totalPrice: modelTotalPrice,
+      category: 'Model',
+      subCategory: '3D Model',
+      serviceType,
     })
   }
 

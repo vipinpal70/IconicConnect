@@ -10,6 +10,7 @@ import {
 export const userTypeEnum = pgEnum('user_type', [
   'lab_portal',           // client side
   'admin_portal',   // admin/owner side
+  'milling_portal', // milling centre partner side
 ])
 
 export const userRoleEnum = pgEnum('user_role', [
@@ -22,6 +23,10 @@ export const userRoleEnum = pgEnum('user_role', [
   'account_manager',
   'designer',
   'consultant',
+  // milling_portal roles
+  'milling_admin',
+  'milling_production',
+  'milling_support',
 ])
 
 export const userStatusEnum = pgEnum('user_status', [
@@ -63,6 +68,10 @@ export const profiles = pgTable('profiles', {
   createdBy: uuid('created_by'),               // parent user's id
   password: varchar('password', { length: 255 }),
 
+  // Milling portal: which centre this user belongs to (FK enforced in migration SQL,
+  // not declared here, to avoid a schema-file import cycle with ./milling)
+  millingCenterId: uuid('milling_center_id'),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   onBoardedAt: timestamp('onboarded_at'),
@@ -71,6 +80,7 @@ export const profiles = pgTable('profiles', {
     roleIdx: index('role_idx').on(table.role),
     emailIdx: index('email_idx').on(table.email),
     createdByIdx: index('profiles_created_by_idx').on(table.createdBy),
+    millingCenterIdIdx: index('profiles_milling_center_id_idx').on(table.millingCenterId),
   }
 })
 

@@ -13,6 +13,7 @@ import {
   CreditCard,
   BarChart3,
   UserCircle,
+  Factory,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -46,6 +47,7 @@ const NAV_ITEMS = [
   { title: "Clients", url: "/admin/clients", icon: Building2, badgeKey: "clients" },
   { title: "Billing", url: "/admin/billing", icon: CreditCard, badgeKey: "billing" },
   { title: "Team", url: "/admin/team", icon: Users },
+  { title: "Milling", url: "/admin/milling/overview", icon: Factory },
   { title: "Tutorials", url: "/admin/tutorials", icon: PlayCircle },
   { title: "Offers", url: "/admin/offers", icon: Tag, badgeKey: "offers" },
   { title: "Support", url: "/admin/support", icon: Headset, badgeKey: "support" },
@@ -94,7 +96,7 @@ export function AdminSidebar() {
   const isNotAdmin = profile?.role !== "admin"
 
   const filteredNavItems = NAV_ITEMS.filter((item) => {
-    if (item.title === "Team" && isNotAdmin) return false
+    if ((item.title === "Team" || item.title === "Milling") && isNotAdmin) return false
     return true
   })
 

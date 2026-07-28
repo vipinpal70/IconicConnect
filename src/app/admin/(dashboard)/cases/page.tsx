@@ -52,6 +52,7 @@ import {
 	Plus,
 	Download,
 	Trash2,
+	Factory,
 } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 
@@ -63,6 +64,7 @@ type CaseRecord = {
 	category: string | null;
 	subTypeData: Record<string, unknown> | null;
 	status: string;
+	serviceType?: "design_only" | "design_milling";
 	designerId: string | null;
 	qcId: string | null;
 	accountManagerId: string | null;
@@ -244,6 +246,7 @@ export default function AdminCasesPage() {
 	const [isAddOpen, setIsAddOpen] = useState(false);
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("All");
+	const [serviceTypeFilter, setServiceTypeFilter] = useState("All");
 	const [clientFilter, setClientFilter] = useState("All");
 	const [from, setFrom] = useState("");
 	const [to, setTo] = useState("");
@@ -321,6 +324,28 @@ export default function AdminCasesPage() {
 		},
 		staleTime: 5 * 60_000, // team roster rarely changes
 	});
+
+	// Fetch Design+Milling assignment info (centre name + milling status per case)
+	const { data: millingCasesData } = useQuery<
+		Array<{ id: string; millingCenterId: string | null; millingCenterName: string | null; millingStatus: string | null }>
+	>({
+		queryKey: ["admin-milling-cases-list"],
+		queryFn: async () => {
+			const res = await fetch("/api/admin/milling/cases");
+			if (!res.ok) return [];
+			const json = await res.json();
+			return json.data ?? [];
+		},
+		staleTime: 60_000,
+	});
+
+	const millingByCaseId = useMemo(() => {
+		const map = new Map<string, { millingCenterName: string | null; millingStatus: string | null }>();
+		for (const row of millingCasesData ?? []) {
+			map.set(row.id, { millingCenterName: row.millingCenterName, millingStatus: row.millingStatus });
+		}
+		return map;
+	}, [millingCasesData]);
 
 	// Fetch current logged in user
 	const { data: currentUser } = useQuery<{
@@ -410,6 +435,11 @@ export default function AdminCasesPage() {
 
 			const matchesStatus =
 				statusFilter === "All" || caseItem.status === statusFilter;
+			const matchesServiceType =
+				serviceTypeFilter === "All" ||
+				(serviceTypeFilter === "design_milling"
+					? caseItem.serviceType === "design_milling"
+					: caseItem.serviceType !== "design_milling");
 			const matchesClient =
 				clientFilter === "All" || caseItem.clientId === clientFilter;
 			const createdAtDate = caseItem.createdAt
@@ -421,12 +451,13 @@ export default function AdminCasesPage() {
 			return (
 				matchesSearch &&
 				matchesStatus &&
+				matchesServiceType &&
 				matchesClient &&
 				matchesFrom &&
 				matchesTo
 			);
 		});
-	}, [data, search, statusFilter, clientFilter, clientsMap, from, to]);
+	}, [data, search, statusFilter, serviceTypeFilter, clientFilter, clientsMap, from, to]);
 
 	// Live database updates
 	const handleUpdate = async (
@@ -753,6 +784,22 @@ export default function AdminCasesPage() {
 								))}
 							</SelectContent>
 						</Select>
+						<Select value={serviceTypeFilter} onValueChange={setServiceTypeFilter}>
+							<SelectTrigger className="w-full lg:w-48 h-8 text-xs">
+								<SelectValue placeholder="All services" />
+							</SelectTrigger>
+							<SelectContent className="bg-primary border-primary/50 text-white">
+								<SelectItem value="All" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
+									All Services
+								</SelectItem>
+								<SelectItem value="design_only" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
+									Design Only
+								</SelectItem>
+								<SelectItem value="design_milling" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
+									Design + Milling
+								</SelectItem>
+							</SelectContent>
+						</Select>
 						<Input
 							type="date"
 							value={from}
@@ -774,6 +821,7 @@ export default function AdminCasesPage() {
 							onClick={() => {
 								setSearch("");
 								setStatusFilter("All");
+								setServiceTypeFilter("All");
 								setClientFilter("All");
 								setFrom("");
 								setTo("");
@@ -927,12 +975,22 @@ export default function AdminCasesPage() {
 														)}
 													</td>
 													<td className="px-3.5 py-2">
-														<div className="scale-90 origin-left">
+														<div className="scale-90 origin-left flex items-center gap-1.5">
 															<StatusBadge
 																status={caseItem.status}
 																role="internal"
 															/>
+															{caseItem.serviceType === "design_milling" && (
+																<span title="Design + Milling" className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary/10 text-primary shrink-0">
+																	<Factory className="h-2.5 w-2.5" />
+																</span>
+															)}
 														</div>
+														{caseItem.serviceType === "design_milling" && millingByCaseId.get(caseItem.id)?.millingCenterName && (
+															<p className="text-[10px] text-muted-foreground mt-1">
+																→ {millingByCaseId.get(caseItem.id)?.millingCenterName}
+															</p>
+														)}
 													</td>
 													<td className="px-3.5 py-2 text-[11px] text-muted-foreground">
 														{designerName}

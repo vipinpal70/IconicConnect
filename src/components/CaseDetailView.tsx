@@ -1,13 +1,13 @@
 "use client"
 
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, FileText, MessageSquare, Paperclip, Download } from "lucide-react"
+import { ArrowLeft, FileText, MessageSquare, Paperclip, Download, Factory, Truck, RefreshCw } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { StatusBadge } from "@/src/components/StatusBadge"
 import { CaseChat } from "@/src/components/CaseChat"
-import { CASE_LIFECYCLE_STEPS, CASE_STATUS_TO_LIFECYCLE_STEP } from "@/src/db/schema/case"
+import { CASE_LIFECYCLE_STEPS, CASE_STATUS_TO_LIFECYCLE_STEP, INTERNAL_STATUS_LABELS } from "@/src/db/schema/case"
 import React, { useState, useRef } from "react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
@@ -16,6 +16,8 @@ import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
 import { HOLD_REASONS } from "@/src/lib/case-utils"
 import { Eye } from "lucide-react"
+import type { MillingCenter } from "@/src/db/schema/milling"
+import type { RoutingResult } from "@/src/lib/milling/routing-engine"
 
 const getPreviewFileType = (url: string | null | undefined): 'html' | 'image' | 'zip' | 'other' => {
   if (!url) return 'other';
@@ -49,6 +51,7 @@ type CaseRecord = {
   category: string | null
   subTypeData: Record<string, unknown> | null
   status: string
+  serviceType?: "design_only" | "design_milling"
   designerId: string | null
   qcId: string | null
   accountManagerId: string | null
@@ -89,6 +92,18 @@ type CaseActivity = {
   actor: string
   actionAt: string
   actionTime?: string
+  clientLabel?: string
+  clientHidden?: boolean
+}
+
+// Milling-stage events must never surface milling terminology, centre names,
+// or shipment/tracking detail to the dental lab — filter + relabel before
+// rendering to a client (chatSide === "lab").
+function toViewerSafeActivities(activities: CaseActivity[], chatSide: "lab" | "admin"): CaseActivity[] {
+  if (chatSide === "admin") return activities
+  return activities
+    .filter((a) => !a.clientHidden)
+    .map((a) => (a.clientLabel ? { ...a, label: a.clientLabel } : a))
 }
 
 function renderSubTypeSummary(subTypeData: Record<string, unknown> | null) {
@@ -192,6 +207,7 @@ export function CaseDetailView({
   const [changeNotes, setChangeNotes] = useState("")
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
   const [rejectNotes, setRejectNotes] = useState("")
+  const [activeTab, setActiveTab] = useState<"details" | "milling">("details")
 
   const handleStatusChange = async (targetStatus: string, holdReason?: string) => {
     if (targetStatus === "on_hold" && !holdReason) {
@@ -355,6 +371,7 @@ export function CaseDetailView({
   const caseRecord = caseResponse?.data
   const files = filesResponse?.data || []
   const activities = caseRecord?.timeline || []
+  const displayActivities = toViewerSafeActivities(activities, chatSide)
   const wasValidated = activities.some(
     (act) => act.label === "Scan validated" || act.label === "Scan rejected" || act.label.includes("QC") || act.label.includes("designer")
   )
@@ -402,6 +419,29 @@ export function CaseDetailView({
         </div>
       </div>
 
+      {chatSide === "admin" && caseRecord.serviceType === "design_milling" && (
+        <div className="flex gap-1.5 border-b border-border">
+          <button
+            onClick={() => setActiveTab("details")}
+            className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${activeTab === "details" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+          >
+            Details
+          </button>
+          <button
+            onClick={() => setActiveTab("milling")}
+            className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${activeTab === "milling" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+          >
+            <Factory className="h-3.5 w-3.5" /> Milling
+          </button>
+        </div>
+      )}
+
+      {activeTab === "milling" && chatSide === "admin" && caseRecord.serviceType === "design_milling" ? (
+        <MillingTab caseId={caseRecord.id} timeline={activities} />
+      ) : (
+        <>
       {caseRecord.clientMassage && (
         <div className={`p-4 rounded-lg border text-xs font-medium flex flex-col gap-1 ${caseRecord.status === "client_reject"
           ? "bg-red-50 border-red-200 text-red-800"
@@ -674,15 +714,15 @@ export function CaseDetailView({
             <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>
           </CardHeader>
           <CardContent className="mt-2 px-4 max-h-[450px] overflow-y-scroll pr-2 custom-scrollbar">
-            {activities.length === 0 ? (
+            {displayActivities.length === 0 ? (
               <p className="text-xs text-muted-foreground">No activity recorded for this case yet.</p>
             ) : (
               <div className="space-y-4">
-                {activities.map((activity, index) => (
+                {displayActivities.map((activity, index) => (
                   <div key={activity.id} className="flex gap-3">
                     <div className="flex flex-col items-center">
                       <div className="mt-1 h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
-                      {index < activities.length - 1 && <div className="mt-1.5 w-0.5 flex-1 bg-emerald-200" />}
+                      {index < displayActivities.length - 1 && <div className="mt-1.5 w-0.5 flex-1 bg-emerald-200" />}
                     </div>
                     <div className="pb-1">
                       <p className="text-xs font-semibold text-foreground">{activity.label}</p>
@@ -836,6 +876,8 @@ export function CaseDetailView({
           </Card>
         </div>
       </div>
+        </>
+      )}
 
       {/* Hold Reason Dropdown Dialog */}
       <Dialog open={isHoldDialogOpen} onOpenChange={(open) => { if (!open) setIsHoldDialogOpen(false); }}>
@@ -997,6 +1039,199 @@ export function CaseDetailView({
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+interface MillingAssignmentView {
+  id: string
+  millingCenterId: string
+  millingCenterName: string | null
+  millingStatus: string
+  carrier: string | null
+  trackingNumber: string | null
+  shipmentEta: string | null
+  notes: string | null
+  assignedAt: string
+}
+
+function MillingTab({ caseId, timeline }: { caseId: string; timeline: CaseActivity[] }) {
+  const queryClient = useQueryClient()
+  const [selectedCenterId, setSelectedCenterId] = useState("")
+  const [designNotes, setDesignNotes] = useState("")
+  const [reassigning, setReassigning] = useState(false)
+
+  const { data, isLoading } = useQuery<{ assignment: MillingAssignmentView | null; recommendation: RoutingResult | null }>({
+    queryKey: ["case-milling-assign", caseId],
+    queryFn: async () => {
+      const res = await fetch(`/api/cases/${caseId}/milling-assign`)
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed to load milling assignment")
+      return (await res.json()).data
+    },
+  })
+
+  const { data: centers = [] } = useQuery<MillingCenter[]>({
+    queryKey: ["admin-milling-centers-active"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/milling/centers")
+      if (!res.ok) return []
+      return (await res.json()).data ?? []
+    },
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: async (centerId: string) => {
+      const res = await fetch(`/api/cases/${caseId}/milling-assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ millingCenterId: centerId, notes: designNotes || undefined }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed to assign")
+      return res.json()
+    },
+    onSuccess: () => {
+      toast.success("Case assigned to milling centre")
+      setReassigning(false)
+      setSelectedCenterId("")
+      queryClient.invalidateQueries({ queryKey: ["case-milling-assign", caseId] })
+      queryClient.invalidateQueries({ queryKey: ["case", caseId] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  if (isLoading) {
+    return <div className="p-10 text-center text-muted-foreground text-xs">Loading milling info…</div>
+  }
+
+  const assignment = data?.assignment ?? null
+  const recommendation = data?.recommendation ?? null
+  const activeCenters = centers.filter((c) => c.active)
+  const millingActivities = timeline.filter((t) => t.action.startsWith("case.milling"))
+
+  return (
+    <div className="space-y-4">
+      {!assignment || reassigning ? (
+        <Card className="shadow-card">
+          <CardHeader className="py-2.5 px-4 border-b border-border/50">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Factory className="h-4 w-4" />{reassigning ? "Re-assign to a different centre" : "Assign to Milling Centre"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 space-y-4">
+            {recommendation?.primary && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+                <p className="font-semibold text-foreground">Recommended: {recommendation.primary.center.name}</p>
+                <p className="text-muted-foreground mt-0.5">
+                  Current load: {recommendation.primary.currentLoad} active case{recommendation.primary.currentLoad === 1 ? "" : "s"}
+                  {recommendation.matchedRule ? ` · matched rule "${recommendation.matchedRule.name}"` : ""}
+                </p>
+                {recommendation.fallback && (
+                  <p className="text-muted-foreground mt-0.5">Fallback: {recommendation.fallback.center.name}</p>
+                )}
+                <Button
+                  size="sm"
+                  className="mt-2"
+                  disabled={assignMutation.isPending}
+                  onClick={() => assignMutation.mutate(recommendation.primary!.center.id)}
+                >
+                  Accept recommendation
+                </Button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label className="text-xs">{recommendation?.primary ? "Or pick a different centre" : "Pick a milling centre"}</Label>
+              <Select value={selectedCenterId} onValueChange={setSelectedCenterId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select an active centre" /></SelectTrigger>
+                <SelectContent>
+                  {activeCenters.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Design notes for the milling centre (no client info)</Label>
+              <Textarea
+                rows={3}
+                value={designNotes}
+                onChange={(e) => setDesignNotes(e.target.value)}
+                placeholder="Manufacturing instructions, material, shade, etc."
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={!selectedCenterId || assignMutation.isPending}
+                onClick={() => assignMutation.mutate(selectedCenterId)}
+              >
+                {assignMutation.isPending ? "Assigning…" : "Assign"}
+              </Button>
+              {reassigning && (
+                <Button size="sm" variant="ghost" onClick={() => setReassigning(false)}>Cancel</Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <Card className="shadow-card">
+            <CardHeader className="py-2.5 px-4 border-b border-border/50">
+              <CardTitle className="text-sm font-semibold">Milling Assignment</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-2 text-sm">
+              <DetailRow label="Assigned centre" value={assignment.millingCenterName ?? "—"} />
+              <DetailRow
+                label="Milling status"
+                value={INTERNAL_STATUS_LABELS[assignment.millingStatus as keyof typeof INTERNAL_STATUS_LABELS] ?? assignment.millingStatus}
+              />
+              <DetailRow label="Assigned" value={new Date(assignment.assignedAt).toLocaleString()} />
+              {assignment.notes && <DetailRow label="Design notes" value={assignment.notes} />}
+              <Button size="sm" variant="outline" className="mt-2 gap-1.5" onClick={() => setReassigning(true)}>
+                <RefreshCw className="h-3.5 w-3.5" /> Re-assign to a different centre
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card">
+            <CardHeader className="py-2.5 px-4 border-b border-border/50">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2"><Truck className="h-4 w-4" />Shipment</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-2 text-sm">
+              <DetailRow label="Carrier" value={assignment.carrier ?? "—"} />
+              <DetailRow label="Tracking number" value={assignment.trackingNumber ?? "—"} />
+              <DetailRow label="ETA" value={assignment.shipmentEta ? new Date(assignment.shipmentEta).toLocaleDateString() : "—"} />
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      <Card className="shadow-card">
+        <CardHeader className="py-2.5 px-4 border-b border-border/50">
+          <CardTitle className="text-sm font-semibold">Milling-stage timeline</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          {millingActivities.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No milling activity recorded yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {millingActivities.map((activity) => (
+                <div key={activity.id} className="flex gap-3">
+                  <div className="mt-1 h-2 w-2 rounded-full bg-primary ring-4 ring-primary/10 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">{activity.label}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {new Date(activity.actionAt).toLocaleDateString('en-CA')} at {activity.actionTime || new Date(activity.actionAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} · {activity.actor}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

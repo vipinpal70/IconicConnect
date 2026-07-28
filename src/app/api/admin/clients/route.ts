@@ -23,9 +23,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const cached = await getCachedData<typeof profiles.$inferSelect[]>(CLIENTS_LIST_KEY)
-    if (cached) {
-      return NextResponse.json(cached)
+    // ?refresh=true bypasses Redis and re-populates it from a fresh DB read —
+    // used by the admin UI's "hard refresh" button.
+    const forceRefresh = new URL(req.url).searchParams.get('refresh') === 'true'
+
+    if (!forceRefresh) {
+      const cached = await getCachedData<typeof profiles.$inferSelect[]>(CLIENTS_LIST_KEY)
+      if (cached) {
+        return NextResponse.json(cached)
+      }
     }
 
     // Fetch all clients
@@ -35,7 +41,9 @@ export async function GET(req: NextRequest) {
       .orderBy(profiles.createdAt)
 
     await setCachedData(CLIENTS_LIST_KEY, allClients, CLIENTS_LIST_TTL)
-    return NextResponse.json(allClients)
+    return NextResponse.json(allClients, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' },
+    })
   } catch (err) {
     console.error('[admin/clients GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

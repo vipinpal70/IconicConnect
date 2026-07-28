@@ -217,3 +217,16 @@ export function mapCaseToPricingInput(category: string, subTypeData: any): CaseP
 
   return null
 }
+
+/**
+ * Resolves the (category, subCategory) pair a case should be priced against —
+ * the subCategory field name differs per category on CasePricingInput
+ * (Appliances -> applianceType, Implants -> type, everything else -> subCategory).
+ */
+export function resolveCaseSubCategory(category: string, subTypeData: unknown): string | null {
+  const input = mapCaseToPricingInput(category, subTypeData)
+  if (!input) return null
+  if (input.category === 'Appliances') return input.applianceType
+  if (input.category === 'Implants') return input.type
+  return input.subCategory
+}

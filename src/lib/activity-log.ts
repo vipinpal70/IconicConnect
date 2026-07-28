@@ -50,10 +50,39 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
   if (action === 'client.registered') return 'Client registered'
   if (action === 'client.approved') return 'Client account approved'
   if (action === 'client.plan_updated') return 'Client plan updated'
+  if (action === 'client.deactivated') return 'Client account deactivated'
+  if (action === 'client.activated') return 'Client account reactivated'
+  if (action === 'client.deleted') return 'Client account deleted'
   if (action === 'price_list.updated') return 'Price list updated'
   if (action === 'subuser.created') return 'Sub-user created'
   if (action === 'subuser.updated') return 'Sub-user updated'
   if (action === 'subuser.deleted') return 'Sub-user deleted'
+  if (action === 'milling_center.created') return 'Milling centre onboarded'
+  if (action === 'milling_center.updated') return 'Milling centre updated'
+  if (action === 'milling_center.deactivated') return 'Milling centre deactivated'
+  if (action === 'milling_routing_rule.created') return 'Milling routing rule created'
+  if (action === 'milling_routing_rule.updated') return 'Milling routing rule updated'
+  if (action === 'milling_routing_rule.deleted') return 'Milling routing rule deleted'
+  if (action === 'case.milling_assigned') return 'Assigned to milling centre'
+  if (action === 'case.milling_status_updated') {
+    const status = typeof details?.status === 'string' ? details.status : null
+    switch (status) {
+      case 'milling_in_progress':
+        return 'Milling started'
+      case 'milling_qc':
+        return 'Milling QC passed'
+      case 'packaging':
+        return 'Packaging started'
+      case 'dispatched':
+        return 'Dispatched by milling centre'
+      case 'delivered':
+        return 'Delivered by milling centre'
+      default:
+        return 'Milling status updated'
+    }
+  }
+  if (action === 'case.milling_shipment_recorded') return 'Shipment recorded by milling centre'
+  if (action === 'case.milling_file_uploaded') return 'Milling centre uploaded a file'
 
   if (action === 'case.updated') {
     const changes = (details?.changes as Record<string, unknown> | undefined) || {}
@@ -92,6 +121,36 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
   return action.replace(/\./g, ' ')
 }
 
+/**
+ * Milling-stage events must never surface milling terminology, centre names,
+ * or shipment/tracking detail to the dental lab — see the milling
+ * implementation plan's client visibility rules. Returns the client-facing
+ * override for a given internal action, or null if the event is safe to show as-is.
+ */
+function getClientTimelineOverride(
+  action: string,
+  details: ActivityDetails
+): { clientLabel?: string; clientHidden?: boolean } | null {
+  if (action === 'case.milling_assigned') return { clientLabel: 'Sent to production' }
+  if (action === 'case.milling_status_updated') {
+    const status = typeof details?.status === 'string' ? details.status : null
+    switch (status) {
+      case 'packaging':
+        return { clientLabel: 'Packaging' }
+      case 'dispatched':
+        return { clientLabel: 'Shipped by Iconic' }
+      default:
+        // ready_for_milling / milling_in_progress / milling_qc / delivered all
+        // collapse into the coarse "In Production" status client-side already —
+        // no extra timeline line needed for these intermediate transitions.
+        return { clientHidden: true }
+    }
+  }
+  if (action === 'case.milling_shipment_recorded') return { clientHidden: true }
+  if (action === 'case.milling_file_uploaded') return { clientHidden: true }
+  return null
+}
+
 function buildCaseTimelineEvent({
   actor,
   action,
@@ -104,6 +163,7 @@ function buildCaseTimelineEvent({
     actor: formatActivityActor(actor),
     actionAt: new Date().toISOString(),
     actionTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+    ...getClientTimelineOverride(action, details ?? null),
   }
 }
 

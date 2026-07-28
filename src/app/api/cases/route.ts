@@ -21,6 +21,7 @@ const caseListSelection = {
   category: cases.category,
   subTypeData: cases.subTypeData,
   status: cases.status,
+  serviceType: cases.serviceType,
   holdReason: cases.holdReason,
   cancelReason: cases.cancelReason,
   feedbackReason: cases.feedbackReason,
@@ -159,6 +160,7 @@ export async function POST(req: NextRequest) {
         preferredTeethLibrary: caseData.preferredTeethLibrary || 'default',
         teethLibraryFileUrl: caseData.teethLibraryFileUrl || null,
         teethLibraryFileName: caseData.teethLibraryFileName || null,
+        serviceType: caseData.serviceType === 'design_milling' ? 'design_milling' as const : 'design_only' as const,
         createdBy: profile.fullName || profile.email || 'System',
       };
 

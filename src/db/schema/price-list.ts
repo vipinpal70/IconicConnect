@@ -12,6 +12,7 @@ import {
   pgEnum,
 } from 'drizzle-orm/pg-core'
 import { profiles } from './profile'
+import { serviceTypeEnum } from './case'
 
 export const unitTypeEnum = pgEnum('unit_type', ['per_tooth', 'per_arch', 'per_case'])
 
@@ -21,6 +22,10 @@ export const serviceCatalog = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     category: varchar('category', { length: 100 }).notNull(),
     subCategory: varchar('sub_category', { length: 100 }).notNull(),
+    // Which price list this row belongs to — Design or Design+Milling. Two
+    // rows per category/subCategory (same grouping, different price) rather
+    // than a computed markup. See milling-implementation-plan.md pricing architecture.
+    serviceType: serviceTypeEnum('service_type').default('design_only').notNull(),
     unitType: unitTypeEnum('unit_type').notNull(),
     defaultPrice: numeric('default_price', { precision: 10, scale: 2 }).notNull(),
     sortOrder: integer('sort_order').default(0).notNull(),
@@ -29,9 +34,10 @@ export const serviceCatalog = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    categorySubCategoryUniq: unique('service_catalog_category_sub_category_uniq').on(
+    categorySubCategoryServiceTypeUniq: unique('service_catalog_category_sub_category_service_type_uniq').on(
       table.category,
-      table.subCategory
+      table.subCategory,
+      table.serviceType
     ),
     categoryIdx: index('service_catalog_category_idx').on(table.category),
   })

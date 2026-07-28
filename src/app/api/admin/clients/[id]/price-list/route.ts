@@ -34,7 +34,7 @@ async function getClient(id: string) {
 }
 
 export async function GET(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -47,7 +47,10 @@ export async function GET(
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
 
-    const data = await getPriceListForClient(id)
+    const { searchParams } = new URL(req.url)
+    const serviceType = searchParams.get('serviceType') === 'design_milling' ? 'design_milling' : 'design_only'
+
+    const data = await getPriceListForClient(id, serviceType)
     return NextResponse.json({ data }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',

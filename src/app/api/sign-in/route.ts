@@ -64,6 +64,11 @@ export async function POST(req: NextRequest) {
         case 'account_manager':
           redirectUrl = '/dashboard'
           break
+        case 'milling_admin':
+        case 'milling_production':
+        case 'milling_support':
+          redirectUrl = '/milling/dashboard'
+          break
       }
     }
 

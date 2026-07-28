@@ -77,6 +77,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   const [targetLabName, setTargetLabName] = useState<string>("Client")
 
   // Form State
+  const [serviceType, setServiceType] = useState<"design_only" | "design_milling">("design_only")
   const [category, setCategory] = useState<string>("Crown & Bridge")
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({})
   const [modelRequired, setModelRequired] = useState("no")
@@ -201,6 +202,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     if (open) {
       setSelectedClientId("")
       setTargetLabName("Client")
+      setServiceType("design_only")
       setCategory("Crown & Bridge")
       setSubTypeData({})
       setModelRequired("no")
@@ -401,6 +403,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     const formData = new FormData()
     const caseData = {
       clientId: role === "admin" ? selectedClientId : undefined,
+      serviceType,
       category,
       subTypeData: {
         ...subTypeData,
@@ -597,6 +600,39 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Service Type */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-gray-700">Service Type</Label>
+            <RadioGroup
+              value={serviceType}
+              onValueChange={(v) => setServiceType(v as "design_only" | "design_milling")}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
+            >
+              <label
+                htmlFor="service-design-only"
+                className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === "design_only" ? "border-emerald-600 bg-emerald-50" : "border-gray-300"
+                  }`}
+              >
+                <RadioGroupItem value="design_only" id="service-design-only" className="mt-0.5" />
+                <span>
+                  <span className="block text-xs font-semibold text-gray-900">Design Only</span>
+                  <span className="block text-[11px] text-gray-500">Iconic delivers design files digitally</span>
+                </span>
+              </label>
+              <label
+                htmlFor="service-design-milling"
+                className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === "design_milling" ? "border-emerald-600 bg-emerald-50" : "border-gray-300"
+                  }`}
+              >
+                <RadioGroupItem value="design_milling" id="service-design-milling" className="mt-0.5" />
+                <span>
+                  <span className="block text-xs font-semibold text-gray-900">Design + Milling</span>
+                  <span className="block text-[11px] text-gray-500">Iconic designs, then mills and ships the physical product</span>
+                </span>
+              </label>
+            </RadioGroup>
           </div>
 
           {/* Form Fields */}

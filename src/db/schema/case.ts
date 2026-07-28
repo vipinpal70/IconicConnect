@@ -25,11 +25,19 @@ export const caseStatusEnum = pgEnum('case_status', [
   'on_hold',                 // 8. Hold / failed
   'client_feedback',         // 9. Client feedback / rejected
   'approved',                // 10. Approved
+  // Design + Milling only — design approved, now with a milling centre
+  'ready_for_milling',       // 10a. Package sent to milling centre
+  'milling_in_progress',     // 10b. Milling centre has started manufacturing
+  'milling_qc',              // 10c. QC at milling centre
+  'packaging',               // 10d. Milling centre is packaging
+  'dispatched',              // 10e. Shipped by milling centre — carrier has picked up
   'delivered',               // 11. Delivered
   'cancelled',               // 12. Cancelled
   'change_requested',        // 13. Change requested
   'client_reject',           // 14. Client rejected case
 ])
+
+export const serviceTypeEnum = pgEnum('service_type', ['design_only', 'design_milling'])
 
 export const CASE_LIFECYCLE_STEPS = [
   'Submitted',
@@ -38,6 +46,7 @@ export const CASE_LIFECYCLE_STEPS = [
   'Internal QC',
   'Pending Client Approval',
   'Completed',
+  'In Production',   // Design + Milling only — milling centre stages through delivery
 ] as const
 
 export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
@@ -54,6 +63,11 @@ export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
   client_feedback: 'In Design',
   on_hold: 'In Validation',
   approved: 'Completed',
+  ready_for_milling: 'In Production',
+  milling_in_progress: 'In Production',
+  milling_qc: 'In Production',
+  packaging: 'In Production',
+  dispatched: 'In Production',
   delivered: 'Completed',
   cancelled: 'Completed',
   change_requested: 'Pending Client Approval',
@@ -71,6 +85,11 @@ export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[numbe
   client_feedback: 'Feedback',
   on_hold: 'On Hold',
   approved: 'Case Approved',
+  ready_for_milling: 'In Production',
+  milling_in_progress: 'In Production',
+  milling_qc: 'In Production',
+  packaging: 'Packaging',
+  dispatched: 'Shipped',
   delivered: 'Completed',
   cancelled: 'Cancelled',
   change_requested: 'Change Requested',
@@ -88,6 +107,11 @@ export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[num
   client_feedback: 'Client Feedback',
   on_hold: 'On Hold',
   approved: 'Approved',
+  ready_for_milling: 'Ready for Milling',
+  milling_in_progress: 'Milling in Progress',
+  milling_qc: 'Milling QC',
+  packaging: 'Packaging',
+  dispatched: 'Dispatched',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
   change_requested: 'Change Requested',
@@ -112,6 +136,11 @@ export type CaseTimelineEvent = {
   actor: string
   actionAt: string
   actionTime?: string
+  // Optional client-facing override — some internal events (e.g. milling
+  // centre assignment/shipment) must never surface milling terminology or
+  // shipment detail to the dental lab. Defaults to `label` when absent.
+  clientLabel?: string
+  clientHidden?: boolean
 }
 
 export const cases = pgTable('cases', {
@@ -130,6 +159,7 @@ export const cases = pgTable('cases', {
 
   // Status
   status: caseStatusEnum('status').default('scan_received').notNull(),
+  serviceType: serviceTypeEnum('service_type').default('design_only').notNull(),
   holdReason: text('hold_reason'),
   cancelReason: text('cancel_reason'),
   feedbackReason: text('feedback_reason'),

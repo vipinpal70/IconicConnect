@@ -288,6 +288,13 @@
       "when": 1784106600000,
       "tag": "0045_add_other_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785149369977,
+      "tag": "0046_milling_schema",
+      "breakpoints": true
     }
   ]
 }

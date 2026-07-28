@@ -24,7 +24,10 @@ export async function resolveClientIdFromProfile(profileId: string, role: string
   return null
 }
 
-export async function getPriceListForClient(clientId: string): Promise<PriceListEntryFull[]> {
+export async function getPriceListForClient(
+  clientId: string,
+  serviceType: 'design_only' | 'design_milling' = 'design_only'
+): Promise<PriceListEntryFull[]> {
   // Always ensure every active catalog item has a row for this client.
   // onConflictDoNothing means existing custom prices are never overwritten.
   await seedClientPriceList(clientId)
@@ -43,7 +46,7 @@ export async function getPriceListForClient(clientId: string): Promise<PriceList
     })
     .from(clientPriceList)
     .innerJoin(serviceCatalog, eq(clientPriceList.catalogItemId, serviceCatalog.id))
-    .where(eq(clientPriceList.clientId, clientId))
+    .where(and(eq(clientPriceList.clientId, clientId), eq(serviceCatalog.serviceType, serviceType)))
     .orderBy(serviceCatalog.sortOrder)
 
   return rows.map((row) => ({
@@ -53,11 +56,13 @@ export async function getPriceListForClient(clientId: string): Promise<PriceList
   }))
 }
 
-export async function getServiceCatalog(): Promise<PriceListEntryFull[]> {
+export async function getServiceCatalog(
+  serviceType: 'design_only' | 'design_milling' = 'design_only'
+): Promise<PriceListEntryFull[]> {
   const rows = await db
     .select()
     .from(serviceCatalog)
-    .where(eq(serviceCatalog.isActive, true))
+    .where(and(eq(serviceCatalog.isActive, true), eq(serviceCatalog.serviceType, serviceType)))
     .orderBy(serviceCatalog.sortOrder)
 
   return rows.map((row) => ({

@@ -7,7 +7,7 @@ import { Input } from "@/src/components/ui/input"
 import { Label } from "@/src/components/ui/label"
 import {
   ArrowLeft, Printer, CheckCircle, Clock, Save, Pencil,
-  CircleCheck, CircleX, BadgeCheck, Banknote, CalendarDays,
+  CircleCheck, CircleX, BadgeCheck, Banknote, CalendarDays, Factory,
 } from "lucide-react"
 import { toast } from "sonner"
 import type { InvoiceWithClient } from "@/src/lib/invoice"
@@ -100,6 +100,15 @@ export default function InvoiceDetailPage() {
   )
   const [savingReceived, setSavingReceived] = useState(false)
 
+  // Admin-only milling cost reference — partner rates across all centres, for
+  // comparing against Design+Milling line items. Never shown to the client.
+  const [millingPartnerRates, setMillingPartnerRates] = useState<Array<{
+    category: string
+    subCategory: string
+    partnerRate: string
+    millingCenterName: string
+  }>>([])
+
   const load = useCallback(async () => {
     if (!invoiceId) return
     setLoading(true)
@@ -121,6 +130,14 @@ export default function InvoiceDetailPage() {
   }, [invoiceId])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!invoice?.items.some((i) => i.serviceType === "design_milling")) return
+    fetch("/api/admin/milling/service-catalog")
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((json) => setMillingPartnerRates(json.data ?? []))
+      .catch(() => {})
+  }, [invoice])
 
   // ── PATCH helper ────────────────────────────────────────────────────────
 
@@ -410,6 +427,55 @@ export default function InvoiceDetailPage() {
                 <Save className="h-3 w-3" />{savingAdj ? "Saving…" : "Save"}
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* ── Milling cost reference (admin-only, never printed / shown to client) ── */}
+        {invoice.items.some((i) => i.serviceType === "design_milling") && (
+          <div className="print:hidden border border-border rounded-lg p-4 bg-card space-y-2">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Factory className="h-3.5 w-3.5" />Milling Cost Reference — Admin Only
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Partner rate is the lowest rate any centre charges Iconic for this restoration — for margin reference only, never shown on the invoice or to the milling centre.
+            </p>
+            <table className="w-full text-xs mt-2">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-1.5 font-medium text-muted-foreground">Line item</th>
+                  <th className="text-right py-1.5 font-medium text-muted-foreground">Client price</th>
+                  <th className="text-right py-1.5 font-medium text-muted-foreground">Partner rate (ref.)</th>
+                  <th className="text-right py-1.5 font-medium text-muted-foreground">Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoice.items
+                  .filter((i) => i.serviceType === "design_milling")
+                  .map((item, idx) => {
+                    const rates = millingPartnerRates.filter(
+                      (r) => r.category === item.category && r.subCategory === item.subCategory
+                    )
+                    const lowestRate = rates.length ? Math.min(...rates.map((r) => Number(r.partnerRate))) : null
+                    const margin = lowestRate !== null ? item.unitPrice - lowestRate : null
+                    return (
+                      <tr key={idx} className="border-b border-border last:border-0">
+                        <td className="py-1.5 text-foreground">{item.description}</td>
+                        <td className="py-1.5 text-right text-foreground">${item.unitPrice.toFixed(2)}</td>
+                        <td className="py-1.5 text-right text-muted-foreground">
+                          {lowestRate !== null ? `$${lowestRate.toFixed(2)}` : "—"}
+                        </td>
+                        <td className="py-1.5 text-right font-medium">
+                          {margin !== null ? (
+                            <span className={margin >= 0 ? "text-green-600" : "text-red-500"}>
+                              {margin >= 0 ? "+" : ""}${margin.toFixed(2)}
+                            </span>
+                          ) : "—"}
+                        </td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
           </div>
         )}
 

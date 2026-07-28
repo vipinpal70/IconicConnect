@@ -22,6 +22,12 @@ export type InvoiceLineItem = {
   qty: number
   unitPrice: number
   totalPrice: number
+  // Optional — populated for line items built from buildInvoiceItems() so the
+  // admin-only milling cost reference can look up partner rates without
+  // parsing the description string. Absent on older invoices.
+  category?: string
+  subCategory?: string
+  serviceType?: 'design_only' | 'design_milling'
 }
 
 export const invoices = pgTable(

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { serviceCatalog } from '@/src/db/schema/price-list'
 import { createClient } from '@/src/lib/supabase/server'
 import { eq } from 'drizzle-orm'
 import { getServiceCatalog, updateCatalogDefaultPrices } from '@/src/lib/price-list'
@@ -22,12 +21,15 @@ async function requireAdmin() {
   return { profile }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const auth = await requireAdmin()
     if ('error' in auth) return auth.error
 
-    const data = await getServiceCatalog()
+    const { searchParams } = new URL(req.url)
+    const serviceType = searchParams.get('serviceType') === 'design_milling' ? 'design_milling' : 'design_only'
+
+    const data = await getServiceCatalog(serviceType)
     return NextResponse.json({ data })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
