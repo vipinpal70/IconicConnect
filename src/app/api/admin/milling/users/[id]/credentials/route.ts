@@ -32,7 +32,13 @@ export async function POST(
 
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { password })
     if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 })
+      // The profile row exists in our DB, but Supabase Auth has no matching
+      // login (e.g. it was removed directly in Supabase, or was never
+      // created due to the bug this now guards against elsewhere).
+      const message = /user not found/i.test(authError.message)
+        ? `No login exists for ${user.email} in the authentication system — this profile is orphaned. Delete this user and re-add them instead of resetting.`
+        : authError.message
+      return NextResponse.json({ error: message }, { status: 400 })
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'

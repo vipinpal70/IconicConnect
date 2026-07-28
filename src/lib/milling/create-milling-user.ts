@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { supabaseAdmin } from '@/src/lib/supabase/admin'
@@ -27,6 +28,15 @@ export interface CreateMillingUserInput {
 export async function createMillingUser(input: CreateMillingUserInput) {
   const { email, password, fullName, role, millingCenterId, centerName, phone, actor } = input
 
+  // Email is unique across every profile (client, admin, milling, etc.) —
+  // check up front so a duplicate produces one clear message instead of a
+  // Supabase "already registered" error surfacing after we've already
+  // created the auth user (which would then be orphaned with no profile).
+  const [existing] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.email, email)).limit(1)
+  if (existing) {
+    throw new Error(`A user with the email "${email}" already exists.`)
+  }
+
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
@@ -35,19 +45,32 @@ export async function createMillingUser(input: CreateMillingUserInput) {
   })
 
   if (authError || !authData.user) {
+    // Most common cause here: an auth user for this email exists without a
+    // matching profile row (e.g. left over from an earlier failed attempt).
     throw new Error(authError?.message || 'Failed to create auth user')
   }
 
-  await db.insert(profiles).values({
-    id: authData.user.id,
-    email,
-    fullName,
-    role,
-    userType: 'milling_portal',
-    millingCenterId,
-    phone,
-    status: 'active',
-  })
+  try {
+    await db.insert(profiles).values({
+      id: authData.user.id,
+      email,
+      fullName,
+      role,
+      userType: 'milling_portal',
+      millingCenterId,
+      phone,
+      status: 'active',
+    })
+  } catch (dbError) {
+    // Roll back the auth user so we never leave a login with no profile —
+    // that's exactly the "created in Supabase Auth but not usable" state
+    // this whole check is meant to prevent.
+    await supabaseAdmin.auth.admin.deleteUser(authData.user.id).catch((cleanupErr) =>
+      console.error('[createMillingUser] Failed to roll back orphaned auth user', authData.user.id, cleanupErr)
+    )
+    console.error('[createMillingUser] profile insert failed', dbError)
+    throw new Error('Failed to save the user profile — no login was created.')
+  }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
   await queueEmail({

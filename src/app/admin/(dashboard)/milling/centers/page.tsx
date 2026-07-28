@@ -57,7 +57,12 @@ export default function MillingCentersPage() {
     onSuccess: (data) => {
       if (!editing && form.password) {
         if (data.userError) {
-          toast.warning(`Centre onboarded, but the login couldn't be created: ${data.userError}. Add it later via "Manage".`);
+          // Center is already saved — don't lose that. Surface the login
+          // failure with a duration long enough to actually read, and jump
+          // straight into "Manage" for this centre so it's a one-click retry
+          // instead of a warning that's easy to miss and hard to act on.
+          toast.error(`Centre onboarded, but the login was not created: ${data.userError}`, { duration: 10000 });
+          setManagingCenter(data.data);
         } else {
           toast.success("Centre onboarded and login credentials emailed");
         }

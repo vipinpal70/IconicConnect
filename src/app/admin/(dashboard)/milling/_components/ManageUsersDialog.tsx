@@ -8,7 +8,7 @@ import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { Badge } from "@/src/components/ui/badge";
-import { UserPlus, RefreshCw, Copy, CheckCircle2, KeyRound, X } from "lucide-react";
+import { UserPlus, RefreshCw, Copy, CheckCircle2, KeyRound, X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { MillingCenter } from "@/src/db/schema/milling";
 
@@ -108,6 +108,22 @@ export function ManageUsersDialog({
     setResetSent(false);
   };
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/milling/users/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to delete user");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success("User deleted");
+      queryClient.invalidateQueries({ queryKey: ["milling-center-users", center?.id] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const handleClose = (v: boolean) => {
     if (!v) {
       resetForm();
@@ -154,6 +170,20 @@ export function ManageUsersDialog({
                       }}
                     >
                       <KeyRound className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Delete user"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => {
+                        if (confirm(`Delete ${u.fullName || u.email}? This removes their login entirely.`)) {
+                          deleteMutation.mutate(u.id);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
                     </Button>
                   </div>
                 </div>
