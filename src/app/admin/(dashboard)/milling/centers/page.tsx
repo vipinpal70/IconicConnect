@@ -10,11 +10,11 @@ import { Switch } from "@/src/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { MillingSubNav } from "../_components/MillingSubNav";
 import { ManageUsersDialog } from "../_components/ManageUsersDialog";
-import { Plus, Edit3, Users } from "lucide-react";
+import { Plus, Edit3, Users, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import type { MillingCenter } from "@/src/db/schema/milling";
 
-const emptyForm = { name: "", contactName: "", email: "", phone: "", city: "", state: "", country: "USA" };
+const emptyForm = { name: "", contactName: "", email: "", phone: "", city: "", state: "", country: "USA", password: "" };
 
 async function fetchCenters(): Promise<MillingCenter[]> {
   const res = await fetch("/api/admin/milling/centers");
@@ -40,10 +40,13 @@ export default function MillingCentersPage() {
   const saveMutation = useMutation({
     mutationFn: async (data: typeof form) => {
       const url = editing ? `/api/admin/milling/centers/${editing.id}` : "/api/admin/milling/centers";
+      // Editing never touches login credentials — that's the "Manage" flow's job.
+      const { name, contactName, email, phone, city, state, country } = data;
+      const editFields = { name, contactName, email, phone, city, state, country };
       const res = await fetch(url, {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(editing ? editFields : data),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -51,8 +54,16 @@ export default function MillingCentersPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
-      toast.success(editing ? "Centre updated" : "Milling centre onboarded");
+    onSuccess: (data) => {
+      if (!editing && form.password) {
+        if (data.userError) {
+          toast.warning(`Centre onboarded, but the login couldn't be created: ${data.userError}. Add it later via "Manage".`);
+        } else {
+          toast.success("Centre onboarded and login credentials emailed");
+        }
+      } else {
+        toast.success(editing ? "Centre updated" : "Milling centre onboarded");
+      }
       invalidate();
       setOpen(false);
       setEditing(null);
@@ -93,6 +104,7 @@ export default function MillingCentersPage() {
       city: c.city || "",
       state: c.state || "",
       country: c.country || "",
+      password: "",
     });
     setOpen(true);
   };
@@ -122,6 +134,30 @@ export default function MillingCentersPage() {
                 <Field label="State"><Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} /></Field>
                 <Field label="Country"><Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} /></Field>
               </div>
+              {!editing && (
+                <Field label="Login password (optional — creates the centre's first Milling Admin login)">
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      placeholder="Leave blank to onboard without a login"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      title="Generate random password"
+                      onClick={() => setForm({ ...form, password: Math.random().toString(36).slice(-10) + "!" })}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  {form.password && !form.email && (
+                    <p className="text-[11px] text-warning">Email is required above to create a login.</p>
+                  )}
+                </Field>
+              )}
               <Button className="w-full" onClick={save} disabled={saveMutation.isPending}>
                 {saveMutation.isPending ? "Saving…" : editing ? "Save changes" : "Onboard centre"}
               </Button>

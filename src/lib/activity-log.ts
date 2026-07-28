@@ -60,6 +60,8 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
   if (action === 'milling_center.created') return 'Milling centre onboarded'
   if (action === 'milling_center.updated') return 'Milling centre updated'
   if (action === 'milling_center.deactivated') return 'Milling centre deactivated'
+  if (action === 'milling_user.created') return 'Milling portal user created'
+  if (action === 'milling_user.password_reset') return 'Milling portal user password reset'
   if (action === 'milling_routing_rule.created') return 'Milling routing rule created'
   if (action === 'milling_routing_rule.updated') return 'Milling routing rule updated'
   if (action === 'milling_routing_rule.deleted') return 'Milling routing rule deleted'
