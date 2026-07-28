@@ -150,6 +150,10 @@ function getHomeRoute(role: string | undefined, createdBy: string | null | undef
     case 'account_manager':
     case 'consultant':
       return '/dashboard'
+    case 'milling_admin':
+    case 'milling_production':
+    case 'milling_support':
+      return '/milling/dashboard'
     default:
       return '/dashboard'
   }
@@ -220,6 +224,10 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/api/tutorials') ||
         pathname.startsWith('/api/offers')
       )
+    case 'milling_admin':
+    case 'milling_production':
+    case 'milling_support':
+      return pathname.startsWith('/milling') || pathname.startsWith('/api/milling')
     default:
       return false
   }
