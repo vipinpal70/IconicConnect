@@ -5,6 +5,14 @@ import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
 
 export async function requireAdmin() {
+  return requireStaffRole(['admin'])
+}
+
+// Same shape as requireAdmin, but for routes that non-admin internal staff
+// (qc, designer) also need — e.g. assigning a Design+Milling case to a
+// centre from the case list, which they can already action every other
+// step of.
+export async function requireStaffRole(allowedRoles: string[]) {
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
 
@@ -17,7 +25,7 @@ export async function requireAdmin() {
     return { error: NextResponse.json({ error: 'Profile not found' }, { status: 404 }) }
   }
 
-  if (profile.role !== 'admin') {
+  if (!allowedRoles.includes(profile.role)) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 

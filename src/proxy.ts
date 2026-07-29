@@ -211,6 +211,18 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
       )
     case 'qc':
     case 'designer':
+      return (
+        pathname.startsWith('/dashboard') ||
+        pathname.startsWith('/cases') ||
+        pathname.startsWith('/case') ||
+        pathname.startsWith('/analytics') ||
+        pathname.startsWith('/admin/support') ||
+        pathname.startsWith('/api/admin/support') ||
+        pathname.startsWith('/api/admin/members') ||
+        pathname.startsWith('/api/admin/milling') ||
+        pathname.startsWith('/api/tutorials') ||
+        pathname.startsWith('/api/offers')
+      )
     case 'account_manager':
     case 'consultant':
       return (

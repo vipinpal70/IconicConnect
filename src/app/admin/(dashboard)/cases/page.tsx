@@ -40,6 +40,7 @@ import type {
 import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval";
 import { toast } from "sonner";
 import { AddCaseDialog } from "@/src/components/AddCaseDialog";
+import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
 import {
 	Search,
 	ShieldCheck,
@@ -253,6 +254,7 @@ export default function AdminCasesPage() {
 	const [openCase, setOpenCase] = useState<CaseRecord | null>(null);
 	const [updatingId, setUpdatingId] = useState<string | null>(null);
 	const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
+	const [assignMillingCase, setAssignMillingCase] = useState<CaseRecord | null>(null);
 	const [selectedQcId, setSelectedQcId] = useState<string>("");
 	const [pendingCaseAction, setPendingCaseAction] =
 		useState<CaseActionDialogState>(null);
@@ -1471,6 +1473,25 @@ export default function AdminCasesPage() {
 																	</span>
 																)}
 
+															{caseItem.status === "approved" &&
+																caseItem.serviceType === "design_milling" &&
+																(currentUser?.role === "admin" ||
+																	currentUser?.role === "qc" ||
+																	currentUser?.role === "designer") && (
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			setAssignMillingCase(caseItem);
+																		}}
+																		className="h-7 text-[10px] px-2.5 gap-1"
+																	>
+																		<Factory className="h-3 w-3" />
+																		Select Milling Centre
+																	</Button>
+																)}
+
 															{shouldShowChatIcon(caseItem, currentUser) &&
 																(hasUnreadChat ||
 																	(caseItem.todayMessagesCount || 0) > 0) && (
@@ -1959,6 +1980,15 @@ export default function AdminCasesPage() {
 					setPageLimit((prev) => prev + 1);
 				}}
 			/>
+
+			{assignMillingCase && (
+				<AssignMillingCenterDialog
+					caseId={assignMillingCase.id}
+					caseNumber={assignMillingCase.caseNumber}
+					open={!!assignMillingCase}
+					onOpenChange={(o) => !o && setAssignMillingCase(null)}
+				/>
+			)}
 		</>
 	);
 }

@@ -4,11 +4,16 @@ import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { millingCaseAssignments, millingCenters } from '@/src/db/schema/milling'
-import { requireAdmin } from '@/src/lib/milling/admin-guard'
+import { requireStaffRole } from '@/src/lib/milling/admin-guard'
 import { routeCase } from '@/src/lib/milling/routing-engine'
 import { resolveCaseSubCategory } from '@/src/lib/pricing'
 import { logActivity } from '@/src/lib/activity-log'
 import { invalidateCasesCache } from '@/src/lib/redis-cache'
+
+// Admin can assign from anywhere; qc/designer can assign directly from the
+// case list once a design is approved — they already own every other step
+// of getting a case to this point.
+const ASSIGN_ROLES = ['admin', 'qc', 'designer']
 
 // Statuses from which a case may be (re-)assigned to a milling centre —
 // design must be client-approved first, or the case is already mid-milling.
@@ -39,7 +44,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin()
+  const auth = await requireStaffRole(ASSIGN_ROLES)
   if ('error' in auth) return auth.error
 
   try {
@@ -92,7 +97,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdmin()
+  const auth = await requireStaffRole(ASSIGN_ROLES)
   if ('error' in auth) return auth.error
 
   try {

@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { millingCenters } from '@/src/db/schema/milling'
 import { desc } from 'drizzle-orm'
-import { requireAdmin } from '@/src/lib/milling/admin-guard'
+import { requireAdmin, requireStaffRole } from '@/src/lib/milling/admin-guard'
 import { logActivity } from '@/src/lib/activity-log'
 import { createMillingUser } from '@/src/lib/milling/create-milling-user'
 
+// Read-only: qc/designer also need the active centre list to assign a
+// Design+Milling case from the case list once it's approved.
 export async function GET() {
-  const auth = await requireAdmin()
+  const auth = await requireStaffRole(['admin', 'qc', 'designer'])
   if ('error' in auth) return auth.error
 
   try {

@@ -7,7 +7,8 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
-import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory } from "lucide-react";
+import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
@@ -66,6 +67,7 @@ type OpsCase = {
   caseNumber?: string | null;
   category?: string | null;
   status: string;
+  serviceType?: "design_only" | "design_milling";
   createdAt?: string | Date | null;
   designerId?: string | null;
   designerName?: string | null;
@@ -321,6 +323,7 @@ export default function CasesPage() {
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
+  const [assignMillingCase, setAssignMillingCase] = useState<OpsCase | null>(null);
   const [selectedQcId, setSelectedQcId] = useState<string>("");
   const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null);
   const [caseActionReason, setCaseActionReason] = useState("");
@@ -1517,6 +1520,18 @@ export default function CasesPage() {
                                 <span className="text-[11px] text-green-600 font-semibold px-1">Completed</span>
                               )}
 
+                              {c.status === "approved" && c.serviceType === "design_milling" && (isAdmin || isQc || isDesigner) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => { e.stopPropagation(); setAssignMillingCase(c); }}
+                                  className="h-7 text-[10px] px-2.5 gap-1"
+                                >
+                                  <Factory className="h-3 w-3" />
+                                  Select Milling Centre
+                                </Button>
+                              )}
+
                               {activeUser && !["admin", "qc", "designer"].includes(activeUserRole) && (
                                 <span className="text-[11px] text-muted-foreground italic">Read-only</span>
                               )}
@@ -1850,6 +1865,16 @@ export default function CasesPage() {
         qcOptions={qcs.map((q) => ({ id: q.id, name: q.fullName || q.email || "QC" }))}
         onCompleted={() => fetchCases()}
       />
+
+      {assignMillingCase && (
+        <AssignMillingCenterDialog
+          caseId={assignMillingCase.id}
+          caseNumber={assignMillingCase.caseNumber}
+          open={!!assignMillingCase}
+          onOpenChange={(o) => !o && setAssignMillingCase(null)}
+          onAssigned={() => fetchCases(false)}
+        />
+      )}
     </>
   );
 }
