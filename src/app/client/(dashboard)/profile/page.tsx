@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
 import { ClientPriceListModal } from "@/src/components/ClientPriceListModal";
-import type { MergedPriceRow } from "@/src/lib/price-list";
-import { mergeByServiceType } from "@/src/lib/price-list";
+import type { MergedPriceRow } from "@/src/lib/price-list-shared";
+import { mergeByServiceType } from "@/src/lib/price-list-shared";
 import { fetchPriceListWithCache } from "@/src/lib/price-list-cache";
 import { toast } from "sonner";
 import {

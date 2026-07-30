@@ -1,4 +1,4 @@
-import type { PriceListEntryFull } from './price-list'
+import type { PriceListEntryFull } from './price-list-shared'
 
 type ServiceType = 'design_only' | 'design_milling'
 

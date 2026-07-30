@@ -14,8 +14,8 @@ import { Switch } from "@/src/components/ui/switch"
 import { ArrowLeft, Building2, Save, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
 import { PriceListTable, type PriceColumnConfig } from "@/src/components/PriceListTable"
 import type { PreferenceFormRecord } from "@/src/lib/preference-forms"
-import type { PriceListEntryFull } from "@/src/lib/price-list"
-import { mergeByServiceType } from "@/src/lib/price-list"
+import type { PriceListEntryFull } from "@/src/lib/price-list-shared"
+import { mergeByServiceType } from "@/src/lib/price-list-shared"
 
 type ClientProfile = {
   id: string

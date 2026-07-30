@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { MillingSubNav } from "../_components/MillingSubNav";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import type { PriceListEntryFull } from "@/src/lib/price-list";
+import type { PriceListEntryFull } from "@/src/lib/price-list-shared";
 
 const COLORS = ["hsl(158, 64%, 28%)", "hsl(152, 60%, 45%)", "hsl(200, 90%, 45%)", "hsl(38, 92%, 50%)", "hsl(280, 55%, 55%)"];
 

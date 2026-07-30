@@ -14,8 +14,8 @@ import {
 import { PriceListTable, type PriceColumnConfig } from "@/src/components/PriceListTable"
 import { toast } from "sonner"
 import { User, Mail, Phone, Shield, FileText, Save, RefreshCw } from "lucide-react"
-import type { PriceListEntryFull } from "@/src/lib/price-list"
-import { mergeByServiceType } from "@/src/lib/price-list"
+import type { PriceListEntryFull } from "@/src/lib/price-list-shared"
+import { mergeByServiceType } from "@/src/lib/price-list-shared"
 
 type AdminProfile = {
   id: string

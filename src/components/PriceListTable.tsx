@@ -1,7 +1,7 @@
 "use client"
 
 import { Input } from "@/src/components/ui/input"
-import type { MergedPriceRow } from "@/src/lib/price-list"
+import type { MergedPriceRow } from "@/src/lib/price-list-shared"
 
 export type PriceColumnKey = "defaultDesign" | "defaultMilling" | "clientDesign" | "clientMilling"
 

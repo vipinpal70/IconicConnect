@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from '@/src/components/ui/dialog'
 import { PriceListTable, type PriceColumnConfig } from './PriceListTable'
-import type { MergedPriceRow } from '@/src/lib/price-list'
+import type { MergedPriceRow } from '@/src/lib/price-list-shared'
 import { FileText } from 'lucide-react'
 
 type Props = {

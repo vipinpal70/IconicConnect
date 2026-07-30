@@ -3,86 +3,14 @@ import { db } from '@/src/db'
 import { subUsers } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
 
-export interface PriceListEntryFull {
-  id: string
-  catalogItemId: string
-  category: string
-  subCategory: string
-  unitType: 'per_tooth' | 'per_arch' | 'per_case'
-  defaultPrice: number
-  price: number
-  notes: string | null
-  sortOrder: number
-}
-
-// ── Merged Design / Design+Milling rows ─────────────────────────────────────
-// Both service types share the same category/subCategory grouping (see the
-// pricing architecture note in milling-implementation-plan.md) — this merges
-// two per-serviceType fetches into one row per service for display in a
-// single table with up to 4 price columns (default + client, x2 types).
-
-export interface MergedPriceRowSide {
-  catalogItemId: string
-  defaultPrice: number
-  price: number
-  notes: string | null
-}
-
-export interface MergedPriceRow {
-  category: string
-  subCategory: string
-  unitType: 'per_tooth' | 'per_arch' | 'per_case'
-  sortOrder: number
-  designOnly: MergedPriceRowSide | null
-  designMilling: MergedPriceRowSide | null
-}
-
-function toSide(row: PriceListEntryFull): MergedPriceRowSide {
-  return {
-    catalogItemId: row.catalogItemId,
-    defaultPrice: row.defaultPrice,
-    price: row.price,
-    notes: row.notes,
-  }
-}
-
-export function mergeByServiceType(
-  designOnly: PriceListEntryFull[],
-  designMilling: PriceListEntryFull[]
-): MergedPriceRow[] {
-  const key = (category: string, subCategory: string) => `${category}::${subCategory}`
-  const map = new Map<string, MergedPriceRow>()
-
-  for (const row of designOnly) {
-    map.set(key(row.category, row.subCategory), {
-      category: row.category,
-      subCategory: row.subCategory,
-      unitType: row.unitType,
-      sortOrder: row.sortOrder,
-      designOnly: toSide(row),
-      designMilling: null,
-    })
-  }
-
-  for (const row of designMilling) {
-    const k = key(row.category, row.subCategory)
-    const existing = map.get(k)
-    if (existing) {
-      existing.designMilling = toSide(row)
-    } else {
-      map.set(k, {
-        category: row.category,
-        subCategory: row.subCategory,
-        unitType: row.unitType,
-        sortOrder: row.sortOrder,
-        designOnly: null,
-        designMilling: toSide(row),
-      })
-    }
-  }
-
-  return Array.from(map.values()).sort((a, b) => a.sortOrder - b.sortOrder)
-}
+// Server-only module (imports '@/src/db'). Client-safe types/helpers
+// (PriceListEntryFull, MergedPriceRow, mergeByServiceType) live in
+// './price-list-shared' and are re-exported here for server-side
+// convenience — "use client" components must import them directly from
+// './price-list-shared' instead, never from this file, or the bundler
+// will pull the postgres/drizzle db chain into the browser bundle.
+export * from './price-list-shared'
+import type { PriceListEntryFull } from './price-list-shared'
 
 export async function resolveClientIdFromProfile(profileId: string, role: string) {
   if (role === 'client') return profileId
