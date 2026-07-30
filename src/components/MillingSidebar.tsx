@@ -3,7 +3,6 @@
 import {
   LayoutDashboard,
   ClipboardList,
-  Wrench,
   Headset,
   LogOut,
   Factory,
@@ -40,7 +39,6 @@ interface MillingMe {
 const NAV_ITEMS = [
   { title: "Dashboard", url: "/milling/dashboard", icon: LayoutDashboard },
   { title: "Assigned Cases", url: "/milling/cases", icon: ClipboardList },
-  { title: "Services", url: "/milling/services", icon: Wrench },
   { title: "Support", url: "/milling/support", icon: Headset },
 ]
 

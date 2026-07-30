@@ -8,7 +8,6 @@ const SUB_NAV = [
   { href: "/admin/milling/overview", label: "Overview" },
   { href: "/admin/milling/centers", label: "Centres" },
   { href: "/admin/milling/routing", label: "Routing" },
-  { href: "/admin/milling/pricing", label: "Pricing" },
   { href: "/admin/milling/analytics", label: "Analytics" },
 ];
 

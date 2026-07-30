@@ -1,7 +1,9 @@
 import type { PriceListEntryFull } from './price-list'
 
-const SESSION_KEY = (id: string) => `iconic_price_list_${id}`
-const LOCAL_KEY = (id: string) => `iconic_price_list_local_${id}`
+type ServiceType = 'design_only' | 'design_milling'
+
+const SESSION_KEY = (id: string, serviceType: ServiceType) => `iconic_price_list_${serviceType}_${id}`
+const LOCAL_KEY = (id: string, serviceType: ServiceType) => `iconic_price_list_local_${serviceType}_${id}`
 const TS_SUFFIX = '_ts'
 
 const SESSION_TTL = 10 * 60 * 1000  // 10 minutes
@@ -38,9 +40,12 @@ function clearStorage(storage: Storage, key: string) {
   }
 }
 
-export async function fetchPriceListWithCache(profileId: string): Promise<PriceListEntryFull[]> {
-  const sKey = SESSION_KEY(profileId)
-  const lKey = LOCAL_KEY(profileId)
+export async function fetchPriceListWithCache(
+  profileId: string,
+  serviceType: ServiceType = 'design_only'
+): Promise<PriceListEntryFull[]> {
+  const sKey = SESSION_KEY(profileId, serviceType)
+  const lKey = LOCAL_KEY(profileId, serviceType)
 
   if (typeof window !== 'undefined') {
     const fromSession = readStorage(sessionStorage, sKey, SESSION_TTL)
@@ -53,7 +58,7 @@ export async function fetchPriceListWithCache(profileId: string): Promise<PriceL
     }
   }
 
-  const res = await fetch('/api/client/price-list')
+  const res = await fetch(`/api/client/price-list?serviceType=${serviceType}`)
   if (!res.ok) return []
   const json = await res.json()
   const data: PriceListEntryFull[] = Array.isArray(json.data) ? json.data : []
@@ -66,8 +71,11 @@ export async function fetchPriceListWithCache(profileId: string): Promise<PriceL
   return data
 }
 
-export function invalidatePriceListCache(profileId: string) {
+export function invalidatePriceListCache(profileId: string, serviceType?: ServiceType) {
   if (typeof window === 'undefined') return
-  clearStorage(sessionStorage, SESSION_KEY(profileId))
-  clearStorage(localStorage, LOCAL_KEY(profileId))
+  const types: ServiceType[] = serviceType ? [serviceType] : ['design_only', 'design_milling']
+  for (const type of types) {
+    clearStorage(sessionStorage, SESSION_KEY(profileId, type))
+    clearStorage(localStorage, LOCAL_KEY(profileId, type))
+  }
 }

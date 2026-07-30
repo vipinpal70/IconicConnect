@@ -26,6 +26,7 @@ import {
   CircleCheck,
   CircleX,
   BadgeCheck,
+  Factory,
 } from "lucide-react"
 import { toast } from "sonner"
 import type { InvoiceWithClient } from "@/src/lib/invoice"
@@ -47,6 +48,7 @@ interface CandidateCase {
   status: string
   createdAt: string
   price: number
+  serviceType?: "design_only" | "design_milling"
   scanFileName: string | null
 }
 
@@ -511,7 +513,16 @@ export default function BillingPage() {
                                     onChange={() => toggleCase(c.id)} className="h-3.5 w-3.5 cursor-pointer rounded" />
                                 </td>
                                 <td className="p-2.5 font-medium whitespace-nowrap">{c.caseNumber || c.id.slice(0, 8)}</td>
-                                <td className="p-2.5 text-muted-foreground">{getCaseLabel(c)}</td>
+                                <td className="p-2.5 text-muted-foreground">
+                                  <div className="flex items-center gap-1.5">
+                                    {getCaseLabel(c)}
+                                    {c.serviceType === "design_milling" && (
+                                      <span title="Design + Milling" className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary/10 text-primary shrink-0">
+                                        <Factory className="h-2.5 w-2.5" />
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="p-2.5 text-muted-foreground whitespace-nowrap">{unitsLabel}</td>
                                 <td className="p-2.5 text-center">
                                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${modelRequired ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"}`}>

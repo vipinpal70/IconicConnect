@@ -15,6 +15,75 @@ export interface PriceListEntryFull {
   sortOrder: number
 }
 
+// ── Merged Design / Design+Milling rows ─────────────────────────────────────
+// Both service types share the same category/subCategory grouping (see the
+// pricing architecture note in milling-implementation-plan.md) — this merges
+// two per-serviceType fetches into one row per service for display in a
+// single table with up to 4 price columns (default + client, x2 types).
+
+export interface MergedPriceRowSide {
+  catalogItemId: string
+  defaultPrice: number
+  price: number
+  notes: string | null
+}
+
+export interface MergedPriceRow {
+  category: string
+  subCategory: string
+  unitType: 'per_tooth' | 'per_arch' | 'per_case'
+  sortOrder: number
+  designOnly: MergedPriceRowSide | null
+  designMilling: MergedPriceRowSide | null
+}
+
+function toSide(row: PriceListEntryFull): MergedPriceRowSide {
+  return {
+    catalogItemId: row.catalogItemId,
+    defaultPrice: row.defaultPrice,
+    price: row.price,
+    notes: row.notes,
+  }
+}
+
+export function mergeByServiceType(
+  designOnly: PriceListEntryFull[],
+  designMilling: PriceListEntryFull[]
+): MergedPriceRow[] {
+  const key = (category: string, subCategory: string) => `${category}::${subCategory}`
+  const map = new Map<string, MergedPriceRow>()
+
+  for (const row of designOnly) {
+    map.set(key(row.category, row.subCategory), {
+      category: row.category,
+      subCategory: row.subCategory,
+      unitType: row.unitType,
+      sortOrder: row.sortOrder,
+      designOnly: toSide(row),
+      designMilling: null,
+    })
+  }
+
+  for (const row of designMilling) {
+    const k = key(row.category, row.subCategory)
+    const existing = map.get(k)
+    if (existing) {
+      existing.designMilling = toSide(row)
+    } else {
+      map.set(k, {
+        category: row.category,
+        subCategory: row.subCategory,
+        unitType: row.unitType,
+        sortOrder: row.sortOrder,
+        designOnly: null,
+        designMilling: toSide(row),
+      })
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
 export async function resolveClientIdFromProfile(profileId: string, role: string) {
   if (role === 'client') return profileId
   if (role === 'subuser') {

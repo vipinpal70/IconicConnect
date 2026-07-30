@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
@@ -11,10 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog"
-import { PriceListTable, type PriceListRow } from "@/src/components/PriceListTable"
+import { PriceListTable, type PriceColumnConfig } from "@/src/components/PriceListTable"
 import { toast } from "sonner"
-import { User, Mail, Phone, Shield, FileText, Save } from "lucide-react"
+import { User, Mail, Phone, Shield, FileText, Save, RefreshCw } from "lucide-react"
 import type { PriceListEntryFull } from "@/src/lib/price-list"
+import { mergeByServiceType } from "@/src/lib/price-list"
 
 type AdminProfile = {
   id: string
@@ -27,25 +28,32 @@ type AdminProfile = {
   createdAt: string
 }
 
-function toCatalogRow(item: PriceListEntryFull): PriceListRow {
-  return {
-    id: item.id,
-    catalogItemId: item.catalogItemId,
-    category: item.category,
-    subCategory: item.subCategory,
-    unitType: item.unitType,
-    defaultPrice: item.defaultPrice,
-    price: item.defaultPrice,
-    notes: null,
-    sortOrder: item.sortOrder,
+const VIEW_COLUMNS: PriceColumnConfig[] = [
+  { key: "defaultDesign", label: "Design Price" },
+  { key: "defaultMilling", label: "D+Milling Price" },
+]
+
+const EDIT_COLUMNS: PriceColumnConfig[] = [
+  { key: "defaultDesign", label: "Design Price", editable: true },
+  { key: "defaultMilling", label: "D+Milling Price", editable: true },
+]
+
+async function fetchCatalog(serviceType: "design_only" | "design_milling", refresh = false): Promise<PriceListEntryFull[]> {
+  const url = `/api/admin/service-catalog?serviceType=${serviceType}${refresh ? "&refresh=true" : ""}`
+  const res = await fetch(url, refresh ? { cache: "no-store" } : undefined)
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    throw new Error(`${res.status}: ${payload.error ?? "Failed to load catalog"}`)
   }
+  const json = await res.json()
+  return json.data ?? []
 }
 
 export default function AdminProfilePage() {
   const queryClient = useQueryClient()
   const [priceListOpen, setPriceListOpen] = useState(false)
-  const [catalogRows, setCatalogRows] = useState<PriceListRow[]>([])
-  const [catalogInitialized, setCatalogInitialized] = useState(false)
+  const [overrides, setOverrides] = useState<Record<string, number>>({})
+  const [refreshing, setRefreshing] = useState(false)
 
   const profileQuery = useQuery<AdminProfile>({
     queryKey: ["admin-me"],
@@ -56,37 +64,41 @@ export default function AdminProfilePage() {
     },
   })
 
-  const catalogQuery = useQuery<PriceListEntryFull[]>({
-    queryKey: ["admin-service-catalog"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/service-catalog")
-      if (!res.ok) {
-        const payload = await res.json().catch(() => ({}))
-        throw new Error(`${res.status}: ${payload.error ?? 'Failed to load catalog'}`)
-      }
-      const json = await res.json()
-      return json.data ?? []
-    },
+  const designOnlyQuery = useQuery<PriceListEntryFull[]>({
+    queryKey: ["admin-service-catalog", "design_only"],
+    queryFn: () => fetchCatalog("design_only"),
   })
 
-  useEffect(() => {
-    if (catalogQuery.data && !catalogInitialized) {
-      setCatalogRows(catalogQuery.data.map(toCatalogRow))
-      setCatalogInitialized(true)
-    }
-  }, [catalogQuery.data, catalogInitialized])
+  const designMillingQuery = useQuery<PriceListEntryFull[]>({
+    queryKey: ["admin-service-catalog", "design_milling"],
+    queryFn: () => fetchCatalog("design_milling"),
+  })
+
+  const isLoading = designOnlyQuery.isLoading || designMillingQuery.isLoading
+  const isError = designOnlyQuery.isError || designMillingQuery.isError
+
+  const mergedRows = mergeByServiceType(designOnlyQuery.data ?? [], designMillingQuery.data ?? [])
+  const rowsWithOverrides = mergedRows.map((row) => ({
+    ...row,
+    designOnly: row.designOnly && row.designOnly.catalogItemId in overrides
+      ? { ...row.designOnly, defaultPrice: overrides[row.designOnly.catalogItemId] }
+      : row.designOnly,
+    designMilling: row.designMilling && row.designMilling.catalogItemId in overrides
+      ? { ...row.designMilling, defaultPrice: overrides[row.designMilling.catalogItemId] }
+      : row.designMilling,
+  }))
+
+  const updatePrice = (catalogItemId: string, price: number) => {
+    setOverrides((prev) => ({ ...prev, [catalogItemId]: price }))
+  }
 
   const saveMutation = useMutation({
-    mutationFn: async (rows: PriceListRow[]) => {
+    mutationFn: async () => {
+      const items = Object.entries(overrides).map(([id, defaultPrice]) => ({ id, defaultPrice }))
       const res = await fetch("/api/admin/service-catalog", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: rows.map((row) => ({
-            id: row.catalogItemId,
-            defaultPrice: row.price,
-          })),
-        }),
+        body: JSON.stringify({ items }),
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
@@ -94,11 +106,9 @@ export default function AdminProfilePage() {
       }
       return res.json()
     },
-    onSuccess: async (data) => {
+    onSuccess: async () => {
+      setOverrides({})
       await queryClient.invalidateQueries({ queryKey: ["admin-service-catalog"] })
-      if (data?.data) {
-        setCatalogRows((data.data as PriceListEntryFull[]).map(toCatalogRow))
-      }
       toast.success("Default price list saved")
       setPriceListOpen(false)
     },
@@ -107,15 +117,27 @@ export default function AdminProfilePage() {
     },
   })
 
-  const updatePrice = (catalogItemId: string, price: number) => {
-    setCatalogRows((current) =>
-      current.map((row) =>
-        row.catalogItemId === catalogItemId ? { ...row, price } : row
-      )
-    )
+  const handleOpen = () => {
+    setOverrides({})
+    setPriceListOpen(true)
   }
 
-  const handleOpen = () => setPriceListOpen(true)
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const [designOnly, designMilling] = await Promise.all([
+        fetchCatalog("design_only", true),
+        fetchCatalog("design_milling", true),
+      ])
+      queryClient.setQueryData(["admin-service-catalog", "design_only"], designOnly)
+      queryClient.setQueryData(["admin-service-catalog", "design_milling"], designMilling)
+      toast.success("Refreshed directly from the database")
+    } catch {
+      toast.error("Failed to refresh")
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const profile = profileQuery.data
 
@@ -168,30 +190,40 @@ export default function AdminProfilePage() {
                   Default Price List
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">
-                  These are the default prices applied to every newly approved client.
+                  Default Design and Design + Milling prices applied to every newly approved client.
                   You can override prices per-client from the client profile.
                 </p>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs font-semibold gap-1.5 shrink-0"
-                onClick={handleOpen}
-              >
-                <FileText className="h-3.5 w-3.5" />
-                Edit Default Prices
-              </Button>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 text-xs font-semibold gap-1.5"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                  Refresh from DB
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs font-semibold gap-1.5"
+                  onClick={handleOpen}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Edit Default Prices
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            {catalogQuery.isLoading ? (
+            {isLoading ? (
               <p className="text-xs text-muted-foreground text-center py-4">Loading...</p>
-            ) : catalogQuery.isError ? (
-              <p className="text-xs text-destructive text-center py-4">
-                Error: {(catalogQuery.error as Error)?.message ?? 'Failed to load price list'}
-              </p>
+            ) : isError ? (
+              <p className="text-xs text-destructive text-center py-4">Failed to load price list</p>
             ) : (
-              <PriceListTable items={catalogQuery.data?.map(toCatalogRow) ?? []} />
+              <PriceListTable rows={mergedRows} columns={VIEW_COLUMNS} />
             )}
           </CardContent>
         </Card>
@@ -211,18 +243,13 @@ export default function AdminProfilePage() {
           </DialogHeader>
 
           <div className="mt-2 space-y-4">
-            <PriceListTable
-              items={catalogRows}
-              editable
-              hideDefaultColumn
-              onChangePrice={updatePrice}
-            />
+            <PriceListTable rows={rowsWithOverrides} columns={EDIT_COLUMNS} onChangePrice={updatePrice} />
 
             <div className="flex justify-end">
               <Button
                 size="sm"
-                onClick={() => saveMutation.mutate(catalogRows)}
-                disabled={saveMutation.isPending}
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending || Object.keys(overrides).length === 0}
                 className="gap-1.5 gradient-primary border-none shadow-glow text-xs h-8"
               >
                 <Save className="h-3.5 w-3.5" />

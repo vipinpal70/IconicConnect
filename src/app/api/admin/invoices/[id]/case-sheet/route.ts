@@ -21,19 +21,22 @@ function row(...values: (string | number | null | undefined)[]): string {
 }
 
 // ── Price helpers ──────────────────────────────────────────────────────────────
+// Keyed by category:subCategory:serviceType — service_catalog has one row per
+// serviceType for the same category/subCategory (Design vs Design+Milling),
+// so a plain category:subCategory key would collide between the two.
 
 function buildPriceMap(
-  catalogItems: { category: string; subCategory: string; defaultPrice: string }[],
-  clientPrices: { category: string; subCategory: string; price: string }[]
+  catalogItems: { category: string; subCategory: string; serviceType: string; defaultPrice: string }[],
+  clientPrices: { category: string; subCategory: string; serviceType: string; price: string }[]
 ) {
   const def = new Map<string, number>()
-  for (const c of catalogItems) def.set(`${c.category}:${c.subCategory}`, parseFloat(c.defaultPrice))
+  for (const c of catalogItems) def.set(`${c.category}:${c.subCategory}:${c.serviceType}`, parseFloat(c.defaultPrice))
 
   const cli = new Map<string, number>()
-  for (const c of clientPrices) cli.set(`${c.category}:${c.subCategory}`, parseFloat(c.price))
+  for (const c of clientPrices) cli.set(`${c.category}:${c.subCategory}:${c.serviceType}`, parseFloat(c.price))
 
-  return (cat: string, sub: string) =>
-    cli.get(`${cat}:${sub}`) ?? def.get(`${cat}:${sub}`) ?? 0
+  return (cat: string, sub: string, serviceType: string) =>
+    cli.get(`${cat}:${sub}:${serviceType}`) ?? def.get(`${cat}:${sub}:${serviceType}`) ?? 0
 }
 
 // ── Per-case extraction ────────────────────────────────────────────────────────
@@ -42,6 +45,7 @@ type CaseRow = {
   caseNumber: string
   category: string
   subType: string
+  serviceType: 'design_only' | 'design_milling'
   selection: string
   units: number
   unitsLabel: string
@@ -52,13 +56,14 @@ type CaseRow = {
 }
 
 function extractCaseRow(
-  c: { caseNumber: string | null; category: string | null; subTypeData: unknown; clientId: string },
-  getPrice: (cat: string, sub: string) => number
+  c: { caseNumber: string | null; category: string | null; subTypeData: unknown; clientId: string; serviceType: string | null },
+  getPrice: (cat: string, sub: string, serviceType: string) => number
 ): CaseRow {
   const d = (c.subTypeData as Record<string, unknown>) ?? {}
   const cat = (c.category ?? '').toLowerCase().trim()
+  const serviceType: 'design_only' | 'design_milling' = c.serviceType === 'design_milling' ? 'design_milling' : 'design_only'
   const modelRequired = d.modelRequired === 'yes'
-  const modelPrice = modelRequired ? getPrice('Model', '3D Model') : 0
+  const modelPrice = modelRequired ? getPrice('Model', '3D Model', serviceType) : 0
 
   const archStr = String(d.arch || d.caseType2 || 'Upper').toLowerCase()
   const archCount = archStr.includes('both') || archStr.includes('full') ? 2 : 1
@@ -74,7 +79,7 @@ function extractCaseRow(
     const teeth = Array.isArray(d.teeth) ? (d.teeth as number[]) : []
     selection = teeth.length ? teeth.map((t) => `#${t}`).join(', ') : '—'
     units = teeth.length
-    unitPrice = getPrice('Crown & Bridge', subType)
+    unitPrice = getPrice('Crown & Bridge', subType, serviceType)
   } else if (cat === 'implant' || cat === 'implants') {
     const implantSub = String(d.sub_category || d.subCategory || d.caseType1 || 'Ti-Base')
     const cbType = String(d.caseType2 || '')
@@ -86,28 +91,28 @@ function extractCaseRow(
     const cbParts = cbTeeth.map((t) => `CB:#${t}`)
     selection = [...impParts, ...cbParts].join(', ') || '—'
     units = impTeeth.length + cbTeeth.length
-    const impPrice = impTeeth.length * getPrice('Implants', implantSub)
+    const impPrice = impTeeth.length * getPrice('Implants', implantSub, serviceType)
     const cbPrice = cbTeeth.length > 0 && cbType && cbType !== 'None'
-      ? cbTeeth.length * getPrice('Crown & Bridge', cbType)
+      ? cbTeeth.length * getPrice('Crown & Bridge', cbType, serviceType)
       : 0
     unitPrice = units > 0 ? parseFloat(((impPrice + cbPrice) / units).toFixed(2)) : 0
   } else if (cat === 'appliances' || cat === 'appliance') {
     subType = String(d.appliance_type || d.applianceType || d.caseType1 || 'Night Guards')
     selection = String(d.arch || d.caseType2 || 'Upper')
     units = archCount
-    unitPrice = getPrice('Appliances', subType)
+    unitPrice = getPrice('Appliances', subType, serviceType)
     isArchBased = true
   } else if (cat === 'denture' || cat === 'dentures') {
     subType = String(d.sub_category || d.subCategory || d.caseType1 || 'Full Denture')
     selection = String(d.arch || d.caseType2 || 'Upper')
     units = archCount
-    unitPrice = getPrice('Dentures', subType)
+    unitPrice = getPrice('Dentures', subType, serviceType)
     isArchBased = true
   } else if (cat === 'cosmetics' || cat === 'cosmetic') {
     subType = String(d.sub_category || d.subCategory || d.caseType || d.caseType1 || 'Veneers')
     selection = String(d.arch || d.caseType2 || 'Upper')
     units = archCount
-    unitPrice = getPrice('Cosmetics', subType)
+    unitPrice = getPrice('Cosmetics', subType, serviceType)
     isArchBased = true
   }
 
@@ -121,6 +126,7 @@ function extractCaseRow(
     caseNumber: c.caseNumber ?? '—',
     category: c.category ?? '—',
     subType,
+    serviceType,
     selection,
     units,
     unitsLabel,
@@ -173,11 +179,13 @@ export async function GET(
         db.select({
           category: serviceCatalog.category,
           subCategory: serviceCatalog.subCategory,
+          serviceType: serviceCatalog.serviceType,
           defaultPrice: serviceCatalog.defaultPrice,
         }).from(serviceCatalog).where(eq(serviceCatalog.isActive, true)),
         db.select({
           category: serviceCatalog.category,
           subCategory: serviceCatalog.subCategory,
+          serviceType: serviceCatalog.serviceType,
           price: clientPriceList.price,
         })
           .from(clientPriceList)
@@ -187,20 +195,30 @@ export async function GET(
 
       const getPrice = buildPriceMap(catalogItems, clientPriceRows)
 
-      csvLines.push(row('Case Number', 'Category', 'Sub-Type', 'Teeth / Arch Selection', 'Units / Arches', 'Model Required', 'Unit Price ($)', 'Case Total ($)'))
+      csvLines.push(row('Case Number', 'Category', 'Sub-Type', 'Service Type', 'Teeth / Arch Selection', 'Units / Arches', 'Model Required', 'Unit Price ($)', 'Case Total ($)'))
 
       let grandTotal = 0
       for (const c of caseRows) {
         const r = extractCaseRow(
-          { caseNumber: c.caseNumber, category: c.category, subTypeData: c.subTypeData, clientId: c.clientId },
+          { caseNumber: c.caseNumber, category: c.category, subTypeData: c.subTypeData, clientId: c.clientId, serviceType: c.serviceType },
           getPrice
         )
-        csvLines.push(row(r.caseNumber, r.category, r.subType, r.selection, r.unitsLabel, r.modelRequired, r.unitPrice.toFixed(2), r.caseTotal.toFixed(2)))
+        csvLines.push(row(
+          r.caseNumber,
+          r.category,
+          r.subType,
+          r.serviceType === 'design_milling' ? 'Design + Milling' : 'Design',
+          r.selection,
+          r.unitsLabel,
+          r.modelRequired,
+          r.unitPrice.toFixed(2),
+          r.caseTotal.toFixed(2)
+        ))
         grandTotal += r.caseTotal
       }
 
       csvLines.push('')
-      csvLines.push(row('', '', '', '', '', '', 'Grand Total', grandTotal.toFixed(2)))
+      csvLines.push(row('', '', '', '', '', '', '', 'Grand Total', grandTotal.toFixed(2)))
     } else {
       // ── Fallback: aggregated items from invoice ──
       csvLines.push(row('Note: Individual case data not available for this invoice (older invoice format).'))

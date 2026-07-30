@@ -14,9 +14,7 @@ interface CenterStat {
   active: boolean;
   caseCount: number;
   activeCaseCount: number;
-  partnerCost: number;
   customerRevenue: number;
-  margin: number;
   avgTatDays: number | null;
   remakeRate: number | null;
 }
@@ -53,7 +51,7 @@ export default function MillingAnalyticsPage() {
 
   const isLoading = statsLoading || casesLoading;
 
-  const perCenter = stats.map((c) => ({ name: c.centerName.split(" ")[0], cases: c.caseCount, revenue: c.customerRevenue, cost: c.partnerCost, tat: c.avgTatDays ?? 0 }));
+  const perCenter = stats.map((c) => ({ name: c.centerName.split(" ")[0], cases: c.caseCount, revenue: c.customerRevenue, tat: c.avgTatDays ?? 0 }));
 
   const productMix = Array.from(new Set(cases.map((c) => c.category).filter((c): c is string => Boolean(c)))).map((category) => ({
     name: category,
@@ -61,7 +59,6 @@ export default function MillingAnalyticsPage() {
   }));
 
   const totalRevenue = stats.reduce((s, c) => s + c.customerRevenue, 0);
-  const totalCost = stats.reduce((s, c) => s + c.partnerCost, 0);
   const activeCases = stats.reduce((s, c) => s + c.activeCaseCount, 0);
   const tatValues = stats.map((c) => c.avgTatDays).filter((v): v is number => v !== null);
   const avgTat = tatValues.length ? tatValues.reduce((a, b) => a + b, 0) / tatValues.length : null;
@@ -79,14 +76,8 @@ export default function MillingAnalyticsPage() {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <KPI label="Revenue" value={`$${(totalRevenue / 1000).toFixed(1)}k`} sub="all partners" tone="primary" />
-            <KPI
-              label="Gross margin"
-              value={`$${((totalRevenue - totalCost) / 1000).toFixed(1)}k`}
-              sub={totalRevenue > 0 ? `${(((totalRevenue - totalCost) / totalRevenue) * 100).toFixed(0)}% blended` : "—"}
-              tone="success"
-            />
             <KPI label="Avg TAT" value={avgTat !== null ? `${avgTat.toFixed(1)}d` : "—"} sub="delivered cases" tone="info" />
             <KPI label="Active cases" value={String(activeCases)} sub="in production network-wide" tone="warning" />
           </div>
@@ -101,22 +92,6 @@ export default function MillingAnalyticsPage() {
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip />
                     <Bar dataKey="cases" fill="hsl(158, 64%, 28%)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-card">
-              <CardHeader className="pb-2"><CardTitle className="text-base">Revenue vs partner cost</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={perCenter}>
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="revenue" fill="hsl(158, 64%, 28%)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="cost" fill="hsl(152, 30%, 70%)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

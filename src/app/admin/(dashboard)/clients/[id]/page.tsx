@@ -11,10 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { Badge } from "@/src/components/ui/badge"
 import { toast } from "sonner"
 import { Switch } from "@/src/components/ui/switch"
-import { ArrowLeft, Building2, Save, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp } from "lucide-react"
-import { PriceListTable, type PriceListRow } from "@/src/components/PriceListTable"
+import { ArrowLeft, Building2, Save, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
+import { PriceListTable, type PriceColumnConfig } from "@/src/components/PriceListTable"
 import type { PreferenceFormRecord } from "@/src/lib/preference-forms"
 import type { PriceListEntryFull } from "@/src/lib/price-list"
+import { mergeByServiceType } from "@/src/lib/price-list"
 
 type ClientProfile = {
   id: string
@@ -37,18 +38,23 @@ type ClientProfile = {
   onBoardedAt: string | null
 }
 
-function toPriceListRow(item: PriceListEntryFull): PriceListRow {
-  return {
-    id: item.id,
-    catalogItemId: item.catalogItemId,
-    category: item.category,
-    subCategory: item.subCategory,
-    unitType: item.unitType,
-    defaultPrice: item.defaultPrice,
-    price: item.price,
-    notes: item.notes,
-    sortOrder: item.sortOrder,
-  }
+const CLIENT_PRICE_COLUMNS: PriceColumnConfig[] = [
+  { key: "defaultDesign", label: "Default Design" },
+  { key: "defaultMilling", label: "Default D+Milling" },
+  { key: "clientDesign", label: "Client Design", editable: true },
+  { key: "clientMilling", label: "Client D+Milling", editable: true },
+]
+
+async function fetchClientPriceList(
+  clientId: string,
+  serviceType: "design_only" | "design_milling",
+  refresh = false
+): Promise<PriceListEntryFull[]> {
+  const url = `/api/admin/clients/${clientId}/price-list?serviceType=${serviceType}${refresh ? "&refresh=true" : ""}`
+  const res = await fetch(url, { cache: "no-store" })
+  if (!res.ok) throw new Error("Failed to load price list")
+  const json = await res.json()
+  return json.data ?? []
 }
 
 export default function ClientProfilePage() {
@@ -57,8 +63,8 @@ export default function ClientProfilePage() {
   const params = useParams<{ id: string }>()
   const clientId = Array.isArray(params?.id) ? params.id[0] : params?.id
 
-  const [priceRows, setPriceRows] = useState<PriceListRow[]>([])
-  const [priceListInitialized, setPriceListInitialized] = useState(false)
+  const [overrides, setOverrides] = useState<Record<string, number>>({})
+  const [refreshingPrices, setRefreshingPrices] = useState(false)
 
   const clientQuery = useQuery<ClientProfile>({
     queryKey: ["admin-client", clientId],
@@ -71,72 +77,50 @@ export default function ClientProfilePage() {
     },
   })
 
-  const priceListQuery = useQuery<PriceListEntryFull[]>({
-    queryKey: ["admin-client-price-list", clientId],
+  const designOnlyQuery = useQuery<PriceListEntryFull[]>({
+    queryKey: ["admin-client-price-list", clientId, "design_only"],
     enabled: !!clientId,
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/clients/${clientId}/price-list`, { cache: "no-store" })
-      if (!res.ok) throw new Error("Failed to load price list")
-      const json = await res.json()
-      return json.data ?? []
-    },
+    queryFn: () => fetchClientPriceList(clientId!, "design_only"),
   })
 
-  const catalogQuery = useQuery<PriceListEntryFull[]>({
-    queryKey: ["admin-service-catalog"],
-    enabled: priceListQuery.isSuccess && priceListQuery.data?.length === 0,
-    queryFn: async () => {
-      const res = await fetch("/api/admin/service-catalog", { cache: "no-store" })
-      if (!res.ok) throw new Error("Failed to load catalog")
-      const json = await res.json()
-      return json.data ?? []
-    },
+  const designMillingQuery = useQuery<PriceListEntryFull[]>({
+    queryKey: ["admin-client-price-list", clientId, "design_milling"],
+    enabled: !!clientId,
+    queryFn: () => fetchClientPriceList(clientId!, "design_milling"),
   })
 
-  // Reset price list state when client ID changes to prevent showing stale data from previously visited profiles
+  // Reset unsaved edits when navigating between client profiles
   useEffect(() => {
-    setPriceRows([])
-    setPriceListInitialized(false)
+    setOverrides({})
   }, [clientId])
 
-  // Populate price rows from the fetched price list (or fall back to catalog defaults)
-  useEffect(() => {
-    if (!priceListQuery.isSuccess || priceListInitialized) return
+  const mergedRows = mergeByServiceType(designOnlyQuery.data ?? [], designMillingQuery.data ?? [])
+  const rowsWithOverrides = mergedRows.map((row) => ({
+    ...row,
+    designOnly: row.designOnly && row.designOnly.catalogItemId in overrides
+      ? { ...row.designOnly, price: overrides[row.designOnly.catalogItemId] }
+      : row.designOnly,
+    designMilling: row.designMilling && row.designMilling.catalogItemId in overrides
+      ? { ...row.designMilling, price: overrides[row.designMilling.catalogItemId] }
+      : row.designMilling,
+  }))
 
-    if (priceListQuery.data.length > 0) {
-      setPriceRows(priceListQuery.data.map(toPriceListRow))
-      setPriceListInitialized(true)
-    }
-  }, [priceListQuery.isSuccess, priceListQuery.data, priceListInitialized])
-
-  useEffect(() => {
-    if (priceListQuery.isSuccess && priceListQuery.data?.length === 0) {
-      if (!catalogQuery.isSuccess || priceListInitialized) return
-      if (catalogQuery.data.length > 0) {
-        setPriceRows(catalogQuery.data.map(toPriceListRow))
-        setPriceListInitialized(true)
-      }
-    }
-  }, [
-    catalogQuery.isSuccess,
-    catalogQuery.data,
-    priceListInitialized,
-    priceListQuery.isSuccess,
-    priceListQuery.data,
-  ])
+  const findNotes = (catalogItemId: string): string | null => {
+    const all = [...(designOnlyQuery.data ?? []), ...(designMillingQuery.data ?? [])]
+    return all.find((r) => r.catalogItemId === catalogItemId)?.notes ?? null
+  }
 
   const saveMutation = useMutation({
-    mutationFn: async (items: PriceListRow[]) => {
+    mutationFn: async () => {
+      const items = Object.entries(overrides).map(([catalogItemId, price]) => ({
+        catalogItemId,
+        price,
+        notes: findNotes(catalogItemId),
+      }))
       const res = await fetch(`/api/admin/clients/${clientId}/price-list`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((row) => ({
-            catalogItemId: row.catalogItemId,
-            price: row.price,
-            notes: row.notes,
-          })),
-        }),
+        body: JSON.stringify({ items }),
       })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
@@ -145,6 +129,7 @@ export default function ClientProfilePage() {
       return res.json()
     },
     onSuccess: async () => {
+      setOverrides({})
       await queryClient.invalidateQueries({ queryKey: ["admin-client-price-list", clientId] })
       toast.success("Price list saved")
     },
@@ -154,11 +139,24 @@ export default function ClientProfilePage() {
   })
 
   const updatePrice = (catalogItemId: string, price: number) => {
-    setPriceRows((current) =>
-      current.map((row) =>
-        row.catalogItemId === catalogItemId ? { ...row, price } : row
-      )
-    )
+    setOverrides((prev) => ({ ...prev, [catalogItemId]: price }))
+  }
+
+  const handleRefreshPrices = async () => {
+    setRefreshingPrices(true)
+    try {
+      const [designOnly, designMilling] = await Promise.all([
+        fetchClientPriceList(clientId!, "design_only", true),
+        fetchClientPriceList(clientId!, "design_milling", true),
+      ])
+      queryClient.setQueryData(["admin-client-price-list", clientId, "design_only"], designOnly)
+      queryClient.setQueryData(["admin-client-price-list", clientId, "design_milling"], designMilling)
+      toast.success("Refreshed directly from the database")
+    } catch {
+      toast.error("Failed to refresh")
+    } finally {
+      setRefreshingPrices(false)
+    }
   }
 
   const prefFormsQuery = useQuery<PreferenceFormRecord[]>({
@@ -174,7 +172,7 @@ export default function ClientProfilePage() {
 
   const client = clientQuery.data
   const location = [client?.city, client?.state, client?.country].filter(Boolean).join(", ")
-  const isDefaultPrices = priceListQuery.isSuccess && priceListQuery.data?.length === 0 && priceRows.length > 0
+  const priceListLoading = designOnlyQuery.isLoading || designMillingQuery.isLoading
 
   return (
     
@@ -270,29 +268,39 @@ export default function ClientProfilePage() {
                     Allocated price list
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {isDefaultPrices
-                      ? "No price list found — showing catalog defaults. Save to confirm."
-                      : "Edit client-specific prices. Changes are reflected in the client portal immediately after save."}
+                    Edit client-specific Design and Design + Milling prices. Changes are reflected in the client portal immediately after save.
                   </p>
                 </div>
-                <Button
-                  onClick={() => saveMutation.mutate(priceRows)}
-                  disabled={saveMutation.isPending || priceListQuery.isLoading}
-                  size="sm"
-                  className="gap-1.5 gradient-primary border-none shadow-glow text-xs h-8 shrink-0"
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  Save price list
-                </Button>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 text-xs h-8"
+                    onClick={handleRefreshPrices}
+                    disabled={refreshingPrices}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${refreshingPrices ? "animate-spin" : ""}`} />
+                    Refresh from DB
+                  </Button>
+                  <Button
+                    onClick={() => saveMutation.mutate()}
+                    disabled={saveMutation.isPending || priceListLoading || Object.keys(overrides).length === 0}
+                    size="sm"
+                    className="gap-1.5 gradient-primary border-none shadow-glow text-xs h-8"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    Save price list
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="px-4 pb-4">
-              {priceListQuery.isLoading ? (
+              {priceListLoading ? (
                 <p className="text-xs text-muted-foreground py-6 text-center">Loading...</p>
               ) : (
                 <PriceListTable
-                  items={priceRows}
-                  editable
+                  rows={rowsWithOverrides}
+                  columns={CLIENT_PRICE_COLUMNS}
                   onChangePrice={updatePrice}
                 />
               )}

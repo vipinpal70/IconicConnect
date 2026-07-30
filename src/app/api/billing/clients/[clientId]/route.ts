@@ -17,24 +17,27 @@ import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 const BILLING_TTL = 1800 // 30 minutes
 
 // ── Price map helpers ──────────────────────────────────────────────────────────
+// Keyed by category:subCategory:serviceType — service_catalog has one row per
+// serviceType for the same category/subCategory (Design vs Design+Milling),
+// so a plain category:subCategory key would collide between the two.
 
 function buildPriceMap(
-  catalogItems: { category: string; subCategory: string; defaultPrice: string }[],
-  clientPrices: { category: string; subCategory: string; price: string }[]
+  catalogItems: { category: string; subCategory: string; serviceType: string; defaultPrice: string }[],
+  clientPrices: { category: string; subCategory: string; serviceType: string; price: string }[]
 ) {
   const defaultMap = new Map<string, number>()
   for (const item of catalogItems) {
-    defaultMap.set(`${item.category}:${item.subCategory}`, parseFloat(item.defaultPrice))
+    defaultMap.set(`${item.category}:${item.subCategory}:${item.serviceType}`, parseFloat(item.defaultPrice))
   }
 
   const clientMap = new Map<string, number>()
   for (const cp of clientPrices) {
-    clientMap.set(`${cp.category}:${cp.subCategory}`, parseFloat(cp.price))
+    clientMap.set(`${cp.category}:${cp.subCategory}:${cp.serviceType}`, parseFloat(cp.price))
   }
 
-  return (category: string, subCategory: string): number =>
-    clientMap.get(`${category}:${subCategory}`) ??
-    defaultMap.get(`${category}:${subCategory}`) ??
+  return (category: string, subCategory: string, serviceType: string): number =>
+    clientMap.get(`${category}:${subCategory}:${serviceType}`) ??
+    defaultMap.get(`${category}:${subCategory}:${serviceType}`) ??
     0
 }
 
@@ -43,7 +46,8 @@ function buildPriceMap(
 function computeCasePrice(
   category: string | null,
   subTypeData: unknown,
-  getPrice: (cat: string, sub: string) => number
+  serviceType: 'design_only' | 'design_milling',
+  getPrice: (cat: string, sub: string, serviceType: string) => number
 ): number {
   const data = (subTypeData as Record<string, unknown>) || {}
   const cat = (category || '').toLowerCase().trim()
@@ -57,10 +61,10 @@ function computeCasePrice(
   if (cat === 'crown & bridge' || cat === 'crown & bridges') {
     const subCat = String(data.sub_category || data.subCategory || data.caseType || 'Crown')
     const teeth = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
-    let price = teeth * getPrice('Crown & Bridge', subCat)
+    let price = teeth * getPrice('Crown & Bridge', subCat, serviceType)
 
     // Model
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
     return parseFloat(price.toFixed(2))
   }
 
@@ -72,36 +76,36 @@ function computeCasePrice(
     const implantTeeth = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
     const cbTeeth = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
 
-    let price = implantTeeth * getPrice('Implants', implantSubCat)
+    let price = implantTeeth * getPrice('Implants', implantSubCat, serviceType)
     if (cbTeeth > 0 && cbType && cbType !== 'None') {
-      price += cbTeeth * getPrice('Crown & Bridge', cbType)
+      price += cbTeeth * getPrice('Crown & Bridge', cbType, serviceType)
     }
 
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
     return parseFloat(price.toFixed(2))
   }
 
   // Appliances
   if (cat === 'appliances' || cat === 'appliance') {
     const appType = String(data.appliance_type || data.applianceType || data.caseType1 || 'Night Guards')
-    let price = archCount * getPrice('Appliances', appType)
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
+    let price = archCount * getPrice('Appliances', appType, serviceType)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
     return parseFloat(price.toFixed(2))
   }
 
   // Dentures
   if (cat === 'denture' || cat === 'dentures') {
     const subCat = String(data.sub_category || data.subCategory || data.caseType1 || 'Full Denture')
-    let price = archCount * getPrice('Dentures', subCat)
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
+    let price = archCount * getPrice('Dentures', subCat, serviceType)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
     return parseFloat(price.toFixed(2))
   }
 
   // Cosmetics
   if (cat === 'cosmetics' || cat === 'cosmetic') {
     const subCat = String(data.sub_category || data.subCategory || data.caseType || data.caseType1 || 'Veneers')
-    let price = archCount * getPrice('Cosmetics', subCat)
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
+    let price = archCount * getPrice('Cosmetics', subCat, serviceType)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
     return parseFloat(price.toFixed(2))
   }
 
@@ -168,6 +172,7 @@ export async function GET(
       db.select({
         category: serviceCatalog.category,
         subCategory: serviceCatalog.subCategory,
+        serviceType: serviceCatalog.serviceType,
         defaultPrice: serviceCatalog.defaultPrice,
       }).from(serviceCatalog).where(eq(serviceCatalog.isActive, true)),
 
@@ -175,6 +180,7 @@ export async function GET(
         ? db.select({
             category: serviceCatalog.category,
             subCategory: serviceCatalog.subCategory,
+            serviceType: serviceCatalog.serviceType,
             price: clientPriceList.price,
           })
           .from(clientPriceList)
@@ -203,7 +209,8 @@ export async function GET(
 
     let totalPrice = 0
     const detailedCases = clientCases.map(c => {
-      const price = computeCasePrice(c.category, c.subTypeData, getPrice)
+      const serviceType = c.serviceType === 'design_milling' ? 'design_milling' : 'design_only'
+      const price = computeCasePrice(c.category, c.subTypeData, serviceType, getPrice)
       totalPrice += price
       return {
         id: c.id,
@@ -214,6 +221,7 @@ export async function GET(
         createdAt: c.createdAt,
         dueDate: c.dueDate,
         price,
+        serviceType,
         scanFileName: scanFileMap.get(c.id) ?? null,
       }
     })

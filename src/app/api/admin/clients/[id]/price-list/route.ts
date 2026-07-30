@@ -94,9 +94,15 @@ export async function PUT(
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
     await updateClientPriceList(id, validated, auth.profile.id)
-    await deleteCachedData(`price-list:client:${id}`)
+    await Promise.all([
+      deleteCachedData(`price-list:client:${id}:design_only`),
+      deleteCachedData(`price-list:client:${id}:design_milling`),
+    ])
 
-    const data = await getPriceListForClient(id)
+    const [designOnly, designMilling] = await Promise.all([
+      getPriceListForClient(id, 'design_only'),
+      getPriceListForClient(id, 'design_milling'),
+    ])
 
     await logActivity({
       actor: auth.profile,
@@ -104,7 +110,7 @@ export async function PUT(
       details: { clientId: id, itemCount: validated.length },
     }).catch((err) => console.error('[price_list.updated logActivity]', err))
 
-    return NextResponse.json({ data })
+    return NextResponse.json({ data: designOnly, designMillingData: designMilling })
   } catch (error) {
     console.error('[admin/clients/[id]/price-list PUT]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 })

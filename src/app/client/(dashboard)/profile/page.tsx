@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
 import { ClientPriceListModal } from "@/src/components/ClientPriceListModal";
-import type { PriceListRow } from "@/src/components/PriceListTable";
-import type { PriceListEntryFull } from "@/src/lib/price-list";
+import type { MergedPriceRow } from "@/src/lib/price-list";
+import { mergeByServiceType } from "@/src/lib/price-list";
 import { fetchPriceListWithCache } from "@/src/lib/price-list-cache";
 import { toast } from "sonner";
 import {
@@ -44,7 +44,7 @@ export default function ProfilePage() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [priceList, setPriceList] = useState<PriceListRow[]>([]);
+  const [priceList, setPriceList] = useState<MergedPriceRow[]>([]);
   const [priceListOpen, setPriceListOpen] = useState(false);
   const [users, setUsers] = useState<LabUser[]>([]);
 
@@ -60,18 +60,11 @@ export default function ProfilePage() {
         setProfile(data as any);
 
         if (data.role !== "subuser") {
-          const items = await fetchPriceListWithCache(data.id);
-          setPriceList(items.map((item) => ({
-            id: item.id,
-            catalogItemId: item.catalogItemId,
-            category: item.category,
-            subCategory: item.subCategory,
-            unitType: item.unitType,
-            defaultPrice: item.defaultPrice,
-            price: item.price,
-            notes: item.notes,
-            sortOrder: item.sortOrder,
-          })));
+          const [designOnly, designMilling] = await Promise.all([
+            fetchPriceListWithCache(data.id, "design_only"),
+            fetchPriceListWithCache(data.id, "design_milling"),
+          ]);
+          setPriceList(mergeByServiceType(designOnly, designMilling));
         }
 
         if (data.role !== "subuser") {
@@ -395,7 +388,7 @@ export default function ProfilePage() {
           open={priceListOpen}
           onClose={() => setPriceListOpen(false)}
           clientName={displayProfile.company}
-          items={priceList}
+          rows={priceList}
         />
       </div>
     

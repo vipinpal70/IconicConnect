@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
@@ -8,7 +8,7 @@ import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 import type { PriceListEntryFull } from '@/src/lib/price-list'
 
 const PRICE_LIST_TTL = 3600 // 1 hour
-const cacheKey = (clientId: string) => `price-list:client:${clientId}`
+const cacheKey = (clientId: string, serviceType: string) => `price-list:client:${clientId}:${serviceType}`
 
 async function requireClient() {
   const supabase = await createClient()
@@ -31,18 +31,25 @@ async function requireClient() {
   return { profile, clientId }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const auth = await requireClient()
     if ('error' in auth) return auth.error
 
-    const key = cacheKey(auth.clientId)
-    const cached = await getCachedData<PriceListEntryFull[]>(key)
-    if (cached) {
-      return NextResponse.json({ data: cached })
+    const { searchParams } = new URL(req.url)
+    const serviceType = searchParams.get('serviceType') === 'design_milling' ? 'design_milling' : 'design_only'
+    const forceRefresh = searchParams.get('refresh') === 'true'
+
+    const key = cacheKey(auth.clientId, serviceType)
+
+    if (!forceRefresh) {
+      const cached = await getCachedData<PriceListEntryFull[]>(key)
+      if (cached) {
+        return NextResponse.json({ data: cached })
+      }
     }
 
-    const data = await getPriceListForClient(auth.clientId)
+    const data = await getPriceListForClient(auth.clientId, serviceType)
     await setCachedData(key, data, PRICE_LIST_TTL)
     return NextResponse.json({ data })
   } catch (error) {

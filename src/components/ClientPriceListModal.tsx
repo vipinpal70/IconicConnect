@@ -6,18 +6,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/src/components/ui/dialog'
-import { PriceListTable, type PriceListRow } from './PriceListTable'
+import { PriceListTable, type PriceColumnConfig } from './PriceListTable'
+import type { MergedPriceRow } from '@/src/lib/price-list'
 import { FileText } from 'lucide-react'
 
 type Props = {
   open: boolean
   onClose: () => void
   clientName: string
-  items: PriceListRow[]
+  rows: MergedPriceRow[]
   loading?: boolean
 }
 
-export function ClientPriceListModal({ open, onClose, clientName, items, loading }: Props) {
+const COLUMNS: PriceColumnConfig[] = [
+  { key: 'clientDesign', label: 'Design Price' },
+  { key: 'clientMilling', label: 'D+Milling Price' },
+]
+
+export function ClientPriceListModal({ open, onClose, clientName, rows, loading }: Props) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -33,7 +39,7 @@ export function ClientPriceListModal({ open, onClose, clientName, items, loading
             <p className="text-xs text-muted-foreground text-center py-8">Loading...</p>
           ) : (
             <>
-              <PriceListTable items={items} />
+              <PriceListTable rows={rows} columns={COLUMNS} />
               <p className="text-[10px] text-muted-foreground mt-3 italic">
                 Price list updates made by our team are reflected here automatically.
               </p>
