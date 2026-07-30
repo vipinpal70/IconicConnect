@@ -5,9 +5,10 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { Label } from "@/src/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import {
   ArrowLeft, Printer, CheckCircle, Clock, Save, Pencil,
-  CircleCheck, CircleX, BadgeCheck, Banknote, CalendarDays,
+  CircleCheck, CircleX, BadgeCheck, Banknote, CalendarDays, Trash2, AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
 import type { InvoiceWithClient } from "@/src/lib/invoice"
@@ -80,7 +81,7 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState<InvoiceWithClient | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Adjustment editing
+  // Invoice editing (adjustments + remarks + terms)
   const [showAdjEdit, setShowAdjEdit] = useState(false)
   const [savingAdj, setSavingAdj] = useState(false)
   const [adjEdit, setAdjEdit] = useState({
@@ -88,6 +89,12 @@ export default function InvoiceDetailPage() {
     discountValue: "", discountType: "percent" as AdjType,
     extraChargesValue: "", extraChargesType: "percent" as AdjType,
   })
+  const [remarksEdit, setRemarksEdit] = useState("")
+  const [termsEdit, setTermsEdit] = useState("7 Days")
+
+  // Delete confirmation
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Client payment
   const [markingPaid, setMarkingPaid] = useState(false)
@@ -116,6 +123,8 @@ export default function InvoiceDetailPage() {
         extraChargesValue: data.extraChargesValue > 0 ? String(data.extraChargesValue) : "",
         extraChargesType: data.extraChargesType as AdjType,
       })
+      setRemarksEdit(data.remarks ?? "")
+      setTermsEdit(data.termsOfPayment ?? "7 Days")
     } catch { toast.error("Failed to load invoice") }
     finally { setLoading(false) }
   }, [invoiceId])
@@ -163,7 +172,7 @@ export default function InvoiceDetailPage() {
     finally { setMarkingPaid(false) }
   }
 
-  // ── Save adjustments ─────────────────────────────────────────────────────
+  // ── Save invoice edits (adjustments + remarks + terms) ───────────────────
 
   const handleSaveAdj = async () => {
     if (!invoice) return
@@ -173,10 +182,28 @@ export default function InvoiceDetailPage() {
         taxType: adjEdit.taxType, taxValue: parseFloat(adjEdit.taxValue) || 0,
         discountType: adjEdit.discountType, discountValue: parseFloat(adjEdit.discountValue) || 0,
         extraChargesType: adjEdit.extraChargesType, extraChargesValue: parseFloat(adjEdit.extraChargesValue) || 0,
+        remarks: remarksEdit || null,
+        termsOfPayment: termsEdit || "7 Days",
       })
-      if (updated) { setInvoice(updated); setShowAdjEdit(false); toast.success("Adjustments updated") }
-    } catch { toast.error("Failed to save adjustments") }
+      if (updated) { setInvoice(updated); setShowAdjEdit(false); toast.success("Invoice updated") }
+    } catch { toast.error("Failed to save invoice") }
     finally { setSavingAdj(false) }
+  }
+
+  // ── Delete invoice ────────────────────────────────────────────────────────
+
+  const handleDelete = async () => {
+    if (!invoice) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/invoices/${invoiceId}`, { method: "DELETE" })
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Failed to delete invoice") }
+      toast.success(`Invoice ${invoice.invoiceNumber} deleted`)
+      router.push("/admin/billing")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete invoice")
+      setDeleting(false)
+    }
   }
 
   // ── Confirm received ─────────────────────────────────────────────────────
@@ -246,7 +273,7 @@ export default function InvoiceDetailPage() {
           </Button>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setShowAdjEdit(v => !v)} className="h-8 text-xs gap-1.5">
-              <Pencil className="h-3.5 w-3.5" />Edit Adjustments
+              <Pencil className="h-3.5 w-3.5" />Edit Invoice
             </Button>
             <Button variant={invoice.status === "paid" ? "outline" : "default"} size="sm"
               onClick={handleToggleStatus} className="h-8 text-xs gap-1.5">
@@ -256,6 +283,9 @@ export default function InvoiceDetailPage() {
             </Button>
             <Button size="sm" onClick={() => window.print()} className="h-8 text-xs gap-1.5">
               <Printer className="h-3.5 w-3.5" />Print / PDF
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)} className="h-8 text-xs gap-1.5">
+              <Trash2 className="h-3.5 w-3.5" />Delete
             </Button>
           </div>
         </div>
@@ -385,10 +415,20 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
 
-        {/* ── Adjustments editor ── */}
+        {/* ── Invoice editor ── */}
         {showAdjEdit && (
           <div className="print:hidden border border-border rounded-lg p-4 bg-card space-y-3 animate-fade-in">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Edit Adjustments</p>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Edit Invoice</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Terms of Payment</Label>
+                <Input value={termsEdit} onChange={e => setTermsEdit(e.target.value)} className="h-7 text-xs" placeholder="7 Days" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Remarks</Label>
+                <Input value={remarksEdit} onChange={e => setRemarksEdit(e.target.value)} className="h-7 text-xs" placeholder="Optional" />
+              </div>
+            </div>
             <div className="space-y-2">
               <AdjRow label="Tax" value={adjEdit.taxValue} type={adjEdit.taxType} subtotal={subtotal}
                 onChange={(v, t) => setAdjEdit(a => ({ ...a, taxValue: v, taxType: t }))} sign="+" />
@@ -582,6 +622,32 @@ export default function InvoiceDetailPage() {
           .print\\:hidden { display: none !important; }
         }
       `}</style>
+
+      {/* ── Delete confirmation ── */}
+      <Dialog open={showDeleteDialog} onOpenChange={(v) => !v && !deleting && setShowDeleteDialog(false)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              Delete Invoice?
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            This will permanently delete invoice <strong className="text-foreground">{invoice.invoiceNumber}</strong> for{" "}
+            <strong className="text-foreground">{invoice.clientLabName || invoice.clientName || invoice.clientEmail}</strong>{" "}
+            (${fmt(invoice.total)}). This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setShowDeleteDialog(false)} disabled={deleting} className="h-8 text-xs">
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting} className="h-8 text-xs gap-1.5">
+              <Trash2 className="h-3.5 w-3.5" />
+              {deleting ? "Deleting…" : "Delete Invoice"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

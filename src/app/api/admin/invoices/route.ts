@@ -13,6 +13,7 @@ import {
 } from '@/src/lib/invoice'
 import type { AdjustmentType } from '@/src/db/schema/invoice'
 import { getCachedData, setCachedData, invalidateInvoiceCache } from '@/src/lib/redis-cache'
+import { logActivity } from '@/src/lib/activity-log'
 
 const INVOICE_TTL = 1800 // 30 minutes
 
@@ -149,6 +150,20 @@ export async function POST(req: NextRequest) {
       .returning()
 
     await invalidateInvoiceCache(clientId, saved.id)
+
+    await logActivity({
+      actor: auth.profile,
+      action: 'invoice.created',
+      details: {
+        invoiceId: saved.id,
+        invoiceNumber: saved.invoiceNumber,
+        clientId,
+        caseCount: caseIds.length,
+        subtotal: String(subtotal),
+        total: String(total),
+      },
+    }).catch((err) => console.error('[invoice.created logActivity]', err))
+
     return NextResponse.json(formatInvoiceRow(saved, client), { status: 201 })
   } catch (err) {
     console.error('[api/admin/invoices POST]', err)

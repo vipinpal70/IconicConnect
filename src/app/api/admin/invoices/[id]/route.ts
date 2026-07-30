@@ -11,6 +11,7 @@ import {
 } from '@/src/lib/invoice'
 import type { AdjustmentType } from '@/src/db/schema/invoice'
 import { getCachedData, setCachedData, invalidateInvoiceCache } from '@/src/lib/redis-cache'
+import { logActivity } from '@/src/lib/activity-log'
 
 const INVOICE_TTL = 1800 // 30 minutes
 
@@ -156,9 +157,60 @@ export async function PATCH(
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, updated.clientId)).limit(1)
     await invalidateInvoiceCache(updated.clientId, id)
+
+    await logActivity({
+      actor: auth.profile,
+      action: 'invoice.updated',
+      details: {
+        invoiceId: id,
+        invoiceNumber: updated.invoiceNumber,
+        clientId: updated.clientId,
+        changes: body,
+      },
+    }).catch((err) => console.error('[invoice.updated logActivity]', err))
+
     return NextResponse.json(formatInvoiceRow(updated, client))
   } catch (err) {
     console.error('[api/admin/invoices/[id] PATCH]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// DELETE /api/admin/invoices/[id] — permanently remove an invoice
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await requireAdmin()
+    if ('error' in auth) return auth.error
+
+    const { id } = await params
+    const [inv] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1)
+    if (!inv) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+
+    await db.delete(invoices).where(eq(invoices.id, id))
+    await invalidateInvoiceCache(inv.clientId, id)
+
+    await logActivity({
+      actor: auth.profile,
+      action: 'invoice.deleted',
+      details: {
+        invoiceId: id,
+        invoiceNumber: inv.invoiceNumber,
+        clientId: inv.clientId,
+        subtotal: inv.subtotal,
+        total: inv.total,
+        status: inv.status,
+        startDate: inv.startDate,
+        endDate: inv.endDate,
+        caseIds: inv.caseIds,
+      },
+    }).catch((err) => console.error('[invoice.deleted logActivity]', err))
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('[api/admin/invoices/[id] DELETE]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

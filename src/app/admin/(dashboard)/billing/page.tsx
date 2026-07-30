@@ -12,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/src/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import {
   CheckCircle,
   Clock,
@@ -27,6 +28,9 @@ import {
   CircleX,
   BadgeCheck,
   Factory,
+  Pencil,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
 import type { InvoiceWithClient } from "@/src/lib/invoice"
@@ -115,6 +119,24 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true)
   const [filterClient, setFilterClient] = useState<ClientProfile | null>(null)
   const [exportingId, setExportingId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<InvoiceWithClient | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/invoices/${deleteTarget.id}`, { method: "DELETE" })
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Failed to delete invoice") }
+      setInvoiceList((prev) => prev.filter((inv) => inv.id !== deleteTarget.id))
+      toast.success(`Invoice ${deleteTarget.invoiceNumber} deleted`)
+      setDeleteTarget(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete invoice")
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const handleExportCaseSheet = async (invoiceId: string, invoiceNumber: string) => {
     setExportingId(invoiceId)
@@ -323,7 +345,7 @@ export default function BillingPage() {
   const receivedCount = displayedInvoices.filter(i => i.received).length
 
   return (
-    
+    <>
       <div className="space-y-4 animate-fade-in">
 
         {/* Header */}
@@ -678,10 +700,18 @@ export default function BillingPage() {
                             onClick={() => router.push(`/admin/billing/${inv.id}`)}>
                             <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                           </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit invoice"
+                            onClick={() => router.push(`/admin/billing/${inv.id}`)}>
+                            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" title="Export case sheet"
                             disabled={exportingId === inv.id}
                             onClick={() => handleExportCaseSheet(inv.id, inv.invoiceNumber)}>
                             <Download className={`h-3.5 w-3.5 ${exportingId === inv.id ? "animate-pulse text-primary" : "text-muted-foreground"}`} />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Delete invoice"
+                            onClick={() => setDeleteTarget(inv)}>
+                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                           </Button>
                         </div>
                       </td>
@@ -693,6 +723,34 @@ export default function BillingPage() {
           </CardContent>
         </Card>
       </div>
-    
+
+      {/* ── Delete confirmation ── */}
+      <Dialog open={!!deleteTarget} onOpenChange={(v) => !v && !deleting && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              Delete Invoice?
+            </DialogTitle>
+          </DialogHeader>
+          {deleteTarget && (
+            <p className="text-xs text-muted-foreground">
+              This will permanently delete invoice <strong className="text-foreground">{deleteTarget.invoiceNumber}</strong> for{" "}
+              <strong className="text-foreground">{deleteTarget.clientLabName || deleteTarget.clientName || deleteTarget.clientEmail}</strong>{" "}
+              (${deleteTarget.total.toFixed(2)}). This action cannot be undone.
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting} className="h-8 text-xs">
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleConfirmDelete} disabled={deleting} className="h-8 text-xs gap-1.5">
+              <Trash2 className="h-3.5 w-3.5" />
+              {deleting ? "Deleting…" : "Delete Invoice"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
