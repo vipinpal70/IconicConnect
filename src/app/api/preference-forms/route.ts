@@ -5,6 +5,7 @@ import { profiles, subUsers } from "@/src/db/schema/profile"
 import { preferenceForms } from "@/src/db/schema/preference-form"
 import { createClient } from "@/src/lib/supabase/server"
 import { clonePreferenceFormPayload, type PreferenceFormPayload } from "@/src/lib/preference-forms"
+import { createSystemDefaultPreferenceForm } from "@/src/lib/preference-forms-server"
 import { logActivity } from "@/src/lib/activity-log"
 
 async function getRequestContext(clientId?: string | null) {
@@ -53,11 +54,30 @@ export async function GET(req: NextRequest) {
       return context.error
     }
 
-    const forms = await db
+    let forms = await db
       .select()
       .from(preferenceForms)
       .where(eq(preferenceForms.clientId, context.resolvedClientId))
       .orderBy(desc(preferenceForms.createdAt))
+
+    if (forms.length === 0) {
+      const [clientProfile] = await db
+        .select({ role: profiles.role, status: profiles.status })
+        .from(profiles)
+        .where(eq(profiles.id, context.resolvedClientId))
+        .limit(1)
+
+      if (clientProfile?.role === "client" && clientProfile.status === "active") {
+        await createSystemDefaultPreferenceForm(context.resolvedClientId, context.profile.id).catch((err) =>
+          console.error("[api/preference-forms GET lazy default]", err)
+        )
+        forms = await db
+          .select()
+          .from(preferenceForms)
+          .where(eq(preferenceForms.clientId, context.resolvedClientId))
+          .orderBy(desc(preferenceForms.createdAt))
+      }
+    }
 
     return NextResponse.json({ data: forms })
   } catch (error) {
