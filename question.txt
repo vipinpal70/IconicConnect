@@ -1,0 +1,276 @@
+MILLING CENTER ROUTING
+======================
+
+1. Priority when 2+ centers qualify for the same case
+
+   Question: When more than one milling center is able to take the same
+   case, how should we decide which one gets it — and in what order?
+
+   Why we're asking: Right now the system design only supports a
+   "primary center" and a single "backup center" per rule. If you plan
+   to work with 3 or more centers that can all handle the same type of
+   case, we need a rule for picking between them — otherwise the system
+   won't know what to do beyond the first two.
+
+   Example: Suppose Centers A, B, and C can all mill Zirconia Crowns for
+   labs in California. A new Zirconia Crown case comes in from a
+   California lab. Should it always go to A first (and only fall back to
+   B, then C, if A is unavailable)? Should it rotate — A, then B, then C,
+   then back to A — to spread the work out evenly? Should it go to
+   whichever of the three currently charges Iconic the least? Or should
+   admin just see all three options and pick manually every time?
+
+2. What triggers a fallback
+
+   Question: When should the system decide a center is "full" and move
+   the case to the next one instead?
+
+   Why we're asking: The plan says a case skips to the backup center if
+   the primary is "over capacity," but we haven't defined what capacity
+   actually means in numbers, or who sets that number.
+
+   Example: Is Center A's capacity "50 cases per month," "10 cases in
+   progress at once," or something else? If Center A is already
+   working on 9 cases and its limit is 10, does a new case still go to
+   A, or does it automatically shift to Center B? And who decides that
+   "10" number in the first place — does each center tell you their own
+   limit, or does Iconic admin set it?
+
+3. Overlapping rules
+
+   Question: If a case matches two different routing rules at the same
+   time, which one wins?
+
+   Why we're asking: You'll likely have more than one rule active at
+   once (e.g. one rule based on the lab's state, another based on the
+   type of restoration). We need to know what happens when a single case
+   matches both.
+
+   Example: Rule #1 says "all cases from Texas go to Center A." Rule #2
+   says "all E.max crowns go to Center B." A case comes in that is both
+   an E.max crown AND from a Texas lab — it matches both rules. Does the
+   rule you marked as higher priority simply win, or do the rules need
+   to be combined somehow (e.g. only Center A handles Texas E.max
+   crowns specifically)?
+
+4. Center can't take the case after being assigned
+
+   Question: What happens if a milling center is assigned a case but
+   later can't actually complete it (they're backed up, equipment is
+   down, etc.)?
+
+   Why we're asking: Assignment isn't the end of the story — we want to
+   know if this needs a formal "reassign" workflow built into the
+   system, or if it's something admin will always just handle by hand
+   when it comes up.
+
+   Example: Center A accepts a case on Monday, but by Wednesday realizes
+   their milling machine is broken and they can't deliver on time. Does
+   the system need a "flag this case for reassignment" button that
+   automatically re-runs the routing logic to find a new center? Or is
+   it acceptable for admin to just notice this happening (e.g. from a
+   support ticket) and manually reassign the case the same way they did
+   the first time?
+
+5. Which restorations each center can actually do
+
+   Question: Now that milling centers no longer enter their own list of
+   services and prices in the portal, who tells the system which types
+   of cases (Zirconia Crown, E.max, Nightguard, etc.) each center is
+   actually capable of milling?
+
+   Why we're asking: This directly affects routing — the system can
+   only recommend a center for a case if it knows that center can
+   actually do that type of work. Since that self-reported list was
+   removed from the milling center's side, something needs to replace
+   it as the source of truth.
+
+   Example: Center A can mill Zirconia Crowns and Nightguards, but not
+   E.max. If an E.max case comes in, the system needs to know not to
+   suggest Center A at all. Should admin manually maintain this "who can
+   do what" list for each center inside the admin panel? Or should this
+   information be collected some other way (e.g. during onboarding, or
+   from a conversation with the center, entered once by Iconic staff)?
+
+6. Remakes
+
+   Question: What actually counts as a "remake," and how does one get
+   started in the system?
+
+   Why we're asking: The analytics dashboard is meant to show a "remake
+   rate" per milling center, but nothing in the current plan defines
+   what triggers that number to go up. Without a clear trigger, this
+   stat can't actually be tracked.
+
+   Example: A dental lab receives a milled crown from Center A but it
+   doesn't fit properly and needs to be re-made from scratch. Does
+   someone (admin, or the lab) mark the original case as "needs remake,"
+   creating a new linked case? Does it go through a support ticket
+   first, which admin then converts into a remake? Or is there some
+   other flow you have in mind for how this gets recorded?
+
+
+PREFERENCE FORM
+===============
+
+1. "Lab Preference" as an option
+
+   Question: When a client selects "Lab Preference" for a field instead
+   of picking one of the fixed choices, should the form ask them to type
+   out what they actually want?
+
+   Why we're asking: Several fields (Smile Library, Distance to
+   Antagonist, Taper Angle, Emergence Profile, Screw-retained hole size)
+   include "Lab Preference" as one of the options. Right now it's
+   unclear if that's just a way of saying "no strong opinion, use your
+   judgment" (nothing more needed), or if it should prompt the client to
+   explain their preference in their own words so the designer has
+   something concrete to follow.
+
+   Example: A client sets Taper Angle to "Lab Preference" instead of the
+   default 3°. Should the form then show a text box asking "Please
+   describe your preferred taper angle," so the designer has actual
+   guidance? Or should the designer simply use their own best judgment
+   with no further input from the client at all?
+
+2. File uploads for DME settings / custom reference files
+
+   Question: What file types, how many files, and what size limit should
+   we allow for these uploads?
+
+   Why we're asking: The form references sending "DME files" for
+   Material Settings and Manufacturing Settings, plus possibly a custom
+   reference file for smile library preferences. We need to know the
+   real-world file types labs will actually be sending so we can build
+   the upload correctly (and reject anything unsupported, with a clear
+   error message).
+
+   Example: Will a lab typically upload a single PDF? Multiple image
+   photos of a reference smile? A zipped folder containing several
+   files at once? Is there a reasonable max file size (e.g. 25MB) we
+   should enforce so uploads don't fail or take too long?
+
+3. Header fields (Lab Name, Contact, Phone)
+
+   Question: Should these fields on the preference form always match
+   the client's account info automatically, or should the client be
+   able to type in something different for a specific form?
+
+   Why we're asking: This changes how we build the form. If it's always
+   pulled from their account, the fields are just displayed as read-only
+   information. If it should be editable, we need actual input boxes
+   and the ability to save a different value per form.
+
+   Example: A lab's account contact is "Reception Desk," but for a
+   specific preference form they want to list "Dr. Smith" as the point
+   of contact for that particular set of preferences. Should that be
+   possible, or should the form always just show whoever is listed on
+   their account?
+
+4. Missing option lists for four fields
+
+   Question: For Distance to Antagonist, Taper Angle, Emergence Profile,
+   and Screw-retained hole size, what are ALL the choices a client
+   should be able to pick from (not just the default)?
+
+   Why we're asking: The reference PDF only tells us the default value
+   for these four fields (e.g. Taper Angle defaults to 3°) — it doesn't
+   list what the other available choices are. We've proposed some
+   placeholder options ourselves (in the plan document), but we'd
+   rather confirm the real list with you than guess.
+
+   Example: For Taper Angle, we guessed the choices might be 0° / 3° /
+   6° / Lab Preference. Is that accurate, or are there other angle
+   options labs commonly ask for? Same question for the other three
+   fields — or is "Lab Preference" simply the only alternative to the
+   default for these, with no other fixed choices at all?
+
+5. Smile Library field mismatch
+
+   Question: Is it OK to leave the existing Smile Library field exactly
+   as it is today, and add two brand-new fields alongside it that match
+   the reference PDF more precisely?
+
+   Why we're asking: The system currently stores Smile Library as a
+   choice between "Posterior" and "Anterior." The reference PDF actually
+   describes two separate settings: one for Posterior teeth (choice
+   between CAP and Lab Preference) and one for Anterior teeth (choice
+   between Glidewell and Lab Preference). Since you asked us not to
+   remove any existing functionality, we want to confirm the safest path
+   forward before changing anything.
+
+   Example: Any preference forms a client has already saved would keep
+   showing the old Posterior/Anterior field exactly as before (nothing
+   breaks). New forms going forward would show the two new PDF-accurate
+   fields instead: "Smile Library (Posterior): CAP or Lab Preference"
+   and "Smile Library (Anterior): Glidewell or Lab Preference." Does
+   that approach work for you, or would you rather we replace the old
+   field entirely?
+
+
+
+
+
+   redesign factor:
+    - no of re-upload
+
+    Remakes:
+        back to in_design case
+
+
+    3 flow:
+        design
+        design + milling
+        only milling
+        
+        - set option to enable or disable milling 
+
+     - 3 layer price for each client
+
+        1. design price (enable service on each level)
+        2. D+milling price
+        3. only milling price
+
+    set flow in the client profile
+        - toggle to enable flow for each client
+        - update price
+
+
+
+status in d+milling:
+    submit, in_validation,in_design, in_production,packaged,shiped,deliverd
+
+
+capacity:
+    milling-center:
+        crown- 100 monthly
+
+
+    combine system wise:
+        - crown- 2000 m
+        - coping: 1000m 
+
+
+
+
+client:
+    designOnly
+    design+milling
+    millingOnly
+
+
+
+Service catlog:
+- crown-bridge
+    - designPrice
+    - designMillingPrice
+    - millingPrice
+    - enableDesign
+    - enableDesignMilling
+    - enableMilling: off 
+    - enableSystemLevel
+
+
+
+client-wise-service-catlog:
+

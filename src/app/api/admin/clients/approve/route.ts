@@ -7,6 +7,7 @@ import { NotificationService } from '@/src/lib/notifications/notification-servic
 import { NotificationType } from '@/src/lib/notifications/notification-events'
 import { logActivity } from '@/src/lib/activity-log'
 import { seedClientPriceList } from '@/src/lib/price-list'
+import { createSystemDefaultPreferenceForm } from '@/src/lib/preference-forms-server'
 import { deleteCachedData } from '@/src/lib/redis-cache'
 
 export async function POST(req: NextRequest) {
@@ -43,6 +44,11 @@ export async function POST(req: NextRequest) {
     // Auto-create default price list for the newly approved client
     await seedClientPriceList(clientId, user.id).catch((err) =>
       console.error('[client.approved seedClientPriceList]', err)
+    )
+
+    // Auto-create default preference form for the newly approved client
+    await createSystemDefaultPreferenceForm(clientId, user.id).catch((err) =>
+      console.error('[client.approved createSystemDefaultPreferenceForm]', err)
     )
 
     // Notify client via preference-aware service
