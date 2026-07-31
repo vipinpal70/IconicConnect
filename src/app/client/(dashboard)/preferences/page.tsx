@@ -55,6 +55,7 @@ export default function ClientPreferencesPage() {
   const [uploadingFields, setUploadingFields] = useState({
     uploadedImage1: false,
     uploadedImage2: false,
+    smileLibraryFile: false,
   })
 
   const uploadImage = async (e: React.ChangeEvent<HTMLInputElement>, field: "uploadedImage1" | "uploadedImage2") => {
@@ -94,6 +95,46 @@ export default function ClientPreferencesPage() {
       alert("Failed to upload image")
     } finally {
       setUploadingFields((prev) => ({ ...prev, [field]: false }))
+    }
+  }
+
+  const uploadLibraryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const maxLimit = 15 * 1024 * 1024 // 15MB
+    if (file.size > maxLimit) {
+      alert("File size exceeds the 15MB limit.")
+      return
+    }
+
+    setUploadingFields((prev) => ({ ...prev, smileLibraryFile: true }))
+    try {
+      await uploadFileInChunks(
+        file,
+        {},
+        () => { },
+        (data) => {
+          setDraft((current) => ({
+            ...current,
+            payload: {
+              ...current.payload,
+              smileLibrary: {
+                ...current.payload.smileLibrary,
+                libraryFile: { fileUrl: data.fileUrl, fileName: data.fileName },
+              },
+            },
+          }))
+        },
+        (err) => {
+          alert(`Failed to upload file: ${err}`)
+        }
+      )
+    } catch (err) {
+      console.error(err)
+      alert("Failed to upload file")
+    } finally {
+      setUploadingFields((prev) => ({ ...prev, smileLibraryFile: false }))
     }
   }
 
@@ -270,6 +311,23 @@ export default function ClientPreferencesPage() {
                         <Summary label="Distal-most Crown" value={form.payload.distalMostCrownContact.defaultValues || "-"} />
                         <Summary label="Anatomy" value={form.payload.anatomy.option || "-"} />
                         <Summary label="Smile Library" value={form.payload.smileLibrary.option || "-"} />
+                        <Summary
+                          label="Library File"
+                          value={
+                            form.payload.smileLibrary.libraryFile ? (
+                              <a
+                                href={form.payload.smileLibrary.libraryFile.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline font-bold"
+                              >
+                                {form.payload.smileLibrary.libraryFile.fileName}
+                              </a>
+                            ) : (
+                              "-"
+                            )
+                          }
+                        />
                         <Summary label="Pontic Type" value={form.payload.ponticType.option || "-"} />
                         <Summary label="Pontic Distance" value={form.payload.ponticDistanceFromTissue.option || "-"} />
                         <Summary label="Match Marginal Ridge" value={form.payload.matchMarginalRidge.option || "-"} />
@@ -363,7 +421,10 @@ export default function ClientPreferencesPage() {
                   <Section label="Occlusion">
                     <div className="grid gap-2">
                       <Input
-                        className="h-8 text-xs"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="h-8 text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         value={draft.payload.occlusion.defaultValues}
                         onChange={(e) => updatePayload("occlusion", { ...draft.payload.occlusion, defaultValues: e.target.value })}
                         placeholder="Default Values"
@@ -380,7 +441,10 @@ export default function ClientPreferencesPage() {
                   <Section label="Proximal Contacts">
                     <div className="grid gap-2">
                       <Input
-                        className="h-8 text-xs"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="h-8 text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         value={draft.payload.proximalContacts.defaultValues}
                         onChange={(e) => updatePayload("proximalContacts", { ...draft.payload.proximalContacts, defaultValues: e.target.value })}
                         placeholder="Default Values"
@@ -397,7 +461,10 @@ export default function ClientPreferencesPage() {
                   <Section label="Contact for Distal-most Crown">
                     <div className="grid gap-2">
                       <Input
-                        className="h-8 text-xs"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="h-8 text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         value={draft.payload.distalMostCrownContact.defaultValues}
                         onChange={(e) => updatePayload("distalMostCrownContact", { ...draft.payload.distalMostCrownContact, defaultValues: e.target.value })}
                         placeholder="Default Values"
@@ -445,6 +512,31 @@ export default function ClientPreferencesPage() {
                       onChange={(e) => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, comments: e.target.value })}
                       placeholder="Comments"
                     />
+                    <div className="flex flex-col gap-2 mt-1.5">
+                      <Label className="text-[11px] font-normal text-muted-foreground">Upload Library File (optional)</Label>
+                      {uploadingFields.smileLibraryFile ? (
+                        <div className="text-xs text-muted-foreground">Uploading file...</div>
+                      ) : draft.payload.smileLibrary.libraryFile ? (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-emerald-600 font-medium truncate max-w-[200px]">
+                            ✓ {draft.payload.smileLibrary.libraryFile.fileName}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-destructive hover:underline"
+                            onClick={() => updatePayload("smileLibrary", { ...draft.payload.smileLibrary, libraryFile: null })}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <Input
+                          type="file"
+                          className="h-8 text-xs py-1"
+                          onChange={uploadLibraryFile}
+                        />
+                      )}
+                    </div>
                   </Section>
 
                   <Section label="Pontic Type">
@@ -476,7 +568,10 @@ export default function ClientPreferencesPage() {
                       placeholder="Comments"
                     />
                     <Input
-                      className="h-8 text-xs mt-1.5"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="h-8 text-xs mt-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       value={draft.payload.ponticDistanceFromTissue.distanceMm}
                       onChange={(e) => updatePayload("ponticDistanceFromTissue", { ...draft.payload.ponticDistanceFromTissue, distanceMm: e.target.value })}
                       placeholder="Distance (mm)"
@@ -544,7 +639,10 @@ export default function ClientPreferencesPage() {
                       onChange={(option) => updatePayload("copingPonticDistanceFromTissue", { ...draft.payload.copingPonticDistanceFromTissue, option, distanceMm: draft.payload.copingPonticDistanceFromTissue?.distanceMm || "", comments: draft.payload.copingPonticDistanceFromTissue?.comments || "" })}
                     />
                     <Input
-                      className="h-8 text-xs mt-1"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="h-8 text-xs mt-1 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       value={draft.payload.copingPonticDistanceFromTissue?.distanceMm || ""}
                       onChange={(e) => updatePayload("copingPonticDistanceFromTissue", { ...draft.payload.copingPonticDistanceFromTissue, option: draft.payload.copingPonticDistanceFromTissue?.option || "", distanceMm: e.target.value, comments: draft.payload.copingPonticDistanceFromTissue?.comments || "" })}
                       placeholder="Distance (mm)"
@@ -685,7 +783,7 @@ export default function ClientPreferencesPage() {
                     size="sm"
                     className="h-8 text-xs bg-teal-700 hover:bg-teal-800 text-white"
                     onClick={saveForm}
-                    disabled={saving || uploadingFields.uploadedImage1 || uploadingFields.uploadedImage2}
+                    disabled={saving || uploadingFields.uploadedImage1 || uploadingFields.uploadedImage2 || uploadingFields.smileLibraryFile}
                   >
                     {saving ? "Submitting..." : editingId ? "Submit (Update)" : "Submit"}
                   </Button>

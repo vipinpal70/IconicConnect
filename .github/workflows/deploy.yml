@@ -3,8 +3,9 @@ name: Deploy to VPS
 on:
   push:
     branches:
-      - main
-      - master
+      # - main
+      # - master
+      - feature/preference-form
 
 jobs:
   deploy:

@@ -59,6 +59,10 @@ export type PreferenceFormPayload = {
     option: SmileLibraryOption | ""
     libraryName: string
     comments: string
+    libraryFile?: {
+      fileUrl: string
+      fileName: string
+    } | null
   }
   ponticType: {
     option: PonticTypeOption | ""
@@ -138,6 +142,7 @@ export const createPreferenceFormDefaults = (): PreferenceFormPayload => ({
     option: "",
     libraryName: "",
     comments: "",
+    libraryFile: null,
   },
   ponticType: {
     option: "",
@@ -207,6 +212,10 @@ export function clonePreferenceFormPayload(payload?: Partial<PreferenceFormPaylo
       option: payload.smileLibrary?.option ?? "",
       libraryName: payload.smileLibrary?.libraryName ?? "",
       comments: payload.smileLibrary?.comments ?? "",
+      libraryFile: payload.smileLibrary?.libraryFile ? {
+        fileUrl: payload.smileLibrary.libraryFile.fileUrl ?? "",
+        fileName: payload.smileLibrary.libraryFile.fileName ?? "",
+      } : null,
     },
     ponticType: {
       option: payload.ponticType?.option ?? "",
