@@ -3,7 +3,7 @@ import { db } from "@/src/db"
 import { preferenceForms } from "@/src/db/schema/preference-form"
 import { createPreferenceFormDefaults } from "@/src/lib/preference-forms"
 
-export const DEFAULT_PREFERENCE_FORM_NAME = "Default Preferences"
+export const DEFAULT_PREFERENCE_FORM_NAME = "Default Preferences -Iconic"
 
 export async function createSystemDefaultPreferenceForm(clientId: string, createdBy?: string | null) {
   const [existing] = await db
