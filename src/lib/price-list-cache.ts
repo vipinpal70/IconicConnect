@@ -1,6 +1,6 @@
 import type { PriceListEntryFull } from './price-list-shared'
 
-type ServiceType = 'design_only' | 'design_milling'
+type ServiceType = 'design_only' | 'design_milling' | 'milling_only'
 
 const SESSION_KEY = (id: string, serviceType: ServiceType) => `iconic_price_list_${serviceType}_${id}`
 const LOCAL_KEY = (id: string, serviceType: ServiceType) => `iconic_price_list_local_${serviceType}_${id}`
@@ -73,7 +73,7 @@ export async function fetchPriceListWithCache(
 
 export function invalidatePriceListCache(profileId: string, serviceType?: ServiceType) {
   if (typeof window === 'undefined') return
-  const types: ServiceType[] = serviceType ? [serviceType] : ['design_only', 'design_milling']
+  const types: ServiceType[] = serviceType ? [serviceType] : ['design_only', 'design_milling', 'milling_only']
   for (const type of types) {
     clearStorage(sessionStorage, SESSION_KEY(profileId, type))
     clearStorage(localStorage, LOCAL_KEY(profileId, type))

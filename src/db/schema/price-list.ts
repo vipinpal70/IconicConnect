@@ -55,6 +55,10 @@ export const clientPriceList = pgTable(
       .notNull(),
     price: numeric('price', { precision: 10, scale: 2 }).notNull(),
     notes: text('notes'),
+    // Client-level override of serviceCatalog.isActive — a service is
+    // available to a client only if both are true. System isActive=false
+    // always wins over isEnabled=true.
+    isEnabled: boolean('is_enabled').default(true).notNull(),
     createdBy: uuid('created_by').references(() => profiles.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

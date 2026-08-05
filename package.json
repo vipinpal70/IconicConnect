@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:clean": "node scripts/clean-test-data.mjs",
     "db:clean-old-files": "node scripts/delete-old-case-files.mjs",
+    "db:seed-milling-only-catalog": "node scripts/seed-milling-only-catalog.mjs",
     "r2:clean": "tsx src/lib/queue/r2-cleanup-task.ts",
     "r2:clean:dry": "tsx src/lib/queue/r2-cleanup-task.ts --dry-run",
     "r2:clean:schedule": "tsx src/lib/queue/r2-cleanup-scheduler.ts",

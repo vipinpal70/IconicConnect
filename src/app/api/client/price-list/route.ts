@@ -3,7 +3,7 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
 import { eq } from 'drizzle-orm'
-import { resolveClientIdFromProfile, getPriceListForClient } from '@/src/lib/price-list'
+import { resolveClientIdFromProfile, getPriceListForClient, parseCatalogServiceType } from '@/src/lib/price-list'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 import type { PriceListEntryFull } from '@/src/lib/price-list'
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     if ('error' in auth) return auth.error
 
     const { searchParams } = new URL(req.url)
-    const serviceType = searchParams.get('serviceType') === 'design_milling' ? 'design_milling' : 'design_only'
+    const serviceType = parseCatalogServiceType(searchParams.get('serviceType'))
     const forceRefresh = searchParams.get('refresh') === 'true'
 
     const key = cacheKey(auth.clientId, serviceType)

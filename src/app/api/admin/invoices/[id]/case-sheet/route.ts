@@ -45,7 +45,7 @@ type CaseRow = {
   caseNumber: string
   category: string
   subType: string
-  serviceType: 'design_only' | 'design_milling'
+  serviceType: 'design_only' | 'design_milling' | 'milling_only'
   selection: string
   units: number
   unitsLabel: string
@@ -61,7 +61,8 @@ function extractCaseRow(
 ): CaseRow {
   const d = (c.subTypeData as Record<string, unknown>) ?? {}
   const cat = (c.category ?? '').toLowerCase().trim()
-  const serviceType: 'design_only' | 'design_milling' = c.serviceType === 'design_milling' ? 'design_milling' : 'design_only'
+  const serviceType: 'design_only' | 'design_milling' | 'milling_only' =
+    c.serviceType === 'design_milling' || c.serviceType === 'milling_only' ? c.serviceType : 'design_only'
   const modelRequired = d.modelRequired === 'yes'
   const modelPrice = modelRequired ? getPrice('Model', '3D Model', serviceType) : 0
 
@@ -207,7 +208,7 @@ export async function GET(
           r.caseNumber,
           r.category,
           r.subType,
-          r.serviceType === 'design_milling' ? 'Design + Milling' : 'Design',
+          r.serviceType === 'design_milling' ? 'Design + Milling' : r.serviceType === 'milling_only' ? 'Milling Only' : 'Design',
           r.selection,
           r.unitsLabel,
           r.modelRequired,

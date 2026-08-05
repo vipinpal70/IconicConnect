@@ -67,7 +67,7 @@ type OpsCase = {
   caseNumber?: string | null;
   category?: string | null;
   status: string;
-  serviceType?: "design_only" | "design_milling";
+  serviceType?: "design_only" | "design_milling" | "milling_only";
   createdAt?: string | Date | null;
   designerId?: string | null;
   designerName?: string | null;
@@ -1201,7 +1201,7 @@ export default function CasesPage() {
                           </td>
                           <td className="px-3.5 py-1.5">
                             <div className="flex items-center gap-1.5">
-                              <StatusBadge status={c.status} role="internal" />
+                              <StatusBadge status={c.status} role="internal" serviceType={c.serviceType ?? "design_only"} />
                               {c.autoApproved && (
                                 <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 whitespace-nowrap">⏱ Auto</span>
                               )}

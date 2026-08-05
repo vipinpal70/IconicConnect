@@ -11,11 +11,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog"
-import { PriceListTable, type PriceColumnConfig } from "@/src/components/PriceListTable"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/src/components/ui/tabs"
+import { PriceListTable } from "@/src/components/PriceListTable"
 import { toast } from "sonner"
 import { User, Mail, Phone, Shield, FileText, Save, RefreshCw } from "lucide-react"
 import type { PriceListEntryFull } from "@/src/lib/price-list-shared"
-import { mergeByServiceType } from "@/src/lib/price-list-shared"
+import type { ServiceType } from "@/src/lib/case-status-mapping"
 
 type AdminProfile = {
   id: string
@@ -28,18 +29,16 @@ type AdminProfile = {
   createdAt: string
 }
 
-const VIEW_COLUMNS: PriceColumnConfig[] = [
-  { key: "defaultDesign", label: "Design Price" },
-  { key: "defaultMilling", label: "D+Milling Price" },
-]
+const FLOWS: ServiceType[] = ["design_only", "design_milling", "milling_only"]
 
-const EDIT_COLUMNS: PriceColumnConfig[] = [
-  { key: "defaultDesign", label: "Design Price", editable: true },
-  { key: "defaultMilling", label: "D+Milling Price", editable: true },
-]
+const FLOW_LABELS: Record<ServiceType, string> = {
+  design_only: "Design Only",
+  design_milling: "Design + Milling",
+  milling_only: "Milling Only",
+}
 
-async function fetchCatalog(serviceType: "design_only" | "design_milling", refresh = false): Promise<PriceListEntryFull[]> {
-  const url = `/api/admin/service-catalog?serviceType=${serviceType}${refresh ? "&refresh=true" : ""}`
+async function fetchCatalog(serviceType: ServiceType, refresh = false): Promise<PriceListEntryFull[]> {
+  const url = `/api/admin/service-catalog?serviceType=${serviceType}&includeInactive=true${refresh ? "&refresh=true" : ""}`
   const res = await fetch(url, refresh ? { cache: "no-store" } : undefined)
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}))
@@ -64,38 +63,55 @@ export default function AdminProfilePage() {
     },
   })
 
-  const designOnlyQuery = useQuery<PriceListEntryFull[]>({
-    queryKey: ["admin-service-catalog", "design_only"],
-    queryFn: () => fetchCatalog("design_only"),
-  })
+  const [activeOverrides, setActiveOverrides] = useState<Record<string, boolean>>({})
+  const [activeTab, setActiveTab] = useState<ServiceType>("design_only")
 
-  const designMillingQuery = useQuery<PriceListEntryFull[]>({
-    queryKey: ["admin-service-catalog", "design_milling"],
-    queryFn: () => fetchCatalog("design_milling"),
-  })
+  const catalogQueries: Record<ServiceType, ReturnType<typeof useQuery<PriceListEntryFull[]>>> = {
+    design_only: useQuery<PriceListEntryFull[]>({
+      queryKey: ["admin-service-catalog", "design_only"],
+      queryFn: () => fetchCatalog("design_only"),
+    }),
+    design_milling: useQuery<PriceListEntryFull[]>({
+      queryKey: ["admin-service-catalog", "design_milling"],
+      queryFn: () => fetchCatalog("design_milling"),
+    }),
+    milling_only: useQuery<PriceListEntryFull[]>({
+      queryKey: ["admin-service-catalog", "milling_only"],
+      queryFn: () => fetchCatalog("milling_only"),
+    }),
+  }
 
-  const isLoading = designOnlyQuery.isLoading || designMillingQuery.isLoading
-  const isError = designOnlyQuery.isError || designMillingQuery.isError
+  const isLoading = FLOWS.some((flow) => catalogQueries[flow].isLoading)
+  const isError = FLOWS.some((flow) => catalogQueries[flow].isError)
 
-  const mergedRows = mergeByServiceType(designOnlyQuery.data ?? [], designMillingQuery.data ?? [])
-  const rowsWithOverrides = mergedRows.map((row) => ({
-    ...row,
-    designOnly: row.designOnly && row.designOnly.catalogItemId in overrides
-      ? { ...row.designOnly, defaultPrice: overrides[row.designOnly.catalogItemId] }
-      : row.designOnly,
-    designMilling: row.designMilling && row.designMilling.catalogItemId in overrides
-      ? { ...row.designMilling, defaultPrice: overrides[row.designMilling.catalogItemId] }
-      : row.designMilling,
-  }))
+  const rowsWithOverrides = (flow: ServiceType) =>
+    (catalogQueries[flow].data ?? []).map((row) => ({
+      ...row,
+      defaultPrice: row.catalogItemId in overrides ? overrides[row.catalogItemId] : row.defaultPrice,
+      isActive: row.catalogItemId in activeOverrides ? activeOverrides[row.catalogItemId] : row.isActive,
+    }))
 
   const updatePrice = (catalogItemId: string, price: number) => {
     setOverrides((prev) => ({ ...prev, [catalogItemId]: price }))
   }
 
+  const updateActive = (catalogItemId: string, isActive: boolean) => {
+    setActiveOverrides((prev) => ({ ...prev, [catalogItemId]: isActive }))
+  }
+
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const items = Object.entries(overrides).map(([id, defaultPrice]) => ({ id, defaultPrice }))
-      const res = await fetch("/api/admin/service-catalog", {
+      const ids = new Set([...Object.keys(overrides), ...Object.keys(activeOverrides)])
+      const allRows = FLOWS.flatMap((flow) => catalogQueries[flow].data ?? [])
+      const items = Array.from(ids).map((id) => {
+        const row = allRows.find((r) => r.catalogItemId === id)
+        return {
+          id,
+          defaultPrice: overrides[id] ?? row?.defaultPrice ?? 0,
+          isActive: id in activeOverrides ? activeOverrides[id] : undefined,
+        }
+      })
+      const res = await fetch(`/api/admin/service-catalog?serviceType=${activeTab}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items }),
@@ -108,6 +124,7 @@ export default function AdminProfilePage() {
     },
     onSuccess: async () => {
       setOverrides({})
+      setActiveOverrides({})
       await queryClient.invalidateQueries({ queryKey: ["admin-service-catalog"] })
       toast.success("Default price list saved")
       setPriceListOpen(false)
@@ -119,18 +136,15 @@ export default function AdminProfilePage() {
 
   const handleOpen = () => {
     setOverrides({})
+    setActiveOverrides({})
     setPriceListOpen(true)
   }
 
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      const [designOnly, designMilling] = await Promise.all([
-        fetchCatalog("design_only", true),
-        fetchCatalog("design_milling", true),
-      ])
-      queryClient.setQueryData(["admin-service-catalog", "design_only"], designOnly)
-      queryClient.setQueryData(["admin-service-catalog", "design_milling"], designMilling)
+      const results = await Promise.all(FLOWS.map((flow) => fetchCatalog(flow, true)))
+      FLOWS.forEach((flow, i) => queryClient.setQueryData(["admin-service-catalog", flow], results[i]))
       toast.success("Refreshed directly from the database")
     } catch {
       toast.error("Failed to refresh")
@@ -223,7 +237,20 @@ export default function AdminProfilePage() {
             ) : isError ? (
               <p className="text-xs text-destructive text-center py-4">Failed to load price list</p>
             ) : (
-              <PriceListTable rows={mergedRows} columns={VIEW_COLUMNS} />
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ServiceType)}>
+                <TabsList>
+                  {FLOWS.map((flow) => (
+                    <TabsTrigger key={flow} value={flow} className="text-xs">
+                      {FLOW_LABELS[flow]}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+                {FLOWS.map((flow) => (
+                  <TabsContent key={flow} value={flow}>
+                    <PriceListTable rows={catalogQueries[flow].data ?? []} mode="system" />
+                  </TabsContent>
+                ))}
+              </Tabs>
             )}
           </CardContent>
         </Card>
@@ -235,21 +262,34 @@ export default function AdminProfilePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
               <FileText className="h-4 w-4 text-primary" />
-              Edit Default Price List
+              Edit Default Price List — {FLOW_LABELS[activeTab]}
             </DialogTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Changes here update the default prices applied to newly approved clients. Existing client prices are not affected.
+              Changes here update the default prices and enable state applied to newly approved clients. Existing client prices are not affected.
             </p>
           </DialogHeader>
 
           <div className="mt-2 space-y-4">
-            <PriceListTable rows={rowsWithOverrides} columns={EDIT_COLUMNS} onChangePrice={updatePrice} />
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ServiceType)}>
+              <TabsList>
+                {FLOWS.map((flow) => (
+                  <TabsTrigger key={flow} value={flow} className="text-xs">
+                    {FLOW_LABELS[flow]}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {FLOWS.map((flow) => (
+                <TabsContent key={flow} value={flow}>
+                  <PriceListTable rows={rowsWithOverrides(flow)} mode="system" onChangePrice={updatePrice} onToggleEnabled={updateActive} />
+                </TabsContent>
+              ))}
+            </Tabs>
 
             <div className="flex justify-end">
               <Button
                 size="sm"
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || Object.keys(overrides).length === 0}
+                disabled={saveMutation.isPending || (Object.keys(overrides).length === 0 && Object.keys(activeOverrides).length === 0)}
                 className="gap-1.5 gradient-primary border-none shadow-glow text-xs h-8"
               >
                 <Save className="h-3.5 w-3.5" />

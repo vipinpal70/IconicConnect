@@ -10,6 +10,7 @@ import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
 import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
+import { parseCatalogServiceType } from '@/src/lib/price-list';
 
 const CASES_LIST_TTL = 300 // 5 minutes
 
@@ -134,6 +135,7 @@ export async function POST(req: NextRequest) {
     // Fetch client profile to get lab name for folder structure
     const clientProfile = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1).then(res => res[0]);
     const labName = clientProfile?.labName || 'UnknownLab';
+    const enabledServiceTypes = clientProfile?.enabledServiceTypes ?? ['design_only'];
 
     const results = [];
 
@@ -143,6 +145,14 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < casesArray.length; i++) {
       const caseData = casesArray[i];
       const file = files[i];
+
+      const serviceType = parseCatalogServiceType(typeof caseData.serviceType === 'string' ? caseData.serviceType : null)
+      if (!enabledServiceTypes.includes(serviceType)) {
+        return NextResponse.json(
+          { error: `The ${serviceType} flow is not enabled for this client` },
+          { status: 400 }
+        );
+      }
 
       const seqResult = await db.execute(sql`SELECT nextval('cases_number_seq') AS n`)
       // drizzle-orm/postgres-js returns rows as a RowList (array-like); handle both shapes
@@ -160,7 +170,7 @@ export async function POST(req: NextRequest) {
         preferredTeethLibrary: caseData.preferredTeethLibrary || 'default',
         teethLibraryFileUrl: caseData.teethLibraryFileUrl || null,
         teethLibraryFileName: caseData.teethLibraryFileName || null,
-        serviceType: caseData.serviceType === 'design_milling' ? 'design_milling' as const : 'design_only' as const,
+        serviceType,
         createdBy: profile.fullName || profile.email || 'System',
       };
 

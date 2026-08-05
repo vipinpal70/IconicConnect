@@ -20,11 +20,18 @@ import { Textarea } from "@/src/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
+import type { ServiceType } from "@/src/lib/case-status-mapping";
+
+const SERVICE_TYPE_COPY: Record<ServiceType, { label: string; description: string }> = {
+  design_only: { label: "Design Only", description: "Iconic delivers design files digitally" },
+  design_milling: { label: "Design + Milling", description: "Iconic designs, then mills and ships the physical product" },
+  milling_only: { label: "Milling Only", description: "Upload your finished design file — we mill and ship the physical product, no design work included" },
+};
 
 interface BulkRow {
   fileName: string;
   file: File;
-  serviceType: "design_only" | "design_milling";
+  serviceType: ServiceType;
   category: string;
   subTypeData: Record<string, any>;
   modelRequired: "yes" | "no";
@@ -239,7 +246,8 @@ export default function CasesPage() {
     return () => { window.clearTimeout(timeoutId); window.clearInterval(intervalId); };
   }, []);
 
-  const [serviceType, setServiceType] = useState<"design_only" | "design_milling">("design_only");
+  const [serviceType, setServiceType] = useState<ServiceType>("design_only");
+  const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>(["design_only"]);
   const [category, setCategory] = useState<string>("Crown & Bridges");
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({});
   const [modelRequired, setModelRequired] = useState("no");
@@ -313,7 +321,20 @@ export default function CasesPage() {
       }
     }
     fetchProfile();
+
+    fetch("/api/client/service-types")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => setEnabledServiceTypes(json?.data?.enabledServiceTypes ?? ["design_only"]))
+      .catch(() => setEnabledServiceTypes(["design_only"]));
   }, []);
+
+  // Keep the selected serviceType valid as the enabled-flow set loads/changes
+  useEffect(() => {
+    if (!enabledServiceTypes.includes(serviceType)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from a fetch result (enabledServiceTypes), not local render state
+      setServiceType(enabledServiceTypes[0] ?? "design_only");
+    }
+  }, [enabledServiceTypes, serviceType]);
 
   const handleDeleteUploadedFile = async (fileName: string) => {
     try {
@@ -578,7 +599,7 @@ export default function CasesPage() {
       return {
         fileName: f.name,
         file: f,
-        serviceType: "design_only",
+        serviceType: enabledServiceTypes[0] ?? "design_only",
         category: "Crown & Bridges",
         subTypeData: {},
         modelRequired: "no",
@@ -856,43 +877,41 @@ export default function CasesPage() {
                           <div>
                             <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
                             <p className="text-sm font-medium text-foreground">Drop file here or click to upload</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {serviceType === "milling_only"
+                                ? "Upload your manufacture-ready design file, not a raw scan — this goes straight to milling (Max 2GB)"
+                                : "PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)"}
+                            </p>
                           </div>
                         </label>
                       )}
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Service Type</Label>
-                      <RadioGroup
-                        value={serviceType}
-                        onValueChange={(v) => setServiceType(v as "design_only" | "design_milling")}
-                        className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
-                      >
-                        <label
-                          htmlFor="client-service-design-only"
-                          className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === "design_only" ? "border-emerald-600 bg-emerald-50" : "border-border"
-                            }`}
+                    {enabledServiceTypes.length > 1 && (
+                      <div className="space-y-2">
+                        <Label>Service Type</Label>
+                        <RadioGroup
+                          value={serviceType}
+                          onValueChange={(v) => setServiceType(v as ServiceType)}
+                          className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
                         >
-                          <RadioGroupItem value="design_only" id="client-service-design-only" className="mt-0.5" />
-                          <span>
-                            <span className="block text-xs font-semibold text-foreground">Design Only</span>
-                            <span className="block text-[11px] text-muted-foreground">Iconic delivers design files digitally</span>
-                          </span>
-                        </label>
-                        <label
-                          htmlFor="client-service-design-milling"
-                          className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === "design_milling" ? "border-emerald-600 bg-emerald-50" : "border-border"
-                            }`}
-                        >
-                          <RadioGroupItem value="design_milling" id="client-service-design-milling" className="mt-0.5" />
-                          <span>
-                            <span className="block text-xs font-semibold text-foreground">Design + Milling</span>
-                            <span className="block text-[11px] text-muted-foreground">Iconic designs, then mills and ships the physical product</span>
-                          </span>
-                        </label>
-                      </RadioGroup>
-                    </div>
+                          {enabledServiceTypes.map((flow) => (
+                            <label
+                              key={flow}
+                              htmlFor={`client-service-${flow}`}
+                              className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === flow ? "border-emerald-600 bg-emerald-50" : "border-border"
+                                }`}
+                            >
+                              <RadioGroupItem value={flow} id={`client-service-${flow}`} className="mt-0.5" />
+                              <span>
+                                <span className="block text-xs font-semibold text-foreground">{SERVICE_TYPE_COPY[flow].label}</span>
+                                <span className="block text-[11px] text-muted-foreground">{SERVICE_TYPE_COPY[flow].description}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    )}
 
                     {category === "Implant" ? (
                       <>
@@ -1344,11 +1363,14 @@ export default function CasesPage() {
                                 )}
                                 <div className="space-y-1">
                                   <Label className="text-xs">Service Type</Label>
-                                  <Select value={row.serviceType} onValueChange={(v) => updateBulkRow(i, { serviceType: v as "design_only" | "design_milling" })}>
+                                  <Select value={row.serviceType} onValueChange={(v) => updateBulkRow(i, { serviceType: v as ServiceType })}>
                                     <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                                     <SelectContent className="bg-emerald-800 text-white">
-                                      <SelectItem value="design_only" className="focus:bg-emerald-700 focus:text-white">Design Only</SelectItem>
-                                      <SelectItem value="design_milling" className="focus:bg-emerald-700 focus:text-white">Design + Milling</SelectItem>
+                                      {enabledServiceTypes.map((flow) => (
+                                        <SelectItem key={flow} value={flow} className="focus:bg-emerald-700 focus:text-white">
+                                          {SERVICE_TYPE_COPY[flow].label}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </div>
@@ -1627,7 +1649,7 @@ export default function CasesPage() {
                           </td>
                           <td className="px-3.5 py-2">
                             <div className="scale-90 origin-left">
-                              <StatusBadge status={c.status} />
+                              <StatusBadge status={c.status} serviceType={c.serviceType ?? "design_only"} />
                             </div>
                           </td>
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>

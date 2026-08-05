@@ -65,7 +65,7 @@ type CaseRecord = {
 	category: string | null;
 	subTypeData: Record<string, unknown> | null;
 	status: string;
-	serviceType?: "design_only" | "design_milling";
+	serviceType?: "design_only" | "design_milling" | "milling_only";
 	designerId: string | null;
 	qcId: string | null;
 	accountManagerId: string | null;
@@ -439,9 +439,7 @@ export default function AdminCasesPage() {
 				statusFilter === "All" || caseItem.status === statusFilter;
 			const matchesServiceType =
 				serviceTypeFilter === "All" ||
-				(serviceTypeFilter === "design_milling"
-					? caseItem.serviceType === "design_milling"
-					: caseItem.serviceType !== "design_milling");
+				(caseItem.serviceType ?? "design_only") === serviceTypeFilter;
 			const matchesClient =
 				clientFilter === "All" || caseItem.clientId === clientFilter;
 			const createdAtDate = caseItem.createdAt
@@ -800,6 +798,9 @@ export default function AdminCasesPage() {
 								<SelectItem value="design_milling" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
 									Design + Milling
 								</SelectItem>
+								<SelectItem value="milling_only" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
+									Milling Only
+								</SelectItem>
 							</SelectContent>
 						</Select>
 						<Input
@@ -981,14 +982,15 @@ export default function AdminCasesPage() {
 															<StatusBadge
 																status={caseItem.status}
 																role="internal"
+																serviceType={caseItem.serviceType ?? "design_only"}
 															/>
-															{caseItem.serviceType === "design_milling" && (
-																<span title="Design + Milling" className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary/10 text-primary shrink-0">
+															{(caseItem.serviceType === "design_milling" || caseItem.serviceType === "milling_only") && (
+																<span title={caseItem.serviceType === "milling_only" ? "Milling Only" : "Design + Milling"} className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary/10 text-primary shrink-0">
 																	<Factory className="h-2.5 w-2.5" />
 																</span>
 															)}
 														</div>
-														{caseItem.serviceType === "design_milling" && millingByCaseId.get(caseItem.id)?.millingCenterName && (
+														{(caseItem.serviceType === "design_milling" || caseItem.serviceType === "milling_only") && millingByCaseId.get(caseItem.id)?.millingCenterName && (
 															<p className="text-[10px] text-muted-foreground mt-1">
 																→ {millingByCaseId.get(caseItem.id)?.millingCenterName}
 															</p>
@@ -1025,22 +1027,25 @@ export default function AdminCasesPage() {
 																				<ShieldCheck className="h-3 w-3 mr-0.5" />
 																				Validate
 																			</Button>
-																			<AllocateMenu
-																				designers={designers}
-																				qcs={qcs}
-																				disabled={isMutating}
-																				onPick={(dId) =>
-																					handleUpdate(
-																						caseItem.id,
-																						{ designerId: dId },
-																						`Allocated designer to case`,
-																					)
-																				}
-																			/>
+																			{caseItem.serviceType !== "milling_only" && (
+																				<AllocateMenu
+																					designers={designers}
+																					qcs={qcs}
+																					disabled={isMutating}
+																					onPick={(dId) =>
+																						handleUpdate(
+																							caseItem.id,
+																							{ designerId: dId },
+																							`Allocated designer to case`,
+																						)
+																					}
+																				/>
+																			)}
 																		</>
 																	)}
 
-																	{caseItem.status === "scan_not_verified" && (
+																	{caseItem.status === "scan_not_verified" &&
+																		caseItem.serviceType !== "milling_only" && (
 																		<AllocateMenu
 																			designers={designers}
 																			qcs={qcs}
@@ -1058,7 +1063,8 @@ export default function AdminCasesPage() {
 																	{(caseItem.status === "scan_verified" ||
 																		caseItem.status ===
 																			"allocated_to_designer" ||
-																		caseItem.status === "in_progress") && (
+																		caseItem.status === "in_progress") &&
+																		caseItem.serviceType !== "milling_only" && (
 																		<>
 																			{!caseItem.designerId ? (
 																				<AllocateMenu
@@ -1223,18 +1229,20 @@ export default function AdminCasesPage() {
 																				<RefreshCw className="h-3 w-3 mr-0.5" />{" "}
 																				Resume Case
 																			</Button>
-																			<AllocateMenu
-																				designers={designers}
-																				qcs={qcs}
-																				disabled={isMutating}
-																				onPick={(dId) =>
-																					handleUpdate(
-																						caseItem.id,
-																						{ designerId: dId },
-																						`Allocated designer to on-hold case`,
-																					)
-																				}
-																			/>
+																			{caseItem.serviceType !== "milling_only" && (
+																				<AllocateMenu
+																					designers={designers}
+																					qcs={qcs}
+																					disabled={isMutating}
+																					onPick={(dId) =>
+																						handleUpdate(
+																							caseItem.id,
+																							{ designerId: dId },
+																							`Allocated designer to on-hold case`,
+																						)
+																					}
+																				/>
+																			)}
 																		</>
 																	)}
 																</>
@@ -1473,8 +1481,8 @@ export default function AdminCasesPage() {
 																	</span>
 																)}
 
-															{caseItem.status === "approved" &&
-																caseItem.serviceType === "design_milling" &&
+															{((caseItem.status === "approved" && caseItem.serviceType === "design_milling") ||
+																(caseItem.status === "scan_verified" && caseItem.serviceType === "milling_only")) &&
 																(currentUser?.role === "admin" ||
 																	currentUser?.role === "qc" ||
 																	currentUser?.role === "designer") && (
@@ -1590,7 +1598,7 @@ export default function AdminCasesPage() {
 									{openCase.caseNumber || openCase.id} ·{" "}
 									{renderSubTypeSummary(openCase.subTypeData)}
 									<div className="scale-90 origin-left">
-										<StatusBadge status={openCase.status} role="internal" />
+										<StatusBadge status={openCase.status} role="internal" serviceType={openCase.serviceType ?? "design_only"} />
 									</div>
 								</DialogTitle>
 								<p className="text-[11px] text-muted-foreground">

@@ -7,7 +7,8 @@ import { Button } from "@/src/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { StatusBadge } from "@/src/components/StatusBadge"
 import { CaseChat } from "@/src/components/CaseChat"
-import { CASE_LIFECYCLE_STEPS, CASE_STATUS_TO_LIFECYCLE_STEP, INTERNAL_STATUS_LABELS } from "@/src/db/schema/case"
+import { INTERNAL_STATUS_LABELS } from "@/src/db/schema/case"
+import { getLifecycleSteps, getLifecycleStep, type ServiceType, type CaseStatus } from "@/src/lib/case-status-mapping"
 import React, { useState, useRef } from "react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
@@ -51,7 +52,7 @@ type CaseRecord = {
   category: string | null
   subTypeData: Record<string, unknown> | null
   status: string
-  serviceType?: "design_only" | "design_milling"
+  serviceType?: ServiceType
   designerId: string | null
   qcId: string | null
   accountManagerId: string | null
@@ -132,9 +133,13 @@ const DetailRow = React.memo(function DetailRow({ label, value }: { label: strin
   )
 })
 
-const LifecycleStrip = React.memo(function LifecycleStrip({ status }: { status: string }) {
-  const currentStep = CASE_STATUS_TO_LIFECYCLE_STEP[status as keyof typeof CASE_STATUS_TO_LIFECYCLE_STEP]
-  const currentIndex = Math.max(CASE_LIFECYCLE_STEPS.indexOf(currentStep ?? "Submitted"), 0)
+const LifecycleStrip = React.memo(function LifecycleStrip({ status, serviceType }: { status: string; serviceType: ServiceType }) {
+  const steps = getLifecycleSteps(serviceType)
+  const currentStep = getLifecycleStep(serviceType, status as CaseStatus)
+  const currentIndex = Math.max(steps.indexOf(currentStep ?? "Submitted"), 0)
+  // Final success state for the flow — design_only completes at "approved",
+  // the other two flows ship physical product and complete at "delivered".
+  const isSuccessTerminal = status === "approved" || status === "delivered"
 
   return (
     <Card className="shadow-card border-emerald-100 bg-[linear-gradient(180deg,rgba(236,253,245,0.9),rgba(240,253,250,0.7))]">
@@ -144,8 +149,8 @@ const LifecycleStrip = React.memo(function LifecycleStrip({ status }: { status: 
       <CardContent>
         <div className="overflow-x-auto pb-2">
           <div className="flex items-center min-w-max">
-            {CASE_LIFECYCLE_STEPS.map((step, index) => {
-              const done = index < currentIndex || step === currentStep || status === "approved" || status === "delivered"
+            {steps.map((step, index) => {
+              const done = index < currentIndex || step === currentStep || isSuccessTerminal
               const current = step === currentStep
 
               return (
@@ -171,7 +176,7 @@ const LifecycleStrip = React.memo(function LifecycleStrip({ status }: { status: 
                       {step}
                     </span>
                   </div>
-                  {index < CASE_LIFECYCLE_STEPS.length - 1 && (
+                  {index < steps.length - 1 && (
                     <div className={`h-1 w-14 rounded-full ${done ? "bg-emerald-500" : "bg-emerald-100"}`} />
                   )}
                 </div>
@@ -388,6 +393,12 @@ export function CaseDetailView({
     )
   }
 
+  const serviceType: ServiceType = caseRecord.serviceType ?? "design_only"
+  // Milling Only cases skip design entirely, so they reach the milling stage
+  // right after file verification instead of after design approval — but
+  // once there, they use the same Milling tab as Design + Milling.
+  const hasMillingTab = serviceType === "design_milling" || serviceType === "milling_only"
+
   const subTypeData = caseRecord.subTypeData || {}
   const teeth = Array.isArray(subTypeData.teeth) ? (subTypeData.teeth as number[]) : []
   const crownBridgeTeeth = Array.isArray(subTypeData.crownBridgeTeeth) ? (subTypeData.crownBridgeTeeth as number[]) : []
@@ -415,11 +426,11 @@ export function CaseDetailView({
               ⏱ Auto-Approved
             </span>
           )}
-          <StatusBadge status={caseRecord.status} role={chatSide === "admin" ? "internal" : "client"} />
+          <StatusBadge status={caseRecord.status} role={chatSide === "admin" ? "internal" : "client"} serviceType={serviceType} />
         </div>
       </div>
 
-      {chatSide === "admin" && caseRecord.serviceType === "design_milling" && (
+      {chatSide === "admin" && hasMillingTab && (
         <div className="flex gap-1.5 border-b border-border">
           <button
             onClick={() => setActiveTab("details")}
@@ -438,7 +449,7 @@ export function CaseDetailView({
         </div>
       )}
 
-      {activeTab === "milling" && chatSide === "admin" && caseRecord.serviceType === "design_milling" ? (
+      {activeTab === "milling" && chatSide === "admin" && hasMillingTab ? (
         <MillingTab caseId={caseRecord.id} timeline={activities} />
       ) : (
         <>
@@ -482,7 +493,7 @@ export function CaseDetailView({
         </div>
       )}
 
-      <LifecycleStrip status={caseRecord.status} />
+      <LifecycleStrip status={caseRecord.status} serviceType={serviceType} />
 
       {/* Upper Grid: Details & Timeline side-by-side on lg screen */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

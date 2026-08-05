@@ -67,13 +67,19 @@ function extractUnitCount(unitType: 'per_tooth' | 'per_arch', subTypeData: any):
   return 1
 }
 
+function serviceTypeSuffix(serviceType: 'design_only' | 'design_milling' | 'milling_only'): string {
+  if (serviceType === 'design_milling') return ' (Design + Milling)'
+  if (serviceType === 'milling_only') return ' (Milling Only)'
+  return ''
+}
+
 // ── Client price lookup ─────────────────────────────────────────────────────
 
 export async function getUnitPrice(
   clientId: string,
   category: string,
   subCategory: string,
-  serviceType: 'design_only' | 'design_milling' = 'design_only'
+  serviceType: 'design_only' | 'design_milling' | 'milling_only' = 'design_only'
 ): Promise<number> {
   // Try client-specific price first
   const [row] = await db
@@ -115,11 +121,16 @@ export async function buildInvoiceItems(
   // Group cases by normalized category + subCategory + serviceType — a
   // Design Only and a Design + Milling case of the same restoration price
   // differently, so they can never share a line item.
+  type CaseServiceType = 'design_only' | 'design_milling' | 'milling_only'
+
+  const resolveServiceType = (raw: string): CaseServiceType =>
+    raw === 'design_milling' || raw === 'milling_only' ? raw : 'design_only'
+
   type Group = {
     category: string
     subCategory: string
     unitType: 'per_tooth' | 'per_arch'
-    serviceType: 'design_only' | 'design_milling'
+    serviceType: CaseServiceType
     totalUnits: number
   }
   const groupMap = new Map<string, Group>()
@@ -128,7 +139,7 @@ export async function buildInvoiceItems(
     const input = mapCaseToPricingInput(c.category || '', c.subTypeData)
     if (!input) continue
 
-    const serviceType = c.serviceType === 'design_milling' ? 'design_milling' : 'design_only'
+    const serviceType = resolveServiceType(c.serviceType)
 
     // Implants are handled separately because they can produce two distinct
     // line items: one for the implant device component (Robotic/Ti-Base/Custom)
@@ -204,7 +215,7 @@ export async function buildInvoiceItems(
 
     items.push({
       sno: sno++,
-      description: `${group.category} - ${group.subCategory}${group.serviceType === 'design_milling' ? ' (Design + Milling)' : ''}`,
+      description: `${group.category} - ${group.subCategory}${serviceTypeSuffix(group.serviceType)}`,
       qty: group.totalUnits,
       unitPrice,
       totalPrice,
@@ -215,12 +226,12 @@ export async function buildInvoiceItems(
   }
 
   // Model billing — count cases where modelRequired = "yes" (per_case charge),
-  // split by serviceType since Design+Milling models price differently too.
-  const modelCountByServiceType = new Map<'design_only' | 'design_milling', number>()
+  // split by serviceType since each flow prices models differently too.
+  const modelCountByServiceType = new Map<CaseServiceType, number>()
   for (const c of selectedCases) {
     const data = (c.subTypeData as Record<string, any>) || {}
     if (data.modelRequired !== 'yes') continue
-    const serviceType = c.serviceType === 'design_milling' ? 'design_milling' : 'design_only'
+    const serviceType = resolveServiceType(c.serviceType)
     modelCountByServiceType.set(serviceType, (modelCountByServiceType.get(serviceType) ?? 0) + 1)
   }
 
@@ -230,7 +241,7 @@ export async function buildInvoiceItems(
     subtotal += modelTotalPrice
     items.push({
       sno: sno++,
-      description: `Model - 3D Model${serviceType === 'design_milling' ? ' (Design + Milling)' : ''}`,
+      description: `Model - 3D Model${serviceTypeSuffix(serviceType)}`,
       qty: modelCount,
       unitPrice: modelUnitPrice,
       totalPrice: modelTotalPrice,

@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
 import { ClientPriceListModal } from "@/src/components/ClientPriceListModal";
-import type { MergedPriceRow } from "@/src/lib/price-list-shared";
-import { mergeByServiceType } from "@/src/lib/price-list-shared";
+import type { PriceListEntryFull } from "@/src/lib/price-list-shared";
+import type { ServiceType } from "@/src/lib/case-status-mapping";
 import { fetchPriceListWithCache } from "@/src/lib/price-list-cache";
 import { toast } from "sonner";
 import {
@@ -44,7 +44,7 @@ export default function ProfilePage() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [priceList, setPriceList] = useState<MergedPriceRow[]>([]);
+  const [priceListByFlow, setPriceListByFlow] = useState<Partial<Record<ServiceType, PriceListEntryFull[]>>>({});
   const [priceListOpen, setPriceListOpen] = useState(false);
   const [users, setUsers] = useState<LabUser[]>([]);
 
@@ -60,11 +60,21 @@ export default function ProfilePage() {
         setProfile(data as any);
 
         if (data.role !== "subuser") {
-          const [designOnly, designMilling] = await Promise.all([
-            fetchPriceListWithCache(data.id, "design_only"),
-            fetchPriceListWithCache(data.id, "design_milling"),
-          ]);
-          setPriceList(mergeByServiceType(designOnly, designMilling));
+          const serviceTypesRes = await fetch("/api/client/service-types");
+          const serviceTypesJson = serviceTypesRes.ok ? await serviceTypesRes.json() : null;
+          const enabledServiceTypes: ServiceType[] = serviceTypesJson?.data?.enabledServiceTypes ?? ["design_only"];
+
+          const entries = await Promise.all(
+            enabledServiceTypes.map(async (flow) => {
+              const rows = await fetchPriceListWithCache(data.id, flow);
+              // Only ever show services enabled at both the system and
+              // client level — matches the same rule the price-list API
+              // itself already applies for isActive; isEnabled is
+              // client-specific so it's filtered here.
+              return [flow, rows.filter((r) => r.isEnabled)] as const;
+            })
+          );
+          setPriceListByFlow(Object.fromEntries(entries));
         }
 
         if (data.role !== "subuser") {
@@ -388,7 +398,7 @@ export default function ProfilePage() {
           open={priceListOpen}
           onClose={() => setPriceListOpen(false)}
           clientName={displayProfile.company}
-          rows={priceList}
+          rowsByFlow={priceListByFlow}
         />
       </div>
     

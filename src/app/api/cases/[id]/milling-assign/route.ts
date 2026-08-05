@@ -15,10 +15,9 @@ import { invalidateCasesCache } from '@/src/lib/redis-cache'
 // of getting a case to this point.
 const ASSIGN_ROLES = ['admin', 'qc', 'designer']
 
-// Statuses from which a case may be (re-)assigned to a milling centre —
-// design must be client-approved first, or the case is already mid-milling.
-const ASSIGNABLE_STATUSES = new Set([
-  'approved',
+// Production statuses common to both milling-involved flows — a case
+// already mid-milling can always be re-assigned to a different centre.
+const PRODUCTION_STATUSES = new Set([
   'ready_for_milling',
   'milling_in_progress',
   'milling_qc',
@@ -26,9 +25,19 @@ const ASSIGNABLE_STATUSES = new Set([
   'dispatched',
 ])
 
-async function getDesignMillingCase(id: string) {
+// Statuses from which a case may be (re-)assigned to a milling centre.
+// design_milling must be client-approved first; milling_only has no design
+// phase at all, so it's assignable right after file verification.
+function isAssignableStatus(serviceType: string, status: string): boolean {
+  if (PRODUCTION_STATUSES.has(status)) return true
+  if (serviceType === 'design_milling') return status === 'approved'
+  if (serviceType === 'milling_only') return status === 'scan_verified'
+  return false
+}
+
+async function getMillableCase(id: string) {
   const [caseRecord] = await db.select().from(cases).where(eq(cases.id, id)).limit(1)
-  if (!caseRecord || caseRecord.serviceType !== 'design_milling') return null
+  if (!caseRecord || (caseRecord.serviceType !== 'design_milling' && caseRecord.serviceType !== 'milling_only')) return null
   return caseRecord
 }
 
@@ -49,9 +58,9 @@ export async function GET(
 
   try {
     const { id } = await params
-    const caseRecord = await getDesignMillingCase(id)
+    const caseRecord = await getMillableCase(id)
     if (!caseRecord) {
-      return NextResponse.json({ error: 'Design + Milling case not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Design + Milling or Milling Only case not found' }, { status: 404 })
     }
 
     const [assignment] = await db
@@ -102,14 +111,17 @@ export async function POST(
 
   try {
     const { id } = await params
-    const caseRecord = await getDesignMillingCase(id)
+    const caseRecord = await getMillableCase(id)
     if (!caseRecord) {
-      return NextResponse.json({ error: 'Design + Milling case not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Design + Milling or Milling Only case not found' }, { status: 404 })
     }
 
-    if (!ASSIGNABLE_STATUSES.has(caseRecord.status)) {
+    if (!isAssignableStatus(caseRecord.serviceType, caseRecord.status)) {
+      const reason = caseRecord.serviceType === 'milling_only'
+        ? 'Case must have its file verified before it can be assigned to a milling centre'
+        : 'Case must be client-approved before it can be assigned to a milling centre'
       return NextResponse.json(
-        { error: 'Case must be client-approved before it can be assigned to a milling centre' },
+        { error: reason },
         { status: 400 }
       )
     }

@@ -13,6 +13,13 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { ToothChart } from "@/src/components/ToothChart"
 import { generateCaseId } from "@/src/lib/case-utils"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
+import type { ServiceType } from "@/src/lib/case-status-mapping"
+
+const SERVICE_TYPE_COPY: Record<ServiceType, { label: string; description: string }> = {
+  design_only: { label: "Design Only", description: "Iconic delivers design files digitally" },
+  design_milling: { label: "Design + Milling", description: "Iconic designs, then mills and ships the physical product" },
+  milling_only: { label: "Milling Only", description: "Upload your finished design file — we mill and ship the physical product, no design work included" },
+}
 
 interface ClientRecord {
   id: string
@@ -77,7 +84,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   const [targetLabName, setTargetLabName] = useState<string>("Client")
 
   // Form State
-  const [serviceType, setServiceType] = useState<"design_only" | "design_milling">("design_only")
+  const [serviceType, setServiceType] = useState<ServiceType>("design_only")
+  const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>(["design_only"])
   const [category, setCategory] = useState<string>("Crown & Bridge")
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({})
   const [modelRequired, setModelRequired] = useState("no")
@@ -203,6 +211,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       setSelectedClientId("")
       setTargetLabName("Client")
       setServiceType("design_only")
+      setEnabledServiceTypes(["design_only"])
       setCategory("Crown & Bridge")
       setSubTypeData({})
       setModelRequired("no")
@@ -222,6 +231,40 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       }
     }
   }, [open])
+
+  // Which flows are available for this submission — the logged-in client's
+  // own flows, or (admin) the selected client's flows.
+  useEffect(() => {
+    if (!open) return
+
+    if (role === "client") {
+      fetch("/api/client/service-types")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => setEnabledServiceTypes(json?.data?.enabledServiceTypes ?? ["design_only"]))
+        .catch(() => setEnabledServiceTypes(["design_only"]))
+      return
+    }
+
+    if (role === "admin") {
+      if (!selectedClientId) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- resets a derived selector to its default before an async fetch can run, same pattern as the reset-on-open effect above
+        setEnabledServiceTypes(["design_only"])
+        return
+      }
+      fetch(`/api/admin/clients/${selectedClientId}/service-types`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => setEnabledServiceTypes(json?.data?.enabledServiceTypes ?? ["design_only"]))
+        .catch(() => setEnabledServiceTypes(["design_only"]))
+    }
+  }, [open, role, selectedClientId])
+
+  // Keep the selected serviceType valid as the enabled-flow set changes
+  useEffect(() => {
+    if (!enabledServiceTypes.includes(serviceType)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from a prop-like fetch result (enabledServiceTypes), not local render state
+      setServiceType(enabledServiceTypes[0] ?? "design_only")
+    }
+  }, [enabledServiceTypes, serviceType])
 
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
     const maxLimit = 5 * 1024 * 1024 * 1024 // 5GB
@@ -581,7 +624,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   <p className={`text-sm font-medium transition-colors ${isDraggingCaseFile ? 'text-emerald-700' : 'text-foreground'}`}>
                     {isDraggingCaseFile ? 'Drop files here!' : 'Drop files here or choose upload below'}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5 mb-3">Scans (STL, PLY, OBJ), Images, Videos, PDFs, ZIPs (Max 5GB)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+                    {serviceType === "milling_only"
+                      ? "Upload your manufacture-ready design file (STL, PLY, OBJ), not a raw scan — this goes straight to milling (Max 5GB)"
+                      : "Scans (STL, PLY, OBJ), Images, Videos, PDFs, ZIPs (Max 5GB)"}
+                  </p>
                   <div className="flex justify-center gap-2">
                     <Button
                       type="button"
@@ -602,38 +649,32 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
             )}
           </div>
 
-          {/* Service Type */}
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-gray-700">Service Type</Label>
-            <RadioGroup
-              value={serviceType}
-              onValueChange={(v) => setServiceType(v as "design_only" | "design_milling")}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
-            >
-              <label
-                htmlFor="service-design-only"
-                className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === "design_only" ? "border-emerald-600 bg-emerald-50" : "border-gray-300"
-                  }`}
+          {/* Service Type — only rendered when there's an actual choice to make */}
+          {enabledServiceTypes.length > 1 && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-gray-700">Service Type</Label>
+              <RadioGroup
+                value={serviceType}
+                onValueChange={(v) => setServiceType(v as ServiceType)}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
               >
-                <RadioGroupItem value="design_only" id="service-design-only" className="mt-0.5" />
-                <span>
-                  <span className="block text-xs font-semibold text-gray-900">Design Only</span>
-                  <span className="block text-[11px] text-gray-500">Iconic delivers design files digitally</span>
-                </span>
-              </label>
-              <label
-                htmlFor="service-design-milling"
-                className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === "design_milling" ? "border-emerald-600 bg-emerald-50" : "border-gray-300"
-                  }`}
-              >
-                <RadioGroupItem value="design_milling" id="service-design-milling" className="mt-0.5" />
-                <span>
-                  <span className="block text-xs font-semibold text-gray-900">Design + Milling</span>
-                  <span className="block text-[11px] text-gray-500">Iconic designs, then mills and ships the physical product</span>
-                </span>
-              </label>
-            </RadioGroup>
-          </div>
+                {enabledServiceTypes.map((flow) => (
+                  <label
+                    key={flow}
+                    htmlFor={`service-${flow}`}
+                    className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === flow ? "border-emerald-600 bg-emerald-50" : "border-gray-300"
+                      }`}
+                  >
+                    <RadioGroupItem value={flow} id={`service-${flow}`} className="mt-0.5" />
+                    <span>
+                      <span className="block text-xs font-semibold text-gray-900">{SERVICE_TYPE_COPY[flow].label}</span>
+                      <span className="block text-[11px] text-gray-500">{SERVICE_TYPE_COPY[flow].description}</span>
+                    </span>
+                  </label>
+                ))}
+              </RadioGroup>
+            </div>
+          )}
 
           {/* Form Fields */}
           {category === "Implant" ? (

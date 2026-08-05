@@ -3,7 +3,7 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
 import { eq } from 'drizzle-orm'
-import { getServiceCatalog, updateCatalogDefaultPrices } from '@/src/lib/price-list'
+import { getServiceCatalog, updateCatalogDefaultPrices, updateCatalogActiveStatus, parseCatalogServiceType } from '@/src/lib/price-list'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -27,9 +27,10 @@ export async function GET(req: NextRequest) {
     if ('error' in auth) return auth.error
 
     const { searchParams } = new URL(req.url)
-    const serviceType = searchParams.get('serviceType') === 'design_milling' ? 'design_milling' : 'design_only'
+    const serviceType = parseCatalogServiceType(searchParams.get('serviceType'))
+    const includeInactive = searchParams.get('includeInactive') === 'true'
 
-    const data = await getServiceCatalog(serviceType)
+    const data = await getServiceCatalog(serviceType, includeInactive)
     return NextResponse.json({ data })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -47,19 +48,26 @@ export async function PUT(req: NextRequest) {
     const body = await req.json().catch(() => ({} as { items?: unknown[] }))
     const items = Array.isArray(body.items) ? body.items : []
 
-    type RawItem = { id?: unknown; defaultPrice?: unknown }
+    type RawItem = { id?: unknown; defaultPrice?: unknown; isActive?: unknown }
     const validated = (items as RawItem[])
       .map((item) => {
         const price = Number(item.defaultPrice)
         if (!Number.isFinite(price) || price < 0) return null
         if (typeof item.id !== 'string') return null
-        return { id: item.id, defaultPrice: price }
+        return { id: item.id, defaultPrice: price, isActive: typeof item.isActive === 'boolean' ? item.isActive : undefined }
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
-    await updateCatalogDefaultPrices(validated)
+    await updateCatalogDefaultPrices(validated.map(({ id, defaultPrice }) => ({ id, defaultPrice })))
 
-    const data = await getServiceCatalog()
+    const activeStatusItems = validated
+      .filter((item): item is { id: string; defaultPrice: number; isActive: boolean } => item.isActive !== undefined)
+      .map(({ id, isActive }) => ({ id, isActive }))
+    await updateCatalogActiveStatus(activeStatusItems)
+
+    const { searchParams } = new URL(req.url)
+    const serviceType = parseCatalogServiceType(searchParams.get('serviceType'))
+    const data = await getServiceCatalog(serviceType, true)
     return NextResponse.json({ data })
   } catch (error) {
     console.error('[admin/service-catalog PUT]', error)

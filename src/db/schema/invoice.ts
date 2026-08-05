@@ -27,7 +27,7 @@ export type InvoiceLineItem = {
   // parsing the description string. Absent on older invoices.
   category?: string
   subCategory?: string
-  serviceType?: 'design_only' | 'design_milling'
+  serviceType?: 'design_only' | 'design_milling' | 'milling_only'
 }
 
 export const invoices = pgTable(

@@ -37,7 +37,7 @@ export const caseStatusEnum = pgEnum('case_status', [
   'client_reject',           // 14. Client rejected case
 ])
 
-export const serviceTypeEnum = pgEnum('service_type', ['design_only', 'design_milling'])
+export const serviceTypeEnum = pgEnum('service_type', ['design_only', 'design_milling', 'milling_only'])
 
 export const CASE_LIFECYCLE_STEPS = [
   'Submitted',

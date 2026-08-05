@@ -170,6 +170,7 @@ export async function POST(req: NextRequest) {
           caseId: item.caseId,
           caseNumber: caseRecord.caseNumber ?? '',
           status: targetStatus,
+          serviceType: caseRecord.serviceType,
         }).catch((err) => console.error('[BulkConfirm] client notification failed:', err));
 
         if (targetStatus === 'internal_qc' && finalQcId) {

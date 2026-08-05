@@ -10,6 +10,8 @@ import { NotificationService } from '@/src/lib/notifications/notification-servic
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
 import { invalidateCasesCache, getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache';
+import { canTransitionCaseStatus } from '@/src/lib/case-status-transitions';
+import type { CaseStatus, ServiceType } from '@/src/lib/case-status-mapping';
 
 const CASE_DETAIL_TTL = 300 // 5 minutes
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat';
@@ -170,6 +172,22 @@ export async function PUT(
 
     const body = await req.json();
     const updateData: CaseUpdateData = {};
+
+    // Flow-aware guard, layered on top of the detailed per-role logic below
+    // (not a replacement for it) — catches cross-cutting rules the per-role
+    // branches don't check, e.g. a milling_only case being forced into a
+    // design-stage status, or a design_only case into a production status.
+    if (body.status) {
+      const check = canTransitionCaseStatus({
+        serviceType: (caseRecord.serviceType ?? 'design_only') as ServiceType,
+        role: profile.role,
+        currentStatus: caseRecord.status as CaseStatus,
+        targetStatus: body.status as CaseStatus,
+      })
+      if (!check.allowed) {
+        return NextResponse.json({ error: `Forbidden: ${check.reason}` }, { status: 403 });
+      }
+    }
 
     // Validate and build updates based on role
     if (profile.role === 'client' || profile.role === 'subuser') {
@@ -564,6 +582,7 @@ export async function PUT(
             caseId: id,
             caseNumber: uCase.caseNumber ?? '',
             status: status as string,
+            serviceType: caseRecord.serviceType,
           }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case status notification:', err));
 
           // Also notify QC if the status is transitioned to internal_qc

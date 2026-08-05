@@ -5,7 +5,9 @@ import {
   timestamp,
   pgEnum,
   index,
+  text,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 export const userTypeEnum = pgEnum('user_type', [
   'lab_portal',           // client side
@@ -71,6 +73,14 @@ export const profiles = pgTable('profiles', {
   // Milling portal: which centre this user belongs to (FK enforced in migration SQL,
   // not declared here, to avoid a schema-file import cycle with ./milling)
   millingCenterId: uuid('milling_center_id'),
+
+  // Client-only: which of the 3 service flows (design_only/design_milling/
+  // milling_only) this client can submit cases for and see pricing on.
+  // Subusers inherit their parent client's value at read time.
+  enabledServiceTypes: text('enabled_service_types')
+    .array()
+    .notNull()
+    .default(sql`'{design_only}'::text[]`),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

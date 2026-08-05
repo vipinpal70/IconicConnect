@@ -16,19 +16,26 @@ export interface PriceListEntryFull {
   price: number
   notes: string | null
   sortOrder: number
+  // System-level enable state (serviceCatalog.isActive).
+  isActive: boolean
+  // Client-level override (clientPriceList.isEnabled) — only meaningful on
+  // rows from getPriceListForClient; defaults to true on catalog-only rows.
+  isEnabled: boolean
 }
 
-// ── Merged Design / Design+Milling rows ─────────────────────────────────────
-// Both service types share the same category/subCategory grouping (see the
-// pricing architecture note in milling-implementation-plan.md) — this merges
-// two per-serviceType fetches into one row per service for display in a
-// single table with up to 4 price columns (default + client, x2 types).
+// ── Merged Design / Design+Milling / Milling Only rows ──────────────────────
+// All three service types share the same category/subCategory grouping (see
+// the pricing architecture note in milling-implementation-plan.md) — this
+// merges up to three per-serviceType fetches into one row per service, for
+// display in a single table with a column per flow.
 
 export interface MergedPriceRowSide {
   catalogItemId: string
   defaultPrice: number
   price: number
   notes: string | null
+  isActive: boolean
+  isEnabled: boolean
 }
 
 export interface MergedPriceRow {
@@ -38,6 +45,7 @@ export interface MergedPriceRow {
   sortOrder: number
   designOnly: MergedPriceRowSide | null
   designMilling: MergedPriceRowSide | null
+  millingOnly: MergedPriceRowSide | null
 }
 
 function toSide(row: PriceListEntryFull): MergedPriceRowSide {
@@ -46,32 +54,24 @@ function toSide(row: PriceListEntryFull): MergedPriceRowSide {
     defaultPrice: row.defaultPrice,
     price: row.price,
     notes: row.notes,
+    isActive: row.isActive,
+    isEnabled: row.isEnabled,
   }
 }
 
 export function mergeByServiceType(
   designOnly: PriceListEntryFull[],
-  designMilling: PriceListEntryFull[]
+  designMilling: PriceListEntryFull[],
+  millingOnly: PriceListEntryFull[] = []
 ): MergedPriceRow[] {
   const key = (category: string, subCategory: string) => `${category}::${subCategory}`
   const map = new Map<string, MergedPriceRow>()
 
-  for (const row of designOnly) {
-    map.set(key(row.category, row.subCategory), {
-      category: row.category,
-      subCategory: row.subCategory,
-      unitType: row.unitType,
-      sortOrder: row.sortOrder,
-      designOnly: toSide(row),
-      designMilling: null,
-    })
-  }
-
-  for (const row of designMilling) {
+  const upsert = (row: PriceListEntryFull, side: 'designOnly' | 'designMilling' | 'millingOnly') => {
     const k = key(row.category, row.subCategory)
     const existing = map.get(k)
     if (existing) {
-      existing.designMilling = toSide(row)
+      existing[side] = toSide(row)
     } else {
       map.set(k, {
         category: row.category,
@@ -79,10 +79,16 @@ export function mergeByServiceType(
         unitType: row.unitType,
         sortOrder: row.sortOrder,
         designOnly: null,
-        designMilling: toSide(row),
+        designMilling: null,
+        millingOnly: null,
+        [side]: toSide(row),
       })
     }
   }
+
+  for (const row of designOnly) upsert(row, 'designOnly')
+  for (const row of designMilling) upsert(row, 'designMilling')
+  for (const row of millingOnly) upsert(row, 'millingOnly')
 
   return Array.from(map.values()).sort((a, b) => a.sortOrder - b.sortOrder)
 }

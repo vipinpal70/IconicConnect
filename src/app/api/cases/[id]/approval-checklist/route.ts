@@ -122,6 +122,7 @@ export async function POST(
       caseId: id,
       caseNumber,
       status: 'submitted_to_client',
+      serviceType: caseRecord.serviceType,
     }).catch((err) => console.error('[ApprovalChecklistNotification] Failed to dispatch approval notification:', err))
 
     await logActivity({

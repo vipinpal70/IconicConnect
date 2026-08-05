@@ -3,6 +3,7 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { NotificationType } from './notification-events'
 import { NotificationService } from './notification-service'
+import { getStatusLabel, type ServiceType, type CaseStatus } from '@/src/lib/case-status-mapping'
 
 type PortalRole = 'admin' | 'qc' | 'account_manager' | 'client' | 'subuser' | 'consultant'
 
@@ -105,8 +106,11 @@ export async function notifyCaseStatusChanged(input: {
   caseNumber: string
   status: string
   clientName?: string
+  serviceType?: ServiceType
 }) {
-  const statusLabel = input.status.replace(/_/g, ' ')
+  // Client-safe, flow-aware label — e.g. milling_only's "scan_received" reads
+  // as "File Submitted" here, not the design-flow "Case Submitted"/raw status.
+  const statusLabel = getStatusLabel(input.serviceType ?? 'design_only', input.status as CaseStatus, 'client')
   const statusKey = input.status.toLowerCase()
   let type = NotificationType.CASE_STATUS_CHANGED
   let title = `Case ${input.caseNumber} status updated`

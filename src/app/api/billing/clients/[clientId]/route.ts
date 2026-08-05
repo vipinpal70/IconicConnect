@@ -46,7 +46,7 @@ function buildPriceMap(
 function computeCasePrice(
   category: string | null,
   subTypeData: unknown,
-  serviceType: 'design_only' | 'design_milling',
+  serviceType: 'design_only' | 'design_milling' | 'milling_only',
   getPrice: (cat: string, sub: string, serviceType: string) => number
 ): number {
   const data = (subTypeData as Record<string, unknown>) || {}
@@ -209,7 +209,7 @@ export async function GET(
 
     let totalPrice = 0
     const detailedCases = clientCases.map(c => {
-      const serviceType = c.serviceType === 'design_milling' ? 'design_milling' : 'design_only'
+      const serviceType = c.serviceType === 'design_milling' || c.serviceType === 'milling_only' ? c.serviceType : 'design_only'
       const price = computeCasePrice(c.category, c.subTypeData, serviceType, getPrice)
       totalPrice += price
       return {

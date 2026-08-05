@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
-import { getPriceListForClient, updateClientPriceList } from '@/src/lib/price-list'
+import { getPriceListForClient, updateClientPriceList, parseCatalogServiceType } from '@/src/lib/price-list'
 import { logActivity } from '@/src/lib/activity-log'
 import { deleteCachedData } from '@/src/lib/redis-cache'
 
@@ -48,9 +48,10 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url)
-    const serviceType = searchParams.get('serviceType') === 'design_milling' ? 'design_milling' : 'design_only'
+    const serviceType = parseCatalogServiceType(searchParams.get('serviceType'))
+    const includeInactive = searchParams.get('includeInactive') === 'true'
 
-    const data = await getPriceListForClient(id, serviceType)
+    const data = await getPriceListForClient(id, serviceType, includeInactive)
     return NextResponse.json({ data }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -79,7 +80,7 @@ export async function PUT(
     const body = await req.json().catch(() => ({} as { items?: unknown[] }))
     const items = Array.isArray(body.items) ? body.items : []
 
-    type RawItem = { catalogItemId?: unknown; price?: unknown; notes?: unknown }
+    type RawItem = { catalogItemId?: unknown; price?: unknown; notes?: unknown; isEnabled?: unknown }
     const validated = (items as RawItem[])
       .map((item) => {
         const price = Number(item.price)
@@ -89,6 +90,7 @@ export async function PUT(
           catalogItemId: item.catalogItemId,
           price,
           notes: typeof item.notes === 'string' ? item.notes : null,
+          isEnabled: typeof item.isEnabled === 'boolean' ? item.isEnabled : undefined,
         }
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
@@ -97,11 +99,13 @@ export async function PUT(
     await Promise.all([
       deleteCachedData(`price-list:client:${id}:design_only`),
       deleteCachedData(`price-list:client:${id}:design_milling`),
+      deleteCachedData(`price-list:client:${id}:milling_only`),
     ])
 
-    const [designOnly, designMilling] = await Promise.all([
-      getPriceListForClient(id, 'design_only'),
-      getPriceListForClient(id, 'design_milling'),
+    const [designOnly, designMilling, millingOnly] = await Promise.all([
+      getPriceListForClient(id, 'design_only', true),
+      getPriceListForClient(id, 'design_milling', true),
+      getPriceListForClient(id, 'milling_only', true),
     ])
 
     await logActivity({
@@ -110,7 +114,7 @@ export async function PUT(
       details: { clientId: id, itemCount: validated.length },
     }).catch((err) => console.error('[price_list.updated logActivity]', err))
 
-    return NextResponse.json({ data: designOnly, designMillingData: designMilling })
+    return NextResponse.json({ data: designOnly, designMillingData: designMilling, millingOnlyData: millingOnly })
   } catch (error) {
     console.error('[admin/clients/[id]/price-list PUT]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 })

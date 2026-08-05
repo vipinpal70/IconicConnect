@@ -1,7 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { subUsers } from '@/src/db/schema/profile'
+import { profiles, subUsers } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
+import type { ServiceType } from './case-status-mapping'
 
 // Server-only module (imports '@/src/db'). Client-safe types/helpers
 // (PriceListEntryFull, MergedPriceRow, mergeByServiceType) live in
@@ -21,9 +22,16 @@ export async function resolveClientIdFromProfile(profileId: string, role: string
   return null
 }
 
+export type CatalogServiceType = 'design_only' | 'design_milling' | 'milling_only'
+
+export function parseCatalogServiceType(value: string | null): CatalogServiceType {
+  return value === 'design_milling' || value === 'milling_only' ? value : 'design_only'
+}
+
 export async function getPriceListForClient(
   clientId: string,
-  serviceType: 'design_only' | 'design_milling' = 'design_only'
+  serviceType: CatalogServiceType = 'design_only',
+  includeInactive = false
 ): Promise<PriceListEntryFull[]> {
   // Always ensure every active catalog item has a row for this client.
   // onConflictDoNothing means existing custom prices are never overwritten.
@@ -40,10 +48,18 @@ export async function getPriceListForClient(
       price: clientPriceList.price,
       notes: clientPriceList.notes,
       sortOrder: serviceCatalog.sortOrder,
+      isActive: serviceCatalog.isActive,
+      isEnabled: clientPriceList.isEnabled,
     })
     .from(clientPriceList)
     .innerJoin(serviceCatalog, eq(clientPriceList.catalogItemId, serviceCatalog.id))
-    .where(and(eq(clientPriceList.clientId, clientId), eq(serviceCatalog.serviceType, serviceType)))
+    .where(
+      and(
+        eq(clientPriceList.clientId, clientId),
+        eq(serviceCatalog.serviceType, serviceType),
+        includeInactive ? undefined : eq(serviceCatalog.isActive, true)
+      )
+    )
     .orderBy(serviceCatalog.sortOrder)
 
   return rows.map((row) => ({
@@ -54,12 +70,18 @@ export async function getPriceListForClient(
 }
 
 export async function getServiceCatalog(
-  serviceType: 'design_only' | 'design_milling' = 'design_only'
+  serviceType: CatalogServiceType = 'design_only',
+  includeInactive = false
 ): Promise<PriceListEntryFull[]> {
   const rows = await db
     .select()
     .from(serviceCatalog)
-    .where(and(eq(serviceCatalog.isActive, true), eq(serviceCatalog.serviceType, serviceType)))
+    .where(
+      and(
+        eq(serviceCatalog.serviceType, serviceType),
+        includeInactive ? undefined : eq(serviceCatalog.isActive, true)
+      )
+    )
     .orderBy(serviceCatalog.sortOrder)
 
   return rows.map((row) => ({
@@ -72,6 +94,8 @@ export async function getServiceCatalog(
     price: Number(row.defaultPrice),
     notes: null,
     sortOrder: row.sortOrder,
+    isActive: row.isActive,
+    isEnabled: true,
   }))
 }
 
@@ -115,9 +139,27 @@ export async function updateCatalogDefaultPrices(
   })
 }
 
+export async function updateCatalogActiveStatus(
+  items: Array<{ id: string; isActive: boolean }>
+) {
+  if (items.length === 0) return
+
+  await db.transaction(async (tx) => {
+    for (const item of items) {
+      await tx
+        .update(serviceCatalog)
+        .set({
+          isActive: item.isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(serviceCatalog.id, item.id))
+    }
+  })
+}
+
 export async function updateClientPriceList(
   clientId: string,
-  items: Array<{ catalogItemId: string; price: number; notes?: string | null }>,
+  items: Array<{ catalogItemId: string; price: number; notes?: string | null; isEnabled?: boolean }>,
   createdById: string
 ) {
   if (items.length === 0) return []
@@ -126,6 +168,7 @@ export async function updateClientPriceList(
     const results = []
     for (const item of items) {
       const priceStr = Number(item.price).toFixed(2)
+      const isEnabled = item.isEnabled ?? true
 
       const [row] = await tx
         .insert(clientPriceList)
@@ -134,6 +177,7 @@ export async function updateClientPriceList(
           catalogItemId: item.catalogItemId,
           price: priceStr,
           notes: item.notes?.trim() || null,
+          isEnabled,
           createdBy: createdById,
         })
         .onConflictDoUpdate({
@@ -141,6 +185,7 @@ export async function updateClientPriceList(
           set: {
             price: priceStr,
             notes: item.notes?.trim() || null,
+            ...(item.isEnabled !== undefined ? { isEnabled: item.isEnabled } : {}),
             updatedAt: new Date(),
           },
         })
@@ -150,6 +195,27 @@ export async function updateClientPriceList(
     }
     return results
   })
+}
+
+export async function getClientEnabledServiceTypes(clientId: string): Promise<ServiceType[]> {
+  const [row] = await db
+    .select({ enabledServiceTypes: profiles.enabledServiceTypes })
+    .from(profiles)
+    .where(eq(profiles.id, clientId))
+    .limit(1)
+
+  return (row?.enabledServiceTypes ?? ['design_only']) as ServiceType[]
+}
+
+export async function setClientEnabledServiceTypes(clientId: string, types: ServiceType[]) {
+  if (types.length === 0) {
+    throw new Error('A client must have at least one enabled service type')
+  }
+
+  await db
+    .update(profiles)
+    .set({ enabledServiceTypes: types, updatedAt: new Date() })
+    .where(eq(profiles.id, clientId))
 }
 
 export async function ensureServiceCatalogSeeded() {
