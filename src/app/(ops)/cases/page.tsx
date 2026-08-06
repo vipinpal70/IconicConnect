@@ -7,7 +7,7 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
-import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory, PauseCircle } from "lucide-react";
 import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
@@ -1261,9 +1261,6 @@ export default function CasesPage() {
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "feedback", c.caseNumber); }}
                                         className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
-                                      <Button size="sm" disabled={isMutating || !!pendingCaseAction}
-                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
                                     </div>
                                   )}
                                   {c.status === "client_feedback" && (
@@ -1360,9 +1357,6 @@ export default function CasesPage() {
                                       <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                         onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "feedback", c.caseNumber); }}
                                         className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white shadow-sm">💬 Feedback</Button>
-                                      <Button size="sm" disabled={isMutating || !!pendingCaseAction}
-                                        onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
-                                        className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">⏸ Hold</Button>
                                     </div>
                                   )}
 
@@ -1510,6 +1504,15 @@ export default function CasesPage() {
                                     </Button>
                                   )}
                                 </>
+                              )}
+
+                              {/* Hold — available to any assigned/admin user at any stage other than on_hold/approved/delivered */}
+                              {!["on_hold", "approved", "delivered"].includes(c.status) && (isAdmin || (isQc && (isQcOnCase || isDesignerOnCase)) || (isDesigner && isDesignerOnCase)) && (
+                                <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                  onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
+                                  className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">
+                                  <PauseCircle className="h-3 w-3 mr-1" /> Hold
+                                </Button>
                               )}
 
                               {/* Read-only states visible to any assigned member */}

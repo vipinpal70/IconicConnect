@@ -250,6 +250,9 @@ export async function PUT(
         updateData.status = target;
       }
 
+      const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
+      if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
+
       // Allow editing details only if before work starts
       if (body.caseNumber || body.dueDate || body.category || body.subTypeData) {
         if (!EDITABLE_STATUSES.includes(caseRecord.status as typeof EDITABLE_STATUSES[number])) {
@@ -341,7 +344,7 @@ export async function PUT(
             updateData.status = target;
           } else if (target === 'submitted_to_client' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;
-          } else if (target === 'on_hold' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
+          } else if (target === 'on_hold' && !['on_hold', 'approved', 'delivered'].includes(current) && (caseRecord.qcId === profile.id || caseRecord.designerId === profile.id)) {
             updateData.status = target;
           } else if (target === 'scan_received' && current === 'on_hold' && (caseRecord.qcId === profile.id || caseRecord.designerId === profile.id)) {
             updateData.status = target;
@@ -408,12 +411,17 @@ export async function PUT(
           if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
           if (body.outputNote !== undefined) updateData.outputNote = body.outputNote;
 
+          const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
+          if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
+
           if (target) {
             if (target === 'scan_verified' && current === 'scan_received') {
               updateData.status = target;
             } else if (target === 'in_progress' && (current === 'allocated_to_designer' || current === 'scan_verified' || current === 'client_feedback')) {
               updateData.status = target;
             } else if (target === 'scan_received' && current === 'on_hold' && caseRecord.designerId === profile.id) {
+              updateData.status = target;
+            } else if (target === 'on_hold' && !['on_hold', 'approved', 'delivered'].includes(current)) {
               updateData.status = target;
             } else if (target === 'internal_qc' && current === 'in_progress') {
               const finalQcId = body.qcId !== undefined ? body.qcId : caseRecord.qcId;

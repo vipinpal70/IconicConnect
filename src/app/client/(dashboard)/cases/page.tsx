@@ -9,7 +9,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2 } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
@@ -21,6 +21,9 @@ import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import type { ServiceType } from "@/src/lib/case-status-mapping";
+import { HOLD_REASONS } from "@/src/lib/case-utils";
+
+const HOLDABLE_STATUSES = ["scan_received", "scan_not_verified", "scan_verified"];
 
 const SERVICE_TYPE_COPY: Record<ServiceType, { label: string; description: string }> = {
   design_only: { label: "Design Only", description: "Iconic delivers design files digitally" },
@@ -199,6 +202,11 @@ export default function CasesPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const pageLimitRef = useRef(10);
 
+  const [holdCaseId, setHoldCaseId] = useState<string | null>(null);
+  const [holdReasonSelect, setHoldReasonSelect] = useState("");
+  const [holdCustomReason, setHoldCustomReason] = useState("");
+  const [isHoldSubmitting, setIsHoldSubmitting] = useState(false);
+
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
@@ -215,6 +223,46 @@ export default function CasesPage() {
       toast.error("Failed to fetch cases");
     } finally {
       if (showLoading) setIsLoading(false);
+    }
+  };
+
+  const openHoldDialog = (caseId: string) => {
+    setHoldCaseId(caseId);
+    setHoldReasonSelect("");
+    setHoldCustomReason("");
+  };
+
+  const handleConfirmHold = async () => {
+    if (!holdCaseId) return;
+    if (!holdReasonSelect) {
+      toast.error("Please select a hold reason.");
+      return;
+    }
+    if (holdReasonSelect === "Other (please specify)" && !holdCustomReason.trim()) {
+      toast.error("Please specify your reason for holding the case.");
+      return;
+    }
+    const finalReason = holdReasonSelect === "Other (please specify)" ? holdCustomReason.trim() : holdReasonSelect;
+
+    setIsHoldSubmitting(true);
+    try {
+      const res = await fetch(`/api/cases/${holdCaseId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "on_hold", holdReason: finalReason }),
+      });
+      if (res.ok) {
+        toast.success("Case put on hold.");
+        setHoldCaseId(null);
+        fetchCases(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Failed to put case on hold");
+      }
+    } catch {
+      toast.error("Failed to put case on hold");
+    } finally {
+      setIsHoldSubmitting(false);
     }
   };
 
@@ -1562,7 +1610,7 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
-                    {["Case ID", "Case Name", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt"].map((h) => (
+                    {["Case ID", "Case Name", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-3.5 py-2">{h}</th>
                     ))}
                   </tr>
@@ -1579,6 +1627,7 @@ export default function CasesPage() {
                         <td className="px-3.5 py-2.5"><div className="h-5.5 bg-muted rounded-full w-20"></div></td>
                         <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-20"></div></td>
                         <td className="px-3.5 py-2.5"><div className="h-3.5 bg-muted rounded w-16"></div></td>
+                        <td className="px-3.5 py-2.5"><div className="h-6 bg-muted rounded w-24"></div></td>
                       </tr>
                     ))
                   ) : (
@@ -1654,12 +1703,24 @@ export default function CasesPage() {
                           </td>
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
+                          <td className="px-3.5 py-2 whitespace-nowrap">
+                            {HOLDABLE_STATUSES.includes(c.status) && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="h-7 text-[10px] px-2 py-0.5 font-semibold gap-1"
+                                onClick={(e) => { e.stopPropagation(); openHoldDialog(c.id); }}
+                              >
+                                <PauseCircle className="h-3.5 w-3.5" /> Put on Hold
+                              </Button>
+                            )}
+                          </td>
                         </tr>
                       );
                     })
                   )}
                   {!isLoading && filtered.length === 0 && (
-                    <tr><td colSpan={7} className="px-3.5 py-8 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
+                    <tr><td colSpan={9} className="px-3.5 py-8 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1678,7 +1739,58 @@ export default function CasesPage() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={!!holdCaseId} onOpenChange={(open) => { if (!open && !isHoldSubmitting) setHoldCaseId(null); }}>
+          <DialogContent className="sm:max-w-[480px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">⏸ Put Case on Hold</DialogTitle>
+              <p className="text-xs text-muted-foreground">Please specify the reason before putting this case on hold.</p>
+            </DialogHeader>
+
+            <div className="grid gap-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="cases-hold-reason-select">Hold Reason</Label>
+                <Select value={holdReasonSelect} onValueChange={setHoldReasonSelect}>
+                  <SelectTrigger id="cases-hold-reason-select" className="w-full">
+                    <SelectValue placeholder="Select a hold reason..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HOLD_REASONS.map((reason) => (
+                      <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {holdReasonSelect === "Other (please specify)" && (
+                <div className="space-y-2">
+                  <Label htmlFor="cases-hold-custom-reason">Specify details</Label>
+                  <Textarea
+                    id="cases-hold-custom-reason"
+                    value={holdCustomReason}
+                    onChange={(e) => setHoldCustomReason(e.target.value)}
+                    placeholder="Please specify other hold reason details..."
+                    className="min-h-[100px]"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-2">
+              <Button variant="outline" onClick={() => setHoldCaseId(null)} disabled={isHoldSubmitting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmHold}
+                disabled={isHoldSubmitting || !holdReasonSelect || (holdReasonSelect === "Other (please specify)" && !holdCustomReason.trim())}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {isHoldSubmitting ? "Putting on hold..." : "Confirm"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
-    
+
   );
 }

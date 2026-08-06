@@ -54,6 +54,7 @@ import {
 	Download,
 	Trash2,
 	Factory,
+	PauseCircle,
 } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 
@@ -1175,23 +1176,6 @@ export default function AdminCasesPage() {
 																			>
 																				💬 Feedback
 																			</Button>
-																			<Button
-																				size="sm"
-																				disabled={
-																					isMutating || !!pendingCaseAction
-																				}
-																				onClick={(e) => {
-																					e.stopPropagation();
-																					openCaseActionDialog(
-																						caseItem.id,
-																						"hold",
-																						caseItem.caseNumber,
-																					);
-																				}}
-																				className="h-7 text-[10px] px-2 font-bold bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
-																			>
-																				⏸ Hold
-																			</Button>
 																		</div>
 																	)}
 
@@ -1459,6 +1443,28 @@ export default function AdminCasesPage() {
 																		</Button>
 																	</div>
 																)}
+
+															{/* Hold — available to admin/QC at any stage, or the assigned designer, other than on_hold/approved/delivered */}
+															{!(["on_hold", "approved", "delivered"] as string[]).includes(caseItem.status) &&
+																(currentUser?.role === "admin" ||
+																	currentUser?.role === "qc" ||
+																	caseItem.designerId === currentUser?.id) && (
+																<Button
+																	size="sm"
+																	disabled={isMutating || !!pendingCaseAction}
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		openCaseActionDialog(
+																			caseItem.id,
+																			"hold",
+																			caseItem.caseNumber,
+																		);
+																	}}
+																	className="h-7 text-[10px] px-2 font-bold bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
+																>
+																	<PauseCircle className="h-3 w-3 mr-0.5" /> Hold
+																</Button>
+															)}
 
 															{/* 3. Awaiting client status display (visible to admin/qc, and designer if assigned) */}
 															{caseItem.status === "submitted_to_client" &&
