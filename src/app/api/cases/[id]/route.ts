@@ -232,6 +232,9 @@ export async function PUT(
         updateData.status = target;
       }
 
+      const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
+      if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
+
       // Allow editing details only if before work starts
       if (body.caseNumber || body.dueDate || body.category || body.subTypeData) {
         if (!EDITABLE_STATUSES.includes(caseRecord.status as typeof EDITABLE_STATUSES[number])) {
