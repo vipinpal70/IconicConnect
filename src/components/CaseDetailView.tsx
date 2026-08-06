@@ -97,6 +97,14 @@ type CaseActivity = {
   clientHidden?: boolean
 }
 
+// Always derive from actionAt (UTC) so this renders in the viewer's own
+// timezone — actionTime (if present, from older records) was baked in at the
+// server's timezone and must not be used for display.
+function formatActivityTimestamp(actionAt: string) {
+  const date = new Date(actionAt)
+  return `${date.toLocaleDateString('en-CA')} at ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+}
+
 // Milling-stage events must never surface milling terminology, centre names,
 // or shipment/tracking detail to the dental lab — filter + relabel before
 // rendering to a client (chatSide === "lab").
@@ -738,7 +746,7 @@ export function CaseDetailView({
                     <div className="pb-1">
                       <p className="text-xs font-semibold text-foreground">{activity.label}</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {new Date(activity.actionAt).toLocaleDateString('en-CA')} at {activity.actionTime || new Date(activity.actionAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} · {activity.actor}
+                        {formatActivityTimestamp(activity.actionAt)} · {activity.actor}
                       </p>
                     </div>
                   </div>
@@ -1234,7 +1242,7 @@ function MillingTab({ caseId, timeline }: { caseId: string; timeline: CaseActivi
                   <div>
                     <p className="text-xs font-semibold text-foreground">{activity.label}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {new Date(activity.actionAt).toLocaleDateString('en-CA')} at {activity.actionTime || new Date(activity.actionAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} · {activity.actor}
+                      {formatActivityTimestamp(activity.actionAt)} · {activity.actor}
                     </p>
                   </div>
                 </div>
