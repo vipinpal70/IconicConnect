@@ -1377,7 +1377,7 @@ export default function AdminCasesPage() {
 																)}
 
 															{/* Hold — available to admin/QC at any stage, or the assigned designer, other than on_hold itself */}
-															{caseItem.status !== "on_hold" &&
+															{!["on_hold", "approved", "delivered"].includes(caseItem.status) &&
 																(currentUser?.role === "admin" ||
 																	currentUser?.role === "qc" ||
 																	caseItem.designerId === currentUser?.id) && (
