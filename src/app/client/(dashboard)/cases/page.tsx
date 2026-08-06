@@ -9,7 +9,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2 } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
@@ -1638,10 +1638,10 @@ export default function CasesPage() {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                className="h-7 text-[10px] px-2 py-0.5 font-semibold"
+                                className="h-7 text-[10px] px-2 py-0.5 font-semibold gap-1"
                                 onClick={(e) => { e.stopPropagation(); openHoldDialog(c.id); }}
                               >
-                                ⏸ Put on Hold
+                                <PauseCircle className="h-3.5 w-3.5" /> Put on Hold
                               </Button>
                             )}
                           </td>
