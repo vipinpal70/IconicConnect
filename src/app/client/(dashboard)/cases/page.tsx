@@ -783,7 +783,8 @@ export default function CasesPage() {
 				pageLimitRef.current += 1;
 				fetchCases();
 			} else {
-				toast.error("Failed to submit case.");
+				const err = await res.json().catch(() => ({}));
+				toast.error(err.error || "Failed to submit case.");
 				console.error("Failed to submit single case");
 			}
 		} catch (error) {
@@ -942,7 +943,8 @@ export default function CasesPage() {
 				pageLimitRef.current += addedCount;
 				fetchCases();
 			} else {
-				toast.error("Failed to submit bulk cases.");
+				const err = await res.json().catch(() => ({}));
+				toast.error(err.error || "Failed to submit bulk cases.");
 				console.error("Failed to submit bulk cases");
 			}
 		} catch (error) {
