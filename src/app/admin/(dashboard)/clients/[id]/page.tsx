@@ -262,8 +262,8 @@ export default function ClientProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-2 px-4 pb-4">
-              <Info label="Client ID" value={client?.id ?? "Loading..."} />
               <Info label="Lab Name" value={client?.labName || "-"} />
+              <Info label="Services" value={enabledFlows.map((f) => FLOW_LABELS[f]).join(", ") || "-"} />
               <Info label="Primary Contact" value={client?.fullName || "-"} />
               <Info label="Email" value={client?.email || "-"} icon={<Mail className="h-3 w-3" />} />
               <Info label="Phone" value={client?.phone || "-"} icon={<Phone className="h-3 w-3" />} />
@@ -312,7 +312,6 @@ export default function ClientProfilePage() {
               <Info label="Onboarded" value={client?.onBoardedAt ? format(new Date(client.onBoardedAt), "PPP") : "-"} />
               <Info label="Created" value={client?.createdAt ? format(new Date(client.createdAt), "PPP") : "-"} icon={<CalendarDays className="h-3 w-3" />} />
               <Info label="Updated" value={client?.updatedAt ? format(new Date(client.updatedAt), "PPP") : "-"} />
-              <Info label="Created By" value={client?.createdBy || "-"} />
             </CardContent>
           </Card>
 
