@@ -11,8 +11,8 @@ import { logActivity } from '@/src/lib/activity-log'
 import { invalidateCasesCache } from '@/src/lib/redis-cache'
 
 // Admin can assign from anywhere; qc/designer can assign directly from the
-// case list once a design is approved — they already own every other step
-// of getting a case to this point.
+// case list once Internal QC is complete — they already own every other
+// step of getting a case to this point.
 const ASSIGN_ROLES = ['admin', 'qc', 'designer']
 
 // Production statuses common to both milling-involved flows — a case
@@ -26,11 +26,12 @@ const PRODUCTION_STATUSES = new Set([
 ])
 
 // Statuses from which a case may be (re-)assigned to a milling centre.
-// design_milling must be client-approved first; milling_only has no design
-// phase at all, so it's assignable right after file verification.
+// design_milling is assignable right after Internal QC — there is no client
+// approval step for this flow; milling_only has no design phase at all, so
+// it's assignable right after file verification.
 function isAssignableStatus(serviceType: string, status: string): boolean {
   if (PRODUCTION_STATUSES.has(status)) return true
-  if (serviceType === 'design_milling') return status === 'approved'
+  if (serviceType === 'design_milling') return status === 'internal_qc'
   if (serviceType === 'milling_only') return status === 'scan_verified'
   return false
 }
@@ -119,7 +120,7 @@ export async function POST(
     if (!isAssignableStatus(caseRecord.serviceType, caseRecord.status)) {
       const reason = caseRecord.serviceType === 'milling_only'
         ? 'Case must have its file verified before it can be assigned to a milling centre'
-        : 'Case must be client-approved before it can be assigned to a milling centre'
+        : 'Case must complete Internal QC before it can be assigned to a milling centre'
       return NextResponse.json(
         { error: reason },
         { status: 400 }

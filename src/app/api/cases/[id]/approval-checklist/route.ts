@@ -94,13 +94,23 @@ export async function POST(
       return NextResponse.json({ error: 'Please complete all QC checklist items before approving.' }, { status: 400 })
     }
 
+    // Design + Milling skips client approval entirely — QC's checklist is
+    // still recorded as the internal quality gate, but the case stays at
+    // Internal QC so it can go straight to milling-centre assignment instead
+    // of being submitted for client review.
+    const skipsClientReview = caseRecord.serviceType === 'design_milling'
+
     const [updatedCase] = await db
       .update(cases)
-      .set({
-        approvalChecklist: normalizedChecklist,
-        status: 'submitted_to_client',
-        submittedToClientAt: new Date(),
-      })
+      .set(
+        skipsClientReview
+          ? { approvalChecklist: normalizedChecklist }
+          : {
+              approvalChecklist: normalizedChecklist,
+              status: 'submitted_to_client',
+              submittedToClientAt: new Date(),
+            }
+      )
       .where(eq(cases.id, id))
       .returning()
 
@@ -116,14 +126,16 @@ export async function POST(
       deleteCachedData(`case:detail:${id}`),
     ])
 
-    await notifyCaseStatusChanged({
-      actorUserId: profile.id,
-      targetUserId: caseRecord.clientId,
-      caseId: id,
-      caseNumber,
-      status: 'submitted_to_client',
-      serviceType: caseRecord.serviceType,
-    }).catch((err) => console.error('[ApprovalChecklistNotification] Failed to dispatch approval notification:', err))
+    if (!skipsClientReview) {
+      await notifyCaseStatusChanged({
+        actorUserId: profile.id,
+        targetUserId: caseRecord.clientId,
+        caseId: id,
+        caseNumber,
+        status: 'submitted_to_client',
+        serviceType: caseRecord.serviceType,
+      }).catch((err) => console.error('[ApprovalChecklistNotification] Failed to dispatch approval notification:', err))
+    }
 
     await logActivity({
       actor: profile,
@@ -136,7 +148,7 @@ export async function POST(
           approvalChecklist: caseRecord.approvalChecklist ?? [],
         },
         changes: {
-          status: 'submitted_to_client',
+          status: skipsClientReview ? caseRecord.status : 'submitted_to_client',
           approvalChecklist: normalizedChecklist,
           approvalChecklistComplete: true,
           caseUrl,

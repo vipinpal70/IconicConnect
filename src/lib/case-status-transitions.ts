@@ -1,8 +1,8 @@
 import { isStatusAllowedForFlow, STATUS_MAPPING, type CaseStatus, type ServiceType } from './case-status-mapping'
 
 // Statuses that represent physical production at a milling centre — shared
-// by design_milling (after design approval) and milling_only (right after
-// file verification).
+// by design_milling (right after Internal QC — no client approval step) and
+// milling_only (right after file verification).
 const MILLING_PRODUCTION_STATUSES: CaseStatus[] = [
   'ready_for_milling',
   'milling_in_progress',
@@ -55,10 +55,10 @@ export function canTransitionCaseStatus(input: TransitionCheckInput): Transition
   if (
     serviceType === 'design_milling' &&
     MILLING_PRODUCTION_STATUSES.includes(targetStatus) &&
-    currentStatus !== 'approved' &&
+    currentStatus !== 'internal_qc' &&
     !MILLING_PRODUCTION_STATUSES.includes(currentStatus)
   ) {
-    return { allowed: false, reason: 'Design + Milling cases must reach client approval before entering production' }
+    return { allowed: false, reason: 'Design + Milling cases must complete Internal QC before entering production' }
   }
 
   if (MILLING_ROLES.includes(role) && !MILLING_PRODUCTION_STATUSES.includes(targetStatus)) {

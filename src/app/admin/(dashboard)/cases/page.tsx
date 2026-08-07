@@ -655,15 +655,23 @@ export default function AdminCasesPage() {
 					throw new Error(err.error || "Failed to approve case");
 				}
 
-				toast.success(actionConfig.successMessage);
+				const { data: updatedCase } = await res.json();
+				const skipsClientReview =
+					updatedCase?.serviceType === "design_milling";
+
+				toast.success(
+					skipsClientReview
+						? "QC checklist complete — select a milling centre to continue"
+						: actionConfig.successMessage,
+				);
 				refetch();
-				if (openCase && openCase.id === pendingCaseAction.caseId) {
-					const updated = await fetch(`/api/cases/${pendingCaseAction.caseId}`)
-						.then((r) => r.json())
-						.then((r) => r.data);
-					if (updated) setOpenCase(updated);
+				if (updatedCase && openCase && openCase.id === pendingCaseAction.caseId) {
+					setOpenCase(updatedCase);
 				}
 				closeCaseActionDialog();
+				if (skipsClientReview && updatedCase) {
+					setAssignMillingCase(updatedCase);
+				}
 			} catch (err: unknown) {
 				const msg = err instanceof Error ? err.message : "Something went wrong";
 				toast.error(msg);
@@ -724,6 +732,14 @@ export default function AdminCasesPage() {
 		staleTime: 30_000,
 	});
 	const clientPreferenceForms = prefFormsData?.data ?? [];
+
+	// Design + Milling has no client-approval step, so the Approve dialog's
+	// copy needs to say "select a milling centre" instead of "sending to
+	// the client" when it's this pending case.
+	const pendingApproveIsMilling =
+		pendingCaseAction?.action === "approve" &&
+		data.data.find((c) => c.id === pendingCaseAction.caseId)?.serviceType ===
+			"design_milling";
 
 	return (
 		<>
@@ -1651,7 +1667,7 @@ export default function AdminCasesPage() {
 																	</span>
 																)}
 
-															{((caseItem.status === "approved" && caseItem.serviceType === "design_milling") ||
+															{((caseItem.status === "internal_qc" && caseItem.serviceType === "design_milling") ||
 																(caseItem.status === "scan_verified" && caseItem.serviceType === "milling_only")) &&
 																(currentUser?.role === "admin" ||
 																	currentUser?.role === "qc" ||
@@ -1934,7 +1950,9 @@ export default function AdminCasesPage() {
 						</DialogTitle>
 						<p className="text-xs text-gray-700 mt-0.5">
 							{pendingCaseAction
-								? CASE_ACTIONS[pendingCaseAction.action].description
+								? pendingApproveIsMilling
+									? "Complete the QC checklist, then select a milling centre to send this case into production. No client approval is needed for Design + Milling."
+									: CASE_ACTIONS[pendingCaseAction.action].description
 								: ""}
 							{pendingCaseAction?.caseNumber
 								? ` Case ${pendingCaseAction.caseNumber}.`

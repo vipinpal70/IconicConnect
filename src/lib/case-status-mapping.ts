@@ -59,8 +59,10 @@ const designOnly: FlowMapping = {
 
 // Design + Milling — happy path:
 // scan_received -> scan_verified -> allocated_to_designer -> in_progress ->
-// internal_qc -> submitted_to_client -> approved -> ready_for_milling ->
-// milling_in_progress -> milling_qc -> packaging -> dispatched -> delivered
+// internal_qc -> ready_for_milling -> milling_in_progress -> milling_qc ->
+// packaging -> dispatched -> delivered
+// There is no client-approval step in this flow — once QC's checklist is
+// complete the case goes straight to milling-centre assignment.
 const designMilling: FlowMapping = {
   lifecycleSteps: [
     'Submitted',
@@ -79,8 +81,9 @@ const designMilling: FlowMapping = {
     allocated_to_designer: { adminLabel: 'Allocated to Designer', clientLabel: 'In Design', lifecycleStep: 'In Design', clientVisible: true, actionType: 'normal' },
     in_progress: { adminLabel: 'In Progress', clientLabel: 'In Design', lifecycleStep: 'In Design', clientVisible: true, actionType: 'normal' },
     internal_qc: { adminLabel: 'Internal QC', clientLabel: 'Internal QC', lifecycleStep: 'Internal QC', clientVisible: true, actionType: 'normal' },
-    // submitted_to_client / change_requested / approved remain real states but
-    // do not render as standalone lifecycle-bar steps for Design + Milling.
+    // submitted_to_client / change_requested / approved are not used by the
+    // normal Design + Milling path (no client-approval step), but remain
+    // valid states in case an admin manually loops a client in.
     submitted_to_client: { adminLabel: 'Submitted to Client', clientLabel: 'Client Review', lifecycleStep: 'Internal QC', clientVisible: true, actionType: 'client_action' },
     change_requested: { adminLabel: 'Change Requested', clientLabel: 'Change Requested', lifecycleStep: 'Internal QC', clientVisible: true, actionType: 'client_action' },
     client_feedback: { adminLabel: 'Client Feedback', clientLabel: 'Feedback', lifecycleStep: 'In Design', clientVisible: true, actionType: 'normal' },
@@ -96,8 +99,9 @@ const designMilling: FlowMapping = {
     client_reject: { adminLabel: 'Rejected', clientLabel: 'Rejected', lifecycleStep: 'Terminal Exception', clientVisible: true, terminal: true, actionType: 'exception' },
   },
   // No statuses from the current enum are unreachable for this flow — but
-  // production statuses must not be reachable before `approved`; enforced by
-  // the transition guard (src/lib/case-status-transitions.ts), not here.
+  // production statuses must not be reachable before Internal QC completes;
+  // enforced by the transition guard (src/lib/case-status-transitions.ts),
+  // not here.
   skippedStatuses: [],
 }
 

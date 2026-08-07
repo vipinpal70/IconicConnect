@@ -479,9 +479,19 @@ export default function CasesPage() {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || "Failed to approve case");
         }
-        toast.success(actionConfig.successMessage);
+        const { data: updatedCase } = await res.json();
+        const skipsClientReview = updatedCase?.serviceType === "design_milling";
+
+        toast.success(
+          skipsClientReview
+            ? "QC checklist complete — select a milling centre to continue"
+            : actionConfig.successMessage
+        );
         fetchCases();
         closeCaseActionDialog();
+        if (skipsClientReview && updatedCase) {
+          setAssignMillingCase(updatedCase);
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Failed to approve case";
         toast.error(msg);
@@ -978,6 +988,13 @@ export default function CasesPage() {
       console.error("Bulk submit error:", error);
     }
   };
+
+  // Design + Milling has no client-approval step, so the Approve dialog's
+  // copy needs to say "select a milling centre" instead of "sending to
+  // the client" when it's this pending case.
+  const pendingApproveIsMilling =
+    pendingCaseAction?.action === "approve" &&
+    cases.find((c) => c.id === pendingCaseAction.caseId)?.serviceType === "design_milling";
 
   return (
     <>
@@ -1598,7 +1615,7 @@ export default function CasesPage() {
                                 <span className="text-[11px] text-green-600 font-semibold px-1">Completed</span>
                               )}
 
-                              {c.status === "approved" && c.serviceType === "design_milling" && (isAdmin || isQc || isDesigner) && (
+                              {c.status === "internal_qc" && c.serviceType === "design_milling" && (isAdmin || isQc || isDesigner) && (
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -1654,7 +1671,11 @@ export default function CasesPage() {
               {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].title : "Case Action"}
             </DialogTitle>
             <p className="text-xs text-zinc-300">
-              {pendingCaseAction ? CASE_ACTIONS[pendingCaseAction.action].description : ""}
+              {pendingCaseAction
+                ? pendingApproveIsMilling
+                  ? "Complete the QC checklist, then select a milling centre to send this case into production. No client approval is needed for Design + Milling."
+                  : CASE_ACTIONS[pendingCaseAction.action].description
+                : ""}
               {pendingCaseAction?.caseNumber ? ` Case ${pendingCaseAction.caseNumber}.` : ""}
             </p>
           </DialogHeader>
