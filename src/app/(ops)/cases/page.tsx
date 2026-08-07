@@ -1566,7 +1566,7 @@ export default function CasesPage() {
                               )}
 
                               {/* Hold — available to any assigned/admin user at any stage other than on_hold/approved/delivered */}
-                              {!["on_hold", "approved", "delivered"].includes(c.status) && (isAdmin || (isQc && (isQcOnCase || isDesignerOnCase)) || (isDesigner && isDesignerOnCase)) && (
+                              {!["on_hold", "approved", "delivered", "cancelled"].includes(c.status) && (isAdmin || (isQc && (isQcOnCase || isDesignerOnCase)) || (isDesigner && isDesignerOnCase)) && (
                                 <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                   onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
                                   className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">
