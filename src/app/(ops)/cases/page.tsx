@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { HOLD_REASONS } from "@/src/lib/case-utils";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
@@ -1214,7 +1215,13 @@ export default function CasesPage() {
                           )}
                           <td className="px-3.5 py-1.5 text-[11px] font-semibold  text-primary">
                             <div className="flex items-center gap-1.5">
-                              <span>{c.caseNumber || c.id}</span>
+                              <Link
+                                href={`/cases/${c.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="hover:underline cursor-pointer"
+                              >
+                                {c.caseNumber || c.id}
+                              </Link>
                               {shouldShowChatIcon(c, currentUser) && (hasUnreadChat || (c.todayMessagesCount || 0) > 0) && (
                                 <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${c.todayMessagesCount} messages today`}>
                                   <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
