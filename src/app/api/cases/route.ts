@@ -329,39 +329,43 @@ export async function GET(req: NextRequest) {
     const hasMore = results.length > limit;
     if (hasMore) results = results.slice(0, limit);
 
+    // These four lookups only depend on `results`, not on each other — run them
+    // concurrently instead of paying for four sequential DB round trips.
     const designerIds = Array.from(new Set(results.map(r => r.designerId).filter(Boolean))) as string[];
-    const designersMap = new Map<string, string>();
-    if (designerIds.length > 0) {
-      const designersProfiles = await db.select().from(profiles).where(inArray(profiles.id, designerIds));
-      designersProfiles.forEach(p => {
-        designersMap.set(p.id, p.fullName || p.email);
-      });
-    }
-
     const clientIds = Array.from(new Set(results.map(r => r.clientId).filter(Boolean))) as string[];
-    const clientsMap = new Map<string, string>();
-    if (clientIds.length > 0) {
-      const clientsProfiles = await db.select().from(profiles).where(inArray(profiles.id, clientIds));
-      clientsProfiles.forEach(p => {
-        clientsMap.set(p.id, p.labName || p.fullName || p.email || '—');
-      });
-    }
+    const caseIds = results.map((r) => r.id);
 
-    const chatMetadata = await getCasesChatMetadata(results.map((r) => r.id), profile.id);
+    const [designersProfiles, clientsProfiles, chatMetadata, fileRows] = await Promise.all([
+      designerIds.length > 0
+        ? db.select().from(profiles).where(inArray(profiles.id, designerIds))
+        : Promise.resolve([]),
+      clientIds.length > 0
+        ? db.select().from(profiles).where(inArray(profiles.id, clientIds))
+        : Promise.resolve([]),
+      getCasesChatMetadata(caseIds, profile.id),
+      caseIds.length > 0
+        ? db.select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
+            .from(caseFiles)
+            .where(inArray(caseFiles.caseId, caseIds))
+            .orderBy(asc(caseFiles.createdAt))
+        : Promise.resolve([]),
+    ]);
+
+    const designersMap = new Map<string, string>();
+    designersProfiles.forEach(p => {
+      designersMap.set(p.id, p.fullName || p.email);
+    });
+
+    const clientsMap = new Map<string, string>();
+    clientsProfiles.forEach(p => {
+      clientsMap.set(p.id, p.labName || p.fullName || p.email || '—');
+    });
 
     // Fetch first uploaded scan file name for each case
-    const caseIds = results.map((r) => r.id);
     const scanFileMap = new Map<string, string>();
-    if (caseIds.length > 0) {
-      const fileRows = await db
-        .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
-        .from(caseFiles)
-        .where(inArray(caseFiles.caseId, caseIds))
-        .orderBy(asc(caseFiles.createdAt));
-      for (const row of fileRows) {
-        if (row.caseId && !scanFileMap.has(row.caseId)) {
-          scanFileMap.set(row.caseId, row.fileName);
-        }
+    for (const row of fileRows) {
+      if (row.caseId && !scanFileMap.has(row.caseId)) {
+        scanFileMap.set(row.caseId, row.fileName);
       }
     }
 

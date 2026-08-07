@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import React, { useMemo, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import React, { useEffect, useMemo, useState } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Input } from "@/src/components/ui/input";
 import {
@@ -268,9 +268,11 @@ export default function AdminCasesPage() {
 	const CASES_PAGE_SIZE = 50;
 
 	// Fetch Cases list — each page fetches CASES_PAGE_SIZE new rows and is
-	// appended to the ones already loaded (not replaced); refetch()/the
-	// refetchInterval below re-fetch every page currently loaded so the
-	// accumulated list stays fresh.
+	// appended to the ones already loaded (not replaced). refetch() (called
+	// after mutations) re-fetches every page currently loaded so the
+	// accumulated list stays fully consistent; the periodic background
+	// refresh below deliberately only re-fetches the first page so its cost
+	// doesn't grow as the user pages through more cases via "Load more".
 	const {
 		data: casesPages,
 		isLoading,
@@ -292,9 +294,47 @@ export default function AdminCasesPage() {
 		initialPageParam: 1,
 		getNextPageParam: (lastPage, allPages) =>
 			lastPage.hasMore ? allPages.length + 1 : undefined,
-		refetchInterval: 30_000,
 		staleTime: 20_000,
 	});
+
+	// v5's refetch() no longer supports selectively refetching a single page
+	// (no `refetchPage` option), so the periodic tick fetches page 1 directly
+	// and merges it into the query cache — updating existing rows in place and
+	// prepending brand-new ones, leaving pages loaded via "Load more" as-is.
+	const queryClient = useQueryClient();
+	useEffect(() => {
+		const intervalId = window.setInterval(async () => {
+			try {
+				const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=1`);
+				if (!res.ok) return;
+				const fresh: { data: CaseRecord[]; hasMore: boolean } =
+					await res.json();
+				queryClient.setQueryData<{
+					pages: { data: CaseRecord[]; hasMore: boolean }[];
+					pageParams: number[];
+				}>(["admin-cases"], (old) => {
+					if (!old || old.pages.length === 0) return old;
+					const firstPage = old.pages[0];
+					const newOnes = fresh.data.filter(
+						(r) => !firstPage.data.some((c) => c.id === r.id),
+					);
+					const updatedFirstPage = {
+						...firstPage,
+						data: [
+							...newOnes,
+							...firstPage.data.map(
+								(c) => fresh.data.find((r) => r.id === c.id) ?? c,
+							),
+						],
+					};
+					return { ...old, pages: [updatedFirstPage, ...old.pages.slice(1)] };
+				});
+			} catch (err) {
+				console.error("Error refreshing cases:", err);
+			}
+		}, 30_000);
+		return () => window.clearInterval(intervalId);
+	}, [queryClient]);
 
 	const data = useMemo(
 		() => ({ data: (casesPages?.pages ?? []).flatMap((p) => p.data) }),
