@@ -5,6 +5,9 @@ import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone'
 import { handleProfileCreated } from '@/src/lib/price-list'
 import { deleteCachedData } from '@/src/lib/redis-cache'
 import { logActivity } from '@/src/lib/activity-log'
+import type { ServiceType } from '@/src/lib/case-status-mapping'
+
+const VALID_SERVICE_TYPES: ServiceType[] = ['design_only', 'design_milling', 'milling_only']
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +17,13 @@ export async function POST(req: NextRequest) {
 
     if (phoneError) {
       return NextResponse.json({ error: phoneError }, { status: 400 })
+    }
+
+    const rawServiceTypes: unknown[] = Array.isArray(body.enabledServiceTypes) ? body.enabledServiceTypes : []
+    const enabledServiceTypes = rawServiceTypes.filter((t): t is ServiceType => VALID_SERVICE_TYPES.includes(t as ServiceType))
+
+    if (enabledServiceTypes.length === 0) {
+      return NextResponse.json({ error: 'Please select at least one service you need (Design, Design + Milling, or Milling).' }, { status: 400 })
     }
 
     await db.insert(profiles).values({
@@ -30,6 +40,7 @@ export async function POST(req: NextRequest) {
       city: body.city || null,
       state: body.state || null,
       country: body.country || null,
+      enabledServiceTypes,
     })
 
     // Automatically ensure default catalog exists and seed the client's allocated price list
@@ -56,7 +67,8 @@ export async function POST(req: NextRequest) {
         city: body.city || null,
         state: body.state || null,
         country: body.country || null,
-        password: body.password || null
+        password: body.password || null,
+        enabledServiceTypes,
       },
     }).catch((err) => console.error('[sign-up logActivity]', err))
 

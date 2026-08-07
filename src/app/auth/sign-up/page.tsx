@@ -12,6 +12,13 @@ import {
 } from "@/src/lib/phone";
 import { Eye, EyeOff } from "lucide-react";
 import Logo from "@/public/IconicConnectLogo.png";
+import type { ServiceType } from "@/src/lib/case-status-mapping";
+
+const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string; description: string }[] = [
+	{ value: "design_only", label: "Design", description: "We deliver design files digitally" },
+	{ value: "design_milling", label: "Design + Milling", description: "We design, then mill and ship the physical product" },
+	{ value: "milling_only", label: "Milling", description: "Upload your finished design file — we mill and ship it, no design work" },
+];
 
 type FormData = {
 	name: string;
@@ -47,6 +54,7 @@ export default function SignUpPage() {
 
 	const [form, setForm] = useState<FormData>(initial);
 	const [countryCode, setCountryCode] = useState("+91");
+	const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 
@@ -56,6 +64,12 @@ export default function SignUpPage() {
 			...prev,
 			[name]: name === "phone" ? value.replace(/\D/g, "") : value,
 		}));
+	};
+
+	const toggleServiceType = (value: ServiceType) => {
+		setEnabledServiceTypes((prev) =>
+			prev.includes(value) ? prev.filter((t) => t !== value) : [...prev, value],
+		);
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -73,6 +87,10 @@ export default function SignUpPage() {
 		const phoneError = validateNationalPhone(countryCode, form.phone);
 		if (phoneError) {
 			setError(phoneError);
+			return;
+		}
+		if (enabledServiceTypes.length === 0) {
+			setError("Please select at least one service you need.");
 			return;
 		}
 
@@ -108,6 +126,7 @@ export default function SignUpPage() {
 					state: form.state,
 					country: form.country,
 					password: form.password,
+					enabledServiceTypes,
 				}),
 			});
 
@@ -268,6 +287,45 @@ export default function SignUpPage() {
 								/>
 							</div>
 						</div>
+					</div>
+
+					<hr className="border-gray-100" />
+
+					{/* Services */}
+					<div>
+						<p className="text-[11px] font-medium text-teal-600 tracking-widest uppercase mb-2">
+							Services you need
+						</p>
+						<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+							{SERVICE_TYPE_OPTIONS.map((option) => (
+								<label
+									key={option.value}
+									className={`flex items-start gap-2.5 p-3 border rounded-lg cursor-pointer transition ${
+										enabledServiceTypes.includes(option.value)
+											? "border-teal-500 bg-teal-50"
+											: "border-gray-200 hover:border-gray-300"
+									}`}
+								>
+									<input
+										type="checkbox"
+										checked={enabledServiceTypes.includes(option.value)}
+										onChange={() => toggleServiceType(option.value)}
+										className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+									/>
+									<div>
+										<span className="block text-sm font-medium text-gray-900">
+											{option.label}
+										</span>
+										<span className="block text-xs text-gray-500 mt-0.5">
+											{option.description}
+										</span>
+									</div>
+								</label>
+							))}
+						</div>
+						<p className="mt-1.5 text-xs text-gray-400">
+							Select at least one. Contact support if you need this changed later.
+						</p>
 					</div>
 
 					<hr className="border-gray-100" />
