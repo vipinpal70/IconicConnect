@@ -258,6 +258,7 @@ export default function CasesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [typeFilter, setTypeFilter] = useState<string | "All">("All");
+  const [assignedFilter, setAssignedFilter] = useState<string>("All");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -266,13 +267,17 @@ export default function CasesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  // Tracks total cases to keep visible; grows as user loads more or creates new cases
-  const pageLimitRef = useRef(10);
+  const CASES_PAGE_SIZE = 50;
+  // Tracks total cases currently loaded; grows as the user loads more or creates new cases.
+  // fetchCases() re-fetches everything loaded so far (used for the initial load and the
+  // periodic refresh, so already-loaded rows stay fresh); handleLoadMore() fetches only
+  // the next page and appends it, rather than re-fetching everything.
+  const loadedCountRef = useRef(CASES_PAGE_SIZE);
 
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const res = await fetch(`/api/cases?limit=${pageLimitRef.current}&page=1`);
+      const res = await fetch(`/api/cases?limit=${loadedCountRef.current}&page=1`);
       if (res.ok) {
         const json = await res.json();
         setCases(Array.isArray(json.data) ? json.data : []);
@@ -289,20 +294,20 @@ export default function CasesPage() {
   };
 
   const handleLoadMore = async () => {
-    pageLimitRef.current += 10;
     setIsLoadingMore(true);
     try {
-      const res = await fetch(`/api/cases?limit=${pageLimitRef.current}&page=1`);
+      const nextPage = Math.floor(loadedCountRef.current / CASES_PAGE_SIZE) + 1;
+      const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=${nextPage}`);
       if (res.ok) {
         const json = await res.json();
-        setCases(Array.isArray(json.data) ? json.data : []);
+        const newRows = Array.isArray(json.data) ? json.data : [];
+        setCases((prev) => [...prev, ...newRows]);
         setHasMore(json.hasMore ?? false);
+        loadedCountRef.current += newRows.length;
       } else {
-        pageLimitRef.current -= 10;
         toast.error("Failed to load more cases");
       }
     } catch {
-      pageLimitRef.current -= 10;
       toast.error("Failed to load more cases");
     } finally {
       setIsLoadingMore(false);
@@ -310,7 +315,7 @@ export default function CasesPage() {
   };
 
   useEffect(() => {
-    pageLimitRef.current = 10;
+    loadedCountRef.current = CASES_PAGE_SIZE;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
     const intervalId = window.setInterval(() => { void fetchCases(false); }, 30_000);
     return () => {
@@ -769,13 +774,18 @@ export default function CasesPage() {
 
       const matchesStatus = statusFilter === "All" || (STATUS_FILTER_MAP[statusFilter]?.includes(c.status) ?? false);
       const matchesType = typeFilter === "All" || c.category === typeFilter;
+      const matchesAssigned =
+        assignedFilter === "All" ||
+        (assignedFilter === "mine"
+          ? c.designerId === activeUserId || c.qcId === activeUserId
+          : c.designerId === assignedFilter || c.qcId === assignedFilter);
       const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "";
       const matchesFrom = !from || createdAtDate >= from;
       const matchesTo = !to || createdAtDate <= to;
 
-      return matchesSearch && matchesStatus && matchesType && matchesFrom && matchesTo;
+      return matchesSearch && matchesStatus && matchesType && matchesAssigned && matchesFrom && matchesTo;
     });
-  }, [cases, search, statusFilter, typeFilter, from, to]);
+  }, [cases, search, statusFilter, typeFilter, assignedFilter, activeUserId, from, to]);
 
   // ── QC "Approve all" (bulk approval, bypasses the checklist) ──────────────
   // A case is bulk-approvable when it sits in Internal QC and the current user
@@ -870,7 +880,7 @@ export default function CasesPage() {
         setNotes(""); setTeeth([]); setToothSystem("USA"); setModelRequired("no");
         setCategory("Crown & Bridges"); setSubTypeData({});
         setSingleFile(null); setUploadedFileUrl(null); setUploadedFile(null);
-        pageLimitRef.current += 1;
+        loadedCountRef.current += 1;
         fetchCases();
       } else {
         toast.error("Failed to submit case.");
@@ -932,7 +942,7 @@ export default function CasesPage() {
         setBulkRows([]);
         if (bulkFileRef.current) bulkFileRef.current.value = "";
         setUploadOpen(false);
-        pageLimitRef.current += addedCount;
+        loadedCountRef.current += addedCount;
         fetchCases();
       } else {
         toast.error("Failed to submit bulk cases.");
@@ -1042,9 +1052,29 @@ export default function CasesPage() {
                   {Object.keys(CASE_HIERARCHY).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+                <SelectTrigger className="w-full lg:w-48 h-8 text-xs"><SelectValue placeholder="All users" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Users</SelectItem>
+                  {activeUserId && <SelectItem value="mine">My Cases</SelectItem>}
+                  {designers.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Designers</SelectLabel>
+                      {designers.map((d) => <SelectItem key={d.id} value={d.id}>{d.fullName || d.email}</SelectItem>)}
+                    </SelectGroup>
+                  )}
+                  {designers.length > 0 && qcs.length > 0 && <SelectSeparator />}
+                  {qcs.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>QC</SelectLabel>
+                      {qcs.map((q) => <SelectItem key={q.id} value={q.id}>{q.fullName || q.email}</SelectItem>)}
+                    </SelectGroup>
+                  )}
+                </SelectContent>
+              </Select>
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
-              <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={() => { setSearch(""); setTypeFilter("All"); setStatusFilter("All"); setFrom(""); setTo(""); }}>Clear</Button>
+              <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={() => { setSearch(""); setTypeFilter("All"); setStatusFilter("All"); setAssignedFilter("All"); setFrom(""); setTo(""); }}>Clear</Button>
             </div>
             <div className="flex gap-1 flex-wrap pt-0.5">
               {statusFilters.map((s) => (
