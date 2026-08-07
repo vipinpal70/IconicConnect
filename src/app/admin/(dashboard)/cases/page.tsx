@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import React, { useMemo, useState, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useMemo, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Input } from "@/src/components/ui/input";
 import {
@@ -250,6 +250,7 @@ export default function AdminCasesPage() {
 	const [statusFilter, setStatusFilter] = useState("All");
 	const [serviceTypeFilter, setServiceTypeFilter] = useState("All");
 	const [clientFilter, setClientFilter] = useState("All");
+	const [assignedFilter, setAssignedFilter] = useState("All");
 	const [from, setFrom] = useState("");
 	const [to, setTo] = useState("");
 	const [openCase, setOpenCase] = useState<CaseRecord | null>(null);
@@ -264,41 +265,47 @@ export default function AdminCasesPage() {
 	const [approveChecklist, setApproveChecklist] = useState<
 		Record<string, boolean>
 	>({});
-	const [pageLimit, setPageLimit] = useState(10);
-	const [isLoadingMore, setIsLoadingMore] = useState(false);
-	const pageLimitChangedRef = useRef(false);
+	const CASES_PAGE_SIZE = 50;
 
-	// Fetch Cases list
-	const { data, isLoading, isFetching, error, refetch } = useQuery<{
-		data: CaseRecord[];
-		hasMore: boolean;
-	}>({
-		queryKey: ["admin-cases", pageLimit],
-		queryFn: async () => {
-			const res = await fetch(`/api/cases?limit=${pageLimit}&page=1`);
+	// Fetch Cases list — each page fetches CASES_PAGE_SIZE new rows and is
+	// appended to the ones already loaded (not replaced); refetch()/the
+	// refetchInterval below re-fetch every page currently loaded so the
+	// accumulated list stays fresh.
+	const {
+		data: casesPages,
+		isLoading,
+		error,
+		refetch,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+	} = useInfiniteQuery<{ data: CaseRecord[]; hasMore: boolean }>({
+		queryKey: ["admin-cases"],
+		queryFn: async ({ pageParam }) => {
+			const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=${pageParam}`);
 			if (!res.ok) {
 				const err = await res.json().catch(() => ({}));
 				throw new Error(err.error || "Failed to load cases");
 			}
 			return res.json();
 		},
+		initialPageParam: 1,
+		getNextPageParam: (lastPage, allPages) =>
+			lastPage.hasMore ? allPages.length + 1 : undefined,
 		refetchInterval: 30_000,
 		staleTime: 20_000,
 	});
 
-	const hasMore = data?.hasMore ?? false;
+	const data = useMemo(
+		() => ({ data: (casesPages?.pages ?? []).flatMap((p) => p.data) }),
+		[casesPages],
+	);
 
-	useEffect(() => {
-		if (pageLimitChangedRef.current && !isFetching) {
-			pageLimitChangedRef.current = false;
-			setIsLoadingMore(false);
-		}
-	}, [isFetching]);
+	const hasMore = hasNextPage ?? false;
+	const isLoadingMore = isFetchingNextPage;
 
 	const handleLoadMore = () => {
-		pageLimitChangedRef.current = true;
-		setIsLoadingMore(true);
-		setPageLimit((prev) => prev + 10);
+		fetchNextPage();
 	};
 
 	// Fetch Client profiles
@@ -443,6 +450,13 @@ export default function AdminCasesPage() {
 				(caseItem.serviceType ?? "design_only") === serviceTypeFilter;
 			const matchesClient =
 				clientFilter === "All" || caseItem.clientId === clientFilter;
+			const matchesAssigned =
+				assignedFilter === "All" ||
+				(assignedFilter === "mine"
+					? caseItem.designerId === currentUser?.id ||
+						caseItem.qcId === currentUser?.id
+					: caseItem.designerId === assignedFilter ||
+						caseItem.qcId === assignedFilter);
 			const createdAtDate = caseItem.createdAt
 				? new Date(caseItem.createdAt).toISOString().split("T")[0]
 				: "";
@@ -454,11 +468,23 @@ export default function AdminCasesPage() {
 				matchesStatus &&
 				matchesServiceType &&
 				matchesClient &&
+				matchesAssigned &&
 				matchesFrom &&
 				matchesTo
 			);
 		});
-	}, [data, search, statusFilter, serviceTypeFilter, clientFilter, clientsMap, from, to]);
+	}, [
+		data,
+		search,
+		statusFilter,
+		serviceTypeFilter,
+		clientFilter,
+		assignedFilter,
+		currentUser,
+		clientsMap,
+		from,
+		to,
+	]);
 
 	// Live database updates
 	const handleUpdate = async (
@@ -767,6 +793,62 @@ export default function AdminCasesPage() {
 								))}
 							</SelectContent>
 						</Select>
+						<Select value={assignedFilter} onValueChange={setAssignedFilter}>
+							<SelectTrigger className="w-full lg:w-48 h-8 text-xs">
+								<SelectValue placeholder="All users" />
+							</SelectTrigger>
+							<SelectContent className="bg-primary border-primary/50 text-white">
+								<SelectItem
+									className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+									value="All"
+								>
+									All users
+								</SelectItem>
+								{currentUser && (
+									<SelectItem
+										className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+										value="mine"
+									>
+										My Cases
+									</SelectItem>
+								)}
+								{designers.length > 0 && (
+									<SelectGroup>
+										<SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">
+											Designers
+										</SelectLabel>
+										{designers.map((d) => (
+											<SelectItem
+												key={d.id}
+												value={d.id}
+												className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+											>
+												{d.fullName || d.email}
+											</SelectItem>
+										))}
+									</SelectGroup>
+								)}
+								{designers.length > 0 && qcs.length > 0 && (
+									<SelectSeparator className="bg-white/20" />
+								)}
+								{qcs.length > 0 && (
+									<SelectGroup>
+										<SelectLabel className="text-white/60 text-[9px] uppercase tracking-wider px-2 py-1">
+											QC
+										</SelectLabel>
+										{qcs.map((q) => (
+											<SelectItem
+												key={q.id}
+												value={q.id}
+												className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs"
+											>
+												{q.fullName || q.email}
+											</SelectItem>
+										))}
+									</SelectGroup>
+								)}
+							</SelectContent>
+						</Select>
 						<Select value={statusFilter} onValueChange={setStatusFilter}>
 							<SelectTrigger className="w-full lg:w-48 h-8 text-xs">
 								<SelectValue placeholder="All statuses" />
@@ -827,6 +909,7 @@ export default function AdminCasesPage() {
 								setStatusFilter("All");
 								setServiceTypeFilter("All");
 								setClientFilter("All");
+								setAssignedFilter("All");
 								setFrom("");
 								setTo("");
 							}}
@@ -1991,7 +2074,7 @@ export default function AdminCasesPage() {
 				role="admin"
 				clients={clientsData}
 				onSuccess={() => {
-					setPageLimit((prev) => prev + 1);
+					refetch();
 				}}
 			/>
 
