@@ -344,6 +344,9 @@ export async function PUT(
             updateData.status = target;
           } else if (target === 'submitted_to_client' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;
+          } else if (target === 'internal_qc' && current === 'submitted_to_client' && caseRecord.qcId === profile.id) {
+            // Undo: pull an accidentally-submitted case back for another QC pass
+            updateData.status = target;
           } else if (target === 'on_hold' && !['on_hold', 'approved', 'delivered', 'cancelled'].includes(current) && (caseRecord.qcId === profile.id || caseRecord.designerId === profile.id)) {
             updateData.status = target;
           } else if (target === 'scan_received' && current === 'on_hold' && (caseRecord.qcId === profile.id || caseRecord.designerId === profile.id)) {
@@ -423,6 +426,12 @@ export async function PUT(
               updateData.status = target;
             } else if (target === 'on_hold' && !['on_hold', 'approved', 'delivered', 'cancelled'].includes(current)) {
               updateData.status = target;
+            } else if (target === 'in_progress' && current === 'internal_qc') {
+              // Undo: designer pulls their own case back from Internal QC by mistake
+              updateData.status = target;
+            } else if (target === 'internal_qc' && current === 'submitted_to_client') {
+              // Undo: pull an accidentally-submitted case back for another QC pass
+              updateData.status = target;
             } else if (target === 'internal_qc' && current === 'in_progress') {
               const finalQcId = body.qcId !== undefined ? body.qcId : caseRecord.qcId;
               if (!finalQcId) {
@@ -462,6 +471,11 @@ export async function PUT(
     // Track when case enters client review — starts the 7-day auto-approval window
     if (updateData.status === 'submitted_to_client') {
       updateData.submittedToClientAt = new Date()
+    }
+    // Undo out of client review — clear the auto-approval window so it doesn't
+    // fire against a stale timestamp if the case is resubmitted later
+    if (updateData.status === 'internal_qc' && caseRecord.status === 'submitted_to_client') {
+      updateData.submittedToClientAt = null
     }
 
     if (Object.keys(updateData).length === 0) {

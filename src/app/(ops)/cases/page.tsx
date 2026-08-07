@@ -8,7 +8,7 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
-import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory, PauseCircle } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory, PauseCircle, Undo2 } from "lucide-react";
 import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
@@ -1571,6 +1571,22 @@ export default function CasesPage() {
                                   onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
                                   className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">
                                   <PauseCircle className="h-3 w-3 mr-1" /> Hold
+                                </Button>
+                              )}
+
+                              {/* Undo — one-step safety net for accidental status changes */}
+                              {c.status === "internal_qc" && isDesignerOnCase && (
+                                <Button size="sm" variant="outline" disabled={isMutating}
+                                  onClick={() => handleUpdate(c.id, { status: "in_progress" }, "Reverted to In Progress")}
+                                  className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider text-amber-700 border-amber-300 hover:bg-amber-50">
+                                  <Undo2 className="h-3 w-3 mr-1" /> Undo
+                                </Button>
+                              )}
+                              {c.status === "submitted_to_client" && (isAdmin || isDesignerOnCase || isQcOnCase) && (
+                                <Button size="sm" variant="outline" disabled={isMutating}
+                                  onClick={() => handleUpdate(c.id, { status: "internal_qc" }, "Reverted to Internal QC")}
+                                  className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider text-amber-700 border-amber-300 hover:bg-amber-50">
+                                  <Undo2 className="h-3 w-3 mr-1" /> Undo
                                 </Button>
                               )}
 

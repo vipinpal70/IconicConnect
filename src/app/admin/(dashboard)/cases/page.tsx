@@ -55,6 +55,7 @@ import {
 	Trash2,
 	Factory,
 	PauseCircle,
+	Undo2,
 } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 
@@ -1588,6 +1589,46 @@ export default function AdminCasesPage() {
 																	<PauseCircle className="h-3 w-3 mr-0.5" /> Hold
 																</Button>
 															)}
+
+															{/* Undo — one-step safety net for accidental status changes */}
+															{caseItem.status === "internal_qc" &&
+																caseItem.designerId === currentUser?.id && (
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		disabled={isMutating}
+																		onClick={() =>
+																			handleUpdate(
+																				caseItem.id,
+																				{ status: "in_progress" },
+																				"Reverted to In Progress",
+																			)
+																		}
+																		className="h-7 text-[10px] px-2.5 font-bold text-amber-700 border-amber-300 hover:bg-amber-50 shadow-sm transition-all"
+																	>
+																		<Undo2 className="h-3 w-3 mr-0.5" /> Undo
+																	</Button>
+																)}
+															{caseItem.status === "submitted_to_client" &&
+																(currentUser?.role === "admin" ||
+																	currentUser?.role === "qc" ||
+																	caseItem.designerId === currentUser?.id) && (
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		disabled={isMutating}
+																		onClick={() =>
+																			handleUpdate(
+																				caseItem.id,
+																				{ status: "internal_qc" },
+																				"Reverted to Internal QC",
+																			)
+																		}
+																		className="h-7 text-[10px] px-2.5 font-bold text-amber-700 border-amber-300 hover:bg-amber-50 shadow-sm transition-all"
+																	>
+																		<Undo2 className="h-3 w-3 mr-0.5" /> Undo
+																	</Button>
+																)}
 
 															{/* 3. Awaiting client status display (visible to admin/qc, and designer if assigned) */}
 															{caseItem.status === "submitted_to_client" &&
