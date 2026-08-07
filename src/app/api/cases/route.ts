@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles } from '@/src/db/schema/case';
+import { cases, caseFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq, inArray, sql, asc, desc } from 'drizzle-orm';
+import { eq, and, inArray, sql, asc, desc } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
@@ -13,6 +13,14 @@ import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/re
 import { parseCatalogServiceType } from '@/src/lib/price-list';
 
 const CASES_LIST_TTL = 300 // 5 minutes
+
+// Statuses before a case reaches a finished state (Approved/Delivered) or a
+// dead end (Cancelled/Client Rejected) — i.e. everything not yet 'Completed'
+// on the client-facing lifecycle. Re-uploading the same file while an
+// earlier case is still in one of these is blocked as a likely duplicate.
+const ACTIVE_CASE_STATUSES = caseStatusEnum.enumValues.filter(
+  (status) => CASE_STATUS_TO_LIFECYCLE_STEP[status] !== 'Completed'
+);
 
 const caseListSelection = {
   id: cases.id,
@@ -130,6 +138,43 @@ export async function POST(req: NextRequest) {
 
     if (!clientId) {
       return NextResponse.json({ error: 'Failed to determine Client ID' }, { status: 400 });
+    }
+
+    // Block a client/subuser from resubmitting a case file that's already
+    // being worked on in one of their own active (non-finished) cases.
+    if (profile.role === 'client' || profile.role === 'subuser') {
+      const fileNames = Array.from(new Set(
+        casesArray.flatMap((c) => {
+          const names: string[] = [];
+          if (c.uploadedFile?.fileName) names.push(c.uploadedFile.fileName);
+          if (Array.isArray(c.uploadedFiles)) {
+            for (const uf of c.uploadedFiles) {
+              if (uf.fileName) names.push(uf.fileName);
+            }
+          }
+          return names;
+        })
+      ));
+
+      if (fileNames.length > 0) {
+        const duplicate = await db
+          .select({ fileName: caseFiles.fileName, caseNumber: cases.caseNumber, status: cases.status })
+          .from(caseFiles)
+          .innerJoin(cases, eq(caseFiles.caseId, cases.id))
+          .where(and(
+            inArray(caseFiles.fileName, fileNames),
+            eq(cases.clientId, clientId),
+            inArray(cases.status, ACTIVE_CASE_STATUSES)
+          ))
+          .limit(1)
+          .then(res => res[0]);
+
+        if (duplicate) {
+          return NextResponse.json({
+            error: `The file "${duplicate.fileName}" was already uploaded in case ${duplicate.caseNumber || ''} (${CLIENT_STATUS_LABELS[duplicate.status]}). Please wait for that case to finish before resubmitting the same file.`
+          }, { status: 409 });
+        }
+      }
     }
 
     // Fetch client profile to get lab name for folder structure
