@@ -314,10 +314,32 @@ export default function CasesPage() {
     }
   };
 
+  // Periodic background refresh — re-fetches only the first page (newest
+  // CASES_PAGE_SIZE cases) instead of the whole accumulated list, so its cost
+  // stays constant no matter how many "Load more" pages are loaded. Updates
+  // existing rows in place and prepends brand-new cases; rows loaded via
+  // "Load more" beyond the first page are left untouched.
+  const refreshFirstPage = async () => {
+    try {
+      const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=1`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const freshRows: OpsCase[] = Array.isArray(json.data) ? json.data : [];
+      setCases((prev) => {
+        const prevIds = new Set(prev.map((c) => c.id));
+        const newOnes = freshRows.filter((r) => !prevIds.has(r.id));
+        const updated = prev.map((c) => freshRows.find((r) => r.id === c.id) ?? c);
+        return [...newOnes, ...updated];
+      });
+    } catch (err) {
+      console.error("Error refreshing cases:", err);
+    }
+  };
+
   useEffect(() => {
     loadedCountRef.current = CASES_PAGE_SIZE;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
-    const intervalId = window.setInterval(() => { void fetchCases(false); }, 30_000);
+    const intervalId = window.setInterval(() => { void refreshFirstPage(); }, 30_000);
     return () => {
       window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
