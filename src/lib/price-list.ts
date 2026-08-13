@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles, subUsers } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
@@ -35,6 +35,9 @@ export async function getPriceListForClient(
 ): Promise<PriceListEntryFull[]> {
   // Always ensure every active catalog item has a row for this client.
   // onConflictDoNothing means existing custom prices are never overwritten.
+  // seedClientPriceList reconciles the system catalog first (see its own
+  // ensureServiceCatalogSeeded() call), so a client price list fetched
+  // without ever hitting getServiceCatalog still picks up new catalog items.
   await seedClientPriceList(clientId)
 
   const rows = await db
@@ -73,6 +76,11 @@ export async function getServiceCatalog(
   serviceType: CatalogServiceType = 'design_only',
   includeInactive = false
 ): Promise<PriceListEntryFull[]> {
+  // Reconcile any catalog items added to defaultItems since this DB was last
+  // seeded — same "seed on read" pattern getPriceListForClient already uses
+  // for seedClientPriceList below.
+  await ensureServiceCatalogSeeded()
+
   const rows = await db
     .select()
     .from(serviceCatalog)
@@ -100,6 +108,8 @@ export async function getServiceCatalog(
 }
 
 export async function seedClientPriceList(clientId: string, createdById?: string | null) {
+  await ensureServiceCatalogSeeded()
+
   const catalog = await db
     .select()
     .from(serviceCatalog)
@@ -218,16 +228,18 @@ export async function setClientEnabledServiceTypes(clientId: string, types: Serv
     .where(eq(profiles.id, clientId))
 }
 
+// Reconciles the service_catalog table against `defaultItems` below — safe to
+// call on every request, not just once from empty. Uses onConflictDoNothing
+// keyed on (category, subCategory, serviceType), so existing rows (including
+// admin-edited prices) are never touched; only rows for *new* items added to
+// this list in a later release get inserted. This is what makes adding a new
+// category/sub-category here alone enough — no separate one-off backfill
+// script is needed for plain catalog-row additions going forward (see
+// 3d-model-implement-plan.md — the "3D Model" rows below originally required
+// scripts/seed-3d-model-catalog.mjs to run manually because this function
+// used to bail out early once the table was non-empty).
 export async function ensureServiceCatalogSeeded() {
-  const countResult = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(serviceCatalog)
-  
-  if (countResult[0]?.count > 0) {
-    return
-  }
-
-  // Seed default catalog items (23 items total)
+  // Seed default catalog items (23 original + additions since)
   const defaultItems = [
     { category: 'Crown & Bridge', subCategory: 'Crown', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 1 },
     { category: 'Crown & Bridge', subCategory: 'Bridge', unitType: 'per_tooth' as const, defaultPrice: '5.00', sortOrder: 2 },
