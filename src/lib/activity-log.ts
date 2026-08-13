@@ -53,6 +53,7 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
   if (action === 'client.deactivated') return 'Client account deactivated'
   if (action === 'client.activated') return 'Client account reactivated'
   if (action === 'client.deleted') return 'Client account deleted'
+  if (action === 'client.model_only_lab_updated') return 'Client "3D Model only" restriction updated'
   if (action === 'price_list.updated') return 'Price list updated'
   if (action === 'invoice.created') return 'Invoice created'
   if (action === 'invoice.updated') return 'Invoice updated'

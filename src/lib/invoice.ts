@@ -135,6 +135,15 @@ export async function buildInvoiceItems(
   }
   const groupMap = new Map<string, Group>()
 
+  // "3D Model" category — separate from the generic per_tooth/per_arch groups
+  // above (it mixes per_case and per_tooth lines) and from the legacy
+  // "Model Required?" add-on below (different catalog rows, never both on
+  // the same case). See 3d-model-implement-plan.md §7/§11.
+  const modelCaseTypeCounts = new Map<string, { subCategory: string; serviceType: CaseServiceType; count: number }>()
+  const modelDieUnitsByServiceType = new Map<CaseServiceType, number>()
+  const modelArticulatorCountByServiceType = new Map<CaseServiceType, number>()
+  const modelDrainHolesCountByServiceType = new Map<CaseServiceType, number>()
+
   for (const c of selectedCases) {
     const input = mapCaseToPricingInput(c.category || '', c.subTypeData)
     if (!input) continue
@@ -167,6 +176,28 @@ export async function buildInvoiceItems(
           if (g) g.totalUnits += cbCount
           else groupMap.set(key, { category: 'Crown & Bridge', subCategory: input.type, unitType: 'per_tooth', serviceType, totalUnits: cbCount })
         }
+      }
+
+      continue // skip generic processing below
+    }
+
+    if (input.category === '3D Model') {
+      const data = (c.subTypeData as Record<string, any>) || {}
+
+      const caseTypeKey = `${input.subCategory}:${serviceType}`
+      const existing = modelCaseTypeCounts.get(caseTypeKey)
+      if (existing) existing.count += 1
+      else modelCaseTypeCounts.set(caseTypeKey, { subCategory: input.subCategory, serviceType, count: 1 })
+
+      if (input.die) {
+        const teethCount = Array.isArray(data.teeth) ? data.teeth.length : 0
+        modelDieUnitsByServiceType.set(serviceType, (modelDieUnitsByServiceType.get(serviceType) ?? 0) + teethCount)
+      }
+      if (input.articulator) {
+        modelArticulatorCountByServiceType.set(serviceType, (modelArticulatorCountByServiceType.get(serviceType) ?? 0) + 1)
+      }
+      if (input.drainHoles) {
+        modelDrainHolesCountByServiceType.set(serviceType, (modelDrainHolesCountByServiceType.get(serviceType) ?? 0) + 1)
       }
 
       continue // skip generic processing below
@@ -222,6 +253,75 @@ export async function buildInvoiceItems(
       category: group.category,
       subCategory: group.subCategory,
       serviceType: group.serviceType,
+    })
+  }
+
+  // "3D Model" category line items — base case-type (per_case, one per case),
+  // Die (per_tooth, only if Die = Yes), Articulator and Drain Holes (flat
+  // per_case, only if set). Never mixed with the legacy "Model Required?"
+  // add-on below — a '3D Model'-category case never sets modelRequired.
+  for (const { subCategory, serviceType, count } of modelCaseTypeCounts.values()) {
+    const unitPrice = await getUnitPrice(clientId, '3D Model', subCategory, serviceType)
+    const totalPrice = parseFloat((count * unitPrice).toFixed(2))
+    subtotal += totalPrice
+    items.push({
+      sno: sno++,
+      description: `3D Model - ${subCategory}${serviceTypeSuffix(serviceType)}`,
+      qty: count,
+      unitPrice,
+      totalPrice,
+      category: '3D Model',
+      subCategory,
+      serviceType,
+    })
+  }
+
+  for (const [serviceType, teethCount] of modelDieUnitsByServiceType) {
+    if (teethCount <= 0) continue
+    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Die', serviceType)
+    const totalPrice = parseFloat((teethCount * unitPrice).toFixed(2))
+    subtotal += totalPrice
+    items.push({
+      sno: sno++,
+      description: `3D Model - Die${serviceTypeSuffix(serviceType)}`,
+      qty: teethCount,
+      unitPrice,
+      totalPrice,
+      category: '3D Model',
+      subCategory: 'Die',
+      serviceType,
+    })
+  }
+
+  for (const [serviceType, count] of modelArticulatorCountByServiceType) {
+    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Articulator', serviceType)
+    const totalPrice = parseFloat((count * unitPrice).toFixed(2))
+    subtotal += totalPrice
+    items.push({
+      sno: sno++,
+      description: `3D Model - Articulator${serviceTypeSuffix(serviceType)}`,
+      qty: count,
+      unitPrice,
+      totalPrice,
+      category: '3D Model',
+      subCategory: 'Articulator',
+      serviceType,
+    })
+  }
+
+  for (const [serviceType, count] of modelDrainHolesCountByServiceType) {
+    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Drain Holes', serviceType)
+    const totalPrice = parseFloat((count * unitPrice).toFixed(2))
+    subtotal += totalPrice
+    items.push({
+      sno: sno++,
+      description: `3D Model - Drain Holes${serviceTypeSuffix(serviceType)}`,
+      qty: count,
+      unitPrice,
+      totalPrice,
+      category: '3D Model',
+      subCategory: 'Drain Holes',
+      serviceType,
     })
   }
 

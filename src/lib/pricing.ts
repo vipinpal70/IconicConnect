@@ -13,8 +13,19 @@ import type {
   ApplianceType,
   OcclusionType,
   DentureSubCategory,
-  CosmeticsSubCategory
+  CosmeticsSubCategory,
+  ModelCaseType
 } from '@/src/types/pricing'
+
+// Matches the '3D Model' catalog base default (§4/§7,
+// 3d-model-implement-plan.md) — legacy /api/billing has no per-tooth
+// counting, so it only ever bills the flat base price for this category,
+// deliberately ignoring Die/Articulator/Drain Holes add-ons.
+const MODEL_BASE_PRICE = 3.5
+
+const MODEL_CASE_TYPES: readonly ModelCaseType[] = [
+  'Full Arch Model', 'Quad Model', 'Contact Model', 'Horse Shoe Model', 'Implant Model'
+]
 
 const ARCH_PRICE: Record<Arch, number> = {
   'Upper': 5,
@@ -59,6 +70,9 @@ export function calculateCasePrice(input: CasePricingInput): number {
     case 'Dentures':
     case 'Cosmetics':
       return 10 + ARCH_PRICE[input.arch]
+
+    case '3D Model':
+      return MODEL_BASE_PRICE
 
     default:
       return 0
@@ -212,6 +226,22 @@ export function mapCaseToPricingInput(category: string, subTypeData: any): CaseP
       category: 'Cosmetics',
       subCategory: finalSubCat,
       arch: finalArch,
+    }
+  }
+
+  // 6. 3D Model
+  if (normalizedCategory === '3d model') {
+    const caseType1 = data.caseType1 as string | undefined
+    const finalSubCat: ModelCaseType = MODEL_CASE_TYPES.includes(caseType1 as ModelCaseType)
+      ? (caseType1 as ModelCaseType)
+      : 'Full Arch Model'
+
+    return {
+      category: '3D Model',
+      subCategory: finalSubCat,
+      die: String(data.die).toLowerCase() === 'yes',
+      articulator: String(data.articulator).toLowerCase() === 'yes',
+      drainHoles: String(data.drainHoles).toLowerCase() === 'yes',
     }
   }
 

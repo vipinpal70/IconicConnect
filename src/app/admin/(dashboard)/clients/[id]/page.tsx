@@ -30,6 +30,7 @@ type ClientProfile = {
   postalCode: string | null
   status: string
   plan: string | null
+  modelOnlyLab: boolean
   userType: string
   role: string
   title: string | null
@@ -111,6 +112,28 @@ export default function ClientProfilePage() {
     },
     onError: (error: unknown) => {
       toast.error(error instanceof Error ? error.message : "Failed to update enabled flows")
+    },
+  })
+
+  const modelOnlyLabMutation = useMutation({
+    mutationFn: async (modelOnlyLab: boolean) => {
+      const res = await fetch(`/api/admin/clients/${clientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelOnlyLab }),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(payload.error || "Failed to update restriction")
+      }
+      return res.json()
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-client", clientId] })
+      toast.success("Restriction updated")
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update restriction")
     },
   })
 
@@ -337,6 +360,29 @@ export default function ClientProfilePage() {
                   <span className="text-xs font-semibold text-foreground">{FLOW_LABELS[flow]}</span>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          {/* 3D Model Only Restriction */}
+          <Card className="shadow-card">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                3D Model only
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                When on, this lab can only create &quot;3D Model&quot; category cases — every other category is hidden for them.
+              </p>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 w-fit">
+                <Switch
+                  checked={client?.modelOnlyLab ?? false}
+                  disabled={modelOnlyLabMutation.isPending || clientQuery.isLoading}
+                  onCheckedChange={(checked) => modelOnlyLabMutation.mutate(checked)}
+                />
+                <span className="text-xs font-semibold text-foreground">Restrict to 3D Model cases only</span>
+              </div>
             </CardContent>
           </Card>
 

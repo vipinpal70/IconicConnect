@@ -246,6 +246,15 @@ const CASE_HIERARCHY = {
       { name: "caseType2", label: "Case Type 2", type: "select", options: ["crown", "bridge", "coping", "screw retained", "in-lay", "on-lay"] },
     ],
   },
+  "3D Model": {
+    fields: [
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Full Arch Model", "Quad Model", "Contact Model", "Horse Shoe Model", "Implant Model"] },
+      { name: "caseType2", label: "Model Type", type: "select", options: ["Hollow", "Solid"] },
+      { name: "die", label: "Die", type: "select", options: ["Yes", "No"] },
+      { name: "articulator", label: "Articulator", type: "select", options: ["Yes", "No"] },
+      { name: "drainHoles", label: "Drain Holes", type: "select", options: ["Yes", "No"] },
+    ],
+  },
 };
 
 // Helper function to remove the extension from file name

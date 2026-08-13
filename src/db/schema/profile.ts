@@ -6,6 +6,7 @@ import {
   pgEnum,
   index,
   text,
+  boolean,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
@@ -81,6 +82,10 @@ export const profiles = pgTable('profiles', {
     .array()
     .notNull()
     .default(sql`'{design_only}'::text[]`),
+
+  // Client-only: when true, this lab may only create "3D Model" category cases —
+  // every other case category is hidden/rejected for them.
+  modelOnlyLab: boolean('model_only_lab').default(false).notNull(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

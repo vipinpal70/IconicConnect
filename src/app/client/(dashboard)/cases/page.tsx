@@ -137,11 +137,16 @@ const hasAllRequiredCaseFields = (
   const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
   const allDynamicFieldsSelected = fields.every((field: any) => field.optional || Boolean(subTypeData[field.name]))
 
+  // Tooth selection is optional for "3D Model" cases unless Die = Yes, in
+  // which case the "Die Selection" tooth chart is required (see
+  // 3d-model-implement-plan.md §8). Every other category still requires it.
+  const teethValid = category === "3D Model" ? (subTypeData.die !== "Yes" || teeth.length > 0) : teeth.length > 0
+
   let isValid = Boolean(
     category &&
     uploadedFile &&
     allDynamicFieldsSelected &&
-    teeth.length > 0
+    teethValid
   );
 
   if (category === "Implant") {
@@ -183,6 +188,15 @@ const CASE_HIERARCHY = {
     fields: [
       { name: "caseType1", label: "Sub Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
       { name: "caseType2", label: "Crown & Bridge type", type: "select", options: ["None", "Crown", "Bridge"], optional: true }
+    ]
+  },
+  "3D Model": {
+    fields: [
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Full Arch Model", "Quad Model", "Contact Model", "Horse Shoe Model", "Implant Model"] },
+      { name: "caseType2", label: "Model Type", type: "select", options: ["Hollow", "Solid"] },
+      { name: "die", label: "Die", type: "select", options: ["Yes", "No"] },
+      { name: "articulator", label: "Articulator", type: "select", options: ["Yes", "No"] },
+      { name: "drainHoles", label: "Drain Holes", type: "select", options: ["Yes", "No"] },
     ]
   }
 };
@@ -296,6 +310,7 @@ export default function CasesPage() {
 
   const [serviceType, setServiceType] = useState<ServiceType>("design_only");
   const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>(["design_only"]);
+  const [modelOnlyLab, setModelOnlyLab] = useState(false);
   const [category, setCategory] = useState<string>("Crown & Bridges");
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({});
   const [modelRequired, setModelRequired] = useState("no");
@@ -374,7 +389,23 @@ export default function CasesPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => setEnabledServiceTypes(json?.data?.enabledServiceTypes ?? ["design_only"]))
       .catch(() => setEnabledServiceTypes(["design_only"]));
+
+    fetch("/api/client/model-only")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => setModelOnlyLab(json?.data?.modelOnlyLab ?? false))
+      .catch(() => setModelOnlyLab(false));
   }, []);
+
+  // Force category to "3D Model" (and reset its fields) whenever this lab is
+  // restricted, and keep it there while restricted (3d-model-implement-plan.md §3).
+  useEffect(() => {
+    if (modelOnlyLab && category !== "3D Model") {
+      setCategory("3D Model");
+      setSubTypeData({});
+    }
+  }, [modelOnlyLab, category]);
+
+  const availableCategories = modelOnlyLab ? ["3D Model"] : Object.keys(CASE_HIERARCHY);
 
   // Keep the selected serviceType valid as the enabled-flow set loads/changes
   useEffect(() => {
@@ -649,7 +680,7 @@ export default function CasesPage() {
         fileName: f.name,
         file: f,
         serviceType: enabledServiceTypes[0] ?? "design_only",
-        category: "Crown & Bridges",
+        category: modelOnlyLab ? "3D Model" : "Crown & Bridges",
         subTypeData: {},
         modelRequired: "no",
         teeth: [],
@@ -970,7 +1001,7 @@ export default function CasesPage() {
                           <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
                             <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                             <SelectContent className="bg-emerald-800 text-white">
-                              {Object.keys(CASE_HIERARCHY).map((cat) => (
+                              {availableCategories.map((cat) => (
                                 <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
                                   {cat}
                                 </SelectItem>
@@ -1149,7 +1180,7 @@ export default function CasesPage() {
                             <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
                               <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                               <SelectContent className="bg-emerald-800 text-white">
-                                {Object.keys(CASE_HIERARCHY).map((cat) => (
+                                {availableCategories.map((cat) => (
                                   <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
                                     {cat}
                                   </SelectItem>
@@ -1157,13 +1188,15 @@ export default function CasesPage() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="space-y-2">
-                            <Label>Model Required?</Label>
-                            <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-2">
-                              <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes" /><Label htmlFor="m-yes" className="font-normal">Yes</Label></div>
-                              <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no" /><Label htmlFor="m-no" className="font-normal">No</Label></div>
-                            </RadioGroup>
-                          </div>
+                          {category !== "3D Model" && (
+                            <div className="space-y-2">
+                              <Label>Model Required?</Label>
+                              <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-2">
+                                <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes" /><Label htmlFor="m-yes" className="font-normal">Yes</Label></div>
+                                <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no" /><Label htmlFor="m-no" className="font-normal">No</Label></div>
+                              </RadioGroup>
+                            </div>
+                          )}
                         </div>
 
                         {/* Dynamic Fields */}
@@ -1172,7 +1205,10 @@ export default function CasesPage() {
                             <Label>{field.label}</Label>
                             <Select
                               value={subTypeData[field.name] || ""}
-                              onValueChange={(v) => setSubTypeData({ ...subTypeData, [field.name]: v })}
+                              onValueChange={(v) => {
+                                setSubTypeData({ ...subTypeData, [field.name]: v });
+                                if (field.name === "die" && v !== "Yes") setTeeth([]);
+                              }}
                             >
                               <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                               <SelectContent className="bg-emerald-800 text-white">
@@ -1186,10 +1222,19 @@ export default function CasesPage() {
                           </div>
                         ))}
 
-                        <div className="space-y-2">
-                          <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
-                          <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
-                        </div>
+                        {category === "3D Model" ? (
+                          subTypeData.die === "Yes" && (
+                            <div className="space-y-2">
+                              <Label>Die Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                              <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                            </div>
+                          )
+                        ) : (
+                          <div className="space-y-2">
+                            <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                            <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                          </div>
+                        )}
 
                         <div className="space-y-2">
                           <Label>Preferred Teeth Library</Label>
@@ -1430,7 +1475,7 @@ export default function CasesPage() {
                                     <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: v === "Implant" ? { caseType2: "None" } : {} })}>
                                       <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                                       <SelectContent className="bg-emerald-800 text-white">
-                                        {Object.keys(CASE_HIERARCHY).map((cat) => (
+                                        {availableCategories.map((cat) => (
                                           <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
                                             {cat}
                                           </SelectItem>
@@ -1438,13 +1483,15 @@ export default function CasesPage() {
                                       </SelectContent>
                                     </Select>
                                   </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Model Required?</Label>
-                                    <RadioGroup value={row.modelRequired} onValueChange={(v) => updateBulkRow(i, { modelRequired: v as "yes" | "no" })} className="flex gap-4 items-center pt-1">
-                                      <div className="flex items-center gap-1.5"><RadioGroupItem value="yes" id={`bm-yes-${i}`} /><Label htmlFor={`bm-yes-${i}`} className="text-xs">Yes</Label></div>
-                                      <div className="flex items-center gap-1.5"><RadioGroupItem value="no" id={`bm-no-${i}`} /><Label htmlFor={`bm-no-${i}`} className="text-xs">No</Label></div>
-                                    </RadioGroup>
-                                  </div>
+                                  {row.category !== "3D Model" && (
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Model Required?</Label>
+                                      <RadioGroup value={row.modelRequired} onValueChange={(v) => updateBulkRow(i, { modelRequired: v as "yes" | "no" })} className="flex gap-4 items-center pt-1">
+                                        <div className="flex items-center gap-1.5"><RadioGroupItem value="yes" id={`bm-yes-${i}`} /><Label htmlFor={`bm-yes-${i}`} className="text-xs">Yes</Label></div>
+                                        <div className="flex items-center gap-1.5"><RadioGroupItem value="no" id={`bm-no-${i}`} /><Label htmlFor={`bm-no-${i}`} className="text-xs">No</Label></div>
+                                      </RadioGroup>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Dynamic Fields */}
@@ -1514,7 +1561,12 @@ export default function CasesPage() {
                                         <Label className="text-xs">{field.label}</Label>
                                         <Select
                                           value={row.subTypeData[field.name] || ""}
-                                          onValueChange={(v) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, [field.name]: v } })}
+                                          onValueChange={(v) => {
+                                            const nextSubTypeData = { ...row.subTypeData, [field.name]: v };
+                                            const updates: Partial<BulkRow> = { subTypeData: nextSubTypeData };
+                                            if (field.name === "die" && v !== "Yes") updates.teeth = [];
+                                            updateBulkRow(i, updates);
+                                          }}
                                         >
                                           <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                                           <SelectContent className="bg-emerald-800 text-white">
@@ -1527,7 +1579,13 @@ export default function CasesPage() {
                                         </Select>
                                       </div>
                                     ))}
-                                    <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} system={row.toothSystem} onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })} />
+                                    {row.category === "3D Model"
+                                      ? row.subTypeData.die === "Yes" && (
+                                        <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} system={row.toothSystem} onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })} />
+                                      )
+                                      : (
+                                        <ToothChart selected={row.teeth} onChange={(t) => updateBulkRow(i, { teeth: t })} system={row.toothSystem} onChangeSystem={(sys) => updateBulkRow(i, { toothSystem: sys })} />
+                                      )}
                                   </>
                                 )}
                                 <Textarea

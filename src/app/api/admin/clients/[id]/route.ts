@@ -71,7 +71,8 @@ async function invalidateClientCaches(id: string) {
   ])
 }
 
-// PATCH /api/admin/clients/[id] — deactivate / reactivate a client
+// PATCH /api/admin/clients/[id] — deactivate / reactivate a client, and/or
+// toggle "3D Model only" lab restriction (3d-model-implement-plan.md §3)
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -87,23 +88,52 @@ export async function PATCH(
     }
 
     const body = await req.json()
-    if (!['active', 'inactive'].includes(body.status)) {
-      return NextResponse.json({ error: "status must be 'active' or 'inactive'" }, { status: 400 })
+
+    if (body.status === undefined && body.modelOnlyLab === undefined) {
+      return NextResponse.json({ error: "Provide 'status' and/or 'modelOnlyLab'" }, { status: 400 })
+    }
+
+    const updates: { status?: 'active' | 'inactive'; modelOnlyLab?: boolean; updatedAt: Date } = {
+      updatedAt: new Date(),
+    }
+
+    if (body.status !== undefined) {
+      if (!['active', 'inactive'].includes(body.status)) {
+        return NextResponse.json({ error: "status must be 'active' or 'inactive'" }, { status: 400 })
+      }
+      updates.status = body.status
+    }
+
+    if (body.modelOnlyLab !== undefined) {
+      if (typeof body.modelOnlyLab !== 'boolean') {
+        return NextResponse.json({ error: 'modelOnlyLab must be a boolean' }, { status: 400 })
+      }
+      updates.modelOnlyLab = body.modelOnlyLab
     }
 
     const [updated] = await db
       .update(profiles)
-      .set({ status: body.status, updatedAt: new Date() })
+      .set(updates)
       .where(eq(profiles.id, id))
       .returning()
 
     await invalidateClientCaches(id)
 
-    await logActivity({
-      actor: auth.profile,
-      action: body.status === 'active' ? 'client.activated' : 'client.deactivated',
-      details: { clientId: id, labName: client.labName, email: client.email },
-    }).catch((err) => console.error('[client status logActivity]', err))
+    if (updates.status !== undefined) {
+      await logActivity({
+        actor: auth.profile,
+        action: updates.status === 'active' ? 'client.activated' : 'client.deactivated',
+        details: { clientId: id, labName: client.labName, email: client.email },
+      }).catch((err) => console.error('[client status logActivity]', err))
+    }
+
+    if (updates.modelOnlyLab !== undefined) {
+      await logActivity({
+        actor: auth.profile,
+        action: 'client.model_only_lab_updated',
+        details: { clientId: id, labName: client.labName, email: client.email, modelOnlyLab: updates.modelOnlyLab },
+      }).catch((err) => console.error('[client modelOnlyLab logActivity]', err))
+    }
 
     return NextResponse.json({ data: updated })
   } catch (error) {

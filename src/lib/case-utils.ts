@@ -3,7 +3,8 @@ export const CATEGORY_PREFIXES: Record<string, string> = {
   "Denture": "CDT",
   "Cosmetics": "CCA",
   "Appliances": "CAP",
-  "Implant": "CAI"
+  "Implant": "CAI",
+  "3D Model": "3DM"
 };
 
 export function getCasePrefix(category: string): string {

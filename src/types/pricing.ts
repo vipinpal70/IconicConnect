@@ -22,7 +22,14 @@ export type DentureSubCategory =
 
 export type CosmeticsSubCategory = 'Digital Wax Up' | 'Veneers' | 'Snap on Smile'
 
-export type ServiceCategory = 'Crown & Bridge' | 'Implants' | 'Appliances' | 'Dentures' | 'Cosmetics'
+export type ModelCaseType =
+  | 'Full Arch Model'
+  | 'Quad Model'
+  | 'Contact Model'
+  | 'Horse Shoe Model'
+  | 'Implant Model'
+
+export type ServiceCategory = 'Crown & Bridge' | 'Implants' | 'Appliances' | 'Dentures' | 'Cosmetics' | '3D Model'
 
 // Discriminated union — one type per category
 export type CasePricingInput =
@@ -31,6 +38,7 @@ export type CasePricingInput =
   | { category: 'Appliances'; applianceType: ApplianceType; occlusionType?: OcclusionType; arch: Arch }
   | { category: 'Dentures'; subCategory: DentureSubCategory; arch: Arch }
   | { category: 'Cosmetics'; subCategory: CosmeticsSubCategory; arch: Arch }
+  | { category: '3D Model'; subCategory: ModelCaseType; die: boolean; articulator: boolean; drainHoles: boolean }
 
 export interface PricingCrownBridge {
   id: string

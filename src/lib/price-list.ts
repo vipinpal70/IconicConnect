@@ -252,6 +252,14 @@ export async function ensureServiceCatalogSeeded() {
     { category: 'Cosmetics', subCategory: 'Veneers', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 21 },
     { category: 'Cosmetics', subCategory: 'Snap on Smile', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 22 },
     { category: 'Model', subCategory: '3D Model', unitType: 'per_case' as const, defaultPrice: '4.00', sortOrder: 23 },
+    { category: '3D Model', subCategory: 'Full Arch Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 24 },
+    { category: '3D Model', subCategory: 'Quad Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 25 },
+    { category: '3D Model', subCategory: 'Contact Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 26 },
+    { category: '3D Model', subCategory: 'Horse Shoe Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 27 },
+    { category: '3D Model', subCategory: 'Implant Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 28 },
+    { category: '3D Model', subCategory: 'Die', unitType: 'per_tooth' as const, defaultPrice: '0.50', sortOrder: 29 },
+    { category: '3D Model', subCategory: 'Articulator', unitType: 'per_case' as const, defaultPrice: '0.50', sortOrder: 30 },
+    { category: '3D Model', subCategory: 'Drain Holes', unitType: 'per_case' as const, defaultPrice: '0.00', sortOrder: 31 },
   ]
 
   await db

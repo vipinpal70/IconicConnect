@@ -109,6 +109,20 @@ function computeCasePrice(
     return parseFloat(price.toFixed(2))
   }
 
+  // 3D Model — a distinct category from the "Model Required?" add-on above;
+  // never checks data.modelRequired. Die scales with teeth count, Articulator
+  // and Drain Holes are flat per-case. See 3d-model-implement-plan.md §11.
+  if (cat === '3d model') {
+    const caseType1 = String(data.caseType1 || 'Full Arch Model')
+    const teethCount = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
+
+    let price = getPrice('3D Model', caseType1, serviceType)
+    if (String(data.die).toLowerCase() === 'yes') price += teethCount * getPrice('3D Model', 'Die', serviceType)
+    if (String(data.articulator).toLowerCase() === 'yes') price += getPrice('3D Model', 'Articulator', serviceType)
+    if (String(data.drainHoles).toLowerCase() === 'yes') price += getPrice('3D Model', 'Drain Holes', serviceType)
+    return parseFloat(price.toFixed(2))
+  }
+
   return 0
 }
 

@@ -302,6 +302,13 @@
       "when": 1785700000000,
       "tag": "0047_service_catalog_flows",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1785800000000,
+      "tag": "0048_model_only_lab",
+      "breakpoints": true
     }
   ]
 }

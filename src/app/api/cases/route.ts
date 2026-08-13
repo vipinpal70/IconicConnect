@@ -181,6 +181,7 @@ export async function POST(req: NextRequest) {
     const clientProfile = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1).then(res => res[0]);
     const labName = clientProfile?.labName || 'UnknownLab';
     const enabledServiceTypes = clientProfile?.enabledServiceTypes ?? ['design_only'];
+    const modelOnlyLab = clientProfile?.modelOnlyLab ?? false;
 
     const results = [];
 
@@ -195,6 +196,13 @@ export async function POST(req: NextRequest) {
       if (!enabledServiceTypes.includes(serviceType)) {
         return NextResponse.json(
           { error: `The ${serviceType} flow is not enabled for this client` },
+          { status: 400 }
+        );
+      }
+
+      if (modelOnlyLab && caseData.category !== '3D Model') {
+        return NextResponse.json(
+          { error: 'This lab is restricted to 3D Model cases only' },
           { status: 400 }
         );
       }

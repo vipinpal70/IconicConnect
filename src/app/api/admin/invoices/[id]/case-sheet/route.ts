@@ -64,7 +64,7 @@ function extractCaseRow(
   const serviceType: 'design_only' | 'design_milling' | 'milling_only' =
     c.serviceType === 'design_milling' || c.serviceType === 'milling_only' ? c.serviceType : 'design_only'
   const modelRequired = d.modelRequired === 'yes'
-  const modelPrice = modelRequired ? getPrice('Model', '3D Model', serviceType) : 0
+  let modelPrice = modelRequired ? getPrice('Model', '3D Model', serviceType) : 0
 
   const archStr = String(d.arch || d.caseType2 || 'Upper').toLowerCase()
   const archCount = archStr.includes('both') || archStr.includes('full') ? 2 : 1
@@ -115,6 +115,26 @@ function extractCaseRow(
     units = archCount
     unitPrice = getPrice('Cosmetics', subType, serviceType)
     isArchBased = true
+  } else if (cat === '3d model') {
+    // Distinct from the "Model Required?" add-on above (never both on the
+    // same case) — Die scales with teeth, Articulator/Drain Holes are flat.
+    subType = String(d.caseType1 || 'Full Arch Model')
+    const teeth = Array.isArray(d.teeth) ? (d.teeth as number[]) : []
+    const die = String(d.die).toLowerCase() === 'yes'
+    const articulator = String(d.articulator).toLowerCase() === 'yes'
+    const drainHoles = String(d.drainHoles).toLowerCase() === 'yes'
+
+    selection = die && teeth.length ? teeth.map((t) => `#${t}`).join(', ') : '—'
+    units = 1
+    unitPrice = getPrice('3D Model', subType, serviceType)
+
+    const dieCharge = die ? teeth.length * getPrice('3D Model', 'Die', serviceType) : 0
+    const articulatorCharge = articulator ? getPrice('3D Model', 'Articulator', serviceType) : 0
+    const drainHolesCharge = drainHoles ? getPrice('3D Model', 'Drain Holes', serviceType) : 0
+    modelPrice = dieCharge + articulatorCharge + drainHolesCharge
+
+    const addOns = [die && 'Die', articulator && 'Articulator', drainHoles && 'Drain Holes'].filter(Boolean).join(', ')
+    if (addOns) subType = `${subType} (+${addOns})`
   }
 
   const unitsLabel = isArchBased

@@ -26,6 +26,7 @@ interface ClientRecord {
   fullName: string | null
   email: string
   labName: string | null
+  modelOnlyLab?: boolean
 }
 
 interface AddCaseDialogProps {
@@ -75,6 +76,15 @@ const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
       { name: "caseType1", label: "Sub Type", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
       { name: "caseType2", label: "Crown & Bridge type", type: "select", options: ["None", "Crown", "Bridge"], optional: true }
     ]
+  },
+  "3D Model": {
+    fields: [
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Full Arch Model", "Quad Model", "Contact Model", "Horse Shoe Model", "Implant Model"] },
+      { name: "caseType2", label: "Model Type", type: "select", options: ["Hollow", "Solid"] },
+      { name: "die", label: "Die", type: "select", options: ["Yes", "No"] },
+      { name: "articulator", label: "Articulator", type: "select", options: ["Yes", "No"] },
+      { name: "drainHoles", label: "Drain Holes", type: "select", options: ["Yes", "No"] },
+    ]
   }
 }
 
@@ -86,6 +96,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   // Form State
   const [serviceType, setServiceType] = useState<ServiceType>("design_only")
   const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>(["design_only"])
+  const [modelOnlyLab, setModelOnlyLab] = useState(false)
   const [category, setCategory] = useState<string>("Crown & Bridge")
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({})
   const [modelRequired, setModelRequired] = useState("no")
@@ -266,6 +277,37 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     }
   }, [enabledServiceTypes, serviceType])
 
+  // Whether the client being submitted for is restricted to "3D Model" cases
+  // only (3d-model-implement-plan.md §3). The client-role branch here isn't
+  // currently exercised in production (this dialog is only ever mounted with
+  // role="admin"), so it's left defaulting to false rather than adding an
+  // unused profile fetch.
+  useEffect(() => {
+    if (!open || role !== "admin") return
+
+    if (!selectedClientId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets a derived selector to its default before an async fetch can run, same pattern as the enabledServiceTypes effect above
+      setModelOnlyLab(false)
+      return
+    }
+    fetch(`/api/admin/clients/${selectedClientId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => setModelOnlyLab(json?.data?.modelOnlyLab ?? false))
+      .catch(() => setModelOnlyLab(false))
+  }, [open, role, selectedClientId])
+
+  // Force category to "3D Model" (and reset its fields) whenever the
+  // selected client is restricted, and keep it there while restricted.
+  useEffect(() => {
+    if (modelOnlyLab && category !== "3D Model") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from a prop-like fetch result (modelOnlyLab), not local render state
+      setCategory("3D Model")
+      setSubTypeData({})
+    }
+  }, [modelOnlyLab, category])
+
+  const availableCategories = modelOnlyLab ? ["3D Model"] : Object.keys(CASE_HIERARCHY)
+
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
     const maxLimit = 5 * 1024 * 1024 * 1024 // 5GB
     if (file.size > maxLimit) {
@@ -421,7 +463,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     // Validation
     const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
     const allFieldsFilled = fields.every((f) => f.optional || subTypeData[f.name])
-    const teethValid = teeth.length > 0
+    const teethValid = category === "3D Model" ? (subTypeData.die !== "Yes" || teeth.length > 0) : teeth.length > 0
     const implantCrownBridgeValid = category === "Implant" && subTypeData.caseType2 !== "None" ? crownBridgeTeeth.length > 0 : true
 
     if (!allFieldsFilled || !teethValid || uploadedFilesList.length === 0 || !implantCrownBridgeValid) {
@@ -684,7 +726,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
                   <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-emerald-800 text-white">
-                    {Object.keys(CASE_HIERARCHY).map((cat) => (
+                    {availableCategories.map((cat) => (
                       <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
                         {cat}
                       </SelectItem>
@@ -879,7 +921,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
                     <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-emerald-800 text-white">
-                      {Object.keys(CASE_HIERARCHY).map((cat) => (
+                      {availableCategories.map((cat) => (
                         <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
                           {cat}
                         </SelectItem>
@@ -887,13 +929,15 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-gray-700">Model Required?</Label>
-                  <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-1">
-                    <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes-admin" /><Label htmlFor="m-yes-admin" className="font-normal text-xs">Yes</Label></div>
-                    <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no-admin" /><Label htmlFor="m-no-admin" className="font-normal text-xs">No</Label></div>
-                  </RadioGroup>
-                </div>
+                {category !== "3D Model" && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-700">Model Required?</Label>
+                    <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-1">
+                      <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes-admin" /><Label htmlFor="m-yes-admin" className="font-normal text-xs">Yes</Label></div>
+                      <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no-admin" /><Label htmlFor="m-no-admin" className="font-normal text-xs">No</Label></div>
+                    </RadioGroup>
+                  </div>
+                )}
               </div>
 
               {/* Dynamic Fields */}
@@ -903,7 +947,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   <Select
                     disabled={isSubmitting}
                     value={subTypeData[field.name] || ""}
-                    onValueChange={(v) => setSubTypeData({ ...subTypeData, [field.name]: v })}
+                    onValueChange={(v) => {
+                      setSubTypeData({ ...subTypeData, [field.name]: v })
+                      // Die controls whether the "Die Selection" tooth chart
+                      // below is shown/required — clear any prior selection
+                      // when it's turned back off (3d-model-implement-plan.md §8).
+                      if (field.name === "die" && v !== "Yes") setTeeth([])
+                    }}
                   >
                     <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                     <SelectContent className="bg-emerald-800 text-white">
@@ -917,10 +967,19 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 </div>
               ))}
 
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold text-gray-700">Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
-                <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
-              </div>
+              {category === "3D Model" ? (
+                subTypeData.die === "Yes" && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-gray-700">Die Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                    <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                  </div>
+                )
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-gray-700">Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
+                  <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Preferred Teeth Library</Label>
