@@ -6,7 +6,7 @@ import { Input } from "@/src/components/ui/input"
 import { Switch } from "@/src/components/ui/switch"
 import { Button } from "@/src/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
-import { Trash2, Save } from "lucide-react"
+import { Trash2, Save, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import type { ServiceType } from "@/src/lib/case-status-mapping"
 
@@ -44,11 +44,8 @@ type RawCatalogRow = {
   isActive: boolean
 }
 
-async function fetchCenterCatalog(centerId: string, serviceType: ServiceType): Promise<CatalogRow[]> {
-  const res = await fetch(`/api/admin/milling/centers/${centerId}/service-catalog?serviceType=${serviceType}`)
-  if (!res.ok) throw new Error("Failed to load service catalog")
-  const json = await res.json()
-  return ((json.data ?? []) as RawCatalogRow[]).map((r) => ({
+function mapRawRow(r: RawCatalogRow): CatalogRow {
+  return {
     id: r.id,
     category: r.category,
     subCategory: r.subCategory,
@@ -57,7 +54,17 @@ async function fetchCenterCatalog(centerId: string, serviceType: ServiceType): P
     monthlyCapacity: r.monthlyCapacity,
     turnaroundDays: r.turnaroundDays,
     isActive: r.isActive,
-  }))
+  }
+}
+
+async function fetchCenterCatalog(centerId: string, serviceType: ServiceType, hardRefresh = false): Promise<CatalogRow[]> {
+  const res = await fetch(
+    `/api/admin/milling/centers/${centerId}/service-catalog?serviceType=${serviceType}`,
+    hardRefresh ? { cache: "no-store" } : undefined
+  )
+  if (!res.ok) throw new Error("Failed to load service catalog")
+  const json = await res.json()
+  return ((json.data ?? []) as RawCatalogRow[]).map(mapRawRow)
 }
 
 async function fetchCatalogOptions(serviceType: ServiceType): Promise<CatalogOption[]> {
@@ -81,6 +88,7 @@ export function MillingServiceCatalogTable({ centerId, serviceType }: { centerId
   const queryClient = useQueryClient()
   const [rows, setRows] = useState<CatalogRow[] | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   const queryKey = ["milling-center-catalog", centerId, serviceType]
   const catalogQuery = useQuery({ queryKey, queryFn: () => fetchCenterCatalog(centerId, serviceType) })
@@ -159,12 +167,42 @@ export function MillingServiceCatalogTable({ centerId, serviceType }: { centerId
     onError: (err: Error) => toast.error(err.message),
   })
 
+  const hardRefresh = async () => {
+    if (dirty && !confirm("This discards any unsaved changes in this tab and reloads straight from the database. Continue?")) {
+      return
+    }
+    setRefreshing(true)
+    try {
+      const fresh = await fetchCenterCatalog(centerId, serviceType, true)
+      setRows(fresh)
+      setDirty(false)
+      queryClient.setQueryData(queryKey, fresh)
+      toast.success("Refreshed directly from the database")
+    } catch {
+      toast.error("Failed to refresh")
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   if (catalogQuery.isLoading || rows === null) {
     return <p className="text-xs text-muted-foreground py-4 text-center">Loading…</p>
   }
 
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button
+          type="button" size="sm" variant="ghost" className="h-7 text-xs gap-1.5"
+          onClick={hardRefresh}
+          disabled={refreshing}
+          title="Bypass cache and reload directly from the database"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Refreshing…" : "Hard refresh"}
+        </Button>
+      </div>
+
       <table className="w-full text-xs border border-border/40 rounded-lg overflow-hidden">
         <thead>
           <tr className="bg-muted/40 border-b border-border/40">
