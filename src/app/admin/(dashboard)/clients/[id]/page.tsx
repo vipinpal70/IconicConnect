@@ -115,6 +115,45 @@ export default function ClientProfilePage() {
     },
   })
 
+  // Active/Inactive toggle. Turning it on from "pending" runs the full
+  // approve flow (seeds the default price list + sends the welcome
+  // notification) instead of a bare status PATCH, so nothing skips those
+  // side effects; every other transition is a plain status PATCH.
+  const activeMutation = useMutation({
+    mutationFn: async (nextActive: boolean) => {
+      if (nextActive && client?.status === "pending") {
+        const res = await fetch("/api/admin/clients/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId }),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}))
+          throw new Error(payload.error || "Failed to approve client")
+        }
+        return res.json()
+      }
+      const res = await fetch(`/api/admin/clients/${clientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextActive ? "active" : "inactive" }),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(payload.error || "Failed to update status")
+      }
+      return res.json()
+    },
+    onSuccess: async (_data, nextActive) => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-client", clientId] })
+      await queryClient.invalidateQueries({ queryKey: ["pendingClients"] })
+      toast.success(nextActive ? "Client activated" : "Client deactivated")
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update status")
+    },
+  })
+
   const modelOnlyLabMutation = useMutation({
     mutationFn: async (modelOnlyLab: boolean) => {
       const res = await fetch(`/api/admin/clients/${clientId}`, {
@@ -270,9 +309,19 @@ export default function ClientProfilePage() {
             </div>
           </div>
 
-          <Badge variant="outline" className="capitalize">
-            {client?.status || "unknown"}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-1.5">
+              <span className="text-[10px] font-medium text-muted-foreground">Active</span>
+              <Switch
+                checked={client?.status === "active"}
+                disabled={activeMutation.isPending || clientQuery.isLoading}
+                onCheckedChange={(v) => activeMutation.mutate(v)}
+              />
+            </div>
+            <Badge variant={client?.status === "active" ? "secondary" : "outline"} className="capitalize">
+              {client?.status === "pending" ? "Pending Approval" : client?.status || "unknown"}
+            </Badge>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4">
