@@ -10,10 +10,12 @@ import {
   jsonb,
   date,
   index,
+  unique,
   pgEnum,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { unitTypeEnum } from './price-list'
-import { cases } from './case'
+import { cases, serviceTypeEnum } from './case'
 
 // Mirrors the milling-stage subset of case_status (case.ts) as its own
 // Postgres enum type, scoped to just the values a milling assignment can be in.
@@ -29,12 +31,32 @@ export const millingStatusEnum = pgEnum('milling_status', [
 export const millingCenters = pgTable('milling_centers', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: varchar('name', { length: 150 }).notNull(),
-  contactName: varchar('contact_name', { length: 100 }),
-  email: varchar('email', { length: 255 }),
-  phone: varchar('phone', { length: 20 }),
+  legalName: varchar('legal_name', { length: 200 }),
+  contactName: varchar('contact_name', { length: 100 }), // POC name
+  email: varchar('email', { length: 255 }), // POC email — used for login
+  phone: varchar('phone', { length: 20 }), // POC phone
+
+  ownerName: varchar('owner_name', { length: 100 }),
+  ownerEmail: varchar('owner_email', { length: 255 }),
+  ownerPhone: varchar('owner_phone', { length: 20 }),
+
+  financePocName: varchar('finance_poc_name', { length: 100 }),
+  financePocEmail: varchar('finance_poc_email', { length: 255 }),
+  financePocPhone: varchar('finance_poc_phone', { length: 20 }),
+
+  contractDocKey: text('contract_doc_key'),
+  contractDocName: varchar('contract_doc_name', { length: 255 }),
+  contractDocUploadedAt: timestamp('contract_doc_uploaded_at'),
+
   city: varchar('city', { length: 100 }),
   state: varchar('state', { length: 100 }),
   country: varchar('country', { length: 100 }),
+
+  // e.g. ['CA','NY'] — literal ['ALL'] sentinel means all states served
+  statesServed: text('states_served').array(),
+  avgTatDays: integer('avg_tat_days'),
+  enabledServiceTypes: text('enabled_service_types').array().notNull().default(sql`'{}'::text[]`),
+
   active: boolean('active').default(true).notNull(),
   onboardedAt: date('onboarded_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -48,12 +70,15 @@ export const millingServiceCatalog = pgTable(
     millingCenterId: uuid('milling_center_id')
       .references(() => millingCenters.id, { onDelete: 'cascade' })
       .notNull(),
+    // Which of the 3 client-facing flows this catalog row belongs to.
+    serviceType: serviceTypeEnum('service_type').notNull(),
     category: varchar('category', { length: 100 }).notNull(),
     subCategory: varchar('sub_category', { length: 100 }).notNull(),
     unitType: unitTypeEnum('unit_type').notNull(),
     // Internal cost — what the milling centre charges Iconic. Never used to
     // auto-compute the client-facing Design+Milling price (see service_catalog.service_type).
     partnerRate: numeric('partner_rate', { precision: 10, scale: 2 }).notNull(),
+    monthlyCapacity: integer('monthly_capacity'),
     turnaroundDays: integer('turnaround_days'),
     isActive: boolean('is_active').default(true).notNull(),
     notes: text('notes'),
@@ -62,6 +87,12 @@ export const millingServiceCatalog = pgTable(
   },
   (table) => ({
     millingCenterIdIdx: index('milling_service_catalog_center_id_idx').on(table.millingCenterId),
+    centerServiceTypeCategoryUniq: unique('milling_service_catalog_center_type_category_uniq').on(
+      table.millingCenterId,
+      table.serviceType,
+      table.category,
+      table.subCategory
+    ),
   })
 )
 

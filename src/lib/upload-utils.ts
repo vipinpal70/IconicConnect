@@ -323,3 +323,137 @@ export async function uploadBulkFile(
     throw new Error(err instanceof Error ? err.message : "Upload aborted");
   }
 }
+
+export interface MillingCenterContractUploadResult {
+  contractDocKey: string;
+  contractDocName: string;
+}
+
+/**
+ * Upload a milling centre's contract document via the admin-only endpoint
+ * (`/api/admin/milling/centers/[id]/contract`). Mirrors {@link uploadBulkFile}
+ * but scoped to a single centre — the server persists the resulting key onto
+ * that centre's row directly, no separate "confirm" step.
+ */
+export async function uploadMillingCenterContract(
+  file: File,
+  centerId: string,
+  onProgress: UploadProgressCallback,
+): Promise<MillingCenterContractUploadResult> {
+  const base = `/api/admin/milling/centers/${centerId}/contract`;
+  let initData: { uploadId: string; key: string; fileName: string } | null = null;
+
+  try {
+    // 1. Init
+    const initParams = new URLSearchParams({
+      action: "init",
+      fileName: file.name,
+      fileType: file.type || "application/octet-stream",
+      fileSize: String(file.size),
+    });
+    const initRes = await fetch(`${base}?${initParams.toString()}`, { method: "POST" });
+    if (!initRes.ok) {
+      throw new Error((await safeJson(initRes))?.error || `Failed to start upload (${initRes.status})`);
+    }
+    initData = await initRes.json();
+    const { uploadId, key } = initData!;
+
+    const totalParts = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+
+    // 2. Sign
+    const signRes = await fetch(`${base}?action=sign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, uploadId, totalParts }),
+    });
+    if (!signRes.ok) {
+      throw new Error((await safeJson(signRes))?.error || `Failed to sign upload (${signRes.status})`);
+    }
+    const { urls } = (await signRes.json()) as { urls: Array<{ partNumber: number; url: string }> };
+    const urlByPart = new Map(urls.map((u) => [u.partNumber, u.url]));
+
+    // 3. PUT every part directly to R2, in parallel
+    const loadedSizes = new Array(totalParts).fill(0);
+    const etags = new Array<{ PartNumber: number; ETag: string } | null>(totalParts).fill(null);
+    const queue = Array.from({ length: totalParts }, (_, i) => i);
+    let failed = false;
+
+    const uploadPart = (index: number) =>
+      new Promise<void>((resolve, reject) => {
+        const start = index * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const blob = file.slice(start, end);
+        const partNumber = index + 1;
+        const signedUrl = urlByPart.get(partNumber);
+
+        if (!signedUrl) {
+          reject(new Error(`Missing signed URL for part ${partNumber}`));
+          return;
+        }
+
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            loadedSizes[index] = event.loaded;
+            const totalLoaded = loadedSizes.reduce((sum, size) => sum + size, 0);
+            onProgress(Math.min(Math.round((totalLoaded / file.size) * 100), 99));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const etag = xhr.getResponseHeader("ETag");
+            if (!etag) {
+              reject(new Error(`Part ${partNumber} did not return an ETag (check R2 CORS ExposeHeaders)`));
+              return;
+            }
+            etags[index] = { PartNumber: partNumber, ETag: etag };
+            resolve();
+          } else {
+            reject(new Error(`Part ${partNumber} failed with status ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Network connection error"));
+        xhr.open("PUT", signedUrl, true);
+        xhr.send(blob);
+      });
+
+    const worker = async (): Promise<void> => {
+      while (!failed) {
+        const index = queue.shift();
+        if (index === undefined) return;
+        await uploadPart(index);
+      }
+    };
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, totalParts) }, () => worker()));
+    } catch (err) {
+      failed = true;
+      throw err;
+    }
+
+    // 4. Complete
+    const parts = etags.filter((p): p is { PartNumber: number; ETag: string } => p !== null);
+    const completeRes = await fetch(`${base}?action=complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, uploadId, fileName: initData!.fileName, parts }),
+    });
+    if (!completeRes.ok) {
+      throw new Error((await safeJson(completeRes))?.error || `Failed to finalise upload (${completeRes.status})`);
+    }
+
+    const finalResponse = (await completeRes.json()) as { contractDocKey: string; contractDocName: string };
+    onProgress(100);
+    return { contractDocKey: finalResponse.contractDocKey, contractDocName: finalResponse.contractDocName };
+  } catch (err: unknown) {
+    if (initData) {
+      fetch(`${base}?action=abort`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: initData.key, uploadId: initData.uploadId }),
+      }).catch(() => {});
+    }
+    throw new Error(err instanceof Error ? err.message : "Upload aborted");
+  }
+}

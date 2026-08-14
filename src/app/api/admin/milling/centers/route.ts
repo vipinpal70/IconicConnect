@@ -27,7 +27,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { name, contactName, email, phone, city, state, country, password } = body
+    const {
+      name, contactName, email, phone, city, state, country, password,
+      legalName, ownerName, ownerEmail, ownerPhone,
+      financePocName, financePocEmail, financePocPhone,
+    } = body
 
     if (!name || typeof name !== 'string') {
       return NextResponse.json({ error: 'Centre name is required' }, { status: 400 })
@@ -42,9 +46,16 @@ export async function POST(req: NextRequest) {
       .insert(millingCenters)
       .values({
         name,
+        legalName: legalName || null,
         contactName: contactName || null,
         email: email || null,
         phone: phone || null,
+        ownerName: ownerName || null,
+        ownerEmail: ownerEmail || null,
+        ownerPhone: ownerPhone || null,
+        financePocName: financePocName || null,
+        financePocEmail: financePocEmail || null,
+        financePocPhone: financePocPhone || null,
         city: city || null,
         state: state || null,
         country: country || null,

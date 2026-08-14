@@ -45,7 +45,12 @@ export async function PATCH(
     }
 
     const body = await req.json()
-    const { name, contactName, email, phone, city, state, country, active } = body
+    const {
+      name, contactName, email, phone, city, state, country, active,
+      legalName, ownerName, ownerEmail, ownerPhone,
+      financePocName, financePocEmail, financePocPhone,
+      statesServed, avgTatDays, enabledServiceTypes,
+    } = body
 
     const updates: Partial<typeof millingCenters.$inferInsert> = { updatedAt: new Date() }
     if (typeof name === 'string') updates.name = name
@@ -56,6 +61,18 @@ export async function PATCH(
     if (state !== undefined) updates.state = state || null
     if (country !== undefined) updates.country = country || null
     if (typeof active === 'boolean') updates.active = active
+    if (legalName !== undefined) updates.legalName = legalName || null
+    if (ownerName !== undefined) updates.ownerName = ownerName || null
+    if (ownerEmail !== undefined) updates.ownerEmail = ownerEmail || null
+    if (ownerPhone !== undefined) updates.ownerPhone = ownerPhone || null
+    if (financePocName !== undefined) updates.financePocName = financePocName || null
+    if (financePocEmail !== undefined) updates.financePocEmail = financePocEmail || null
+    if (financePocPhone !== undefined) updates.financePocPhone = financePocPhone || null
+    if (statesServed !== undefined) {
+      updates.statesServed = Array.isArray(statesServed) && statesServed.length ? statesServed : null
+    }
+    if (avgTatDays !== undefined) updates.avgTatDays = avgTatDays === null || avgTatDays === '' ? null : Number(avgTatDays)
+    if (Array.isArray(enabledServiceTypes)) updates.enabledServiceTypes = enabledServiceTypes
 
     const [center] = await db
       .update(millingCenters)

@@ -309,6 +309,13 @@
       "when": 1785800000000,
       "tag": "0048_model_only_lab",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1786400000000,
+      "tag": "0049_milling_center_onboarding",
+      "breakpoints": true
     }
   ]
 }
