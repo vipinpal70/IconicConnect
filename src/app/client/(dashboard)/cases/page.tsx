@@ -22,6 +22,8 @@ import { toast } from "sonner";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import type { ServiceType } from "@/src/lib/case-status-mapping";
 import { HOLD_REASONS } from "@/src/lib/case-utils";
+import { CASE_HIERARCHY, buildEnabledKeySet, isCategoryAvailable, isFieldOptionEnabled } from "@/src/lib/case-hierarchy";
+import type { PriceListEntryFull } from "@/src/lib/price-list-shared";
 
 const HOLDABLE_STATUSES = ["scan_received", "scan_not_verified", "scan_verified"];
 
@@ -149,7 +151,7 @@ const hasAllRequiredCaseFields = (
     teethValid
   );
 
-  if (category === "Implant") {
+  if (category === "Implants") {
     const cbType = subTypeData.caseType2;
     if (cbType && cbType !== "None") {
       const cbTeeth = crownBridgeTeeth || subTypeData.crownBridgeTeeth;
@@ -159,47 +161,6 @@ const hasAllRequiredCaseFields = (
 
   return isValid;
 }
-
-const CASE_HIERARCHY = {
-  "Crown & Bridges": {
-    fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] }
-    ]
-  },
-  "Denture": {
-    fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Both Arches"] }
-    ]
-  },
-  "Cosmetics": {
-    fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"] }
-    ]
-  },
-  "Appliances": {
-    fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"] },
-      { name: "occlusion", label: "Occlusion", type: "select", options: ["even occlusion", "custom"] },
-      { name: "arch", label: "Arch", type: "select", options: ["Lower", "Upper"] }
-    ]
-  },
-  "Implant": {
-    fields: [
-      { name: "caseType1", label: "Sub Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
-      { name: "caseType2", label: "Crown & Bridge type", type: "select", options: ["None", "Crown", "Bridge"], optional: true }
-    ]
-  },
-  "3D Model": {
-    fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Full Arch Model", "Quad Model", "Contact Model", "Horse Shoe Model", "Implant Model"] },
-      { name: "caseType2", label: "Model Type", type: "select", options: ["Hollow", "Solid"] },
-      { name: "die", label: "Die", type: "select", options: ["Yes", "No"] },
-      { name: "articulator", label: "Articulator", type: "select", options: ["Yes", "No"] },
-      { name: "drainHoles", label: "Drain Holes", type: "select", options: ["Yes", "No"] },
-    ]
-  }
-};
 
 export default function CasesPage() {
   const router = useRouter();
@@ -310,8 +271,13 @@ export default function CasesPage() {
 
   const [serviceType, setServiceType] = useState<ServiceType>("design_only");
   const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>(["design_only"]);
+  // Which individual services (category/sub-type) this client has enabled,
+  // per flow — admin can disable one independently of the flow toggle.
+  // Keyed lazily since single-case and bulk rows can each be on a different
+  // flow; undefined for a flow means "not fetched yet, don't filter".
+  const [priceListsByFlow, setPriceListsByFlow] = useState<Partial<Record<ServiceType, PriceListEntryFull[]>>>({});
   const [modelOnlyLab, setModelOnlyLab] = useState(false);
-  const [category, setCategory] = useState<string>("Crown & Bridges");
+  const [category, setCategory] = useState<string>("Crown & Bridge");
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({});
   const [modelRequired, setModelRequired] = useState("no");
   const [teeth, setTeeth] = useState<number[]>([]);
@@ -405,7 +371,45 @@ export default function CasesPage() {
     }
   }, [modelOnlyLab, category]);
 
-  const availableCategories = modelOnlyLab ? ["3D Model"] : Object.keys(CASE_HIERARCHY);
+  // Fetch (once each) the enabled-services price list for the single-case
+  // form's flow and every distinct flow used by a bulk row — each row can
+  // be on a different flow, so options are filtered per-row against its own.
+  useEffect(() => {
+    if (priceListsByFlow[serviceType]) return;
+    fetch(`/api/client/price-list?serviceType=${serviceType}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => setPriceListsByFlow((prev) => ({ ...prev, [serviceType]: json?.data ?? [] })))
+      .catch(() => setPriceListsByFlow((prev) => ({ ...prev, [serviceType]: [] })));
+  }, [serviceType, priceListsByFlow]);
+
+  useEffect(() => {
+    const missingFlows = Array.from(new Set(bulkRows.map((r) => r.serviceType))).filter((flow) => !priceListsByFlow[flow]);
+    missingFlows.forEach((flow) => {
+      fetch(`/api/client/price-list?serviceType=${flow}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => setPriceListsByFlow((prev) => ({ ...prev, [flow]: json?.data ?? [] })))
+        .catch(() => setPriceListsByFlow((prev) => ({ ...prev, [flow]: [] })));
+    });
+  }, [bulkRows, priceListsByFlow]);
+
+  const enabledKeysForFlow = (flow: ServiceType) => buildEnabledKeySet(priceListsByFlow[flow] ?? []);
+  const priceListLoadingForFlow = (flow: ServiceType) => !priceListsByFlow[flow];
+
+  const availableCategories = modelOnlyLab
+    ? ["3D Model"]
+    : priceListLoadingForFlow(serviceType)
+      ? Object.keys(CASE_HIERARCHY)
+      : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeysForFlow(serviceType)));
+
+  // Keep the selected category valid once we know what's actually enabled.
+  useEffect(() => {
+    if (modelOnlyLab || priceListLoadingForFlow(serviceType) || availableCategories.length === 0) return;
+    if (!availableCategories.includes(category)) {
+      setCategory(availableCategories[0]);
+      setSubTypeData({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- availableCategories is derived each render from priceListsByFlow/serviceType, already covered
+  }, [availableCategories, category, modelOnlyLab, serviceType]);
 
   // Keep the selected serviceType valid as the enabled-flow set loads/changes
   useEffect(() => {
@@ -614,7 +618,7 @@ export default function CasesPage() {
         teeth,
         toothSystem,
         notes,
-        ...(category === "Implant" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
+        ...(category === "Implants" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
       },
       uploadedFile,
       preferredTeethLibrary,
@@ -638,7 +642,7 @@ export default function CasesPage() {
         setCrownBridgeTeeth([]);
         setModelRequired("no");
         setServiceType("design_only");
-        setCategory("Crown & Bridges");
+        setCategory("Crown & Bridge");
         setSubTypeData({});
         setSingleFile(null);
         setUploadedFileUrl(null);
@@ -680,7 +684,7 @@ export default function CasesPage() {
         fileName: f.name,
         file: f,
         serviceType: enabledServiceTypes[0] ?? "design_only",
-        category: modelOnlyLab ? "3D Model" : "Crown & Bridges",
+        category: modelOnlyLab ? "3D Model" : "Crown & Bridge",
         subTypeData: {},
         modelRequired: "no",
         teeth: [],
@@ -994,11 +998,11 @@ export default function CasesPage() {
                       </div>
                     )}
 
-                    {category === "Implant" ? (
+                    {category === "Implants" ? (
                       <>
                         <div className="space-y-2">
                           <Label>Category</Label>
-                          <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
+                          <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implants" ? { caseType2: "None" } : {}); }}>
                             <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                             <SelectContent className="bg-emerald-800 text-white">
                               {availableCategories.map((cat) => (
@@ -1018,11 +1022,13 @@ export default function CasesPage() {
                           >
                             <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Sub Type 1" /></SelectTrigger>
                             <SelectContent className="bg-emerald-800 text-white">
-                              {CASE_HIERARCHY["Implant"].fields[0].options.map((opt) => (
-                                <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                  {opt}
-                                </SelectItem>
-                              ))}
+                              {CASE_HIERARCHY["Implants"].fields[0].options
+                                .filter((opt) => priceListLoadingForFlow(serviceType) || isFieldOptionEnabled("Implants", "caseType1", opt, enabledKeysForFlow(serviceType)))
+                                .map((opt) => (
+                                  <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                    {opt}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </div>
@@ -1156,11 +1162,13 @@ export default function CasesPage() {
                           >
                             <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Crown & Bridge type" /></SelectTrigger>
                             <SelectContent className="bg-emerald-800 text-white">
-                              {CASE_HIERARCHY["Implant"].fields[1].options.map((opt) => (
-                                <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                  {opt}
-                                </SelectItem>
-                              ))}
+                              {CASE_HIERARCHY["Implants"].fields[1].options
+                                .filter((opt) => priceListLoadingForFlow(serviceType) || isFieldOptionEnabled("Implants", "caseType2", opt, enabledKeysForFlow(serviceType)))
+                                .map((opt) => (
+                                  <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                    {opt}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </div>
@@ -1177,7 +1185,7 @@ export default function CasesPage() {
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>Category</Label>
-                            <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
+                            <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implants" ? { caseType2: "None" } : {}); }}>
                               <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                               <SelectContent className="bg-emerald-800 text-white">
                                 {availableCategories.map((cat) => (
@@ -1212,11 +1220,13 @@ export default function CasesPage() {
                             >
                               <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                               <SelectContent className="bg-emerald-800 text-white">
-                                {field.options.map((opt) => (
-                                  <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                    {opt}
-                                  </SelectItem>
-                                ))}
+                                {field.options
+                                  .filter((opt) => priceListLoadingForFlow(serviceType) || isFieldOptionEnabled(category, field.name, opt, enabledKeysForFlow(serviceType)))
+                                  .map((opt) => (
+                                    <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                      {opt}
+                                    </SelectItem>
+                                  ))}
                               </SelectContent>
                             </Select>
                           </div>
@@ -1472,10 +1482,15 @@ export default function CasesPage() {
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1">
                                     <Label className="text-xs">Category</Label>
-                                    <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: v === "Implant" ? { caseType2: "None" } : {} })}>
+                                    <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: v === "Implants" ? { caseType2: "None" } : {} })}>
                                       <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                                       <SelectContent className="bg-emerald-800 text-white">
-                                        {availableCategories.map((cat) => (
+                                        {(modelOnlyLab
+                                          ? ["3D Model"]
+                                          : priceListLoadingForFlow(row.serviceType)
+                                            ? Object.keys(CASE_HIERARCHY)
+                                            : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeysForFlow(row.serviceType)))
+                                        ).map((cat) => (
                                           <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
                                             {cat}
                                           </SelectItem>
@@ -1495,7 +1510,7 @@ export default function CasesPage() {
                                 </div>
 
                                 {/* Dynamic Fields */}
-                                {row.category === "Implant" ? (
+                                {row.category === "Implants" ? (
                                   <>
                                     <div className="space-y-1">
                                       <Label className="text-xs">Sub Type 1</Label>
@@ -1505,11 +1520,13 @@ export default function CasesPage() {
                                       >
                                         <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Sub Type 1" /></SelectTrigger>
                                         <SelectContent className="bg-emerald-800 text-white">
-                                          {CASE_HIERARCHY["Implant"].fields[0].options.map((opt) => (
-                                            <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                              {opt}
-                                            </SelectItem>
-                                          ))}
+                                          {CASE_HIERARCHY["Implants"].fields[0].options
+                                            .filter((opt) => priceListLoadingForFlow(row.serviceType) || isFieldOptionEnabled("Implants", "caseType1", opt, enabledKeysForFlow(row.serviceType)))
+                                            .map((opt) => (
+                                              <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                                {opt}
+                                              </SelectItem>
+                                            ))}
                                         </SelectContent>
                                       </Select>
                                     </div>
@@ -1533,11 +1550,13 @@ export default function CasesPage() {
                                       >
                                         <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Crown & Bridge type" /></SelectTrigger>
                                         <SelectContent className="bg-emerald-800 text-white">
-                                          {CASE_HIERARCHY["Implant"].fields[1].options.map((opt) => (
-                                            <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                              {opt}
-                                            </SelectItem>
-                                          ))}
+                                          {CASE_HIERARCHY["Implants"].fields[1].options
+                                            .filter((opt) => priceListLoadingForFlow(row.serviceType) || isFieldOptionEnabled("Implants", "caseType2", opt, enabledKeysForFlow(row.serviceType)))
+                                            .map((opt) => (
+                                              <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                                {opt}
+                                              </SelectItem>
+                                            ))}
                                         </SelectContent>
                                       </Select>
                                     </div>
@@ -1570,11 +1589,13 @@ export default function CasesPage() {
                                         >
                                           <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                                           <SelectContent className="bg-emerald-800 text-white">
-                                            {field.options.map((opt) => (
-                                              <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                                {opt}
-                                              </SelectItem>
-                                            ))}
+                                            {field.options
+                                              .filter((opt) => priceListLoadingForFlow(row.serviceType) || isFieldOptionEnabled(row.category, field.name, opt, enabledKeysForFlow(row.serviceType)))
+                                              .map((opt) => (
+                                                <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                                  {opt}
+                                                </SelectItem>
+                                              ))}
                                           </SelectContent>
                                         </Select>
                                       </div>
@@ -1742,7 +1763,8 @@ export default function CasesPage() {
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.category}</td>
                           <td className="px-3.5 py-2 text-[11px] text-foreground font-semibold">{restoration || "—"}</td>
                           <td className="px-3.5 py-2 text-[10px] text-muted-foreground">
-                            {c.category === "Implant" ? (
+                            {/* "Implant" (singular) is the legacy category string from before the case-hierarchy naming cleanup — still shown for historical cases. */}
+                            {(c.category === "Implant" || c.category === "Implants") ? (
                               <div className="flex flex-col">
                                 <span>Imp: {toothNumbers.length ? `#${toothNumbers.join(", #")}` : "—"}</span>
                                 {(() => {

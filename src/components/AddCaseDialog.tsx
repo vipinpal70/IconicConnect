@@ -14,6 +14,8 @@ import { ToothChart } from "@/src/components/ToothChart"
 import { generateCaseId } from "@/src/lib/case-utils"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
 import type { ServiceType } from "@/src/lib/case-status-mapping"
+import { CASE_HIERARCHY, buildEnabledKeySet, isCategoryAvailable, isFieldOptionEnabled } from "@/src/lib/case-hierarchy"
+import type { PriceListEntryFull } from "@/src/lib/price-list-shared"
 
 const SERVICE_TYPE_COPY: Record<ServiceType, { label: string; description: string }> = {
   design_only: { label: "Design Only", description: "Iconic delivers design files digitally" },
@@ -37,57 +39,6 @@ interface AddCaseDialogProps {
   onSuccess?: () => void
 }
 
-interface Field {
-  name: string
-  label: string
-  type: string
-  options: string[]
-  optional?: boolean
-}
-
-const ARCH_OPTIONS = ["Upper", "Lower", "Both Arches"] as const
-
-const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
-  "Crown & Bridge": {
-    fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] }
-    ]
-  },
-  "Denture": {
-    fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
-      { name: "caseType2", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
-    ]
-  },
-  "Cosmetic": {
-    fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"] }
-    ]
-  },
-  "Appliance": {
-    fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Night Guard", "Sport Guard", "Mouth Guard", "NTI"] },
-      { name: "occlusion", label: "Occlusion", type: "select", options: ["Even Occlusion", "Custom"] },
-      { name: "arch", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
-    ]
-  },
-  "Implant": {
-    fields: [
-      { name: "caseType1", label: "Sub Type", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
-      { name: "caseType2", label: "Crown & Bridge type", type: "select", options: ["None", "Crown", "Bridge"], optional: true }
-    ]
-  },
-  "3D Model": {
-    fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Full Arch Model", "Quad Model", "Contact Model", "Horse Shoe Model", "Implant Model"] },
-      { name: "caseType2", label: "Model Type", type: "select", options: ["Hollow", "Solid"] },
-      { name: "die", label: "Die", type: "select", options: ["Yes", "No"] },
-      { name: "articulator", label: "Articulator", type: "select", options: ["Yes", "No"] },
-      { name: "drainHoles", label: "Drain Holes", type: "select", options: ["Yes", "No"] },
-    ]
-  }
-}
-
 export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSuccess }: AddCaseDialogProps) {
   const router = useRouter()
   const [selectedClientId, setSelectedClientId] = useState<string>("")
@@ -96,6 +47,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   // Form State
   const [serviceType, setServiceType] = useState<ServiceType>("design_only")
   const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>(["design_only"])
+  const [priceList, setPriceList] = useState<PriceListEntryFull[] | null>(null)
   const [modelOnlyLab, setModelOnlyLab] = useState(false)
   const [category, setCategory] = useState<string>("Crown & Bridge")
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({})
@@ -223,6 +175,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       setTargetLabName("Client")
       setServiceType("design_only")
       setEnabledServiceTypes(["design_only"])
+      setPriceList(null)
       setCategory("Crown & Bridge")
       setSubTypeData({})
       setModelRequired("no")
@@ -277,6 +230,38 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     }
   }, [enabledServiceTypes, serviceType])
 
+  // Which individual services (category/sub-type) this client has enabled
+  // for the current flow — admin can disable one independently of the flow
+  // toggle above, and disabled options must not be selectable here.
+  // priceList === null means "not resolved yet" (still loading, or no
+  // client picked) — options are left unfiltered until we actually know.
+  useEffect(() => {
+    if (!open) return
+
+    if (role === "client") {
+      fetch(`/api/client/price-list?serviceType=${serviceType}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => setPriceList(json?.data ?? []))
+        .catch(() => setPriceList([]))
+      return
+    }
+
+    if (role === "admin") {
+      if (!selectedClientId) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- resets a derived selector to its default before an async fetch can run, same pattern as the enabledServiceTypes effect above
+        setPriceList(null)
+        return
+      }
+      fetch(`/api/admin/clients/${selectedClientId}/price-list?serviceType=${serviceType}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => setPriceList(json?.data ?? []))
+        .catch(() => setPriceList([]))
+    }
+  }, [open, role, selectedClientId, serviceType])
+
+  const priceListLoading = priceList === null
+  const enabledKeys = React.useMemo(() => buildEnabledKeySet(priceList ?? []), [priceList])
+
   // Whether the client being submitted for is restricted to "3D Model" cases
   // only (3d-model-implement-plan.md §3). The client-role branch here isn't
   // currently exercised in production (this dialog is only ever mounted with
@@ -306,7 +291,26 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     }
   }, [modelOnlyLab, category])
 
-  const availableCategories = modelOnlyLab ? ["3D Model"] : Object.keys(CASE_HIERARCHY)
+  const availableCategories = React.useMemo(
+    () =>
+      modelOnlyLab
+        ? ["3D Model"]
+        : priceListLoading
+          ? Object.keys(CASE_HIERARCHY)
+          : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys)),
+    [modelOnlyLab, priceListLoading, enabledKeys]
+  )
+
+  // Keep the selected category valid once we know what's actually enabled —
+  // e.g. admin just disabled every Denture service for this client.
+  useEffect(() => {
+    if (modelOnlyLab || priceListLoading || availableCategories.length === 0) return
+    if (!availableCategories.includes(category)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from a prop-like fetch result (priceList), not local render state
+      setCategory(availableCategories[0])
+      setSubTypeData({})
+    }
+  }, [availableCategories, category, modelOnlyLab, priceListLoading])
 
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
     const maxLimit = 5 * 1024 * 1024 * 1024 // 5GB
@@ -464,7 +468,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
     const allFieldsFilled = fields.every((f) => f.optional || subTypeData[f.name])
     const teethValid = category === "3D Model" ? (subTypeData.die !== "Yes" || teeth.length > 0) : teeth.length > 0
-    const implantCrownBridgeValid = category === "Implant" && subTypeData.caseType2 !== "None" ? crownBridgeTeeth.length > 0 : true
+    const implantCrownBridgeValid = category === "Implants" && subTypeData.caseType2 !== "None" ? crownBridgeTeeth.length > 0 : true
 
     if (!allFieldsFilled || !teethValid || uploadedFilesList.length === 0 || !implantCrownBridgeValid) {
       toast.error("Please complete all fields, select teeth, and upload at least one file.")
@@ -496,7 +500,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
         notes,
         teeth,
         toothSystem,
-        ...(category === "Implant" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
+        ...(category === "Implants" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
       },
       caseNumber: generatedCaseId,
       uploadedFile: uploadedFilesList[0] || null,
@@ -719,11 +723,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           )}
 
           {/* Form Fields */}
-          {category === "Implant" ? (
+          {category === "Implants" ? (
             <>
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Category</Label>
-                <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
+                <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implants" ? { caseType2: "None" } : {}); }}>
                   <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-emerald-800 text-white">
                     {availableCategories.map((cat) => (
@@ -744,11 +748,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 >
                   <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue placeholder="Select Sub Type 1" /></SelectTrigger>
                   <SelectContent className="bg-emerald-800 text-white">
-                    {CASE_HIERARCHY["Implant"].fields[0].options.map((opt) => (
-                      <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
-                        {opt}
-                      </SelectItem>
-                    ))}
+                    {CASE_HIERARCHY["Implants"].fields[0].options
+                      .filter((opt) => priceListLoading || isFieldOptionEnabled("Implants", "caseType1", opt, enabledKeys))
+                      .map((opt) => (
+                        <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
+                          {opt}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -897,11 +903,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 >
                   <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue placeholder="Select Crown & Bridge type" /></SelectTrigger>
                   <SelectContent className="bg-emerald-800 text-white">
-                    {CASE_HIERARCHY["Implant"].fields[1].options.map((opt) => (
-                      <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
-                        {opt}
-                      </SelectItem>
-                    ))}
+                    {CASE_HIERARCHY["Implants"].fields[1].options
+                      .filter((opt) => priceListLoading || isFieldOptionEnabled("Implants", "caseType2", opt, enabledKeys))
+                      .map((opt) => (
+                        <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
+                          {opt}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -918,7 +926,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-gray-700">Category</Label>
-                  <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implant" ? { caseType2: "None" } : {}); }}>
+                  <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implants" ? { caseType2: "None" } : {}); }}>
                     <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-emerald-800 text-white">
                       {availableCategories.map((cat) => (
@@ -957,11 +965,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   >
                     <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                     <SelectContent className="bg-emerald-800 text-white">
-                      {field.options.map((opt) => (
-                        <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
-                          {opt}
-                        </SelectItem>
-                      ))}
+                      {field.options
+                        .filter((opt) => priceListLoading || isFieldOptionEnabled(category, field.name, opt, enabledKeys))
+                        .map((opt) => (
+                          <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
+                            {opt}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

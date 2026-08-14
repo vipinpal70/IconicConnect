@@ -1,9 +1,9 @@
 export const CATEGORY_PREFIXES: Record<string, string> = {
-  "Crown & Bridges": "CAB",
-  "Denture": "CDT",
+  "Crown & Bridge": "CAB",
+  "Dentures": "CDT",
   "Cosmetics": "CCA",
   "Appliances": "CAP",
-  "Implant": "CAI",
+  "Implants": "CAI",
   "3D Model": "3DM"
 };
 

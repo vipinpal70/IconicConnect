@@ -10,7 +10,8 @@ import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
 import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
-import { parseCatalogServiceType } from '@/src/lib/price-list';
+import { parseCatalogServiceType, getPriceListForClient, type CatalogServiceType, type PriceListEntryFull } from '@/src/lib/price-list';
+import { getRequiredServiceSelections } from '@/src/lib/case-hierarchy';
 
 const CASES_LIST_TTL = 300 // 5 minutes
 
@@ -188,6 +189,10 @@ export async function POST(req: NextRequest) {
     // Ensure sequence exists once before generating next values
     await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS cases_number_seq START 1`);
 
+    // Per (flow) price list, fetched at most once per distinct serviceType in
+    // this batch rather than once per case.
+    const priceListByServiceType = new Map<CatalogServiceType, PriceListEntryFull[]>();
+
     for (let i = 0; i < casesArray.length; i++) {
       const caseData = casesArray[i];
       const file = files[i];
@@ -205,6 +210,28 @@ export async function POST(req: NextRequest) {
           { error: 'This lab is restricted to 3D Model cases only' },
           { status: 400 }
         );
+      }
+
+      // Reject if this client doesn't have access to the specific
+      // category/sub-type selected — admin can disable an individual
+      // service (system-wide via service_catalog.isActive, or per-client
+      // via client_price_list.isEnabled) independently of the flow toggle
+      // checked above.
+      const requiredSelections = getRequiredServiceSelections(caseData.category ?? '', caseData.subTypeData);
+      if (requiredSelections.length > 0) {
+        if (!priceListByServiceType.has(serviceType)) {
+          priceListByServiceType.set(serviceType, await getPriceListForClient(clientId, serviceType));
+        }
+        const priceList = priceListByServiceType.get(serviceType)!;
+        const hasDisabledSelection = requiredSelections.some(
+          (sel) => !priceList.some((row) => row.category === sel.category && row.subCategory === sel.subCategory && row.isEnabled)
+        );
+        if (hasDisabledSelection) {
+          return NextResponse.json(
+            { error: 'This service is not available for your account. Please contact support.' },
+            { status: 400 }
+          );
+        }
       }
 
       const seqResult = await db.execute(sql`SELECT nextval('cases_number_seq') AS n`)
