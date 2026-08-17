@@ -127,11 +127,11 @@ export async function GET(req: NextRequest) {
       
       if (c.category === "Crown & Bridges" || c.category === "Crown & Bridge") {
         restoration = data.caseType || "Zirconia Crown";
-      } else if (c.category === "Denture") {
+      } else if (c.category === "Denture" || c.category === "Dentures") {
         restoration = data.caseType1 ? `${data.caseType1} (${data.caseType2 || ""})` : "Denture";
       } else if (c.category === "Appliances") {
         restoration = data.caseType1 || "Night Guard";
-      } else if (c.category === "Implant") {
+      } else if (c.category === "Implant" || c.category === "Implants") {
         restoration = data.caseType1 ? `${data.caseType1} (${data.caseType2 || ""})` : "Implant";
       } else {
         restoration = data.caseType || data.caseType1 || "Custom Restoration";
