@@ -14,7 +14,7 @@ import { getUsers, saveUsers, type LabUser } from "@/src/lib/labStore";
 import { ClientPriceListModal } from "@/src/components/ClientPriceListModal";
 import type { PriceListEntryFull } from "@/src/lib/price-list-shared";
 import type { ServiceType } from "@/src/lib/case-status-mapping";
-import { fetchPriceListWithCache } from "@/src/lib/price-list-cache";
+import { fetchPriceListWithCache, invalidatePriceListCache } from "@/src/lib/price-list-cache";
 import { toast } from "sonner";
 import {
   Building2, Mail, Phone, MapPin, Plus, Eye, EyeOff,
@@ -45,7 +45,9 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [priceListByFlow, setPriceListByFlow] = useState<Partial<Record<ServiceType, PriceListEntryFull[]>>>({});
+  const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>([]);
   const [priceListOpen, setPriceListOpen] = useState(false);
+  const [refreshingPriceList, setRefreshingPriceList] = useState(false);
   const [users, setUsers] = useState<LabUser[]>([]);
 
   useEffect(() => {
@@ -62,10 +64,11 @@ export default function ProfilePage() {
         if (data.role !== "subuser") {
           const serviceTypesRes = await fetch("/api/client/service-types");
           const serviceTypesJson = serviceTypesRes.ok ? await serviceTypesRes.json() : null;
-          const enabledServiceTypes: ServiceType[] = serviceTypesJson?.data?.enabledServiceTypes ?? ["design_only"];
+          const flows: ServiceType[] = serviceTypesJson?.data?.enabledServiceTypes ?? ["design_only"];
+          setEnabledServiceTypes(flows);
 
           const entries = await Promise.all(
-            enabledServiceTypes.map(async (flow) => {
+            flows.map(async (flow) => {
               const rows = await fetchPriceListWithCache(data.id, flow);
               // Only ever show services enabled at both the system and
               // client level — matches the same rule the price-list API
@@ -90,6 +93,29 @@ export default function ProfilePage() {
     };
     load();
   }, []);
+
+  const handleRefreshPriceList = async () => {
+    if (!profile?.id || enabledServiceTypes.length === 0) return;
+    setRefreshingPriceList(true);
+    try {
+      const entries = await Promise.all(
+        enabledServiceTypes.map(async (flow) => {
+          invalidatePriceListCache(profile.id, flow);
+          const res = await fetch(`/api/client/price-list?serviceType=${flow}&refresh=true`, { cache: "no-store" });
+          if (!res.ok) throw new Error("Failed to refresh price list");
+          const json = await res.json();
+          const rows: PriceListEntryFull[] = json?.data ?? [];
+          return [flow, rows.filter((r) => r.isEnabled)] as const;
+        })
+      );
+      setPriceListByFlow(Object.fromEntries(entries));
+      toast.success("Refreshed directly from the database");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to refresh price list");
+    } finally {
+      setRefreshingPriceList(false);
+    }
+  };
 
   const displayProfile = {
     company: profile?.labName || profile?.fullName || "—",
@@ -399,6 +425,8 @@ export default function ProfilePage() {
           onClose={() => setPriceListOpen(false)}
           clientName={displayProfile.company}
           rowsByFlow={priceListByFlow}
+          onRefresh={handleRefreshPriceList}
+          refreshing={refreshingPriceList}
         />
       </div>
     

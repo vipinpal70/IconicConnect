@@ -7,10 +7,11 @@ import {
   DialogTitle,
 } from '@/src/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/src/components/ui/tabs'
+import { Button } from '@/src/components/ui/button'
 import { PriceListTable } from './PriceListTable'
 import type { PriceListEntryFull } from '@/src/lib/price-list-shared'
 import type { ServiceType } from '@/src/lib/case-status-mapping'
-import { FileText } from 'lucide-react'
+import { FileText, RefreshCw } from 'lucide-react'
 
 const FLOW_LABELS: Record<ServiceType, string> = {
   design_only: 'Design Only',
@@ -26,19 +27,36 @@ type Props = {
   // to isActive && isEnabled should be passed in (see client profile page).
   rowsByFlow: Partial<Record<ServiceType, PriceListEntryFull[]>>
   loading?: boolean
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
-export function ClientPriceListModal({ open, onClose, clientName, rowsByFlow, loading }: Props) {
+export function ClientPriceListModal({ open, onClose, clientName, rowsByFlow, loading, onRefresh, refreshing }: Props) {
   const flows = (Object.keys(rowsByFlow) as ServiceType[]).filter((flow) => rowsByFlow[flow] !== undefined)
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
-            <FileText className="h-4 w-4 text-primary" />
-            Allocated Price List — {clientName}
-          </DialogTitle>
+          <div className="flex items-center justify-between gap-3 pr-6">
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+              <FileText className="h-4 w-4 text-primary" />
+              Allocated Price List — {clientName}
+            </DialogTitle>
+            {onRefresh && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 shrink-0"
+                onClick={onRefresh}
+                disabled={refreshing}
+                title="Bypass cache and reload directly from the database"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                {refreshing ? "Refreshing…" : "Refresh"}
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         <div className="mt-1">

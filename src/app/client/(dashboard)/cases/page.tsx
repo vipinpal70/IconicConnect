@@ -9,9 +9,10 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle, Factory } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import { Label } from "@/src/components/ui/label";
@@ -1734,7 +1735,12 @@ export default function CasesPage() {
                         >
                           <td className="px-3.5 py-2">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-[11px] text-slate-800">{c.caseNumber || c.id}</span>
+                              <Link
+                                href={`/client/cases/${c.id}`}
+                                className="font-semibold text-[11px] text-slate-800 hover:underline hover:text-primary"
+                              >
+                                {c.caseNumber || c.id}
+                              </Link>
                               {(() => {
                                 const hasUnreadChat = Boolean(c.hasUnreadChat);
                                 const todayCount = (c as any).todayMessagesCount || 0;
@@ -1779,8 +1785,13 @@ export default function CasesPage() {
                             )}
                           </td>
                           <td className="px-3.5 py-2">
-                            <div className="scale-90 origin-left">
+                            <div className="scale-90 origin-left flex items-center gap-1.5">
                               <StatusBadge status={c.status} serviceType={c.serviceType ?? "design_only"} />
+                              {(c.serviceType === "design_milling" || c.serviceType === "milling_only") && (
+                                <span title={c.serviceType === "milling_only" ? "Milling Only" : "Design + Milling"} className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary/10 text-primary shrink-0">
+                                  <Factory className="h-2.5 w-2.5" />
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
