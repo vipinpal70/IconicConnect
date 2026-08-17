@@ -107,7 +107,7 @@ export async function invalidateCasesCache(clientId?: string | null): Promise<vo
     return;
   }
   try {
-    const keysToDelete: string[] = ['cases:base:admin', 'dashboard:admin', 'analytics:admin'];
+    const keysToDelete: string[] = ['cases:base:admin', 'dashboard:admin:v2', 'analytics:admin'];
 
     if (clientId) {
       keysToDelete.push(`cases:base:client:${clientId}`);

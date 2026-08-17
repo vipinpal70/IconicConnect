@@ -34,7 +34,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const cacheKey = "dashboard:admin";
+    // Bumped to v2 when the KPI breakdown changed (Received/In Validation
+    // split, Avg TAT removed) so previously-cached responses in the old
+    // shape are never served — see bug-fix-implement-plan.md.
+    const cacheKey = "dashboard:admin:v2";
     const cachedData = await getCachedData<any>(cacheKey);
     if (cachedData) {
       return NextResponse.json(cachedData);
