@@ -4,7 +4,7 @@ import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { activityLogs } from "@/src/db/schema/activity-log";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, inArray, notInArray, and, count, desc, isNotNull, asc, gte, sql } from "drizzle-orm";
+import { eq, inArray, notInArray, and, count, desc } from "drizzle-orm";
 import { isValidRoleForType } from "@/src/lib/auth/role";
 
 import { formatActivityLabel } from "@/src/lib/activity-log";
@@ -42,8 +42,9 @@ export async function GET(req: NextRequest) {
 
     // 1. Fetch KPI Counts
     const [
-      incomingResult,
-      inDesignResult,
+      receivedResult,
+      inValidationResult,
+      inProgressResult,
       internalQcResult,
       awaitApprovalResult,
       holdResult,
@@ -52,7 +53,11 @@ export async function GET(req: NextRequest) {
       db
         .select({ value: count() })
         .from(cases)
-        .where(inArray(cases.status, ["scan_received", "scan_verified", "scan_not_verified"])),
+        .where(eq(cases.status, "scan_received")),
+      db
+        .select({ value: count() })
+        .from(cases)
+        .where(inArray(cases.status, ["scan_verified", "scan_not_verified"])),
       db
         .select({ value: count() })
         .from(cases)
@@ -75,30 +80,14 @@ export async function GET(req: NextRequest) {
         .where(eq(profiles.role, "client"))
     ]);
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const tatResult = await db
-      .select({
-        avgTat: sql<number>`AVG(${cases.tat})`
-      })
-      .from(cases)
-      .where(
-        and(
-          isNotNull(cases.tat),
-          gte(cases.deliveredTime, thirtyDaysAgo)
-        )
-      );
-    const avgTatMinutes = tatResult[0]?.avgTat ? Number(tatResult[0].avgTat) : null;
-    const avgTat = avgTatMinutes !== null ? `${(avgTatMinutes / 1440).toFixed(1)}d` : "N/A";
-
     const counts = {
-      incoming: incomingResult[0]?.value || 0,
-      inDesign: inDesignResult[0]?.value || 0,
+      received: receivedResult[0]?.value || 0,
+      inValidation: inValidationResult[0]?.value || 0,
+      inProgress: inProgressResult[0]?.value || 0,
       internalQc: internalQcResult[0]?.value || 0,
       awaitClientApproval: awaitApprovalResult[0]?.value || 0,
       holdCase: holdResult[0]?.value || 0,
       activeClients: activeClientsResult[0]?.value || 0,
-      avgTat: avgTat,
     };
 
     // 2. Fetch Recent Cases (with Client and Designer information)

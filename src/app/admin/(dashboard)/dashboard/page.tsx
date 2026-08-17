@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
-import { Inbox, Layers, ShieldCheck, ClipboardCheck, Users, MapPin, Building2, CalendarDays, Timer } from "lucide-react";
+import { Inbox, ScanLine, Layers, ShieldCheck, ClipboardCheck, PauseCircle, MapPin, Building2, CalendarDays } from "lucide-react";
 import { Badge } from "@/src/components/ui/badge";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -26,13 +26,13 @@ export default function AdminDashboard() {
   });
 
   const counts = dashboardData?.counts || {
-    incoming: 0,
-    inDesign: 0,
+    received: 0,
+    inValidation: 0,
+    inProgress: 0,
     internalQc: 0,
     awaitClientApproval: 0,
     holdCase: 0,
     activeClients: 0,
-    avgTat: "N/A",
   };
 
   const designerLoad = dashboardData?.designerLoad || [];
@@ -40,25 +40,19 @@ export default function AdminDashboard() {
   const recentClients = dashboardData?.recentClients || [];
 
   const kpis = [
-    { label: "Incoming/In Validation", value: counts.incoming, icon: Inbox, color: "text-blue-500", bg: "bg-blue-500/10" },
-    { label: "In Design", value: counts.inDesign, icon: Layers, color: "text-primary", bg: "bg-primary/10" },
+    { label: "Received", value: counts.received, icon: Inbox, color: "text-blue-500", bg: "bg-blue-500/10" },
+    { label: "In Validation", value: counts.inValidation, icon: ScanLine, color: "text-cyan-500", bg: "bg-cyan-500/10" },
+    { label: "In Progress", value: counts.inProgress, icon: Layers, color: "text-primary", bg: "bg-primary/10" },
     { label: "Internal QC", value: counts.internalQc, icon: ShieldCheck, color: "text-amber-500", bg: "bg-amber-500/10" },
-    { label: "Awaiting Client Approval", value: counts.awaitClientApproval, icon: ClipboardCheck, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+    { label: "Client Approval", value: counts.awaitClientApproval, icon: ClipboardCheck, color: "text-indigo-500", bg: "bg-indigo-500/10" },
     {
       label: "Hold Cases",
       value: counts.holdCase,
-      icon: Users,
+      icon: PauseCircle,
       color: "text-red-500",
       bg: "bg-red-500/10",
       isHoldAlert: counts.holdCase > 0
     },
-    {
-      label: "Avg Turnaround",
-      value: counts.avgTat || "N/A",
-      icon: Timer,
-      color: "text-purple-500",
-      bg: "bg-purple-500/10"
-    }
   ];
 
   return (
