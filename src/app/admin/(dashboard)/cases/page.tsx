@@ -1447,10 +1447,10 @@ export default function AdminCasesPage() {
 																						"Allocated case to yourself",
 																					)
 																				}
-																				className="h-7 text-[10px] px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all"
+																				className="h-7 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm transition-all inline-flex items-center gap-1 whitespace-nowrap shrink-0"
 																			>
-																				<UserPlus className="h-3 w-3 mr-0.5" />{" "}
-																				Allocate to Self
+																				<UserPlus className="h-3 w-3 shrink-0" />
+																				<span>Allocate to Self</span>
 																			</Button>
 																		)}
 
@@ -2212,9 +2212,10 @@ const AllocateMenu = React.memo(function AllocateMenu({
 	const hasAny = designers.length > 0 || qcs.length > 0;
 	return (
 		<Select onValueChange={onPick} disabled={disabled}>
-			<SelectTrigger className="h-7 text-[10px] w-[120px] border-border/80 px-2">
-				<span className="flex items-center">
-					<UserPlus className="h-3 w-3 mr-1" /> Allocate
+			<SelectTrigger className="h-7 text-[10px] w-auto min-w-[95px] max-w-[130px] border-border/80 bg-white px-2 py-0.5 font-semibold text-zinc-800 shadow-sm hover:bg-slate-50 rounded-md inline-flex items-center justify-between gap-1 whitespace-nowrap shrink-0 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0 [&>span]:line-clamp-none [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1 [&>span]:whitespace-nowrap">
+				<span className="inline-flex items-center gap-1 whitespace-nowrap shrink-0 text-zinc-800">
+					<UserPlus className="h-3 w-3 shrink-0" />
+					<span className="truncate">Allocate</span>
 				</span>
 			</SelectTrigger>
 			<SelectContent className="bg-primary border-primary/50 text-white">

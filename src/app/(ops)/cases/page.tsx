@@ -1401,8 +1401,9 @@ export default function CasesPage() {
                                   {!c.designerId && (c.status === "scan_received" || c.status === "scan_verified" || c.status === "on_hold") && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { designerId: activeUserId }, "Allocated case to yourself as designer")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
-                                      <UserPlus className="h-3 w-3 mr-1" /> Take as Designer
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+                                      <UserPlus className="h-3 w-3 shrink-0" />
+                                      <span>Take as Designer</span>
                                     </Button>
                                   )}
 
@@ -1528,8 +1529,9 @@ export default function CasesPage() {
                                   {isDesigner && !c.designerId && c.status === "scan_verified" && (
                                     <Button size="sm" disabled={isMutating}
                                       onClick={() => handleUpdate(c.id, { designerId: activeUserId }, "Allocated case to yourself")}
-                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
-                                      <UserPlus className="h-3 w-3 mr-1" /> Allocate to Self
+                                      className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+                                      <UserPlus className="h-3 w-3 shrink-0" />
+                                      <span>Allocate to Self</span>
                                     </Button>
                                   )}
 
@@ -1991,9 +1993,10 @@ function AllocateMenu({ designers, qcs, onPick, disabled }: { designers: OpsMemb
   const hasAny = designers.length > 0 || qcs.length > 0
   return (
     <Select onValueChange={onPick} disabled={disabled}>
-      <SelectTrigger className="h-8 text-xs w-[160px] border-border/80 bg-white">
-        <span className="flex items-center text-zinc-800">
-          <UserPlus className="h-3.5 w-3.5 mr-1" /> Allocate
+      <SelectTrigger className="h-7 text-[10px] w-auto min-w-[95px] max-w-[130px] border-border/80 bg-white px-2 py-0.5 font-semibold text-zinc-800 shadow-sm hover:bg-slate-50 rounded-md inline-flex items-center justify-between gap-1 whitespace-nowrap shrink-0 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0 [&>span]:line-clamp-none [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1 [&>span]:whitespace-nowrap">
+        <span className="inline-flex items-center gap-1 whitespace-nowrap shrink-0 text-zinc-800">
+          <UserPlus className="h-3 w-3 shrink-0" />
+          <span className="truncate">Allocate</span>
         </span>
       </SelectTrigger>
       <SelectContent className="bg-primary border-primary/50 text-white">
