@@ -1210,32 +1210,54 @@ export default function CasesPage() {
 
                         {/* Dynamic Fields */}
                         {CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
-                          <div className="space-y-2" key={field.name}>
-                            <Label>{field.label}</Label>
-                            <Select
-                              value={subTypeData[field.name] || ""}
-                              onValueChange={(v) => {
-                                setSubTypeData({ ...subTypeData, [field.name]: v });
-                                if (field.name === "die" && v !== "Yes") setTeeth([]);
-                              }}
-                            >
-                              <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
-                              <SelectContent className="bg-emerald-800 text-white">
-                                {field.options
-                                  .filter((opt) => priceListLoadingForFlow(serviceType) || isFieldOptionEnabled(category, field.name, opt, enabledKeysForFlow(serviceType)))
-                                  .map((opt) => (
-                                    <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                      {opt}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                          field.name === "die" ? (
+                            <div className="space-y-2 pt-1" key={field.name}>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id="client-case-die-checkbox"
+                                  disabled={isSubmitting || (!priceListLoadingForFlow(serviceType) && !isFieldOptionEnabled(category, "die", "Yes", enabledKeysForFlow(serviceType)))}
+                                  checked={subTypeData.die === "Yes"}
+                                  onChange={(e) => {
+                                    const isChecked = e.target.checked
+                                    setSubTypeData({ ...subTypeData, die: isChecked ? "Yes" : "No" })
+                                    if (!isChecked) setTeeth([])
+                                  }}
+                                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                                <Label htmlFor="client-case-die-checkbox" className="text-xs font-semibold text-gray-700 cursor-pointer select-none">
+                                  Die (per tooth)
+                                </Label>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-2" key={field.name}>
+                              <Label>{field.label}</Label>
+                              <Select
+                                value={subTypeData[field.name] || ""}
+                                onValueChange={(v) => {
+                                  setSubTypeData({ ...subTypeData, [field.name]: v });
+                                  if (field.name === "die" && v !== "Yes") setTeeth([]);
+                                }}
+                              >
+                                <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+                                <SelectContent className="bg-emerald-800 text-white">
+                                  {field.options
+                                    .filter((opt) => priceListLoadingForFlow(serviceType) || isFieldOptionEnabled(category, field.name, opt, enabledKeysForFlow(serviceType)))
+                                    .map((opt) => (
+                                      <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                        {opt}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )
                         ))}
 
                         {category === "3D Model" ? (
                           subTypeData.die === "Yes" && (
-                            <div className="space-y-2">
+                            <div className="space-y-2 animate-in fade-in duration-200">
                               <Label>Die Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
                               <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
                             </div>
@@ -1577,29 +1599,53 @@ export default function CasesPage() {
                                 ) : (
                                   <>
                                     {CASE_HIERARCHY[row.category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
-                                      <div className="space-y-1" key={field.name}>
-                                        <Label className="text-xs">{field.label}</Label>
-                                        <Select
-                                          value={row.subTypeData[field.name] || ""}
-                                          onValueChange={(v) => {
-                                            const nextSubTypeData = { ...row.subTypeData, [field.name]: v };
-                                            const updates: Partial<BulkRow> = { subTypeData: nextSubTypeData };
-                                            if (field.name === "die" && v !== "Yes") updates.teeth = [];
-                                            updateBulkRow(i, updates);
-                                          }}
-                                        >
-                                          <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
-                                          <SelectContent className="bg-emerald-800 text-white">
-                                            {field.options
-                                              .filter((opt) => priceListLoadingForFlow(row.serviceType) || isFieldOptionEnabled(row.category, field.name, opt, enabledKeysForFlow(row.serviceType)))
-                                              .map((opt) => (
-                                                <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
-                                                  {opt}
-                                                </SelectItem>
-                                              ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
+                                      field.name === "die" ? (
+                                        <div className="space-y-1 pt-1" key={field.name}>
+                                          <div className="flex items-center gap-2">
+                                            <input
+                                              type="checkbox"
+                                              id={`bulk-die-checkbox-${i}`}
+                                              disabled={isSubmitting || (!priceListLoadingForFlow(row.serviceType) && !isFieldOptionEnabled(row.category, "die", "Yes", enabledKeysForFlow(row.serviceType)))}
+                                              checked={row.subTypeData.die === "Yes"}
+                                              onChange={(e) => {
+                                                const isChecked = e.target.checked
+                                                const nextSubTypeData = { ...row.subTypeData, die: isChecked ? "Yes" : "No" };
+                                                const updates: Partial<BulkRow> = { subTypeData: nextSubTypeData };
+                                                if (!isChecked) updates.teeth = [];
+                                                updateBulkRow(i, updates);
+                                              }}
+                                              className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                            />
+                                            <Label htmlFor={`bulk-die-checkbox-${i}`} className="text-xs font-semibold text-gray-700 cursor-pointer select-none">
+                                              Die (per tooth)
+                                            </Label>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="space-y-1" key={field.name}>
+                                          <Label className="text-xs">{field.label}</Label>
+                                          <Select
+                                            value={row.subTypeData[field.name] || ""}
+                                            onValueChange={(v) => {
+                                              const nextSubTypeData = { ...row.subTypeData, [field.name]: v };
+                                              const updates: Partial<BulkRow> = { subTypeData: nextSubTypeData };
+                                              if (field.name === "die" && v !== "Yes") updates.teeth = [];
+                                              updateBulkRow(i, updates);
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+                                            <SelectContent className="bg-emerald-800 text-white">
+                                              {field.options
+                                                .filter((opt) => priceListLoadingForFlow(row.serviceType) || isFieldOptionEnabled(row.category, field.name, opt, enabledKeysForFlow(row.serviceType)))
+                                                .map((opt) => (
+                                                  <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
+                                                    {opt}
+                                                  </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                      )
                                     ))}
                                     {row.category === "3D Model"
                                       ? row.subTypeData.die === "Yes" && (

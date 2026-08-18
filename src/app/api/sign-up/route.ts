@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       fullName: body.fullName || null,
       title: body.title || null,
       phone: body.phone || null,
-      labName: body.labName || null,
+      labName: body.labName?.trim() || body.fullName?.trim() || null,
       postalCode: body.postalCode || null,
       city: body.city || null,
       state: body.state || null,

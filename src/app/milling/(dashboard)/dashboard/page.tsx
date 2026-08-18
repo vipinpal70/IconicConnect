@@ -63,11 +63,10 @@ export default function MillingDashboardPage() {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Stat icon={<Package className="h-4 w-4" />} label="Ready for milling" value={buckets.ready_for_milling ?? 0} tone="info" />
             <Stat icon={<Factory className="h-4 w-4" />} label="In production" value={buckets.milling_in_progress ?? 0} tone="primary" />
             <Stat icon={<CheckCircle2 className="h-4 w-4" />} label="Milling QC" value={buckets.milling_qc ?? 0} tone="warning" />
-            <Stat icon={<Clock className="h-4 w-4" />} label="Packaging" value={buckets.packaging ?? 0} tone="accent" />
             <Stat icon={<Truck className="h-4 w-4" />} label="Shipped" value={(buckets.dispatched ?? 0) + (buckets.delivered ?? 0)} tone="success" />
           </div>
 

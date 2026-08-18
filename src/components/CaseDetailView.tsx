@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
 import { HOLD_REASONS } from "@/src/lib/case-utils"
-import { Eye } from "lucide-react"
+import { Eye, EyeOff } from "lucide-react"
 import type { MillingCenter } from "@/src/db/schema/milling"
 import type { RoutingResult } from "@/src/lib/milling/routing-engine"
 
@@ -212,7 +212,7 @@ export function CaseDetailView({
   const queryClient = useQueryClient()
   const chatRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
+  const [showPreview, setShowPreview] = useState(true)
   const [isHoldDialogOpen, setIsHoldDialogOpen] = useState(false)
   const [holdReasonSelect, setHoldReasonSelect] = useState("")
   const [holdCustomReason, setHoldCustomReason] = useState("")
@@ -461,440 +461,440 @@ export function CaseDetailView({
         <MillingTab caseId={caseRecord.id} timeline={activities} />
       ) : (
         <>
-      {caseRecord.clientMassage && (
-        <div className={`p-4 rounded-lg border text-xs font-medium flex flex-col gap-1 ${caseRecord.status === "client_reject"
-          ? "bg-red-50 border-red-200 text-red-800"
-          : "bg-amber-50 border-amber-200 text-amber-800"
-          }`}>
-          <span className="font-semibold flex items-center gap-1.5">
-            {caseRecord.status === "client_reject" ? "✗ Rejection Reason" : "ℹ Requested Changes"}
-          </span>
-          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.clientMassage}</p>
-        </div>
-      )}
+          {caseRecord.clientMassage && (
+            <div className={`p-4 rounded-lg border text-xs font-medium flex flex-col gap-1 ${caseRecord.status === "client_reject"
+              ? "bg-red-50 border-red-200 text-red-800"
+              : "bg-amber-50 border-amber-200 text-amber-800"
+              }`}>
+              <span className="font-semibold flex items-center gap-1.5">
+                {caseRecord.status === "client_reject" ? "✗ Rejection Reason" : "ℹ Requested Changes"}
+              </span>
+              <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.clientMassage}</p>
+            </div>
+          )}
 
-      {caseRecord.holdReason && (
-        <div className="p-4 rounded-lg border-2 border-red-500 bg-red-50 text-red-900 text-xs font-medium flex flex-col gap-1 shadow-[0_0_0_3px_rgba(239,68,68,0.15)]">
-          <span className="font-bold flex items-center gap-1.5 text-red-600">⏸ On Hold — Reason</span>
-          <p className="whitespace-pre-wrap font-normal mt-0.5 text-red-800">{caseRecord.holdReason}</p>
-        </div>
-      )}
+          {caseRecord.holdReason && (
+            <div className="p-4 rounded-lg border-2 border-red-500 bg-red-50 text-red-900 text-xs font-medium flex flex-col gap-1 shadow-[0_0_0_3px_rgba(239,68,68,0.15)]">
+              <span className="font-bold flex items-center gap-1.5 text-red-600">⏸ On Hold — Reason</span>
+              <p className="whitespace-pre-wrap font-normal mt-0.5 text-red-800">{caseRecord.holdReason}</p>
+            </div>
+          )}
 
-      {caseRecord.cancelReason && (
-        <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-xs font-medium flex flex-col gap-1">
-          <span className="font-semibold flex items-center gap-1.5">🚫 Cancellation Reason</span>
-          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.cancelReason}</p>
-        </div>
-      )}
+          {caseRecord.cancelReason && (
+            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-xs font-medium flex flex-col gap-1">
+              <span className="font-semibold flex items-center gap-1.5">🚫 Cancellation Reason</span>
+              <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.cancelReason}</p>
+            </div>
+          )}
 
-      {caseRecord.feedbackReason && (
-        <div className="p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-medium flex flex-col gap-1">
-          <span className="font-semibold flex items-center gap-1.5">💬 QC Feedback</span>
-          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.feedbackReason}</p>
-        </div>
-      )}
+          {caseRecord.feedbackReason && (
+            <div className="p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-medium flex flex-col gap-1">
+              <span className="font-semibold flex items-center gap-1.5">💬 QC Feedback</span>
+              <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.feedbackReason}</p>
+            </div>
+          )}
 
-      {caseRecord.rejectReason && (
-        <div className="p-4 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-medium flex flex-col gap-1">
-          <span className="font-semibold flex items-center gap-1.5">✗ QC Rejection Reason</span>
-          <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.rejectReason}</p>
-        </div>
-      )}
+          {caseRecord.rejectReason && (
+            <div className="p-4 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs font-medium flex flex-col gap-1">
+              <span className="font-semibold flex items-center gap-1.5">✗ QC Rejection Reason</span>
+              <p className="whitespace-pre-wrap font-normal mt-0.5">{caseRecord.rejectReason}</p>
+            </div>
+          )}
 
-      <LifecycleStrip status={caseRecord.status} serviceType={serviceType} />
+          <LifecycleStrip status={caseRecord.status} serviceType={serviceType} />
 
-      {/* Upper Grid: Details & Timeline side-by-side on lg screen */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="shadow-card flex flex-col justify-between">
-          <div>
-            <CardHeader className="py-2.5 px-4 border-b border-border/50">
-              <CardTitle className="text-sm font-semibold">Case Details</CardTitle>
-            </CardHeader>
-            <CardContent className="mt-2 px-4 pb-3">
-              <DetailRow label="Case Number" value={caseRecord.caseNumber || caseRecord.id} />
-              <DetailRow label="Category" value={caseRecord.category || "—"} />
-              <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
-              <DetailRow
-                label="Case Files"
-                value={
-                  files.length === 0 ? (
-                    <span className="text-muted-foreground">—</span>
+          {/* Upper Grid: Details & Timeline side-by-side on lg screen */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card className="shadow-card flex flex-col justify-between">
+              <div>
+                <CardHeader className="py-2.5 px-4 border-b border-border/50">
+                  <CardTitle className="text-sm font-semibold">Case Details</CardTitle>
+                </CardHeader>
+                <CardContent className="mt-2 px-4 pb-3">
+                  <DetailRow label="Case Number" value={caseRecord.caseNumber || caseRecord.id} />
+                  <DetailRow label="Category" value={caseRecord.category || "—"} />
+                  <DetailRow label="Case Sub Type" value={renderSubTypeSummary(caseRecord.subTypeData)} />
+                  <DetailRow
+                    label="Case Files"
+                    value={
+                      files.length === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1 justify-end">
+                          {files.map((file) => (
+                            <a
+                              key={file.id}
+                              href={file.fileUrl}
+                              download={file.fileName}
+                              title={file.fileName}
+                              className="text-[10px] font-medium text-primary underline underline-offset-2 cursor-pointer hover:text-primary/70 transition-colors"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {file.fileName.length > 15
+                                ? `${file.fileName.slice(0, 15)}…`
+                                : file.fileName}
+                            </a>
+                          ))}
+                        </div>
+                      )
+                    }
+                  />
+                  <DetailRow label="Model Required" value={modelRequired} />
+                  {caseRecord.category === "Implant" ? (
+                    <>
+                      <DetailRow label="Implant Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
+                      {crownBridgeTeeth.length > 0 && (
+                        <DetailRow label="Crown & Bridge Teeth" value={`#${crownBridgeTeeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})`} />
+                      )}
+                    </>
                   ) : (
-                    <div className="flex flex-wrap gap-1 justify-end">
-                      {files.map((file) => (
-                        <a
-                          key={file.id}
-                          href={file.fileUrl}
-                          download={file.fileName}
-                          title={file.fileName}
-                          className="text-[10px] font-medium text-primary underline underline-offset-2 cursor-pointer hover:text-primary/70 transition-colors"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {file.fileName.length > 15
-                            ? `${file.fileName.slice(0, 15)}…`
-                            : file.fileName}
-                        </a>
-                      ))}
-                    </div>
-                  )
-                }
-              />
-              <DetailRow label="Model Required" value={modelRequired} />
-              {caseRecord.category === "Implant" ? (
-                <>
-                  <DetailRow label="Implant Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
-                  {crownBridgeTeeth.length > 0 && (
-                    <DetailRow label="Crown & Bridge Teeth" value={`#${crownBridgeTeeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})`} />
+                    <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
                   )}
-                </>
-              ) : (
-                <DetailRow label="Teeth" value={teeth.length ? `#${teeth.join(", #")} (${toothSystem === "USA" ? "Universal" : toothSystem})` : "—"} />
-              )}
-              <DetailRow
-                label="Preferred Teeth Library"
-                value={
-                  caseRecord.preferredTeethLibrary === "other" ? (
-                    caseRecord.teethLibraryFileUrl ? (
-                      <a
-                        href={caseRecord.teethLibraryFileUrl}
-                        download={caseRecord.teethLibraryFileName || "teeth_library"}
-                        className="text-primary hover:text-primary/70 underline underline-offset-2 font-medium"
-                      >
-                        {caseRecord.teethLibraryFileName || "Other Teeth Library (Download)"}
-                      </a>
-                    ) : (
-                      "Other Teeth Library"
-                    )
-                  ) : (
-                    "Default Teeth Library"
-                  )
-                }
-              />
-              <DetailRow label="Designer" value={caseRecord.designerName || caseRecord.designerId || "—"} />
-              <DetailRow label="QC" value={caseRecord.qcName || caseRecord.qcId || "—"} />
-              <DetailRow label="Account Manager" value={caseRecord.accountManagerName || caseRecord.accountManagerId || "—"} />
-              <DetailRow
-                label="Submitted"
-                value={new Date(caseRecord.createdAt).toLocaleDateString()}
-              />
-              <DetailRow
-                label="Due Date"
-                value={caseRecord.dueDate ? new Date(caseRecord.dueDate).toLocaleDateString() : "—"}
-              />
-              <div className="pt-2.5 border-t border-border/50 mt-2.5">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Notes</p>
-                <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{notes}</p>
+                  <DetailRow
+                    label="Preferred Teeth Library"
+                    value={
+                      caseRecord.preferredTeethLibrary === "other" ? (
+                        caseRecord.teethLibraryFileUrl ? (
+                          <a
+                            href={caseRecord.teethLibraryFileUrl}
+                            download={caseRecord.teethLibraryFileName || "teeth_library"}
+                            className="text-primary hover:text-primary/70 underline underline-offset-2 font-medium"
+                          >
+                            {caseRecord.teethLibraryFileName || "Other Teeth Library (Download)"}
+                          </a>
+                        ) : (
+                          "Other Teeth Library"
+                        )
+                      ) : (
+                        "Default Teeth Library"
+                      )
+                    }
+                  />
+                  <DetailRow label="Designer" value={caseRecord.designerName || caseRecord.designerId || "—"} />
+                  <DetailRow label="QC" value={caseRecord.qcName || caseRecord.qcId || "—"} />
+                  <DetailRow label="Account Manager" value={caseRecord.accountManagerName || caseRecord.accountManagerId || "—"} />
+                  <DetailRow
+                    label="Submitted"
+                    value={new Date(caseRecord.createdAt).toLocaleDateString()}
+                  />
+                  <DetailRow
+                    label="Due Date"
+                    value={caseRecord.dueDate ? new Date(caseRecord.dueDate).toLocaleDateString() : "—"}
+                  />
+                  <div className="pt-2.5 border-t border-border/50 mt-2.5">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Notes</p>
+                    <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{notes}</p>
+                  </div>
+                </CardContent>
               </div>
-            </CardContent>
+
+              {/* Client Self-Serve Contextual Actions */}
+              {chatSide === "lab" && (
+                <CardContent className="py-3 px-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-2">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Lab Actions</p>
+                  <div className="flex flex-col gap-2">
+                    {caseRecord.status === "scan_received" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="text-xs font-medium"
+                          disabled={isSubmitting}
+                          onClick={() => handleStatusChange("on_hold")}
+                        >
+                          ⏸ Hold Case
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="text-xs font-medium"
+                          disabled={isSubmitting}
+                          onClick={() => handleStatusChange("cancelled")}
+                        >
+                          🚫 Cancel Case
+                        </Button>
+                      </div>
+                    )}
+                    {["scan_not_verified", "scan_verified"].includes(caseRecord.status) && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full text-xs font-medium"
+                        disabled={isSubmitting}
+                        onClick={() => handleStatusChange("on_hold")}
+                      >
+                        ⏸ Put Case on Hold
+                      </Button>
+                    )}
+                    {caseRecord.status === "on_hold" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="sm"
+                          className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+                          disabled={isSubmitting}
+                          onClick={() => handleStatusChange("scan_received")}
+                        >
+                          ▶ Resume Case
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="text-xs font-medium"
+                          disabled={isSubmitting || wasValidated}
+                          onClick={() => handleStatusChange("cancelled")}
+                          title={wasValidated ? "Cannot cancel case after validation has started" : undefined}
+                        >
+                          🚫 Cancel Case
+                        </Button>
+                      </div>
+                    )}
+                    {caseRecord.status === "submitted_to_client" && (
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white w-full"
+                          disabled={isSubmitting}
+                          onClick={() => handleStatusChange("approved")}
+                        >
+                          ✓ Approve Case
+                        </Button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs font-medium text-amber-700 border-amber-200 hover:bg-amber-50"
+                            onClick={handleRequestChanges}
+                          >
+                            ✗ Request Changes
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs font-medium text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={handleRejectCase}
+                          >
+                            🚫 Reject Case
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {caseRecord.status === "client_reject" && (
+                      <p className="text-xs text-red-600 font-semibold text-center py-1 bg-red-50 border border-red-100 rounded-md">
+                        ✗ This case has been rejected.
+                      </p>
+                    )}
+                    {!["scan_received", "scan_not_verified", "scan_verified", "on_hold", "submitted_to_client", "client_reject"].includes(caseRecord.status) && (
+                      <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
+                    )}
+                  </div>
+                </CardContent>
+              )}
+              {chatSide === "admin" && (
+                <CardContent className="py-3 px-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-2">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Internal Actions</p>
+                  <div className="flex flex-col gap-2">
+                    {caseRecord.status === "change_requested" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="sm"
+                          className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+                          disabled={isSubmitting}
+                          onClick={() => handleStatusChange("client_feedback")}
+                        >
+                          ✓ Accept Request
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs font-medium text-red-600 border-red-200 hover:bg-red-50"
+                          disabled={isSubmitting}
+                          onClick={() => handleStatusChange("submitted_to_client")}
+                        >
+                          ✗ Decline Request
+                        </Button>
+                      </div>
+                    )}
+                    {caseRecord.status === "client_reject" && (
+                      <p className="text-xs text-red-600 font-semibold text-center py-1 bg-red-50 border border-red-100 rounded-md">
+                        ✗ This case has been rejected by the client.
+                      </p>
+                    )}
+                    {caseRecord.status !== "change_requested" && caseRecord.status !== "client_reject" && (
+                      <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
+                    )}
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+
+            {/* Activity Timeline Card */}
+            <Card className="shadow-card flex flex-col h-full">
+              <CardHeader className="py-2.5 px-4 border-b border-border/50">
+                <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>
+              </CardHeader>
+              <CardContent className="mt-2 px-4 max-h-[450px] overflow-y-scroll pr-2 custom-scrollbar">
+                {displayActivities.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No activity recorded for this case yet.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {displayActivities.map((activity, index) => (
+                      <div key={activity.id} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <div className="mt-1 h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
+                          {index < displayActivities.length - 1 && <div className="mt-1.5 w-0.5 flex-1 bg-emerald-200" />}
+                        </div>
+                        <div className="pb-1">
+                          <p className="text-xs font-semibold text-foreground">{activity.label}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {formatActivityTimestamp(activity.actionAt)} · {activity.actor}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Client Self-Serve Contextual Actions */}
-          {chatSide === "lab" && (
-            <CardContent className="py-3 px-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-2">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Lab Actions</p>
-              <div className="flex flex-col gap-2">
-                {caseRecord.status === "scan_received" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="text-xs font-medium"
-                      disabled={isSubmitting}
-                      onClick={() => handleStatusChange("on_hold")}
-                    >
-                      ⏸ Hold Case
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="text-xs font-medium"
-                      disabled={isSubmitting}
-                      onClick={() => handleStatusChange("cancelled")}
-                    >
-                      🚫 Cancel Case
-                    </Button>
-                  </div>
-                )}
-                {["scan_not_verified", "scan_verified"].includes(caseRecord.status) && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="w-full text-xs font-medium"
-                    disabled={isSubmitting}
-                    onClick={() => handleStatusChange("on_hold")}
-                  >
-                    ⏸ Put Case on Hold
-                  </Button>
-                )}
-                {caseRecord.status === "on_hold" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      size="sm"
-                      className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={isSubmitting}
-                      onClick={() => handleStatusChange("scan_received")}
-                    >
-                      ▶ Resume Case
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="text-xs font-medium"
-                      disabled={isSubmitting || wasValidated}
-                      onClick={() => handleStatusChange("cancelled")}
-                      title={wasValidated ? "Cannot cancel case after validation has started" : undefined}
-                    >
-                      🚫 Cancel Case
-                    </Button>
-                  </div>
-                )}
-                {caseRecord.status === "submitted_to_client" && (
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      size="sm"
-                      className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white w-full"
-                      disabled={isSubmitting}
-                      onClick={() => handleStatusChange("approved")}
-                    >
-                      ✓ Approve Case
-                    </Button>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs font-medium text-amber-700 border-amber-200 hover:bg-amber-50"
-                        onClick={handleRequestChanges}
-                      >
-                        ✗ Request Changes
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs font-medium text-red-600 border-red-200 hover:bg-red-50"
-                        onClick={handleRejectCase}
-                      >
-                        🚫 Reject Case
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                {caseRecord.status === "client_reject" && (
-                  <p className="text-xs text-red-600 font-semibold text-center py-1 bg-red-50 border border-red-100 rounded-md">
-                    ✗ This case has been rejected.
-                  </p>
-                )}
-                {!["scan_received", "scan_not_verified", "scan_verified", "on_hold", "submitted_to_client", "client_reject"].includes(caseRecord.status) && (
-                  <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
-                )}
-              </div>
-            </CardContent>
-          )}
-          {chatSide === "admin" && (
-            <CardContent className="py-3 px-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-2">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Internal Actions</p>
-              <div className="flex flex-col gap-2">
-                {caseRecord.status === "change_requested" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      size="sm"
-                      className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={isSubmitting}
-                      onClick={() => handleStatusChange("client_feedback")}
-                    >
-                      ✓ Accept Request
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs font-medium text-red-600 border-red-200 hover:bg-red-50"
-                      disabled={isSubmitting}
-                      onClick={() => handleStatusChange("submitted_to_client")}
-                    >
-                      ✗ Decline Request
-                    </Button>
-                  </div>
-                )}
-                {caseRecord.status === "client_reject" && (
-                  <p className="text-xs text-red-600 font-semibold text-center py-1 bg-red-50 border border-red-100 rounded-md">
-                    ✗ This case has been rejected by the client.
-                  </p>
-                )}
-                {caseRecord.status !== "change_requested" && caseRecord.status !== "client_reject" && (
-                  <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
-                )}
-              </div>
-            </CardContent>
-          )}
-        </Card>
+          {/* Full Width Section: Attachments & Case Chat */}
+          <div className="space-y-4">
 
-        {/* Activity Timeline Card */}
-        <Card className="shadow-card flex flex-col h-full">
-          <CardHeader className="py-2.5 px-4 border-b border-border/50">
-            <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>
-          </CardHeader>
-          <CardContent className="mt-2 px-4 max-h-[450px] overflow-y-scroll pr-2 custom-scrollbar">
-            {displayActivities.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No activity recorded for this case yet.</p>
-            ) : (
-              <div className="space-y-4">
-                {displayActivities.map((activity, index) => (
-                  <div key={activity.id} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div className="mt-1 h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
-                      {index < displayActivities.length - 1 && <div className="mt-1.5 w-0.5 flex-1 bg-emerald-200" />}
-                    </div>
-                    <div className="pb-1">
-                      <p className="text-xs font-semibold text-foreground">{activity.label}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {formatActivityTimestamp(activity.actionAt)} · {activity.actor}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Full Width Section: Attachments & Case Chat */}
-      <div className="space-y-4">
-
-        {(chatSide === "admin" || ["submitted_to_client", "approved", "delivered"].includes(caseRecord.status)) && (caseRecord.outputFile || caseRecord.previewFile) && (
-          <Card className="shadow-card bg-white">
-            <CardHeader className="py-2.5 px-4 border-b border-border/50">
-              <CardTitle className="text-sm font-semibold text-black flex items-center gap-2">
-                {/* <FileText className="h-4 w-4" /> */}
-                Design Deliverables
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="mt-2 px-4 pb-3 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {caseRecord.outputFile && (
-                  <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-900">Final Design File</h4>
-                      {caseRecord.outputNote ? (
-                        <p className="text-xs text-primary mt-1.5 bg-primary/10 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
-                          {caseRecord.outputNote}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground mt-1">This is the ready-to-use production CAD/CAM file.</p>
-                      )}
-                    </div>
-                    <div className="mt-4">
-                      <a href={caseRecord.outputFile} download target="_blank" rel="noreferrer" className="w-full block">
-                        <Button size="sm" className="w-full bg-primary hover:bg-primary/80 text-white gap-2 font-medium">
-                          <Download className="h-4 w-4" /> Download Design
-                        </Button>
-                      </a>
-                    </div>
-                  </div>
-                )}
-
-                {caseRecord.previewFile && (() => {
-                  const fileType = getPreviewFileType(caseRecord.previewFile);
-                  if (fileType === 'zip') {
-                    return (
+            {(chatSide === "admin" || ["submitted_to_client", "approved", "delivered"].includes(caseRecord.status)) && (caseRecord.outputFile || caseRecord.previewFile) && (
+              <Card className="shadow-card bg-white">
+                <CardHeader className="py-2.5 px-4 border-b border-border/50">
+                  <CardTitle className="text-sm font-semibold text-black flex items-center gap-2">
+                    {/* <FileText className="h-4 w-4" /> */}
+                    Design Deliverables
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="mt-2 px-4 pb-3 space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {caseRecord.outputFile && (
                       <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
                         <div>
-                          <h4 className="text-sm font-semibold text-indigo-950">Design Preview Archive</h4>
-                          <p className="text-xs text-muted-foreground mt-1">ZIP archive containing preview assets.</p>
+                          <h4 className="text-sm font-semibold text-gray-900">Final Design File</h4>
+                          {caseRecord.outputNote ? (
+                            <p className="text-xs text-primary mt-1.5 bg-primary/10 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
+                              {caseRecord.outputNote}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground mt-1">This is the ready-to-use production CAD/CAM file.</p>
+                          )}
                         </div>
                         <div className="mt-4">
-                          <a href={caseRecord.previewFile} download target="_blank" rel="noreferrer" className="w-full block">
-                            <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium">
-                              <Download className="h-4 w-4" /> Download Preview ZIP
+                          <a href={caseRecord.outputFile} download target="_blank" rel="noreferrer" className="w-full block">
+                            <Button size="sm" className="w-full bg-primary hover:bg-primary/80 text-white gap-2 font-medium">
+                              <Download className="h-4 w-4" /> Download Design
                             </Button>
                           </a>
                         </div>
                       </div>
-                    );
-                  }
+                    )}
 
-                  return (
-                    <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-                      <div>
-                        <h4 className="text-sm font-semibold text-indigo-950">
-                          {fileType === 'image' ? "Design Image Preview" : "Interactive 3D Preview"}
-                        </h4>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {fileType === 'image' ? "Image preview of the designed case." : "HTML interactive 3D rendering of the case."}
-                        </p>
-                      </div>
-                      <div className="mt-4">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setShowPreview(!showPreview)}
-                          className="w-full border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
-                        >
-                          <Eye className="w-4 h-4" />
-                          {showPreview ? "Hide Preview" : "Show Preview"}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
+                    {caseRecord.previewFile && (() => {
+                      const fileType = getPreviewFileType(caseRecord.previewFile);
+                      if (fileType === 'zip') {
+                        return (
+                          <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                            <div>
+                              <h4 className="text-sm font-semibold text-indigo-950">Design Preview Archive</h4>
+                              <p className="text-xs text-muted-foreground mt-1">ZIP archive containing preview assets.</p>
+                            </div>
+                            <div className="mt-4">
+                              <a href={caseRecord.previewFile} download target="_blank" rel="noreferrer" className="w-full block">
+                                <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium">
+                                  <Download className="h-4 w-4" /> Download Preview ZIP
+                                </Button>
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      }
 
-              {caseRecord.previewFile && showPreview && (() => {
-                const fileType = getPreviewFileType(caseRecord.previewFile);
-                if (fileType === 'zip') return null;
-
-                return (
-                  <div className="mt-4 border border-indigo-100 rounded-lg overflow-hidden bg-zinc-50 shadow-inner">
-                    <div className="bg-indigo-950/5 border-b border-indigo-100 px-4 py-2 flex items-center justify-between text-xs text-indigo-900 font-medium">
-                      <span>{fileType === 'image' ? "Image Preview" : "Interactive HTML Viewer"}</span>
-                      <a href={caseRecord.previewFile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-                        Open in New Tab ↗
-                      </a>
-                    </div>
-                    <div className="w-full flex items-center justify-center bg-zinc-900 overflow-auto" style={{ minHeight: "400px" }}>
-                      {fileType === 'image' ? (
-                        <img
-                          src={caseRecord.previewFile}
-                          alt="Design Preview"
-                          className="max-w-full max-h-[600px] object-contain p-2"
-                        />
-                      ) : (
-                        <iframe
-                          src={caseRecord.previewFile}
-                          className="w-full h-[500px] border-none bg-white"
-                          title="3D Design Preview"
-                        />
-                      )}
-                    </div>
+                      return (
+                        <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                          <div>
+                            <h4 className="text-sm font-semibold text-indigo-950">
+                              {fileType === 'image' ? "Design Image Preview" : "Interactive 3D Preview"}
+                            </h4>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {fileType === 'image' ? "Image preview of the designed case." : "HTML interactive 3D rendering of the case."}
+                            </p>
+                          </div>
+                          <div className="mt-4">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setShowPreview(!showPreview)}
+                              className="w-full border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
+                            >
+                              {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              {showPreview ? "Hide Preview" : "Show Preview"}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
-                );
-              })()}
-            </CardContent>
-          </Card>
-        )}
+
+                  {caseRecord.previewFile && showPreview && (() => {
+                    const fileType = getPreviewFileType(caseRecord.previewFile);
+                    if (fileType === 'zip') return null;
+
+                    return (
+                      <div className="mt-4 border border-indigo-100 rounded-lg overflow-hidden bg-zinc-50 shadow-inner">
+                        <div className="bg-indigo-950/5 border-b border-indigo-100 px-4 py-2 flex items-center justify-between text-xs text-indigo-900 font-medium">
+                          <span>{fileType === 'image' ? "Image Preview" : "Interactive HTML Viewer"}</span>
+                          <a href={caseRecord.previewFile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                            Open in New Tab ↗
+                          </a>
+                        </div>
+                        <div className="w-full flex items-center justify-center bg-zinc-900 overflow-auto" style={{ minHeight: "400px" }}>
+                          {fileType === 'image' ? (
+                            <img
+                              src={caseRecord.previewFile}
+                              alt="Design Preview"
+                              className="max-w-full max-h-[600px] object-contain p-2"
+                            />
+                          ) : (
+                            <iframe
+                              src={caseRecord.previewFile}
+                              className="w-full h-[500px] border-none bg-white"
+                              title="3D Design Preview"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            )}
 
 
 
-        <div ref={chatRef}>
-          <Card className="shadow-card overflow-hidden">
-            <CardHeader className="py-2.5 px-4 border-b border-border/50 bg-muted/10">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-primary" />
-                Case Chat
-                <span className="text-[11px] font-normal text-muted-foreground ml-1">— with Iconic Connect Team</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <CaseChat
-                caseId={caseRecord.id}
-                side={chatSide}
-                className="border-none rounded-none"
-                heightClass="h-[360px]"
-                disabled={caseRecord.status === "client_reject"}
-              />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+            <div ref={chatRef}>
+              <Card className="shadow-card overflow-hidden">
+                <CardHeader className="py-2.5 px-4 border-b border-border/50 bg-muted/10">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-primary" />
+                    Case Chat
+                    <span className="text-[11px] font-normal text-muted-foreground ml-1">— with Iconic Connect Team</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <CaseChat
+                    caseId={caseRecord.id}
+                    side={chatSide}
+                    className="border-none rounded-none"
+                    heightClass="h-[360px]"
+                    disabled={caseRecord.status === "client_reject"}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </>
       )}
 

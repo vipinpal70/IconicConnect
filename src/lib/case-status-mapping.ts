@@ -60,7 +60,7 @@ const designOnly: FlowMapping = {
 // Design + Milling — happy path:
 // scan_received -> scan_verified -> allocated_to_designer -> in_progress ->
 // internal_qc -> ready_for_milling -> milling_in_progress -> milling_qc ->
-// packaging -> dispatched -> delivered
+// dispatched -> delivered
 // There is no client-approval step in this flow — once QC's checklist is
 // complete the case goes straight to milling-centre assignment.
 const designMilling: FlowMapping = {
@@ -70,7 +70,6 @@ const designMilling: FlowMapping = {
     'In Design',
     'Internal QC',
     'In Production',
-    'Packaging',
     'Dispatched',
     'Delivered',
   ],
@@ -91,29 +90,23 @@ const designMilling: FlowMapping = {
     ready_for_milling: { adminLabel: 'Ready for Milling', clientLabel: 'In Production', lifecycleStep: 'In Production', clientVisible: true, actionType: 'admin_action' },
     milling_in_progress: { adminLabel: 'Milling in Progress', clientLabel: 'In Production', lifecycleStep: 'In Production', clientVisible: true, actionType: 'milling_action' },
     milling_qc: { adminLabel: 'Milling QC', clientLabel: 'In Production', lifecycleStep: 'In Production', clientVisible: true, actionType: 'milling_action' },
-    packaging: { adminLabel: 'Packaging', clientLabel: 'Packaging', lifecycleStep: 'Packaging', clientVisible: true, actionType: 'milling_action' },
     dispatched: { adminLabel: 'Dispatched', clientLabel: 'Dispatched', lifecycleStep: 'Dispatched', clientVisible: true, actionType: 'milling_action' },
     delivered: { adminLabel: 'Delivered', clientLabel: 'Delivered', lifecycleStep: 'Delivered', clientVisible: true, terminal: true, actionType: 'milling_action' },
     on_hold: { adminLabel: 'On Hold', clientLabel: 'On Hold', lifecycleStep: 'In Validation', clientVisible: true, actionType: 'exception' },
     cancelled: { adminLabel: 'Cancelled', clientLabel: 'Cancelled', lifecycleStep: 'Terminal Exception', clientVisible: true, terminal: true, actionType: 'exception' },
     client_reject: { adminLabel: 'Rejected', clientLabel: 'Rejected', lifecycleStep: 'Terminal Exception', clientVisible: true, terminal: true, actionType: 'exception' },
   },
-  // No statuses from the current enum are unreachable for this flow — but
-  // production statuses must not be reachable before Internal QC completes;
-  // enforced by the transition guard (src/lib/case-status-transitions.ts),
-  // not here.
-  skippedStatuses: [],
+  skippedStatuses: ['packaging'],
 }
 
 // Milling Only — happy path:
 // scan_received -> scan_verified -> ready_for_milling -> milling_in_progress
-// -> milling_qc -> packaging -> dispatched -> delivered
+// -> milling_qc -> dispatched -> delivered
 const millingOnly: FlowMapping = {
   lifecycleSteps: [
     'Submitted',
     'In Validation',
     'In Production',
-    'Packaging',
     'Dispatched',
     'Delivered',
   ],
@@ -124,7 +117,6 @@ const millingOnly: FlowMapping = {
     ready_for_milling: { adminLabel: 'Ready for Milling', clientLabel: 'In Production', lifecycleStep: 'In Production', clientVisible: true, actionType: 'admin_action' },
     milling_in_progress: { adminLabel: 'Milling in Progress', clientLabel: 'In Production', lifecycleStep: 'In Production', clientVisible: true, actionType: 'milling_action' },
     milling_qc: { adminLabel: 'Milling QC', clientLabel: 'In Production', lifecycleStep: 'In Production', clientVisible: true, actionType: 'milling_action' },
-    packaging: { adminLabel: 'Packaging', clientLabel: 'Packaging', lifecycleStep: 'Packaging', clientVisible: true, actionType: 'milling_action' },
     dispatched: { adminLabel: 'Dispatched', clientLabel: 'Dispatched', lifecycleStep: 'Dispatched', clientVisible: true, actionType: 'milling_action' },
     delivered: { adminLabel: 'Delivered', clientLabel: 'Delivered', lifecycleStep: 'Delivered', clientVisible: true, terminal: true, actionType: 'milling_action' },
     on_hold: { adminLabel: 'On Hold', clientLabel: 'On Hold', lifecycleStep: 'In Validation', clientVisible: true, actionType: 'exception' },
@@ -141,6 +133,7 @@ const millingOnly: FlowMapping = {
     'change_requested',
     'client_feedback',
     'approved',
+    'packaging',
   ],
 }
 

@@ -42,6 +42,8 @@ export default function MillingCentersPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [pocSameAsLab, setPocSameAsLab] = useState(false);
+  const [financeSameAsLab, setFinanceSameAsLab] = useState(false);
   const [managingCenter, setManagingCenter] = useState<MillingCenter | null>(null);
 
   const { data: list = [], isLoading } = useQuery<MillingCenter[]>({
@@ -51,19 +53,37 @@ export default function MillingCentersPage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin-milling-centers"] });
 
+  const resetFormState = () => {
+    setForm(emptyForm);
+    setPocSameAsLab(false);
+    setFinanceSameAsLab(false);
+  };
+
   const closeDialog = () => {
     setOpen(false);
-    setForm(emptyForm);
+    resetFormState();
   };
+
+  const effectivePocEmail = pocSameAsLab ? form.ownerEmail : form.email;
 
   // Onboarding only ever creates the row here — everything else (coverage,
   // services, catalog, contract doc) is managed on the centre's detail page.
   const createMutation = useMutation({
     mutationFn: async () => {
+      const payload = {
+        ...form,
+        contactName: pocSameAsLab ? form.ownerName : form.contactName,
+        email: pocSameAsLab ? form.ownerEmail : form.email,
+        phone: pocSameAsLab ? form.ownerPhone : form.phone,
+        financePocName: financeSameAsLab ? form.ownerName : form.financePocName,
+        financePocEmail: financeSameAsLab ? form.ownerEmail : form.financePocEmail,
+        financePocPhone: financeSameAsLab ? form.ownerPhone : form.financePocPhone,
+      };
+
       const res = await fetch("/api/admin/milling/centers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -111,7 +131,7 @@ export default function MillingCentersPage() {
         </div>
         <Dialog open={open} onOpenChange={(o) => { if (!o) closeDialog(); else setOpen(true); }}>
           <DialogTrigger asChild>
-            <Button onClick={() => setForm(emptyForm)}>
+            <Button onClick={resetFormState}>
               <Plus className="h-4 w-4 mr-2" />Onboard Centre
             </Button>
           </DialogTrigger>
@@ -124,35 +144,95 @@ export default function MillingCentersPage() {
             </DialogHeader>
 
             <div className="space-y-4 mt-2">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Company name *"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-                <Field label="Company legal name"><Input value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} /></Field>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-primary/70">Point of contact (used for milling portal login)</p>
+              {/* 1. LAB DETAILS */}
+              <div className="space-y-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <p className="text-xs font-semibold text-primary">1. Lab Details</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Company name *"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+                  <Field label="Company legal name"><Input value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} /></Field>
+                </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Field label="POC name"><Input value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} /></Field>
-                  <Field label="POC email"><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-                  <Field label="POC phone"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+                  <Field label="Lab owner name"><Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} /></Field>
+                  <Field label="Lab owner email"><Input value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })} /></Field>
+                  <Field label="Lab owner phone"><Input value={form.ownerPhone} onChange={(e) => setForm({ ...form, ownerPhone: e.target.value })} /></Field>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-primary/70">Lab owner</p>
+              {/* 2. POC DETAILS */}
+              <div className="space-y-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-primary">2. Point of Contact (used for milling portal login)</p>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={pocSameAsLab}
+                      onChange={(e) => setPocSameAsLab(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary"
+                    />
+                    Same as Lab
+                  </label>
+                </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Field label="Name"><Input value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} /></Field>
-                  <Field label="Email"><Input value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })} /></Field>
-                  <Field label="Phone"><Input value={form.ownerPhone} onChange={(e) => setForm({ ...form, ownerPhone: e.target.value })} /></Field>
+                  <Field label="POC name">
+                    <Input
+                      value={pocSameAsLab ? form.ownerName : form.contactName}
+                      onChange={(e) => setForm({ ...form, contactName: e.target.value })}
+                      disabled={pocSameAsLab}
+                    />
+                  </Field>
+                  <Field label="POC email">
+                    <Input
+                      value={pocSameAsLab ? form.ownerEmail : form.email}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      disabled={pocSameAsLab}
+                    />
+                  </Field>
+                  <Field label="POC phone">
+                    <Input
+                      value={pocSameAsLab ? form.ownerPhone : form.phone}
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                      disabled={pocSameAsLab}
+                    />
+                  </Field>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-primary/70">Finance POC</p>
+              {/* 3. FINANCE DETAILS */}
+              <div className="space-y-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-primary">3. Finance POC</p>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={financeSameAsLab}
+                      onChange={(e) => setFinanceSameAsLab(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary"
+                    />
+                    Same as Lab
+                  </label>
+                </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Field label="Name"><Input value={form.financePocName} onChange={(e) => setForm({ ...form, financePocName: e.target.value })} /></Field>
-                  <Field label="Email"><Input value={form.financePocEmail} onChange={(e) => setForm({ ...form, financePocEmail: e.target.value })} /></Field>
-                  <Field label="Phone"><Input value={form.financePocPhone} onChange={(e) => setForm({ ...form, financePocPhone: e.target.value })} /></Field>
+                  <Field label="Finance POC name">
+                    <Input
+                      value={financeSameAsLab ? form.ownerName : form.financePocName}
+                      onChange={(e) => setForm({ ...form, financePocName: e.target.value })}
+                      disabled={financeSameAsLab}
+                    />
+                  </Field>
+                  <Field label="Finance POC email">
+                    <Input
+                      value={financeSameAsLab ? form.ownerEmail : form.financePocEmail}
+                      onChange={(e) => setForm({ ...form, financePocEmail: e.target.value })}
+                      disabled={financeSameAsLab}
+                    />
+                  </Field>
+                  <Field label="Finance POC phone">
+                    <Input
+                      value={financeSameAsLab ? form.ownerPhone : form.financePocPhone}
+                      onChange={(e) => setForm({ ...form, financePocPhone: e.target.value })}
+                      disabled={financeSameAsLab}
+                    />
+                  </Field>
                 </div>
               </div>
 
@@ -177,7 +257,7 @@ export default function MillingCentersPage() {
                     <RefreshCw className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                {form.password && !form.email && (
+                {form.password && !effectivePocEmail && (
                   <p className="text-[11px] text-warning">POC email is required above to create a login.</p>
                 )}
               </Field>

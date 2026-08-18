@@ -12,6 +12,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
+import { getProfileLabName } from '@/src/lib/profile-utils';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5GB
 
@@ -39,13 +40,11 @@ async function getAuthedProfile() {
 /** Determine which client (and lab) an upload belongs to, mirroring the legacy route. */
 async function resolveClientContext(profile: AuthedProfile, adminClientId: string | null) {
   let clientId: string | undefined;
-  let labName = 'UnknownLab';
 
   if (isValidRoleForType('admin_portal', profile.role)) {
     clientId = adminClientId || profile.id;
   } else if (profile.role === 'client') {
     clientId = profile.id;
-    labName = profile.labName || 'UnknownLab';
   } else if (profile.role === 'subuser') {
     const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
     if (!subUserRecord.length) {
@@ -58,15 +57,15 @@ async function resolveClientContext(profile: AuthedProfile, adminClientId: strin
     return { error: NextResponse.json({ error: 'Failed to determine Client ID' }, { status: 400 }) };
   }
 
-  if (profile.role !== 'client') {
-    if (clientId === profile.id) {
-      labName = profile.labName || 'UnknownLab';
-    } else {
-      const clientProfile = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1).then(r => r[0]);
-      labName = clientProfile?.labName || 'UnknownLab';
+  let clientProfile = profile;
+  if (clientId !== profile.id) {
+    const targetProfile = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1).then(r => r[0]);
+    if (targetProfile) {
+      clientProfile = targetProfile as AuthedProfile;
     }
   }
 
+  const labName = getProfileLabName(clientProfile);
   return { clientId, labName };
 }
 

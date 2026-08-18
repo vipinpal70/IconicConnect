@@ -950,36 +950,55 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
 
               {/* Dynamic Fields */}
               {CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
-                <div className="space-y-2" key={field.name}>
-                  <Label className="text-xs font-semibold text-gray-700">{field.label}</Label>
-                  <Select
-                    disabled={isSubmitting}
-                    value={subTypeData[field.name] || ""}
-                    onValueChange={(v) => {
-                      setSubTypeData({ ...subTypeData, [field.name]: v })
-                      // Die controls whether the "Die Selection" tooth chart
-                      // below is shown/required — clear any prior selection
-                      // when it's turned back off (3d-model-implement-plan.md §8).
-                      if (field.name === "die" && v !== "Yes") setTeeth([])
-                    }}
-                  >
-                    <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
-                    <SelectContent className="bg-emerald-800 text-white">
-                      {field.options
-                        .filter((opt) => priceListLoading || isFieldOptionEnabled(category, field.name, opt, enabledKeys))
-                        .map((opt) => (
-                          <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
-                            {opt}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                field.name === "die" ? (
+                  <div className="space-y-2 pt-1" key={field.name}>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="add-case-die-checkbox"
+                        disabled={isSubmitting || (!priceListLoading && !isFieldOptionEnabled(category, "die", "Yes", enabledKeys))}
+                        checked={subTypeData.die === "Yes"}
+                        onChange={(e) => {
+                          const isChecked = e.target.checked
+                          setSubTypeData({ ...subTypeData, die: isChecked ? "Yes" : "No" })
+                          if (!isChecked) setTeeth([])
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <Label htmlFor="add-case-die-checkbox" className="text-xs font-semibold text-gray-700 cursor-pointer select-none">
+                        Die (per tooth)
+                      </Label>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2" key={field.name}>
+                    <Label className="text-xs font-semibold text-gray-700">{field.label}</Label>
+                    <Select
+                      disabled={isSubmitting}
+                      value={subTypeData[field.name] || ""}
+                      onValueChange={(v) => {
+                        setSubTypeData({ ...subTypeData, [field.name]: v })
+                        if (field.name === "die" && v !== "Yes") setTeeth([])
+                      }}
+                    >
+                      <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
+                      <SelectContent className="bg-emerald-800 text-white">
+                        {field.options
+                          .filter((opt) => priceListLoading || isFieldOptionEnabled(category, field.name, opt, enabledKeys))
+                          .map((opt) => (
+                            <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">
+                              {opt}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )
               ))}
 
               {category === "3D Model" ? (
                 subTypeData.die === "Yes" && (
-                  <div className="space-y-2">
+                  <div className="space-y-2 animate-in fade-in duration-200">
                     <Label className="text-xs font-semibold text-gray-700">Die Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
                     <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
                   </div>

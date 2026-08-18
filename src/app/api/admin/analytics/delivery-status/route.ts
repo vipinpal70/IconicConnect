@@ -18,8 +18,7 @@ const IN_PROGRESS_STATUSES = new Set(["scan_received", "scan_verified", "scan_no
 function bucketFor(status: string, serviceType: string): string {
   if (status === "delivered") return "Completed";
   if (status === "approved") return serviceType === "design_only" ? "Completed" : "In Production";
-  if (["ready_for_milling", "milling_in_progress", "milling_qc"].includes(status)) return "In Production";
-  if (status === "packaging") return "Packaging";
+  if (["ready_for_milling", "milling_in_progress", "milling_qc", "packaging"].includes(status)) return "In Production";
   if (status === "dispatched") return "Dispatched";
   if (status === "submitted_to_client") return "Awaiting Client";
   if (status === "client_feedback") return "Feedback";

@@ -78,8 +78,6 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
         return 'Milling started'
       case 'milling_qc':
         return 'Milling QC passed'
-      case 'packaging':
-        return 'Packaging started'
       case 'dispatched':
         return 'Dispatched by milling centre'
       case 'delivered':
@@ -142,8 +140,6 @@ function getClientTimelineOverride(
   if (action === 'case.milling_status_updated') {
     const status = typeof details?.status === 'string' ? details.status : null
     switch (status) {
-      case 'packaging':
-        return { clientLabel: 'Packaging' }
       case 'dispatched':
         return { clientLabel: 'Shipped by Iconic' }
       default:

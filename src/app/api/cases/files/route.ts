@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
+import { getProfileLabName } from '@/src/lib/profile-utils';
 
 function objectKey(labName: string, fileName: string) {
   return `${labName}/${fileName}`;
@@ -46,16 +47,31 @@ export async function GET(req: NextRequest) {
     ) {
       allowed = true;
     } else if (profile.role === 'client') {
-      // Allow only if labName matches
-      if (profile.labName === labName) {
+      const clientLab = getProfileLabName(profile);
+      if (
+        profile.labName === labName ||
+        clientLab === labName ||
+        (profile.fullName && profile.fullName === labName) ||
+        (profile.email && profile.email === labName) ||
+        labName === 'UnknownLab'
+      ) {
         allowed = true;
       }
     } else if (profile.role === 'subuser') {
       const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
       if (subUserRecord.length) {
         const parentClient = await db.select().from(profiles).where(eq(profiles.id, subUserRecord[0].clientId)).limit(1).then(res => res[0]);
-        if (parentClient?.labName === labName) {
-          allowed = true;
+        if (parentClient) {
+          const parentLab = getProfileLabName(parentClient);
+          if (
+            parentClient.labName === labName ||
+            parentLab === labName ||
+            (parentClient.fullName && parentClient.fullName === labName) ||
+            (parentClient.email && parentClient.email === labName) ||
+            labName === 'UnknownLab'
+          ) {
+            allowed = true;
+          }
         }
       }
     }
@@ -145,15 +161,31 @@ export async function DELETE(req: NextRequest) {
     ) {
       allowed = true;
     } else if (profile.role === 'client') {
-      if (profile.labName === labName) {
+      const clientLab = getProfileLabName(profile);
+      if (
+        profile.labName === labName ||
+        clientLab === labName ||
+        (profile.fullName && profile.fullName === labName) ||
+        (profile.email && profile.email === labName) ||
+        labName === 'UnknownLab'
+      ) {
         allowed = true;
       }
     } else if (profile.role === 'subuser') {
       const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
       if (subUserRecord.length) {
         const parentClient = await db.select().from(profiles).where(eq(profiles.id, subUserRecord[0].clientId)).limit(1).then(res => res[0]);
-        if (parentClient?.labName === labName) {
-          allowed = true;
+        if (parentClient) {
+          const parentLab = getProfileLabName(parentClient);
+          if (
+            parentClient.labName === labName ||
+            parentLab === labName ||
+            (parentClient.fullName && parentClient.fullName === labName) ||
+            (parentClient.email && parentClient.email === labName) ||
+            labName === 'UnknownLab'
+          ) {
+            allowed = true;
+          }
         }
       }
     }

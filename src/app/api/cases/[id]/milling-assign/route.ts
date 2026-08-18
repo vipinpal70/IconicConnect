@@ -21,7 +21,6 @@ const PRODUCTION_STATUSES = new Set([
   'ready_for_milling',
   'milling_in_progress',
   'milling_qc',
-  'packaging',
   'dispatched',
 ])
 

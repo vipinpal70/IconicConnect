@@ -12,6 +12,7 @@ import { getCasesChatMetadata } from '@/src/lib/chat';
 import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
 import { parseCatalogServiceType, getPriceListForClient, type CatalogServiceType, type PriceListEntryFull } from '@/src/lib/price-list';
 import { getRequiredServiceSelections } from '@/src/lib/case-hierarchy';
+import { getProfileLabName } from '@/src/lib/profile-utils';
 
 const CASES_LIST_TTL = 300 // 5 minutes
 
@@ -180,7 +181,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch client profile to get lab name for folder structure
     const clientProfile = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1).then(res => res[0]);
-    const labName = clientProfile?.labName || 'UnknownLab';
+    const labName = getProfileLabName(clientProfile);
     const enabledServiceTypes = clientProfile?.enabledServiceTypes ?? ['design_only'];
     const modelOnlyLab = clientProfile?.modelOnlyLab ?? false;
 

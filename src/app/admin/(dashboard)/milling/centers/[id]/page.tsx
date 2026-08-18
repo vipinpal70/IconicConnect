@@ -284,16 +284,16 @@ export default function MillingCenterDetailPage() {
                   </Field>
                 </div>
 
-                <FieldGroup label="Point of contact (milling portal login)">
-                  <Field label="Name"><Input value={companyForm.contactName} onChange={(e) => setCompanyForm({ ...companyForm, contactName: e.target.value })} /></Field>
-                  <Field label="Email"><Input value={companyForm.email} onChange={(e) => setCompanyForm({ ...companyForm, email: e.target.value })} /></Field>
-                  <Field label="Phone"><Input value={companyForm.phone} onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })} /></Field>
-                </FieldGroup>
-
                 <FieldGroup label="Lab owner">
                   <Field label="Name"><Input value={companyForm.ownerName} onChange={(e) => setCompanyForm({ ...companyForm, ownerName: e.target.value })} /></Field>
                   <Field label="Email"><Input value={companyForm.ownerEmail} onChange={(e) => setCompanyForm({ ...companyForm, ownerEmail: e.target.value })} /></Field>
                   <Field label="Phone"><Input value={companyForm.ownerPhone} onChange={(e) => setCompanyForm({ ...companyForm, ownerPhone: e.target.value })} /></Field>
+                </FieldGroup>
+
+                <FieldGroup label="Point of contact (milling portal login)">
+                  <Field label="Name"><Input value={companyForm.contactName} onChange={(e) => setCompanyForm({ ...companyForm, contactName: e.target.value })} /></Field>
+                  <Field label="Email"><Input value={companyForm.email} onChange={(e) => setCompanyForm({ ...companyForm, email: e.target.value })} /></Field>
+                  <Field label="Phone"><Input value={companyForm.phone} onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })} /></Field>
                 </FieldGroup>
 
                 <FieldGroup label="Finance POC">

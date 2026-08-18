@@ -11,6 +11,7 @@ import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-di
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { invalidateCasesCache, deleteCachedData } from '@/src/lib/redis-cache';
+import { getProfileLabName } from '@/src/lib/profile-utils';
 
 /**
  * Bulk confirm — attach each staged output file to its matched case and advance the case.
@@ -106,9 +107,9 @@ export async function POST(req: NextRequest) {
           throw new Error('No QC assigned — pick a QC lead before sending to QC');
         }
 
-        const client = await db.select({ labName: profiles.labName }).from(profiles)
+        const client = await db.select({ labName: profiles.labName, fullName: profiles.fullName, email: profiles.email }).from(profiles)
           .where(eq(profiles.id, caseRecord.clientId)).limit(1).then(r => r[0]);
-        const labName = client?.labName || 'UnknownLab';
+        const labName = getProfileLabName(client);
 
         // Move the staged object into the client-visible namespace so the download proxy
         // (/api/cases/files, which only serves objects under the client's labName) can read it.
