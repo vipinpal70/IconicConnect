@@ -166,7 +166,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
-    if (caseRecord.status === 'client_reject') {
+    if (caseRecord.status === 'client_reject' && (profile.role === 'client' || profile.role === 'subuser')) {
       return NextResponse.json({ error: 'Forbidden: This case has been rejected and cannot be modified.' }, { status: 400 });
     }
 
@@ -318,17 +318,15 @@ export async function PUT(
         }
 
         if (body.qcId !== undefined) {
-          if (body.qcId === profile.id && (!caseRecord.qcId || caseRecord.qcId === profile.id)) {
-            updateData.qcId = profile.id;
-          } else if (body.qcId !== caseRecord.qcId) {
-            return NextResponse.json({ error: 'Forbidden: QC can only self-assign as QC on this case' }, { status: 403 });
-          }
+          updateData.qcId = body.qcId;
         }
 
         if (target) {
-          if (target === 'scan_verified' && current === 'scan_received') {
+          if (target === 'allocated_to_designer' && (current === 'scan_received' || current === 'scan_verified' || current === 'client_feedback' || current === 'client_reject' || current === 'on_hold')) {
             updateData.status = target;
-          } else if (target === 'in_progress' && (current === 'scan_verified' || current === 'allocated_to_designer' || current === 'client_feedback') && (caseRecord.designerId === profile.id || updateData.designerId === profile.id)) {
+          } else if (target === 'scan_verified' && current === 'scan_received') {
+            updateData.status = target;
+          } else if (target === 'in_progress' && (current === 'scan_verified' || current === 'allocated_to_designer' || current === 'client_feedback' || current === 'client_reject') && (caseRecord.designerId === profile.id || updateData.designerId === profile.id)) {
             updateData.status = target;
           } else if (target === 'in_progress' && current === 'internal_qc' && caseRecord.qcId === profile.id) {
             updateData.status = target;

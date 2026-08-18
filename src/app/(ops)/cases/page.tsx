@@ -1358,7 +1358,13 @@ export default function CasesPage() {
                                         className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-sm">
                                         <Upload className="h-3 w-3 mr-1" /> Upload & Apply
                                       </Button>
+                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} label="Re-allocate"
+                                        onPick={(mId, role) => handleUpdate(c.id, role === "qc" ? { qcId: mId } : { designerId: mId, status: "in_progress" }, role === "qc" ? "Re-allocated QC lead to case" : "Re-allocated designer to case")} />
                                     </>
+                                  )}
+                                  {c.status === "client_reject" && (
+                                    <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} label="Re-allocate"
+                                      onPick={(mId, role) => handleUpdate(c.id, role === "qc" ? { qcId: mId } : { designerId: mId, status: "allocated_to_designer" }, role === "qc" ? "Re-allocated QC lead to rejected case" : "Re-allocated designer to rejected case")} />
                                   )}
                                   {c.status === "on_hold" && (
                                     <>
@@ -1367,7 +1373,8 @@ export default function CasesPage() {
                                         className="h-7 text-[10px] px-2 py-0.5 font-semibold  uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
                                         <RefreshCw className="h-3 w-3 mr-1" /> Resume Case
                                       </Button>
-                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to on-hold case")} />
+                                      <AllocateMenu designers={designers} qcs={qcs} disabled={isMutating} label="Re-allocate"
+                                        onPick={(mId, role) => handleUpdate(c.id, role === "qc" ? { qcId: mId } : { designerId: mId }, role === "qc" ? "Re-allocated QC lead to on-hold case" : "Allocated designer to on-hold case")} />
                                     </>
                                   )}
                                 </>
@@ -1407,12 +1414,20 @@ export default function CasesPage() {
                                     </Button>
                                   )}
 
-                                  {/* Allocate to a specific designer */}
-                                  {(c.status === "scan_received" || c.status === "scan_verified" || c.status === "on_hold") && (
+                                  {/* Allocate or re-allocate to a specific designer/QC */}
+                                  {(c.status === "scan_received" || c.status === "scan_verified" || c.status === "on_hold" || c.status === "client_reject" || c.status === "client_feedback" || c.status === "change_requested") && (
                                     <AllocateMenu
                                       designers={designers}
                                       qcs={qcs}
-                                      onPick={(dId) => handleUpdate(c.id, { designerId: dId }, "Allocated designer to case")}
+                                      label={["on_hold", "client_reject", "client_feedback", "change_requested"].includes(c.status) ? "Re-allocate" : "Allocate"}
+                                      onPick={(mId, role) => {
+                                        if (role === "qc") {
+                                          handleUpdate(c.id, { qcId: mId }, "Allocated QC lead to case");
+                                        } else {
+                                          const nextStatus = c.status === "client_reject" ? "allocated_to_designer" : undefined;
+                                          handleUpdate(c.id, nextStatus ? { designerId: mId, status: nextStatus } : { designerId: mId }, "Allocated designer to case");
+                                        }
+                                      }}
                                       disabled={isMutating}
                                     />
                                   )}
@@ -1989,14 +2004,21 @@ export default function CasesPage() {
   );
 }
 
-function AllocateMenu({ designers, qcs, onPick, disabled }: { designers: OpsMember[]; qcs: OpsMember[]; onPick: (memberId: string) => void; disabled?: boolean }) {
+function AllocateMenu({ designers, qcs, onPick, disabled, label = "Allocate" }: { designers: OpsMember[]; qcs: OpsMember[]; onPick: (memberId: string, role: "designer" | "qc") => void; disabled?: boolean; label?: string }) {
   const hasAny = designers.length > 0 || qcs.length > 0
   return (
-    <Select onValueChange={onPick} disabled={disabled}>
+    <Select
+      onValueChange={(val) => {
+        if (!val || val === "none") return;
+        const isQc = qcs.some((q) => q.id === val);
+        onPick(val, isQc ? "qc" : "designer");
+      }}
+      disabled={disabled}
+    >
       <SelectTrigger className="h-7 text-[10px] w-auto min-w-[95px] max-w-[130px] border-border/80 bg-white px-2 py-0.5 font-semibold text-zinc-800 shadow-sm hover:bg-slate-50 rounded-md inline-flex items-center justify-between gap-1 whitespace-nowrap shrink-0 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0 [&>span]:line-clamp-none [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1 [&>span]:whitespace-nowrap">
         <span className="inline-flex items-center gap-1 whitespace-nowrap shrink-0 text-zinc-800">
           <UserPlus className="h-3 w-3 shrink-0" />
-          <span className="truncate">Allocate</span>
+          <span className="truncate">{label}</span>
         </span>
       </SelectTrigger>
       <SelectContent className="bg-primary border-primary/50 text-white">

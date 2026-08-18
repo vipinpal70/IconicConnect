@@ -1320,21 +1320,57 @@ export default function AdminCasesPage() {
 																	)}
 
 																	{caseItem.status === "client_feedback" && (
-																		<Button
-																			size="sm"
-																			variant="outline"
-																			disabled={isMutating}
-																			onClick={() =>
-																				handleUpdate(
-																					caseItem.id,
-																					{ status: "in_progress" },
-																					`Sent case back to design`,
-																				)
-																			}
-																			className="h-7 text-[10px] px-2"
-																		>
-																			Back to designer
-																		</Button>
+																		<>
+																			<Button
+																				size="sm"
+																				variant="outline"
+																				disabled={isMutating}
+																				onClick={() =>
+																					handleUpdate(
+																						caseItem.id,
+																						{ status: "in_progress" },
+																						`Sent case back to design`,
+																					)
+																				}
+																				className="h-7 text-[10px] px-2"
+																			>
+																				Back to designer
+																			</Button>
+																			{caseItem.serviceType !== "milling_only" && (
+																				<AllocateMenu
+																					designers={designers}
+																					qcs={qcs}
+																					disabled={isMutating}
+																					label="Re-allocate"
+																					onPick={(mId, role) =>
+																						handleUpdate(
+																							caseItem.id,
+																							role === "qc" ? { qcId: mId } : { designerId: mId, status: "in_progress" },
+																							role === "qc" ? `Re-allocated QC lead to case` : `Re-allocated designer to case`,
+																						)
+																					}
+																				/>
+																			)}
+																		</>
+																	)}
+																	{caseItem.status === "client_reject" && (
+																		<>
+																			{caseItem.serviceType !== "milling_only" && (
+																				<AllocateMenu
+																					designers={designers}
+																					qcs={qcs}
+																					disabled={isMutating}
+																					label="Re-allocate"
+																					onPick={(mId, role) =>
+																						handleUpdate(
+																							caseItem.id,
+																							role === "qc" ? { qcId: mId } : { designerId: mId, status: "allocated_to_designer" },
+																							role === "qc" ? `Re-allocated QC lead to rejected case` : `Re-allocated designer to rejected case`,
+																						)
+																					}
+																				/>
+																			)}
+																		</>
 																	)}
 																	{caseItem.status === "on_hold" && (
 																		<>
@@ -1358,11 +1394,12 @@ export default function AdminCasesPage() {
 																					designers={designers}
 																					qcs={qcs}
 																					disabled={isMutating}
-																					onPick={(dId) =>
+																					label="Re-allocate"
+																					onPick={(mId, role) =>
 																						handleUpdate(
 																							caseItem.id,
-																							{ designerId: dId },
-																							`Allocated designer to on-hold case`,
+																							role === "qc" ? { qcId: mId } : { designerId: mId },
+																							role === "qc" ? `Re-allocated QC lead to on-hold case` : `Allocated designer to on-hold case`,
 																						)
 																					}
 																				/>
@@ -2203,19 +2240,28 @@ const AllocateMenu = React.memo(function AllocateMenu({
 	qcs,
 	onPick,
 	disabled,
+	label = "Allocate",
 }: {
 	designers: MemberRecord[];
 	qcs: MemberRecord[];
-	onPick: (memberId: string) => void;
+	onPick: (memberId: string, role: "designer" | "qc") => void;
 	disabled?: boolean;
+	label?: string;
 }) {
 	const hasAny = designers.length > 0 || qcs.length > 0;
 	return (
-		<Select onValueChange={onPick} disabled={disabled}>
+		<Select
+			onValueChange={(val) => {
+				if (!val || val === "none") return;
+				const isQc = qcs.some((q) => q.id === val);
+				onPick(val, isQc ? "qc" : "designer");
+			}}
+			disabled={disabled}
+		>
 			<SelectTrigger className="h-7 text-[10px] w-auto min-w-[95px] max-w-[130px] border-border/80 bg-white px-2 py-0.5 font-semibold text-zinc-800 shadow-sm hover:bg-slate-50 rounded-md inline-flex items-center justify-between gap-1 whitespace-nowrap shrink-0 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0 [&>span]:line-clamp-none [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1 [&>span]:whitespace-nowrap">
 				<span className="inline-flex items-center gap-1 whitespace-nowrap shrink-0 text-zinc-800">
 					<UserPlus className="h-3 w-3 shrink-0" />
-					<span className="truncate">Allocate</span>
+					<span className="truncate">{label}</span>
 				</span>
 			</SelectTrigger>
 			<SelectContent className="bg-primary border-primary/50 text-white">
