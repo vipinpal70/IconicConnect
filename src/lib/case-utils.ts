@@ -37,3 +37,26 @@ export const HOLD_REASONS = [
   "Scans missing",
   "Other (please specify)"
 ] as const;
+
+/**
+ * Statuses a client (or their sub-user) may cancel a case from: anything
+ * before design work has actually started, plus a case parked on hold.
+ * From `in_progress` onwards a designer is already working on the case, so
+ * only an admin can cancel it.
+ */
+export const CLIENT_CANCELLABLE_STATUSES = [
+  "scan_received",
+  "scan_not_verified",
+  "scan_verified",
+  "allocated_to_designer",
+  "on_hold",
+] as const;
+
+export function canClientCancelCase(status: string): boolean {
+  return (CLIENT_CANCELLABLE_STATUSES as readonly string[]).includes(status);
+}
+
+/** A case already in a cancelled state can't be cancelled again. */
+export function canAdminCancelCase(status: string): boolean {
+  return status !== "cancelled";
+}

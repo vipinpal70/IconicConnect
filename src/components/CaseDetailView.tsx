@@ -15,7 +15,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/componen
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
 import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
-import { HOLD_REASONS } from "@/src/lib/case-utils"
+import { HOLD_REASONS, canAdminCancelCase, canClientCancelCase } from "@/src/lib/case-utils"
+import { fetchProfileWithCache } from "@/src/lib/profile-cache"
 import { Eye, EyeOff } from "lucide-react"
 import type { MillingCenter } from "@/src/db/schema/milling"
 import type { RoutingResult } from "@/src/lib/milling/routing-engine"
@@ -220,7 +221,19 @@ export function CaseDetailView({
   const [changeNotes, setChangeNotes] = useState("")
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
   const [rejectNotes, setRejectNotes] = useState("")
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+  const [cancelNotes, setCancelNotes] = useState("")
   const [activeTab, setActiveTab] = useState<"details" | "milling">("details")
+
+  // `chatSide === "admin"` covers every internal portal (admin, QC, designer),
+  // but cancelling at any stage is an admin-only power — so the actual role
+  // is needed, not just the portal side.
+  const { data: viewerProfile } = useQuery({
+    queryKey: ["profile"],
+    queryFn: fetchProfileWithCache,
+    staleTime: 5 * 60_000,
+  })
+  const isAdminViewer = viewerProfile?.role === "admin"
 
   const handleStatusChange = async (targetStatus: string, holdReason?: string) => {
     if (targetStatus === "on_hold" && !holdReason) {
@@ -354,6 +367,41 @@ export function CaseDetailView({
     setIsRejectDialogOpen(true)
   }
 
+  const handleCancelCase = () => {
+    setCancelNotes("")
+    setIsCancelDialogOpen(true)
+  }
+
+  const handleConfirmCancel = async () => {
+    setIsSubmitting(true)
+    try {
+      const reason = cancelNotes.trim()
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "cancelled",
+          ...(reason ? { cancelReason: reason } : {}),
+        }),
+      })
+      if (res.ok) {
+        toast.success("Case cancelled.")
+        setIsCancelDialogOpen(false)
+        setCancelNotes("")
+        await queryClient.invalidateQueries({ queryKey: ["case", caseId] })
+        await queryClient.invalidateQueries({ queryKey: ["case-files", caseId] })
+        router.refresh()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || "Failed to cancel case")
+      }
+    } catch {
+      toast.error("Failed to cancel case")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const { data: caseResponse, isLoading, error } = useQuery<{ data: CaseRecord }>({
     queryKey: ["case", caseId],
     queryFn: async () => {
@@ -385,9 +433,6 @@ export function CaseDetailView({
   const files = filesResponse?.data || []
   const activities = caseRecord?.timeline || []
   const displayActivities = toViewerSafeActivities(activities, chatSide)
-  const wasValidated = activities.some(
-    (act) => act.label === "Scan validated" || act.label === "Scan rejected" || act.label.includes("QC") || act.label.includes("designer")
-  )
 
   if (isLoading) {
     return shell(<div className="p-10 text-center text-muted-foreground">Loading case details...</div>)
@@ -593,29 +638,7 @@ export function CaseDetailView({
                 <CardContent className="py-3 px-4 border-t border-border/50 bg-muted/5 rounded-b-lg space-y-2">
                   <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Lab Actions</p>
                   <div className="flex flex-col gap-2">
-                    {caseRecord.status === "scan_received" && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="text-xs font-medium"
-                          disabled={isSubmitting}
-                          onClick={() => handleStatusChange("on_hold")}
-                        >
-                          ⏸ Hold Case
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="text-xs font-medium"
-                          disabled={isSubmitting}
-                          onClick={() => handleStatusChange("cancelled")}
-                        >
-                          🚫 Cancel Case
-                        </Button>
-                      </div>
-                    )}
-                    {["scan_not_verified", "scan_verified"].includes(caseRecord.status) && (
+                    {["scan_received", "scan_not_verified", "scan_verified"].includes(caseRecord.status) && (
                       <Button
                         size="sm"
                         variant="secondary"
@@ -623,30 +646,30 @@ export function CaseDetailView({
                         disabled={isSubmitting}
                         onClick={() => handleStatusChange("on_hold")}
                       >
-                        ⏸ Put Case on Hold
+                        ⏸ {caseRecord.status === "scan_received" ? "Hold Case" : "Put Case on Hold"}
                       </Button>
                     )}
                     {caseRecord.status === "on_hold" && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          size="sm"
-                          className="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
-                          disabled={isSubmitting}
-                          onClick={() => handleStatusChange("scan_received")}
-                        >
-                          ▶ Resume Case
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="text-xs font-medium"
-                          disabled={isSubmitting || wasValidated}
-                          onClick={() => handleStatusChange("cancelled")}
-                          title={wasValidated ? "Cannot cancel case after validation has started" : undefined}
-                        >
-                          🚫 Cancel Case
-                        </Button>
-                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={isSubmitting}
+                        onClick={() => handleStatusChange("scan_received")}
+                      >
+                        ▶ Resume Case
+                      </Button>
+                    )}
+                    {/* Cancellable up to the point a designer starts work, plus while on hold. */}
+                    {canClientCancelCase(caseRecord.status) && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="w-full text-xs font-medium"
+                        disabled={isSubmitting}
+                        onClick={handleCancelCase}
+                      >
+                        🚫 Cancel Case
+                      </Button>
                     )}
                     {caseRecord.status === "submitted_to_client" && (
                       <div className="flex flex-col gap-2">
@@ -683,7 +706,12 @@ export function CaseDetailView({
                         ✗ This case has been rejected.
                       </p>
                     )}
-                    {!["scan_received", "scan_not_verified", "scan_verified", "on_hold", "submitted_to_client", "client_reject"].includes(caseRecord.status) && (
+                    {caseRecord.status === "cancelled" && (
+                      <p className="text-xs text-muted-foreground font-semibold text-center py-1 bg-muted/40 border border-border/60 rounded-md">
+                        🚫 This case has been cancelled.
+                      </p>
+                    )}
+                    {!canClientCancelCase(caseRecord.status) && !["submitted_to_client", "client_reject", "cancelled"].includes(caseRecord.status) && (
                       <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
                     )}
                   </div>
@@ -719,7 +747,24 @@ export function CaseDetailView({
                         ✗ This case has been rejected by the client.
                       </p>
                     )}
-                    {caseRecord.status !== "change_requested" && caseRecord.status !== "client_reject" && (
+                    {/* Admins can cancel a case at any stage, unlike clients. */}
+                    {isAdminViewer && canAdminCancelCase(caseRecord.status) && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="w-full text-xs font-medium"
+                        disabled={isSubmitting}
+                        onClick={handleCancelCase}
+                      >
+                        🚫 Cancel Case
+                      </Button>
+                    )}
+                    {caseRecord.status === "cancelled" && (
+                      <p className="text-xs text-muted-foreground font-semibold text-center py-1 bg-muted/40 border border-border/60 rounded-md">
+                        🚫 This case has been cancelled.
+                      </p>
+                    )}
+                    {caseRecord.status !== "change_requested" && caseRecord.status !== "client_reject" && caseRecord.status !== "cancelled" && !isAdminViewer && (
                       <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
                     )}
                   </div>
@@ -1054,6 +1099,53 @@ export function CaseDetailView({
               className="text-white bg-red-600 hover:bg-red-700 font-normal rounded-md"
             >
               Confirm Rejection
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Case confirmation dialog */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={(open) => { if (!open && !isSubmitting) setIsCancelDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-[500px] bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
+              🚫 Cancel Case
+            </DialogTitle>
+            <p className="text-xs text-gray-500">
+              Are you sure you want to cancel case {caseRecord.caseNumber || ""}? This stops all work on the case and cannot be undone.
+            </p>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="detail-cancel-notes" className="text-sm font-semibold text-gray-700">
+                Cancellation Reason <span className="font-normal text-gray-400">(optional)</span>
+              </Label>
+              <Textarea
+                id="detail-cancel-notes"
+                value={cancelNotes}
+                onChange={(e) => setCancelNotes(e.target.value)}
+                placeholder="Add a note about why this case is being cancelled..."
+                className="min-h-[110px] bg-gray-50 border border-gray-300 text-gray-900 placeholder:text-gray-400 focus-visible:ring-red-500 rounded-md"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsCancelDialogOpen(false)}
+              className="text-gray-700 border-gray-300 font-normal hover:bg-gray-100"
+              disabled={isSubmitting}
+            >
+              Keep Case
+            </Button>
+            <Button
+              onClick={handleConfirmCancel}
+              disabled={isSubmitting}
+              className="text-white bg-red-600 hover:bg-red-700 font-normal rounded-md"
+            >
+              {isSubmitting ? "Cancelling..." : "Yes, Cancel Case"}
             </Button>
           </div>
         </DialogContent>

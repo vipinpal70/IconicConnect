@@ -7,17 +7,14 @@ import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
-import { ToothChart } from "@/src/components/ToothChart";
-import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory, PauseCircle, Undo2 } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory, PauseCircle, Undo2, Ban } from "lucide-react";
 import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import { Label } from "@/src/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { Textarea } from "@/src/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval";
@@ -98,7 +95,7 @@ function shouldShowChatIcon(caseItem: OpsCase, currentUser: ProfileSummary | nul
   return false;
 }
 
-type CaseActionType = "approve" | "reject" | "feedback" | "hold";
+type CaseActionType = "approve" | "reject" | "feedback" | "hold" | "cancel";
 
 type CaseActionDialogState = {
   caseId: string;
@@ -111,10 +108,12 @@ const CASE_ACTIONS: Record<
   {
     title: string;
     description: string;
-    status: "submitted_to_client" | "in_progress" | "on_hold";
+    status: "submitted_to_client" | "in_progress" | "on_hold" | "cancelled";
     successMessage: string;
-    reasonKey?: "holdReason" | "feedbackReason" | "rejectReason";
+    reasonKey?: "holdReason" | "feedbackReason" | "rejectReason" | "cancelReason";
     reasonLabel?: string;
+    /** Reason is captured but not required before confirming. */
+    optionalReason?: boolean;
     confirmLabel: string;
   }
 > = {
@@ -151,6 +150,16 @@ const CASE_ACTIONS: Record<
     reasonKey: "holdReason",
     reasonLabel: "Hold reason",
     confirmLabel: "Confirm",
+  },
+  cancel: {
+    title: "Cancel Case",
+    description: "This stops all work on the case and cannot be undone. Are you sure you want to cancel it?",
+    status: "cancelled",
+    successMessage: "Case cancelled",
+    reasonKey: "cancelReason",
+    reasonLabel: "Cancellation reason (optional)",
+    optionalReason: true,
+    confirmLabel: "Yes, Cancel Case",
   },
 };
 
@@ -522,13 +531,13 @@ export default function CasesPage() {
         reason = holdReasonSelect;
       }
     } else {
-      if (actionConfig.reasonKey && !reason) {
+      if (actionConfig.reasonKey && !actionConfig.optionalReason && !reason) {
         toast.error(`Please enter a ${actionConfig.reasonLabel?.toLowerCase() || "reason"}.`);
         return;
       }
     }
 
-    const patch = actionConfig.reasonKey
+    const patch = actionConfig.reasonKey && reason
       ? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
       : { status: actionConfig.status };
     const updated = await handleUpdate(pendingCaseAction.caseId, patch, actionConfig.successMessage);
@@ -1617,6 +1626,15 @@ export default function CasesPage() {
                                 </Button>
                               )}
 
+                              {/* Cancel — admin only, available at any stage */}
+                              {isAdmin && c.status !== "cancelled" && (
+                                <Button size="sm" disabled={isMutating || !!pendingCaseAction}
+                                  onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "cancel", c.caseNumber); }}
+                                  className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white shadow-sm">
+                                  <Ban className="h-3 w-3 mr-1" /> Cancel
+                                </Button>
+                              )}
+
                               {/* Undo — one-step safety net for accidental status changes */}
                               {c.status === "internal_qc" && isDesignerOnCase && (
                                 <Button size="sm" variant="outline" disabled={isMutating}
@@ -1800,12 +1818,17 @@ export default function CasesPage() {
                     ? !holdReasonSelect || (holdReasonSelect === "Other (please specify)" && !caseActionReason.trim())
                     : pendingCaseAction.action === "approve"
                       ? !QC_CHECKLIST.every((item) => approveChecklist[item])
-                      : Boolean(CASE_ACTIONS[pendingCaseAction.action].reasonKey && !caseActionReason.trim())
+                      : Boolean(
+                        CASE_ACTIONS[pendingCaseAction.action].reasonKey
+                        && !CASE_ACTIONS[pendingCaseAction.action].optionalReason
+                        && !caseActionReason.trim()
+                      )
                   : true)
               }
               onClick={confirmCaseAction}
               className={
-                pendingCaseAction?.action === "reject" ? "bg-red-600 hover:bg-red-700 text-white font-semibold"
+                pendingCaseAction?.action === "cancel" ? "bg-red-600 hover:bg-red-700 text-white font-semibold"
+                  : pendingCaseAction?.action === "reject" ? "bg-red-600 hover:bg-red-700 text-white font-semibold"
                   : pendingCaseAction?.action === "hold" ? "bg-gray-600 hover:bg-gray-700 text-white font-semibold"
                     : pendingCaseAction?.action === "feedback" ? "bg-amber-500 hover:bg-amber-600 text-white font-semibold"
                       : "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"

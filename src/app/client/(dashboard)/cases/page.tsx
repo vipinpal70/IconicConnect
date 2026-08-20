@@ -9,7 +9,7 @@ import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { type CaseStatus } from "@/src/data/demoData";
-import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle, Factory } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle, Factory, Ban } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -22,7 +22,7 @@ import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import type { ServiceType } from "@/src/lib/case-status-mapping";
-import { HOLD_REASONS } from "@/src/lib/case-utils";
+import { HOLD_REASONS, canClientCancelCase } from "@/src/lib/case-utils";
 import { CASE_HIERARCHY, buildEnabledKeySet, isCategoryAvailable, isFieldOptionEnabled } from "@/src/lib/case-hierarchy";
 import type { PriceListEntryFull } from "@/src/lib/price-list-shared";
 
@@ -182,6 +182,9 @@ export default function CasesPage() {
   const [holdReasonSelect, setHoldReasonSelect] = useState("");
   const [holdCustomReason, setHoldCustomReason] = useState("");
   const [isHoldSubmitting, setIsHoldSubmitting] = useState(false);
+  const [cancelCase, setCancelCase] = useState<{ id: string; caseNumber: string | null } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
 
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
@@ -239,6 +242,38 @@ export default function CasesPage() {
       toast.error("Failed to put case on hold");
     } finally {
       setIsHoldSubmitting(false);
+    }
+  };
+
+  const openCancelDialog = (caseId: string, caseNumber: string | null) => {
+    setCancelCase({ id: caseId, caseNumber });
+    setCancelReason("");
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!cancelCase) return;
+    const reason = cancelReason.trim();
+
+    setIsCancelSubmitting(true);
+    try {
+      const res = await fetch(`/api/cases/${cancelCase.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled", ...(reason ? { cancelReason: reason } : {}) }),
+      });
+      if (res.ok) {
+        toast.success("Case cancelled.");
+        setCancelCase(null);
+        setCancelReason("");
+        fetchCases(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Failed to cancel case");
+      }
+    } catch {
+      toast.error("Failed to cancel case");
+    } finally {
+      setIsCancelSubmitting(false);
     }
   };
 
@@ -1843,16 +1878,28 @@ export default function CasesPage() {
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{createdAtFormatted}</td>
                           <td className="px-3.5 py-2 whitespace-nowrap">
-                            {HOLDABLE_STATUSES.includes(c.status) && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                className="h-7 text-[10px] px-2 py-0.5 font-semibold gap-1"
-                                onClick={(e) => { e.stopPropagation(); openHoldDialog(c.id); }}
-                              >
-                                <PauseCircle className="h-3.5 w-3.5" /> Put on Hold
-                              </Button>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              {HOLDABLE_STATUSES.includes(c.status) && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  className="h-7 text-[10px] px-2 py-0.5 font-semibold gap-1"
+                                  onClick={(e) => { e.stopPropagation(); openHoldDialog(c.id); }}
+                                >
+                                  <PauseCircle className="h-3.5 w-3.5" /> Put on Hold
+                                </Button>
+                              )}
+                              {canClientCancelCase(c.status) && (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="h-7 text-[10px] px-2 py-0.5 font-semibold gap-1"
+                                  onClick={(e) => { e.stopPropagation(); openCancelDialog(c.id, c.caseNumber ?? null); }}
+                                >
+                                  <Ban className="h-3.5 w-3.5" /> Cancel
+                                </Button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1925,6 +1972,45 @@ export default function CasesPage() {
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 {isHoldSubmitting ? "Putting on hold..." : "Confirm"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!cancelCase} onOpenChange={(open) => { if (!open && !isCancelSubmitting) setCancelCase(null); }}>
+          <DialogContent className="sm:max-w-[480px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">🚫 Cancel Case</DialogTitle>
+              <p className="text-xs text-muted-foreground">
+                Are you sure you want to cancel case {cancelCase?.caseNumber || ""}? This stops all work on the case and cannot be undone.
+              </p>
+            </DialogHeader>
+
+            <div className="grid gap-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="cases-cancel-reason">
+                  Cancellation Reason <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
+                <Textarea
+                  id="cases-cancel-reason"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Add a note about why this case is being cancelled..."
+                  className="min-h-[100px]"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-2">
+              <Button variant="outline" onClick={() => setCancelCase(null)} disabled={isCancelSubmitting}>
+                Keep Case
+              </Button>
+              <Button
+                onClick={handleConfirmCancel}
+                disabled={isCancelSubmitting}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isCancelSubmitting ? "Cancelling..." : "Yes, Cancel Case"}
               </Button>
             </div>
           </DialogContent>

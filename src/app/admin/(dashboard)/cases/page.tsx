@@ -56,6 +56,7 @@ import {
 	Factory,
 	PauseCircle,
 	Undo2,
+	Ban,
 } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 
@@ -130,7 +131,7 @@ type MemberRecord = {
 	status: string;
 };
 
-type CaseActionType = "approve" | "reject" | "feedback" | "hold";
+type CaseActionType = "approve" | "reject" | "feedback" | "hold" | "cancel";
 
 type CaseActionDialogState = {
 	caseId: string;
@@ -147,6 +148,8 @@ const CASE_ACTIONS: Record<
 		successMessage: string;
 		reasonKey?: string;
 		reasonLabel?: string;
+		/** Reason is captured but not required before confirming. */
+		optionalReason?: boolean;
 		confirmLabel: string;
 	}
 > = {
@@ -185,6 +188,17 @@ const CASE_ACTIONS: Record<
 		reasonKey: "holdReason",
 		reasonLabel: "Hold reason",
 		confirmLabel: "Confirm",
+	},
+	cancel: {
+		title: "Cancel Case",
+		description:
+			"This stops all work on the case and cannot be undone. Are you sure you want to cancel it?",
+		status: "cancelled",
+		successMessage: "Case cancelled",
+		reasonKey: "cancelReason",
+		reasonLabel: "Cancellation reason (optional)",
+		optionalReason: true,
+		confirmLabel: "Yes, Cancel Case",
 	},
 };
 
@@ -693,7 +707,7 @@ export default function AdminCasesPage() {
 				reason = holdReasonSelect;
 			}
 		} else {
-			if (actionConfig.reasonKey && !reason) {
+			if (actionConfig.reasonKey && !actionConfig.optionalReason && !reason) {
 				toast.error(
 					`Please enter a ${actionConfig.reasonLabel?.toLowerCase()}.`,
 				);
@@ -701,9 +715,10 @@ export default function AdminCasesPage() {
 			}
 		}
 
-		const patch = actionConfig.reasonKey
-			? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
-			: { status: actionConfig.status };
+		const patch =
+			actionConfig.reasonKey && reason
+				? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
+				: { status: actionConfig.status };
 		await handleUpdate(
 			pendingCaseAction.caseId,
 			patch,
@@ -1643,6 +1658,26 @@ export default function AdminCasesPage() {
 																</Button>
 															)}
 
+															{/* Cancel — admin only, available at any stage */}
+															{currentUser?.role === "admin" &&
+																caseItem.status !== "cancelled" && (
+																<Button
+																	size="sm"
+																	disabled={isMutating || !!pendingCaseAction}
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		openCaseActionDialog(
+																			caseItem.id,
+																			"cancel",
+																			caseItem.caseNumber,
+																		);
+																	}}
+																	className="h-7 text-[10px] px-2 font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm transition-all"
+																>
+																	<Ban className="h-3 w-3 mr-0.5" /> Cancel
+																</Button>
+															)}
+
 															{/* Undo — one-step safety net for accidental status changes */}
 															{caseItem.status === "internal_qc" &&
 																caseItem.designerId === currentUser?.id && (
@@ -2104,12 +2139,17 @@ export default function AdminCasesPage() {
 											? !QC_CHECKLIST.every((item) => approveChecklist[item])
 											: Boolean(
 													CASE_ACTIONS[pendingCaseAction.action].reasonKey &&
+													!CASE_ACTIONS[pendingCaseAction.action].optionalReason &&
 													!caseActionReason.trim(),
 												)
 									: true)
 							}
 							onClick={confirmCaseAction}
-							className={"text-white bg-primary font-normal h-8 text-xs px-3"}
+							className={
+								pendingCaseAction?.action === "cancel"
+									? "text-white bg-red-600 hover:bg-red-700 font-normal h-8 text-xs px-3"
+									: "text-white bg-primary font-normal h-8 text-xs px-3"
+							}
 						>
 							{pendingCaseAction
 								? CASE_ACTIONS[pendingCaseAction.action].confirmLabel

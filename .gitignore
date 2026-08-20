@@ -51,3 +51,6 @@ referencecode/
 
 # r2 retention scheduler state
 /.r2-retention-state.json
+
+# local case XML extraction scripts
+/scripts/case-xml-extract/

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, CaseTimelineEvent, EDITABLE_STATUSES, caseMessages, caseFiles } from '@/src/db/schema/case';
+import { cases, EDITABLE_STATUSES, caseMessages, caseFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and, or, like, sql } from 'drizzle-orm';
@@ -11,6 +11,7 @@ import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
 import { invalidateCasesCache, getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache';
 import { canTransitionCaseStatus } from '@/src/lib/case-status-transitions';
+import { canClientCancelCase } from '@/src/lib/case-utils';
 import type { CaseStatus, ServiceType } from '@/src/lib/case-status-mapping';
 
 const CASE_DETAIL_TTL = 300 // 5 minutes
@@ -212,18 +213,11 @@ export async function PUT(
         else if (target === 'scan_received' && current === 'on_hold') {
           // Allowed to resume
         }
-        // 3. Cancel case (Cancelled) before In Validation
+        // 3. Cancel case — allowed any time before design work starts, or
+        //    while the case is on hold. Admins can cancel at any stage.
         else if (target === 'cancelled') {
-          if (current !== 'scan_received' && current !== 'on_hold') {
-            return NextResponse.json({ error: 'Forbidden: Cannot cancel case after validation has started' }, { status: 400 });
-          }
-          if (current === 'on_hold') {
-            const hasBeenValidated = (caseRecord.timeline || []).some(
-              (act: CaseTimelineEvent) => act.label === "Scan validated" || act.label === "Scan rejected" || act.label.includes("QC") || act.label.includes("designer")
-            );
-            if (hasBeenValidated) {
-              return NextResponse.json({ error: 'Forbidden: Cannot cancel case after validation has started' }, { status: 400 });
-            }
+          if (!canClientCancelCase(current)) {
+            return NextResponse.json({ error: 'Forbidden: Cannot cancel case once design work has started. Please contact your account manager.' }, { status: 400 });
           }
         }
         // 4. Approve case (approved) during Client Review
@@ -253,6 +247,11 @@ export async function PUT(
       const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
       if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
 
+      // Cancellation reason is optional, but must be recorded whenever the
+      // client supplies one — not just alongside a case-detail edit.
+      const nextClientCancelReason = appendCaseReason(caseRecord.cancelReason, body.cancelReason);
+      if (nextClientCancelReason !== undefined) updateData.cancelReason = nextClientCancelReason;
+
       // Allow editing details only if before work starts
       if (body.caseNumber || body.dueDate || body.category || body.subTypeData) {
         if (!EDITABLE_STATUSES.includes(caseRecord.status as typeof EDITABLE_STATUSES[number])) {
@@ -262,9 +261,6 @@ export async function PUT(
         if (body.dueDate) updateData.dueDate = new Date(body.dueDate);
         if (body.category) updateData.category = body.category;
         if (body.subTypeData) updateData.subTypeData = body.subTypeData;
-
-        const nextCancelReason = appendCaseReason(caseRecord.cancelReason, body.cancelReason);
-        if (nextCancelReason !== undefined) updateData.cancelReason = nextCancelReason;
       }
 
       if (body.clientMassage !== undefined) {
