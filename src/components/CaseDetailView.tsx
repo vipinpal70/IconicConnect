@@ -747,7 +747,7 @@ export function CaseDetailView({
                         ✗ This case has been rejected by the client.
                       </p>
                     )}
-                    {/* Admins can cancel a case at any stage, unlike clients. */}
+                    {/* Admins can cancel at any stage short of a terminal outcome. */}
                     {isAdminViewer && canAdminCancelCase(caseRecord.status) && (
                       <Button
                         size="sm"
@@ -764,7 +764,8 @@ export function CaseDetailView({
                         🚫 This case has been cancelled.
                       </p>
                     )}
-                    {caseRecord.status !== "change_requested" && caseRecord.status !== "client_reject" && caseRecord.status !== "cancelled" && !isAdminViewer && (
+                    {!["change_requested", "client_reject", "cancelled"].includes(caseRecord.status)
+                      && !(isAdminViewer && canAdminCancelCase(caseRecord.status)) && (
                       <p className="text-xs text-muted-foreground italic text-center py-1">No actions available at this stage.</p>
                     )}
                   </div>

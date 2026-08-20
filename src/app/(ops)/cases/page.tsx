@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { HOLD_REASONS } from "@/src/lib/case-utils";
+import { HOLD_REASONS, canAdminCancelCase } from "@/src/lib/case-utils";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -1626,8 +1626,8 @@ export default function CasesPage() {
                                 </Button>
                               )}
 
-                              {/* Cancel — admin only, available at any stage */}
-                              {isAdmin && c.status !== "cancelled" && (
+                              {/* Cancel — admin only, any stage short of a terminal outcome */}
+                              {isAdmin && canAdminCancelCase(c.status) && (
                                 <Button size="sm" disabled={isMutating || !!pendingCaseAction}
                                   onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "cancel", c.caseNumber); }}
                                   className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white shadow-sm">

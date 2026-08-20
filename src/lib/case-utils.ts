@@ -56,7 +56,47 @@ export function canClientCancelCase(status: string): boolean {
   return (CLIENT_CANCELLABLE_STATUSES as readonly string[]).includes(status);
 }
 
-/** A case already in a cancelled state can't be cancelled again. */
+/**
+ * Admins may cancel at any stage, except once the case has reached a
+ * terminal outcome — already cancelled, or signed off as approved/delivered.
+ */
+const ADMIN_UNCANCELLABLE_STATUSES = ["cancelled", "approved", "delivered"];
+
 export function canAdminCancelCase(status: string): boolean {
-  return status !== "cancelled";
+  return !ADMIN_UNCANCELLABLE_STATUSES.includes(status);
+}
+
+export type CancelCheckResult = { allowed: true } | { allowed: false; reason: string };
+
+/**
+ * The single cancellation rule, shared by every interface — client portal,
+ * admin portal, ops (QC/designer) portal, milling portal — and enforced
+ * server-side in `PUT /api/cases/[id]`, which is the only write path that
+ * can set `cancelled`.
+ *
+ * Cancelling is an admin or case-owner action: QC, designers, account
+ * managers and milling users cannot cancel from any status.
+ */
+export function canCancelCase(role: string, currentStatus: string): CancelCheckResult {
+  if (currentStatus === "cancelled") {
+    return { allowed: false, reason: "This case has already been cancelled" };
+  }
+
+  if (role === "admin") {
+    return canAdminCancelCase(currentStatus)
+      ? { allowed: true }
+      : { allowed: false, reason: "Cannot cancel a case that has already been approved or delivered" };
+  }
+
+  if (role === "client" || role === "subuser") {
+    return canClientCancelCase(currentStatus)
+      ? { allowed: true }
+      : {
+          allowed: false,
+          reason:
+            "Cannot cancel case once design work has started. Please contact your account manager.",
+        };
+  }
+
+  return { allowed: false, reason: "Only an admin or the case owner can cancel a case" };
 }

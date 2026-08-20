@@ -32,7 +32,7 @@ import {
 import { Label } from "@/src/components/ui/label";
 import { Textarea } from "@/src/components/ui/textarea";
 import { CaseChat } from "@/src/components/CaseChat";
-import { HOLD_REASONS } from "@/src/lib/case-utils";
+import { HOLD_REASONS, canAdminCancelCase } from "@/src/lib/case-utils";
 import type {
 	PreferenceFormRecord,
 	PreferenceFormPayload,
@@ -1658,9 +1658,9 @@ export default function AdminCasesPage() {
 																</Button>
 															)}
 
-															{/* Cancel — admin only, available at any stage */}
+															{/* Cancel — admin only, any stage short of a terminal outcome */}
 															{currentUser?.role === "admin" &&
-																caseItem.status !== "cancelled" && (
+																canAdminCancelCase(caseItem.status) && (
 																<Button
 																	size="sm"
 																	disabled={isMutating || !!pendingCaseAction}

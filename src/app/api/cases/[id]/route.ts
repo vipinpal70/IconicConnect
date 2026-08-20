@@ -11,7 +11,7 @@ import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
 import { invalidateCasesCache, getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache';
 import { canTransitionCaseStatus } from '@/src/lib/case-status-transitions';
-import { canClientCancelCase } from '@/src/lib/case-utils';
+import { canCancelCase } from '@/src/lib/case-utils';
 import type { CaseStatus, ServiceType } from '@/src/lib/case-status-mapping';
 
 const CASE_DETAIL_TTL = 300 // 5 minutes
@@ -190,6 +190,16 @@ export async function PUT(
       }
     }
 
+    // Cancellation is authorized by role + current status in one place, so
+    // every interface (client, admin, ops/QC/designer, milling) is held to
+    // the same rule rather than relying on each portal hiding its button.
+    if (body.status === 'cancelled') {
+      const cancelCheck = canCancelCase(profile.role, caseRecord.status);
+      if (!cancelCheck.allowed) {
+        return NextResponse.json({ error: `Forbidden: ${cancelCheck.reason}` }, { status: 403 });
+      }
+    }
+
     // Validate and build updates based on role
     if (profile.role === 'client' || profile.role === 'subuser') {
       // Sub-users share parent client's cases — verify ownership via createdBy
@@ -213,12 +223,9 @@ export async function PUT(
         else if (target === 'scan_received' && current === 'on_hold') {
           // Allowed to resume
         }
-        // 3. Cancel case — allowed any time before design work starts, or
-        //    while the case is on hold. Admins can cancel at any stage.
+        // 3. Cancel case — eligibility already enforced above by canCancelCase.
         else if (target === 'cancelled') {
-          if (!canClientCancelCase(current)) {
-            return NextResponse.json({ error: 'Forbidden: Cannot cancel case once design work has started. Please contact your account manager.' }, { status: 400 });
-          }
+          // Allowed to cancel
         }
         // 4. Approve case (approved) during Client Review
         else if (target === 'approved') {
