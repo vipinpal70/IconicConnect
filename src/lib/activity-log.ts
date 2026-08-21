@@ -36,6 +36,8 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
     if (actorRole === 'designer') return 'Designer uploaded design'
     return 'Case file uploaded'
   }
+  if (action === 'case.preview_file_uploaded') return 'Preview file uploaded'
+  if (action === 'case.preview_file_deleted') return 'Preview file removed'
   if (action === 'offer.created') return 'Offer created'
   if (action === 'offer.updated') return 'Offer updated'
   if (action === 'offer.deleted') return 'Offer deleted'

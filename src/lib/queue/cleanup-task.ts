@@ -4,7 +4,7 @@ if (typeof globalThis.WebSocket === 'undefined') {
 }
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { db } from '../../db';
-import { caseFiles, cases } from '../../db/schema/case';
+import { caseFiles, casePreviewFiles, cases } from '../../db/schema/case';
 import { chatMessages } from '../../db/schema/chat';
 import { isNotNull } from 'drizzle-orm';
 
@@ -60,8 +60,9 @@ export async function runCleanup() {
   console.log(`[Cleanup] Starting storage cleanup for bucket: ${BUCKET}`);
 
   // 1. Collect all referenced file URLs from every table that stores files
-  const [attachmentRows, caseRows, chatRows] = await Promise.all([
+  const [attachmentRows, previewFileRows, caseRows, chatRows] = await Promise.all([
     db.select({ fileUrl: caseFiles.fileUrl }).from(caseFiles),
+    db.select({ fileUrl: casePreviewFiles.fileUrl }).from(casePreviewFiles),
     db.select({
       outputFile: cases.outputFile,
       previewFile: cases.previewFile,
@@ -82,6 +83,7 @@ export async function runCleanup() {
   };
 
   attachmentRows.forEach(r => protect(r.fileUrl));
+  previewFileRows.forEach(r => protect(r.fileUrl));
   caseRows.forEach(r => {
     protect(r.outputFile);
     protect(r.previewFile);

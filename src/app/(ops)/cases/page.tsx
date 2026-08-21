@@ -384,13 +384,14 @@ export default function CasesPage() {
   const [designUploadClientId, setDesignUploadClientId] = useState<string | null>(null);
   const [designUploadNote, setDesignUploadNote] = useState("");
   const [designUploadFile, setDesignUploadFile] = useState<File | null>(null);
-  const [designUploadPreviewFile, setDesignUploadPreviewFile] = useState<File | null>(null);
+  const [designUploadPreviewFiles, setDesignUploadPreviewFiles] = useState<File[]>([]);
   const [isDesignUploading, setIsDesignUploading] = useState(false);
   const designUploadInputRef = useRef<HTMLInputElement>(null);
   const previewUploadInputRef = useRef<HTMLInputElement>(null);
   const [designUploadProgress, setDesignUploadProgress] = useState(0)
   const [previewUploadProgress, setPreviewUploadProgress] = useState(0)
   const [designUploadExpectedFileName, setDesignUploadExpectedFileName] = useState<string | null>(null)
+  const [designUploadExistingPreviewCount, setDesignUploadExistingPreviewCount] = useState(0)
 
   const { data: membersData } = useQuery<OpsMember[]>({
     queryKey: ["ops-members-list"],
@@ -550,18 +551,27 @@ export default function CasesPage() {
     setDesignUploadClientId(clientId || null);
     setDesignUploadNote("");
     setDesignUploadFile(null);
-    setDesignUploadPreviewFile(null);
+    setDesignUploadPreviewFiles([]);
     setDesignUploadProgress(0);
     setPreviewUploadProgress(0);
     setDesignUploadExpectedFileName(null);
+    setDesignUploadExistingPreviewCount(0);
     if (designUploadInputRef.current) designUploadInputRef.current.value = "";
     if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
     try {
-      const res = await fetch(`/api/cases/${caseId}/files`);
-      if (res.ok) {
-        const data = await res.json();
+      const [filesRes, previewFilesRes] = await Promise.all([
+        fetch(`/api/cases/${caseId}/files`),
+        fetch(`/api/cases/${caseId}/preview-files`),
+      ]);
+      if (filesRes.ok) {
+        const data = await filesRes.json();
         const files: Array<{ fileName: string }> = data.data || [];
         if (files.length > 0) setDesignUploadExpectedFileName(files[0].fileName);
+      }
+      if (previewFilesRes.ok) {
+        const data = await previewFilesRes.json();
+        const previewFiles: unknown[] = data.data || [];
+        setDesignUploadExistingPreviewCount(previewFiles.length);
       }
     } catch {
       // non-critical
@@ -574,10 +584,11 @@ export default function CasesPage() {
     setDesignUploadClientId(null);
     setDesignUploadNote("");
     setDesignUploadFile(null);
-    setDesignUploadPreviewFile(null);
+    setDesignUploadPreviewFiles([]);
     setDesignUploadProgress(0);
     setPreviewUploadProgress(0);
     setDesignUploadExpectedFileName(null);
+    setDesignUploadExistingPreviewCount(0);
     if (designUploadInputRef.current) designUploadInputRef.current.value = "";
     if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
   };
@@ -598,11 +609,33 @@ export default function CasesPage() {
     });
   };
 
+  const uploadLocalFileFull = (
+    file: File,
+    clientId: string,
+    onProgress?: (pct: number) => void
+  ): Promise<{ fileUrl: string; fileName: string; fileType: string; fileSize: number | null }> => {
+    return new Promise((resolve, reject) => {
+      uploadFileInChunks(
+        file,
+        { clientId },
+        (pct) => onProgress?.(pct),
+        (res) => resolve(res),
+        (err) => reject(new Error(err))
+      );
+    });
+  };
+
+  const MAX_PREVIEW_FILES = 5;
+  const MAX_PREVIEW_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
+
   const validatePreviewFile = (file: File): { isValid: boolean; error?: string } => {
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
     const allowed = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico"];
     if (!allowed.includes(ext)) {
       return { isValid: false, error: "Only HTML, image files are allowed for preview." };
+    }
+    if (file.size > MAX_PREVIEW_FILE_SIZE) {
+      return { isValid: false, error: "Preview file exceeds the 1GB limit." };
     }
     return { isValid: true };
   };
@@ -619,9 +652,13 @@ export default function CasesPage() {
       return;
     }
 
-    if (designUploadPreviewFile) {
-      const previewCheck = validatePreviewFile(designUploadPreviewFile);
-      if (!previewCheck.isValid) { toast.error(previewCheck.error || "Invalid preview file"); return; }
+    for (const file of designUploadPreviewFiles) {
+      const previewCheck = validatePreviewFile(file);
+      if (!previewCheck.isValid) { toast.error(`${file.name}: ${previewCheck.error || "Invalid preview file"}`); return; }
+    }
+    if (designUploadExistingPreviewCount + designUploadPreviewFiles.length > MAX_PREVIEW_FILES) {
+      toast.error(`A case can have at most ${MAX_PREVIEW_FILES} preview files.`);
+      return;
     }
 
     setIsDesignUploading(true);
@@ -631,19 +668,35 @@ export default function CasesPage() {
       // 1. Upload output file with progress
       const outputUrl = await uploadLocalFile(designUploadFile, designUploadClientId || "", setDesignUploadProgress);
 
-      // 2. Upload preview file with progress if present
-      let previewUrl = null;
-      if (designUploadPreviewFile) {
-        previewUrl = await uploadLocalFile(designUploadPreviewFile, designUploadClientId || "", setPreviewUploadProgress);
+      // 2. Upload each preview file, then persist it as its own row so multiple
+      // previews can accumulate on the case instead of overwriting one another.
+      for (let i = 0; i < designUploadPreviewFiles.length; i++) {
+        const file = designUploadPreviewFiles[i];
+        setPreviewUploadProgress(0);
+        const uploaded = await uploadLocalFileFull(file, designUploadClientId || "", setPreviewUploadProgress);
+        await fetch(`/api/cases/${designUploadCaseId}/preview-files`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileUrl: uploaded.fileUrl,
+            fileName: uploaded.fileName,
+            fileType: uploaded.fileType,
+            fileSize: uploaded.fileSize,
+          }),
+        }).then(async (res) => {
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `Failed to save preview file "${file.name}"`);
+          }
+        });
       }
 
-      // 3. Link them to the case database structure
+      // 3. Link the output file to the case database structure
       const currentCase = cases.find((c) => c.id === designUploadCaseId);
       const isFeedbackUpload = currentCase?.status === "client_feedback";
 
       const patch = {
         outputFile: outputUrl,
-        previewFile: previewUrl,
         outputNote: designUploadNote.trim() || null,
         ...(isFeedbackUpload ? { status: "in_progress" } : {}),
       };
@@ -1890,26 +1943,61 @@ export default function CasesPage() {
               )}
             </div>
             <div className="grid gap-2 mt-1">
-              <Label htmlFor="preview-file" className="text-sm font-semibold text-gray-700">Preview File (HTML, Image, or ZIP - Optional)</Label>
-              <Input id="preview-file" ref={previewUploadInputRef} type="file" accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico,.zip"
+              <Label htmlFor="preview-file" className="text-sm font-semibold text-gray-700">
+                Preview Files (HTML or Image - Optional, up to {MAX_PREVIEW_FILES} total)
+              </Label>
+              <Input id="preview-file" ref={previewUploadInputRef} type="file" multiple
+                accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico"
+                disabled={designUploadExistingPreviewCount + designUploadPreviewFiles.length >= MAX_PREVIEW_FILES}
                 onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  if (file) {
+                  const files = Array.from(e.target.files || []);
+                  if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
+                  if (files.length === 0) return;
+
+                  const remaining = MAX_PREVIEW_FILES - designUploadExistingPreviewCount - designUploadPreviewFiles.length;
+                  if (remaining <= 0) {
+                    toast.error(`A case can have at most ${MAX_PREVIEW_FILES} preview files.`);
+                    return;
+                  }
+
+                  const accepted: File[] = [];
+                  for (const file of files) {
+                    if (accepted.length >= remaining) {
+                      toast.error(`Only ${remaining} more preview file(s) can be added (max ${MAX_PREVIEW_FILES}).`);
+                      break;
+                    }
                     const check = validatePreviewFile(file);
                     if (!check.isValid) {
-                      toast.error(check.error || "Only HTML, image, or ZIP files are allowed");
-                      if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
-                      setDesignUploadPreviewFile(null);
-                    } else {
-                      setDesignUploadPreviewFile(file);
+                      toast.error(`${file.name}: ${check.error || "Invalid preview file"}`);
+                      continue;
                     }
-                  } else {
-                    setDesignUploadPreviewFile(null);
+                    accepted.push(file);
+                  }
+                  if (accepted.length > 0) {
+                    setDesignUploadPreviewFiles((prev) => [...prev, ...accepted]);
                   }
                 }}
                 className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-indigo-600 file:border-none file:rounded-md file:px-3 file:py-2" />
-              {designUploadPreviewFile && <p className="text-xs text-gray-700">Selected file: {designUploadPreviewFile.name}</p>}
-              {isDesignUploading && designUploadPreviewFile && previewUploadProgress > 0 && (
+              {designUploadPreviewFiles.length > 0 && (
+                <ul className="space-y-1">
+                  {designUploadPreviewFiles.map((file, index) => (
+                    <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 text-xs text-gray-700 bg-gray-100 rounded-md px-2 py-1">
+                      <span className="truncate">{file.name}</span>
+                      {!isDesignUploading && (
+                        <button
+                          type="button"
+                          onClick={() => setDesignUploadPreviewFiles((prev) => prev.filter((_, i) => i !== index))}
+                          className="text-gray-500 hover:text-red-600 shrink-0"
+                          title="Remove"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {isDesignUploading && designUploadPreviewFiles.length > 0 && previewUploadProgress > 0 && (
                 <div className="space-y-1 pt-1">
                   <div className="flex justify-between text-[11px] text-gray-500">
                     <span>Uploading preview file…</span>

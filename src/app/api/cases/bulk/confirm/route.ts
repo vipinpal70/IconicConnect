@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases } from '@/src/db/schema/case';
+import { cases, casePreviewFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
 import { logActivity } from '@/src/lib/activity-log';
@@ -26,6 +26,15 @@ import { getProfileLabName } from '@/src/lib/profile-utils';
 
 const ALLOWED_ROLES = new Set(['designer', 'qc', 'admin']);
 const STAGING_PREFIX = 'bulk-staging';
+const MAX_PREVIEW_FILES = 5;
+const MAX_PREVIEW_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
+
+type ConfirmPreviewFile = {
+  storageKey: string;
+  fileName: string;
+  fileType?: string | null;
+  fileSize?: number | null;
+};
 
 type ConfirmItem = {
   caseId: string;
@@ -34,8 +43,7 @@ type ConfirmItem = {
   fileType?: string | null;
   fileSize?: number | null;
   note?: string | null;
-  previewStorageKey?: string | null;
-  previewFileName?: string | null;
+  previewFiles?: ConfirmPreviewFile[];
 };
 
 function objectKey(labName: string, fileName: string) {
@@ -107,6 +115,33 @@ export async function POST(req: NextRequest) {
           throw new Error('No QC assigned — pick a QC lead before sending to QC');
         }
 
+        // Optional preview files — validated up front, before any R2 object is moved,
+        // so a bad attachment fails the item cleanly with nothing left half-moved.
+        const previewFiles = item.previewFiles ?? [];
+        if (previewFiles.length > 0) {
+          if (previewFiles.length > MAX_PREVIEW_FILES) {
+            throw new Error(`A case can have at most ${MAX_PREVIEW_FILES} preview files`);
+          }
+          for (const preview of previewFiles) {
+            if (!preview.storageKey || !preview.fileName) {
+              throw new Error('Missing storageKey or fileName on a preview file');
+            }
+            if (!preview.storageKey.startsWith(`${STAGING_PREFIX}/`)) {
+              throw new Error('Invalid previewStorageKey');
+            }
+            if (typeof preview.fileSize === 'number' && preview.fileSize > MAX_PREVIEW_FILE_SIZE) {
+              throw new Error(`Preview file "${preview.fileName}" exceeds the 1GB limit`);
+            }
+          }
+          const [{ count: existingPreviewCount }] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(casePreviewFiles)
+            .where(eq(casePreviewFiles.caseId, item.caseId));
+          if (existingPreviewCount + previewFiles.length > MAX_PREVIEW_FILES) {
+            throw new Error(`A case can have at most ${MAX_PREVIEW_FILES} preview files`);
+          }
+        }
+
         const client = await db.select({ labName: profiles.labName, fullName: profiles.fullName, email: profiles.email }).from(profiles)
           .where(eq(profiles.id, caseRecord.clientId)).limit(1).then(r => r[0]);
         const labName = getProfileLabName(client);
@@ -124,33 +159,45 @@ export async function POST(req: NextRequest) {
         const fileUrl = buildFileUrl(labName, item.fileName);
         const note = item.note?.trim() || null;
 
-        // Optional preview file — same staging→client-namespace move as the output file.
-        let previewFileUrl: string | null = null;
-        if (item.previewStorageKey && item.previewFileName) {
-          if (!item.previewStorageKey.startsWith(`${STAGING_PREFIX}/`)) {
-            throw new Error('Invalid previewStorageKey');
-          }
-          const previewDestKey = objectKey(labName, item.previewFileName);
+        // Same staging→client-namespace move as the output file, one per attached preview.
+        const movedPreviewFiles: Array<{ fileUrl: string; fileName: string; fileType: string | null; fileSize: number | null }> = [];
+        for (const preview of previewFiles) {
+          const previewDestKey = objectKey(labName, preview.fileName);
           await r2.send(new CopyObjectCommand({
             Bucket: R2_BUCKET,
-            CopySource: `${R2_BUCKET}/${item.previewStorageKey.split('/').map(encodeURIComponent).join('/')}`,
+            CopySource: `${R2_BUCKET}/${preview.storageKey.split('/').map(encodeURIComponent).join('/')}`,
             Key: previewDestKey,
           }));
-          await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: item.previewStorageKey }));
-          previewFileUrl = buildFileUrl(labName, item.previewFileName);
+          await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: preview.storageKey }));
+          movedPreviewFiles.push({
+            fileUrl: buildFileUrl(labName, preview.fileName),
+            fileName: preview.fileName,
+            fileType: preview.fileType ?? null,
+            fileSize: preview.fileSize ?? null,
+          });
         }
 
-        // Output lives only on the case record (same as the single-upload flow) — a
-        // case_files row would wrongly show the output in the "Case Files" section.
         await db.update(cases).set({
           outputFile: fileUrl,
           outputNote: note,
-          ...(previewFileUrl ? { previewFile: previewFileUrl } : {}),
           status: targetStatus,
           ...(targetStatus === 'internal_qc' ? { qcId: finalQcId } : {}),
           ...(targetStatus === 'submitted_to_client' ? { submittedToClientAt: new Date() } : {}),
           updatedAt: new Date(),
         }).where(eq(cases.id, item.caseId));
+
+        if (movedPreviewFiles.length > 0) {
+          await db.insert(casePreviewFiles).values(
+            movedPreviewFiles.map((p) => ({
+              caseId: item.caseId,
+              uploadedBy: profile.id,
+              fileName: p.fileName,
+              fileUrl: p.fileUrl,
+              fileType: p.fileType,
+              fileSize: p.fileSize,
+            }))
+          );
+        }
 
         // ── Post-commit side effects (best-effort, never fail the item) ──
         logActivity({
@@ -160,7 +207,7 @@ export async function POST(req: NextRequest) {
           details: {
             caseNumber: caseRecord.caseNumber,
             before: { status: caseRecord.status },
-            changes: { status: targetStatus, outputFile: fileUrl, outputNote: note, ...(previewFileUrl ? { previewFile: previewFileUrl } : {}) },
+            changes: { status: targetStatus, outputFile: fileUrl, outputNote: note, ...(movedPreviewFiles.length > 0 ? { previewFiles: movedPreviewFiles.map((p) => p.fileName) } : {}) },
             bulkUpload: true,
           },
         }).catch((err) => console.error('[BulkConfirm] activity log failed:', err));

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { db } from '../../db';
-import { caseFiles, cases } from '../../db/schema/case';
+import { caseFiles, casePreviewFiles, cases } from '../../db/schema/case';
 import { chatMessages } from '../../db/schema/chat';
 import { isNotNull } from 'drizzle-orm';
 import { R2_BUCKET } from '../r2';
@@ -62,8 +62,9 @@ export async function runR2Cleanup(
   );
 
   // 1. Collect every R2 key referenced anywhere in the database.
-  const [attachmentRows, caseRows, chatRows] = await Promise.all([
+  const [attachmentRows, previewFileRows, caseRows, chatRows] = await Promise.all([
     db.select({ fileUrl: caseFiles.fileUrl }).from(caseFiles),
+    db.select({ fileUrl: casePreviewFiles.fileUrl }).from(casePreviewFiles),
     db
       .select({
         outputFile: cases.outputFile,
@@ -84,6 +85,7 @@ export async function runR2Cleanup(
   };
 
   attachmentRows.forEach((r) => protect(r.fileUrl));
+  previewFileRows.forEach((r) => protect(r.fileUrl));
   caseRows.forEach((r) => {
     protect(r.outputFile);
     protect(r.previewFile);

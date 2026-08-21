@@ -17,9 +17,10 @@ import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
 import { HOLD_REASONS, canAdminCancelCase, canClientCancelCase } from "@/src/lib/case-utils"
 import { fetchProfileWithCache } from "@/src/lib/profile-cache"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Upload, Trash2 } from "lucide-react"
 import type { MillingCenter } from "@/src/db/schema/milling"
 import type { RoutingResult } from "@/src/lib/milling/routing-engine"
+import { uploadFileInChunks } from "@/src/lib/upload-utils"
 
 const getPreviewFileType = (url: string | null | undefined): 'html' | 'image' | 'zip' | 'other' => {
   if (!url) return 'other';
@@ -49,6 +50,7 @@ const getPreviewFileType = (url: string | null | undefined): 'html' | 'image' | 
 
 type CaseRecord = {
   id: string
+  clientId: string
   caseNumber: string | null
   category: string | null
   subTypeData: Record<string, unknown> | null
@@ -82,6 +84,15 @@ type CaseFile = {
   fileName: string
   fileUrl: string
   note: string | null
+  fileType: string | null
+  fileSize: number | null
+  createdAt: string
+}
+
+type CasePreviewFile = {
+  id: string
+  fileName: string
+  fileUrl: string
   fileType: string | null
   fileSize: number | null
   createdAt: string
@@ -213,7 +224,10 @@ export function CaseDetailView({
   const queryClient = useQueryClient()
   const chatRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showPreview, setShowPreview] = useState(true)
+  const [expandedPreviewIds, setExpandedPreviewIds] = useState<Set<string>>(new Set())
+  const [replacingPreviewId, setReplacingPreviewId] = useState<string | null>(null)
+  const [deletingPreviewId, setDeletingPreviewId] = useState<string | null>(null)
+  const replacePreviewInputRef = useRef<HTMLInputElement>(null)
   const [isHoldDialogOpen, setIsHoldDialogOpen] = useState(false)
   const [holdReasonSelect, setHoldReasonSelect] = useState("")
   const [holdCustomReason, setHoldCustomReason] = useState("")
@@ -402,6 +416,66 @@ export function CaseDetailView({
     }
   }
 
+  const togglePreviewExpanded = (fileId: string) => {
+    setExpandedPreviewIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) next.delete(fileId)
+      else next.add(fileId)
+      return next
+    })
+  }
+
+  const handleDeletePreviewFile = async (fileId: string) => {
+    if (!confirm("Remove this preview file?")) return
+    setDeletingPreviewId(fileId)
+    try {
+      const res = await fetch(`/api/cases/${caseId}/preview-files/${fileId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to remove preview file")
+      }
+      await queryClient.invalidateQueries({ queryKey: ["case-preview-files", caseId] })
+      toast.success("Preview file removed.")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove preview file")
+    } finally {
+      setDeletingPreviewId(null)
+    }
+  }
+
+  const handleReplacePreviewFile = async (fileId: string, file: File, clientId: string) => {
+    setReplacingPreviewId(fileId)
+    try {
+      const uploaded = await new Promise<{ fileUrl: string; fileName: string; fileType: string; fileSize: number | null }>((resolve, reject) => {
+        uploadFileInChunks(file, { clientId }, () => {}, (res) => resolve(res), (err) => reject(new Error(err)))
+      })
+      const createRes = await fetch(`/api/cases/${caseId}/preview-files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileUrl: uploaded.fileUrl,
+          fileName: uploaded.fileName,
+          fileType: uploaded.fileType,
+          fileSize: uploaded.fileSize,
+        }),
+      })
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to upload replacement preview file")
+      }
+      // Only remove the old row once the new one is safely persisted.
+      if (fileId !== "legacy") {
+        await fetch(`/api/cases/${caseId}/preview-files/${fileId}`, { method: "DELETE" }).catch(() => {})
+      }
+      await queryClient.invalidateQueries({ queryKey: ["case-preview-files", caseId] })
+      toast.success("Preview file replaced.")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to replace preview file")
+    } finally {
+      setReplacingPreviewId(null)
+    }
+  }
+
   const { data: caseResponse, isLoading, error } = useQuery<{ data: CaseRecord }>({
     queryKey: ["case", caseId],
     queryFn: async () => {
@@ -429,8 +503,23 @@ export function CaseDetailView({
     staleTime: 30_000, // files don't change frequently
   })
 
+  const { data: previewFilesResponse } = useQuery<{ data: CasePreviewFile[] }>({
+    queryKey: ["case-preview-files", caseId],
+    queryFn: async () => {
+      const res = await fetch(`/api/cases/${caseId}/preview-files`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to fetch preview files")
+      }
+      return res.json()
+    },
+    retry: false,
+    staleTime: 30_000,
+  })
+
   const caseRecord = caseResponse?.data
   const files = filesResponse?.data || []
+  const previewFiles = previewFilesResponse?.data || []
   const activities = caseRecord?.timeline || []
   const displayActivities = toViewerSafeActivities(activities, chatSide)
 
@@ -806,7 +895,7 @@ export function CaseDetailView({
           {/* Full Width Section: Attachments & Case Chat */}
           <div className="space-y-4">
 
-            {(chatSide === "admin" || ["submitted_to_client", "approved", "delivered"].includes(caseRecord.status)) && (caseRecord.outputFile || caseRecord.previewFile) && (
+            {(chatSide === "admin" || ["submitted_to_client", "approved", "delivered"].includes(caseRecord.status)) && (caseRecord.outputFile || previewFiles.length > 0) && (
               <Card className="shadow-card bg-white">
                 <CardHeader className="py-2.5 px-4 border-b border-border/50">
                   <CardTitle className="text-sm font-semibold text-black flex items-center gap-2">
@@ -815,105 +904,132 @@ export function CaseDetailView({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="mt-2 px-4 pb-3 space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {caseRecord.outputFile && (
-                      <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-                        <div>
-                          <h4 className="text-sm font-semibold text-gray-900">Final Design File</h4>
-                          {caseRecord.outputNote ? (
-                            <p className="text-xs text-primary mt-1.5 bg-primary/10 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
-                              {caseRecord.outputNote}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground mt-1">This is the ready-to-use production CAD/CAM file.</p>
-                          )}
-                        </div>
-                        <div className="mt-4">
-                          <a href={caseRecord.outputFile} download target="_blank" rel="noreferrer" className="w-full block">
-                            <Button size="sm" className="w-full bg-primary hover:bg-primary/80 text-white gap-2 font-medium">
-                              <Download className="h-4 w-4" /> Download Design
-                            </Button>
-                          </a>
-                        </div>
+                  {caseRecord.outputFile && (
+                    <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900">Final Design File</h4>
+                        {caseRecord.outputNote ? (
+                          <p className="text-xs text-primary mt-1.5 bg-primary/10 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
+                            {caseRecord.outputNote}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-1">This is the ready-to-use production CAD/CAM file.</p>
+                        )}
                       </div>
-                    )}
+                      <div className="mt-4">
+                        <a href={caseRecord.outputFile} download target="_blank" rel="noreferrer" className="w-full block">
+                          <Button size="sm" className="w-full bg-primary hover:bg-primary/80 text-white gap-2 font-medium">
+                            <Download className="h-4 w-4" /> Download Design
+                          </Button>
+                        </a>
+                      </div>
+                    </div>
+                  )}
 
-                    {caseRecord.previewFile && (() => {
-                      const fileType = getPreviewFileType(caseRecord.previewFile);
-                      if (fileType === 'zip') {
-                        return (
-                          <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-                            <div>
-                              <h4 className="text-sm font-semibold text-indigo-950">Design Preview Archive</h4>
-                              <p className="text-xs text-muted-foreground mt-1">ZIP archive containing preview assets.</p>
-                            </div>
-                            <div className="mt-4">
-                              <a href={caseRecord.previewFile} download target="_blank" rel="noreferrer" className="w-full block">
-                                <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium">
-                                  <Download className="h-4 w-4" /> Download Preview ZIP
+                  {previewFiles.map((file) => {
+                    const fileType = getPreviewFileType(file.fileUrl);
+                    const isExpanded = expandedPreviewIds.has(file.id);
+                    const isZip = fileType === 'zip';
+                    const isReplacing = replacingPreviewId === file.id;
+                    const isDeleting = deletingPreviewId === file.id;
+                    return (
+                      <div key={file.id} className="rounded-lg border border-indigo-100 bg-white shadow-sm overflow-hidden">
+                        <div className="flex items-center justify-between gap-3 p-4">
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-semibold text-indigo-950 truncate" title={file.fileName}>{file.fileName}</h4>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {isZip ? "ZIP archive containing preview assets." : fileType === 'image' ? "Image preview of the designed case." : "HTML interactive 3D rendering of the case."}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isZip ? (
+                              <a href={file.fileUrl} download target="_blank" rel="noreferrer">
+                                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium">
+                                  <Download className="h-4 w-4" /> Download
                                 </Button>
                               </a>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => togglePreviewExpanded(file.id)}
+                                className="border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
+                              >
+                                {isExpanded ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                {isExpanded ? "Hide" : "Show"}
+                              </Button>
+                            )}
+                            {chatSide === "admin" && (
+                              <>
+                                <button
+                                  type="button"
+                                  title="Replace this preview file"
+                                  disabled={isReplacing || isDeleting}
+                                  onClick={() => { setReplacingPreviewId(file.id); replacePreviewInputRef.current?.click(); }}
+                                  className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 disabled:opacity-50"
+                                >
+                                  <Upload className="h-4 w-4" />
+                                </button>
+                                {file.id !== 'legacy' && (
+                                  <button
+                                    type="button"
+                                    title="Delete this preview file"
+                                    disabled={isReplacing || isDeleting}
+                                    onClick={() => handleDeletePreviewFile(file.id)}
+                                    className="p-1.5 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {isExpanded && !isZip && (
+                          <div className="border-t border-indigo-100 bg-zinc-50 shadow-inner">
+                            <div className="bg-indigo-950/5 border-b border-indigo-100 px-4 py-2 flex items-center justify-between text-xs text-indigo-900 font-medium">
+                              <span>{fileType === 'image' ? "Image Preview" : "Interactive HTML Viewer"}</span>
+                              <a href={file.fileUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                                Open in New Tab ↗
+                              </a>
+                            </div>
+                            <div className="w-full flex items-center justify-center bg-zinc-900 overflow-auto" style={{ minHeight: "400px" }}>
+                              {fileType === 'image' ? (
+                                <img
+                                  src={file.fileUrl}
+                                  alt={file.fileName}
+                                  className="max-w-full max-h-[600px] object-contain p-2"
+                                />
+                              ) : (
+                                <iframe
+                                  src={file.fileUrl}
+                                  className="w-full h-[500px] border-none bg-white"
+                                  title={file.fileName}
+                                />
+                              )}
                             </div>
                           </div>
-                        );
-                      }
-
-                      return (
-                        <div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-                          <div>
-                            <h4 className="text-sm font-semibold text-indigo-950">
-                              {fileType === 'image' ? "Design Image Preview" : "Interactive 3D Preview"}
-                            </h4>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {fileType === 'image' ? "Image preview of the designed case." : "HTML interactive 3D rendering of the case."}
-                            </p>
-                          </div>
-                          <div className="mt-4">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setShowPreview(!showPreview)}
-                              className="w-full border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
-                            >
-                              {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                              {showPreview ? "Hide Preview" : "Show Preview"}
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {caseRecord.previewFile && showPreview && (() => {
-                    const fileType = getPreviewFileType(caseRecord.previewFile);
-                    if (fileType === 'zip') return null;
-
-                    return (
-                      <div className="mt-4 border border-indigo-100 rounded-lg overflow-hidden bg-zinc-50 shadow-inner">
-                        <div className="bg-indigo-950/5 border-b border-indigo-100 px-4 py-2 flex items-center justify-between text-xs text-indigo-900 font-medium">
-                          <span>{fileType === 'image' ? "Image Preview" : "Interactive HTML Viewer"}</span>
-                          <a href={caseRecord.previewFile} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-                            Open in New Tab ↗
-                          </a>
-                        </div>
-                        <div className="w-full flex items-center justify-center bg-zinc-900 overflow-auto" style={{ minHeight: "400px" }}>
-                          {fileType === 'image' ? (
-                            <img
-                              src={caseRecord.previewFile}
-                              alt="Design Preview"
-                              className="max-w-full max-h-[600px] object-contain p-2"
-                            />
-                          ) : (
-                            <iframe
-                              src={caseRecord.previewFile}
-                              className="w-full h-[500px] border-none bg-white"
-                              title="3D Design Preview"
-                            />
-                          )}
-                        </div>
+                        )}
                       </div>
                     );
-                  })()}
+                  })}
+
+                  {chatSide === "admin" && (
+                    <input
+                      ref={replacePreviewInputRef}
+                      type="file"
+                      accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        const targetId = replacingPreviewId;
+                        e.target.value = "";
+                        if (file && targetId) void handleReplacePreviewFile(targetId, file, caseRecord.clientId);
+                        else setReplacingPreviewId(null);
+                      }}
+                    />
+                  )}
                 </CardContent>
               </Card>
             )}

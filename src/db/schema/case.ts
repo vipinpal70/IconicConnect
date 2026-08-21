@@ -220,9 +220,27 @@ export const caseFiles = pgTable('case_files', {
   caseIdIdx: index('case_files_case_id_idx').on(table.caseId),
 }))
 
+// Separate from `caseFiles` on purpose: caseFiles backs the client-facing "Case Files"
+// (input scans) list, while preview files are design deliverables — mixing them in would
+// wrongly surface previews there (see bulk/confirm/route.ts).
+export const casePreviewFiles = pgTable('case_preview_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  caseId: uuid('case_id').references(() => cases.id).notNull(),
+  uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
+  fileName: varchar('file_name', { length: 255 }).notNull(),
+  fileUrl: text('file_url').notNull(),
+  fileType: varchar('file_type', { length: 100 }),
+  fileSize: bigint('file_size', { mode: 'number' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  caseIdIdx: index('case_preview_files_case_id_idx').on(table.caseId),
+}))
+
 export type Case = typeof cases.$inferSelect
 export type NewCase = typeof cases.$inferInsert
 export type CaseMessage = typeof caseMessages.$inferSelect
 export type NewCaseMessage = typeof caseMessages.$inferInsert
 export type CaseFile = typeof caseFiles.$inferSelect
 export type NewCaseFile = typeof caseFiles.$inferInsert
+export type CasePreviewFile = typeof casePreviewFiles.$inferSelect
+export type NewCasePreviewFile = typeof casePreviewFiles.$inferInsert
