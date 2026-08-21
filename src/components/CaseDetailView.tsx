@@ -1210,7 +1210,7 @@ export function CaseDetailView({
 														Final Design File
 													</h4>
 													{caseRecord.outputNote ? (
-														<p className="text-s text-red-700 mt-1.5 bg-gray-400 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
+														<p className="text-s text-red-700 mt-1.5 bg-gray-200 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
 															{caseRecord.outputNote}
 														</p>
 													) : (
