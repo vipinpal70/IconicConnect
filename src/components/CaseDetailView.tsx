@@ -51,7 +51,7 @@ import {
 	canClientCancelCase,
 } from "@/src/lib/case-utils";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
-import { Eye, EyeOff, Upload, Trash2 } from "lucide-react";
+import { Upload, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import type { MillingCenter } from "@/src/db/schema/milling";
 import type { RoutingResult } from "@/src/lib/milling/routing-engine";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
@@ -312,9 +312,7 @@ export function CaseDetailView({
 	const queryClient = useQueryClient();
 	const chatRef = useRef<HTMLDivElement>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [expandedPreviewIds, setExpandedPreviewIds] = useState<Set<string>>(
-		new Set(),
-	);
+	const [previewCarouselIndex, setPreviewCarouselIndex] = useState(0);
 	const [replacingPreviewId, setReplacingPreviewId] = useState<string | null>(
 		null,
 	);
@@ -531,15 +529,6 @@ export function CaseDetailView({
 		}
 	};
 
-	const togglePreviewExpanded = (fileId: string) => {
-		setExpandedPreviewIds((prev) => {
-			const next = new Set(prev);
-			if (next.has(fileId)) next.delete(fileId);
-			else next.add(fileId);
-			return next;
-		});
-	};
-
 	const handleDeletePreviewFile = async (fileId: string) => {
 		if (!confirm("Remove this preview file?")) return;
 		setDeletingPreviewId(fileId);
@@ -610,6 +599,9 @@ export function CaseDetailView({
 			await queryClient.invalidateQueries({
 				queryKey: ["case-preview-files", caseId],
 			});
+			// The list re-sorts newest-first, so the replacement lands at index 0 —
+			// jump the carousel there so the user sees what they just uploaded.
+			setPreviewCarouselIndex(0);
 			toast.success("Preview file replaced.");
 		} catch (err) {
 			toast.error(
@@ -1238,135 +1230,195 @@ export function CaseDetailView({
 											</div>
 										)}
 
-										{previewFiles.map((file) => {
-											const fileType = getPreviewFileType(file.fileUrl);
-											const isExpanded = expandedPreviewIds.has(file.id);
-											const isZip = fileType === "zip";
-											const isReplacing = replacingPreviewId === file.id;
-											const isDeleting = deletingPreviewId === file.id;
+										{(() => {
+											const viewablePreviews = previewFiles.filter(
+												(file) => getPreviewFileType(file.fileUrl) !== "zip",
+											);
+											const zipPreviews = previewFiles.filter(
+												(file) => getPreviewFileType(file.fileUrl) === "zip",
+											);
+											const total = viewablePreviews.length;
+											const activeIndex =
+												total > 0 ? ((previewCarouselIndex % total) + total) % total : 0;
+											const activeFile = total > 0 ? viewablePreviews[activeIndex] : null;
+											const isReplacing = activeFile
+												? replacingPreviewId === activeFile.id
+												: false;
+											const isDeleting = activeFile
+												? deletingPreviewId === activeFile.id
+												: false;
+										
 											return (
-												<div
-													key={file.id}
-													className="rounded-lg border border-indigo-100 bg-white shadow-sm overflow-hidden"
-												>
-													<div className="flex items-center justify-between gap-3 p-4">
-														<div className="min-w-0">
-															<h4
-																className="text-sm font-semibold text-indigo-950 truncate"
-																title={file.fileName}
-															>
-																{file.fileName}
-															</h4>
-															<p className="text-xs text-muted-foreground mt-1">
-																{isZip
-																	? "ZIP archive containing preview assets."
-																	: fileType === "image"
-																		? "Image preview of the designed case."
-																		: "HTML interactive 3D rendering of the case."}
-															</p>
-														</div>
-														<div className="flex items-center gap-1.5 shrink-0">
-															{isZip ? (
-																<a
-																	href={file.fileUrl}
-																	download
-																	target="_blank"
-																	rel="noreferrer"
-																>
-																	<Button
-																		size="sm"
-																		className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium"
-																	>
-																		<Download className="h-4 w-4" /> Download
-																	</Button>
-																</a>
-															) : (
-																<Button
-																	size="sm"
-																	variant="outline"
-																	onClick={() => togglePreviewExpanded(file.id)}
-																	className="border-primary/20 text-primary hover:bg-primary/10 font-medium gap-2"
-																>
-																	{isExpanded ? (
-																		<EyeOff className="w-4 h-4" />
-																	) : (
-																		<Eye className="w-4 h-4" />
-																	)}
-																	{isExpanded ? "Hide" : "Show"}
-																</Button>
-															)}
-															{chatSide === "admin" && (
-																<>
-																	<button
-																		type="button"
-																		title="Replace this preview file"
-																		disabled={isReplacing || isDeleting}
-																		onClick={() => {
-																			setReplacingPreviewId(file.id);
-																			replacePreviewInputRef.current?.click();
-																		}}
-																		className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 disabled:opacity-50"
-																	>
-																		<Upload className="h-4 w-4" />
-																	</button>
-																	{file.id !== "legacy" && (
-																		<button
-																			type="button"
-																			title="Delete this preview file"
-																			disabled={isReplacing || isDeleting}
-																			onClick={() =>
-																				handleDeletePreviewFile(file.id)
-																			}
-																			className="p-1.5 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+												<>
+													{activeFile &&
+														(() => {
+															const fileType = getPreviewFileType(activeFile.fileUrl);
+															return (
+																<div className="rounded-lg border border-indigo-100 bg-white shadow-sm overflow-hidden">
+																	<div className="flex items-center justify-between gap-3 p-4">
+																		<div className="min-w-0">
+																			<h4
+																				className="text-sm font-semibold text-indigo-950 truncate"
+																				title={activeFile.fileName}
+																			>
+																				{activeFile.fileName}
+																			</h4>
+																			<p className="text-xs text-muted-foreground mt-1">
+																				{fileType === "image"
+																					? "Image preview of the designed case."
+																					: "HTML interactive 3D rendering of the case."}
+																				{total > 1 ? ` · ${activeIndex + 1} of ${total}` : ""}
+																			</p>
+																		</div>
+																		<div className="flex items-center gap-1.5 shrink-0">
+																			<a
+																				href={activeFile.fileUrl}
+																				target="_blank"
+																				rel="noreferrer"
+																				className="text-xs text-indigo-600 hover:underline whitespace-nowrap"
+																			>
+																				Open in New Tab ↗
+																			</a>
+																			{chatSide === "admin" && (
+																				<>
+																					<button
+																						type="button"
+																						title="Replace this preview file"
+																						disabled={isReplacing || isDeleting}
+																						onClick={() => {
+																							setReplacingPreviewId(activeFile.id);
+																							replacePreviewInputRef.current?.click();
+																						}}
+																						className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 disabled:opacity-50"
+																					>
+																						<Upload className="h-4 w-4" />
+																					</button>
+																					{activeFile.id !== "legacy" && (
+																						<button
+																							type="button"
+																							title="Delete this preview file"
+																							disabled={isReplacing || isDeleting}
+																							onClick={() => handleDeletePreviewFile(activeFile.id)}
+																							className="p-1.5 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+																						>
+																							<Trash2 className="h-4 w-4" />
+																						</button>
+																					)}
+																				</>
+																			)}
+																		</div>
+																	</div>
+										
+																	<div className="relative border-t border-indigo-100 bg-zinc-900">
+																		<div
+																			className="w-full flex items-center justify-center overflow-auto"
+																			style={{ minHeight: "400px" }}
 																		>
-																			<Trash2 className="h-4 w-4" />
-																		</button>
-																	)}
-																</>
-															)}
-														</div>
-													</div>
-
-													{isExpanded && !isZip && (
-														<div className="border-t border-indigo-100 bg-zinc-50 shadow-inner">
-															<div className="bg-indigo-950/5 border-b border-indigo-100 px-4 py-2 flex items-center justify-between text-xs text-indigo-900 font-medium">
-																<span>
-																	{fileType === "image"
-																		? "Image Preview"
-																		: "Interactive HTML Viewer"}
-																</span>
-																<a
-																	href={file.fileUrl}
-																	target="_blank"
-																	rel="noreferrer"
-																	className="text-indigo-600 hover:underline"
+																			{fileType === "image" ? (
+																				<img
+																					src={activeFile.fileUrl}
+																					alt={activeFile.fileName}
+																					className="max-w-full max-h-[600px] object-contain p-2"
+																				/>
+																			) : (
+																				<iframe
+																					src={activeFile.fileUrl}
+																					className="w-full h-[500px] border-none bg-white"
+																					title={activeFile.fileName}
+																				/>
+																			)}
+																		</div>
+										
+																		{total > 1 && (
+																			<>
+																				<button
+																					type="button"
+																					title="Previous preview"
+																					onClick={() => setPreviewCarouselIndex((i) => i - 1)}
+																					className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 hover:bg-black/70 text-white p-2 transition-colors"
+																				>
+																					<ChevronLeft className="h-5 w-5" />
+																				</button>
+																				<button
+																					type="button"
+																					title="Next preview"
+																					onClick={() => setPreviewCarouselIndex((i) => i + 1)}
+																					className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 hover:bg-black/70 text-white p-2 transition-colors"
+																				>
+																					<ChevronRight className="h-5 w-5" />
+																				</button>
+																				<div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+																					{viewablePreviews.map((file, index) => (
+																						<button
+																							key={file.id}
+																							type="button"
+																							title={file.fileName}
+																							onClick={() => setPreviewCarouselIndex(index)}
+																							className={`h-1.5 rounded-full transition-all ${index === activeIndex ? "w-4 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80"}`}
+																						/>
+																					))}
+																				</div>
+																			</>
+																		)}
+																	</div>
+																</div>
+															);
+														})()}
+										
+													{zipPreviews.length > 0 && (
+														<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+															{zipPreviews.map((file) => (
+																<div
+																	key={file.id}
+																	className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow"
 																>
-																	Open in New Tab ↗
-																</a>
-															</div>
-															<div
-																className="w-full flex items-center justify-center bg-zinc-900 overflow-auto"
-																style={{ minHeight: "400px" }}
-															>
-																{fileType === "image" ? (
-																	<img
-																		src={file.fileUrl}
-																		alt={file.fileName}
-																		className="max-w-full max-h-[600px] object-contain p-2"
-																	/>
-																) : (
-																	<iframe
-																		src={file.fileUrl}
-																		className="w-full h-[500px] border-none bg-white"
-																		title={file.fileName}
-																	/>
-																)}
-															</div>
+																	<div className="flex items-start justify-between gap-2">
+																		<div className="min-w-0">
+																			<h4
+																				className="text-sm font-semibold text-indigo-950 truncate"
+																				title={file.fileName}
+																			>
+																				{file.fileName}
+																			</h4>
+																			<p className="text-xs text-muted-foreground mt-1">
+																				ZIP archive containing preview assets.
+																			</p>
+																		</div>
+																		{chatSide === "admin" && file.id !== "legacy" && (
+																			<button
+																				type="button"
+																				title="Delete this preview file"
+																				disabled={deletingPreviewId === file.id}
+																				onClick={() => handleDeletePreviewFile(file.id)}
+																				className="p-1.5 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 disabled:opacity-50 shrink-0"
+																			>
+																				<Trash2 className="h-4 w-4" />
+																			</button>
+																		)}
+																	</div>
+																	<div className="mt-4">
+																		<a
+																			href={file.fileUrl}
+																			download
+																			target="_blank"
+																			rel="noreferrer"
+																			className="w-full block"
+																		>
+																			<Button
+																				size="sm"
+																				className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-medium"
+																			>
+																				<Download className="h-4 w-4" /> Download Preview ZIP
+																			</Button>
+																		</a>
+																	</div>
+																</div>
+															))}
 														</div>
 													)}
-												</div>
+												</>
 											);
-										})}
+										})()}
 
 										{chatSide === "admin" && (
 											<input
