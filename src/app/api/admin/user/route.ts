@@ -61,15 +61,35 @@ export async function POST(req: NextRequest) {
         const role = "admin"
 
         // 4. Insert profile — status active immediately since email is already confirmed
-        await db.insert(profiles).values({
-            id: data.user.id,
-            email,
-            userType: 'admin_portal',
-            role,
-            status: 'active',
-            fullName: fullName || null,
-            phone: phone || null,
-        })
+        try {
+            await db.insert(profiles).values({
+                id: data.user.id,
+                email,
+                userType: 'admin_portal',
+                role,
+                status: 'active',
+                fullName: fullName || null,
+                phone: phone || null,
+            })
+        } catch (dbError: any) {
+            // The auth user above was just created — if the profile fails to save,
+            // it's left as an orphaned Auth account with no matching profile. Clean
+            // it up so a duplicate-email attempt doesn't leave a ghost account behind.
+            console.error('[admin/register] profile insert failed', dbError)
+            await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch((delErr) =>
+                console.error('[admin/register] failed to clean up orphaned auth user', delErr)
+            )
+            if (dbError?.code === '23505') {
+                return NextResponse.json(
+                    { error: 'A user with this email already exists.' },
+                    { status: 409 }
+                )
+            }
+            return NextResponse.json(
+                { error: 'Internal server error' },
+                { status: 500 }
+            )
+        }
 
         // Automatically seed default catalog and client price list
         await handleProfileCreated(data.user.id, role).catch((err) =>
@@ -80,14 +100,6 @@ export async function POST(req: NextRequest) {
 
     } catch (err: any) {
         console.error('[admin/register POST]', err)
-
-        // Check if the error is a PostgreSQL duplicate key violation (code 23505)
-        if (err?.code === '23505') {
-            return NextResponse.json(
-                { error: 'A user with this email already exists.' },
-                { status: 409 }
-            )
-        }
 
         // Return a clean 500 for any other catastrophic failure
         return NextResponse.json(

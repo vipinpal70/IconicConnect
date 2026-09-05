@@ -101,15 +101,29 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Create profile in database
-    await db.insert(profiles).values({
-      id: authData.user.id,
-      email,
-      fullName,
-      role,
-      userType,
-      phone,
-      status: 'active',
-    });
+    try {
+      await db.insert(profiles).values({
+        id: authData.user.id,
+        email,
+        fullName,
+        role,
+        userType,
+        phone,
+        status: 'active',
+      });
+    } catch (dbError: any) {
+      // The auth user above was just created — if the profile fails to save,
+      // it's left as an orphaned Auth account with no matching profile. Clean
+      // it up so a duplicate-email attempt doesn't leave a ghost account behind.
+      console.error('[admin/members] profile insert failed', dbError);
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id).catch((delErr) =>
+        console.error('[admin/members] failed to clean up orphaned auth user', delErr)
+      );
+      if (dbError?.code === '23505') {
+        return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 409 });
+      }
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
 
     // Automatically seed default catalog and client price list
     await handleProfileCreated(authData.user.id, role, user.id).catch((err) =>
