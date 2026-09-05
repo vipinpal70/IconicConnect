@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { useMutation } from "@tanstack/react-query";
 import { X, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 
 
 type FormData = {
@@ -58,13 +59,22 @@ export default function AdminSignUp() {
 
 			if (!response.ok) {
 				const errorData = await response.json();
-				throw new Error(errorData.error || "Failed to create account");
+				const error = new Error(errorData.error || "Failed to create account") as Error & { isDuplicate?: boolean };
+				error.isDuplicate = response.status === 409;
+				throw error;
 			}
 
 			return response.json();
 		},
 		onSuccess: () => {
 			setShowSuccess(true);
+		},
+		onError: (err: Error & { isDuplicate?: boolean }) => {
+			if (err.isDuplicate) {
+				toast.warning(err.message);
+			} else {
+				toast.error(err.message);
+			}
 		},
 	});
 

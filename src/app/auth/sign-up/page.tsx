@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { toast } from "sonner";
 import {
 	COUNTRY_CODES,
 	formatPhoneForStorage,
@@ -105,6 +106,7 @@ export default function SignUpPage() {
 
 		if (signUpError) {
 			setError(signUpError.message);
+			toast.warning(signUpError.message);
 			setLoading(false);
 			return;
 		}
@@ -132,7 +134,13 @@ export default function SignUpPage() {
 
 			if (!profileRes.ok) {
 				const errorData = await profileRes.json();
-				setError(errorData.error || "Failed to create profile");
+				const message = errorData.error || "Failed to create profile";
+				setError(message);
+				if (profileRes.status === 409) {
+					toast.warning(message);
+				} else {
+					toast.error(message);
+				}
 				setLoading(false);
 				return;
 			}

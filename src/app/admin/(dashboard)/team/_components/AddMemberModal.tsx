@@ -51,7 +51,9 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
 
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.error || 'Failed to add member')
+        const error = new Error(err.error || 'Failed to add member') as Error & { isDuplicate?: boolean }
+        error.isDuplicate = res.status === 409
+        throw error
       }
       return res.json()
     },
@@ -60,8 +62,12 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
       setGeneratedPass(formData.password)
       queryClient.invalidateQueries({ queryKey: ['members'] })
     },
-    onError: (err: Error) => {
-      toast.error(err.message)
+    onError: (err: Error & { isDuplicate?: boolean }) => {
+      if (err.isDuplicate) {
+        toast.warning(err.message)
+      } else {
+        toast.error(err.message)
+      }
     },
   })
 
