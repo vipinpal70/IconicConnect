@@ -11,7 +11,14 @@ import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
 import { Badge } from "@/src/components/ui/badge"
-import { Building2, Mail, Phone, MapPin, Plus, ShieldCheck, ArrowRight, CircleCheck, CircleX } from "lucide-react"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuTrigger, DropdownMenuSeparator,
+} from "@/src/components/ui/dropdown-menu"
+import {
+  Building2, Mail, Phone, MapPin, ShieldCheck, ArrowRight, CircleCheck, CircleX,
+  MoreVertical, UserX, UserCheck, Trash2,
+} from "lucide-react"
 import { toast } from "sonner"
 
 type ClientPaymentSummary = {
@@ -87,6 +94,42 @@ export default function AdminClients() {
     },
   })
 
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: "active" | "inactive" }) => {
+      const res = await fetch(`/api/admin/clients/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to update client status")
+      }
+      return res.json()
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["pendingClients"] })
+      toast.success(variables.status === "active" ? "Client reactivated" : "Client deactivated")
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/clients/${id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to delete client")
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pendingClients"] })
+      toast.success("Client deleted")
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
   if (isLoading) return <LoadingSpinner />
   if (error) return <ErrorMessage message={(error as Error).message} />
 
@@ -131,9 +174,67 @@ export default function AdminClients() {
                       <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">{client.id.slice(0, 8)}</p>
                     </div>
                   </div>
-                  <Badge variant="outline" className={`scale-90 origin-right shrink-0 ${statusColor[client.status === "pending" ? "pending" : client.plan] || statusColor.Active}`}>
-                    {client.status === "pending" ? "Pending Approval" : client.plan}
-                  </Badge>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Badge
+                      variant="outline"
+                      className={`scale-90 origin-right shrink-0 ${client.status === "inactive"
+                        ? "bg-red-500/10 text-red-600 border-red-500/20"
+                        : statusColor[client.status === "pending" ? "pending" : client.plan] || statusColor.Active
+                        }`}
+                    >
+                      {client.status === "pending"
+                        ? "Pending Approval"
+                        : client.status === "inactive"
+                          ? "Inactive"
+                          : client.plan}
+                    </Badge>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48 text-xs" onClick={(event) => event.stopPropagation()}>
+                        {client.status === "inactive" ? (
+                          <DropdownMenuItem
+                            className="gap-1.5 text-xs"
+                            disabled={statusMutation.isPending}
+                            onClick={() => statusMutation.mutate({ id: client.id, status: "active" })}
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            Reactivate
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            className="gap-1.5 text-xs"
+                            disabled={statusMutation.isPending}
+                            onClick={() => statusMutation.mutate({ id: client.id, status: "inactive" })}
+                          >
+                            <UserX className="h-3.5 w-3.5" />
+                            Deactivate
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="gap-1.5 text-xs text-red-500 hover:text-red-600 focus:text-red-600 focus:bg-red-50"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (confirm(`Permanently delete ${client.labName || client.fullName || client.email}? This only works if they have no cases, invoices, sub-users, or support history.`)) {
+                              deleteMutation.mutate(client.id)
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
