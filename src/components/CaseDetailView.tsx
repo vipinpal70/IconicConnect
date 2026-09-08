@@ -56,6 +56,92 @@ import type { MillingCenter } from "@/src/db/schema/milling";
 import type { RoutingResult } from "@/src/lib/milling/routing-engine";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 
+/**
+ * Read-only summary of a case created via 3Shape XML Import. Reads the
+ * lossless domain model persisted under `subTypeData.threeShape` (an object,
+ * so it's invisible to the sub-type-summary derivations — xml-work-plan.md §10).
+ */
+function ThreeShapeImportPanel({ data }: { data: Record<string, unknown> }) {
+	const [open, setOpen] = useState(false);
+	const src = (data.source ?? {}) as Record<string, unknown>;
+	const ids = (data.sourceIds ?? {}) as Record<string, unknown>;
+	const order = (data.order ?? {}) as Record<string, unknown>;
+	const dq = (data.dataQuality ?? {}) as Record<string, unknown>;
+	const warnings = Array.isArray(dq.warnings)
+		? (dq.warnings as Array<{ code?: string; message?: string; resolution?: string }>)
+		: [];
+	const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+	const rows: Array<[string, string | null]> = [
+		["Source order", str(ids.sourceOrderId)],
+		["Lab / customer", str(order.customer)],
+		["Manufacturer", str(order.manufacturerName)],
+		["Indication", str(order.rawItems)],
+		[
+			"Imported",
+			str(src.extractedAt)
+				? new Date(src.extractedAt as string).toLocaleString()
+				: null,
+		],
+		["Parser", str(src.parserVersion)],
+		["Container", str(src.containerVersion)],
+	];
+	return (
+		<div className="pt-2.5 border-t border-border/50 mt-2.5">
+			<button
+				type="button"
+				onClick={() => setOpen((o) => !o)}
+				className="w-full flex items-center justify-between text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
+			>
+				<span className="flex items-center gap-1.5">
+					Imported from 3Shape
+					{warnings.length > 0 && (
+						<span className="normal-case tracking-normal text-amber-600 font-medium">
+							· {warnings.length} field{warnings.length === 1 ? "" : "s"} were left for manual entry
+						</span>
+					)}
+				</span>
+				<ChevronRight
+					className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`}
+				/>
+			</button>
+			{open && (
+				<div className="mt-2 space-y-2">
+					<dl className="space-y-1">
+						{rows
+							.filter(([, v]) => v)
+							.map(([k, v]) => (
+								<div key={k} className="flex gap-2 text-[11px]">
+									<dt className="text-muted-foreground shrink-0 w-24">{k}</dt>
+									<dd className="text-foreground wrap-break-word">{v}</dd>
+								</div>
+							))}
+					</dl>
+					{str(order.comments) && (
+						<div className="text-[11px]">
+							<p className="text-muted-foreground">Lab instructions</p>
+							<p className="text-foreground whitespace-pre-wrap mt-0.5">
+								{str(order.comments)}
+							</p>
+						</div>
+					)}
+					{warnings.length > 0 && (
+						<ul className="space-y-0.5">
+							{warnings.map((w, i) => (
+								<li key={i} className="text-[11px] text-amber-700">
+									• {w.message}
+									{w.resolution ? (
+										<span className="text-amber-600"> — {w.resolution}</span>
+									) : null}
+								</li>
+							))}
+						</ul>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
+
 const getPreviewFileType = (
 	url: string | null | undefined,
 ): "html" | "image" | "zip" | "other" => {
@@ -702,6 +788,10 @@ export function CaseDetailView({
 		typeof subTypeData.modelRequired === "string"
 			? subTypeData.modelRequired
 			: "—";
+	const threeShape =
+		subTypeData.threeShape && typeof subTypeData.threeShape === "object"
+			? (subTypeData.threeShape as Record<string, unknown>)
+			: null;
 
 	return shell(
 		<div className="space-y-4 animate-fade-in max-w-6xl mx-auto">
@@ -970,6 +1060,7 @@ export function CaseDetailView({
 											{notes}
 										</p>
 									</div>
+									{threeShape && <ThreeShapeImportPanel data={threeShape} />}
 								</CardContent>
 							</div>
 

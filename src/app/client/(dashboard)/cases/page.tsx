@@ -8,6 +8,7 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
+import { ThreeShapeImport } from "@/src/components/ThreeShapeImport/ThreeShapeImport";
 import { type CaseStatus } from "@/src/data/demoData";
 import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle, Factory, Ban } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
@@ -895,9 +896,10 @@ export default function CasesPage() {
                   <DialogTitle>Submit New Case</DialogTitle>
                 </DialogHeader>
                 <Tabs defaultValue="single" className="mt-2">
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="single">Single Case</TabsTrigger>
                     <TabsTrigger value="bulk">Bulk Upload</TabsTrigger>
+                    <TabsTrigger value="xml">3Shape Import</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="single" className="space-y-5 mt-4">
@@ -1717,6 +1719,22 @@ export default function CasesPage() {
                         </Button>
                       </>
                     )}
+                  </TabsContent>
+
+                  {/* forceMount so uploads/drafts survive a tab switch; the
+                      dialog still unmounts it on close for a fresh start. */}
+                  <TabsContent
+                    value="xml"
+                    forceMount
+                    className="mt-4 data-[state=inactive]:hidden"
+                  >
+                    <ThreeShapeImport
+                      onSubmitted={() => {
+                        pageLimitRef.current += 1;
+                        fetchCases();
+                      }}
+                      onClose={() => setUploadOpen(false)}
+                    />
                   </TabsContent>
                 </Tabs>
               </DialogContent>
