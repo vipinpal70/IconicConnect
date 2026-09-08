@@ -5,7 +5,8 @@ on:
     branches:
       # - main
       # - master
-      - phase2
+      # - phase2
+      - xml-feature
 
 jobs:
   deploy:
