@@ -213,6 +213,37 @@ const STATUS_FILTER_MAP: Record<string, string[]> = {
   "Cancelled": ["cancelled"],
 };
 
+// Fetch the 100 most recent cases by default and per "Load more"; never hold
+// more than MAX_CASES rows in the browser (server-enforced too).
+const CASES_PAGE_SIZE = 100;
+const MAX_CASES = 200;
+
+// Snapshot of the filter bar last sent to the server. The inputs only update
+// local state; "Fetch" copies them here and re-queries /api/cases so the result
+// spans every case, not just the pages already loaded.
+type AppliedCaseFilters = {
+  search: string;
+  statuses: string[];
+  category: string;
+  assignedTo: string; // "", "mine", or a user id
+  from: string;
+  to: string;
+};
+const EMPTY_CASE_FILTERS: AppliedCaseFilters = {
+  search: "", statuses: [], category: "", assignedTo: "", from: "", to: "",
+};
+
+function buildCasesQuery(f: AppliedCaseFilters, limit: number, page: number): string {
+  const p = new URLSearchParams({ limit: String(limit), page: String(page) });
+  if (f.search) p.set("search", f.search);
+  if (f.statuses.length) p.set("statuses", f.statuses.join(","));
+  if (f.category) p.set("category", f.category);
+  if (f.assignedTo) p.set("assignedTo", f.assignedTo);
+  if (f.from) p.set("from", f.from);
+  if (f.to) p.set("to", f.to);
+  return `/api/cases?${p.toString()}`;
+}
+
 const hasAllRequiredCaseFields = (
   category: string,
   subTypeData: Record<string, string>,
@@ -288,17 +319,23 @@ export default function CasesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const CASES_PAGE_SIZE = 50;
+  const [isFetching, setIsFetching] = useState(false);
   // Tracks total cases currently loaded; grows as the user loads more or creates new cases.
   // fetchCases() re-fetches everything loaded so far (used for the initial load and the
   // periodic refresh, so already-loaded rows stay fresh); handleLoadMore() fetches only
   // the next page and appends it, rather than re-fetching everything.
   const loadedCountRef = useRef(CASES_PAGE_SIZE);
 
+  // Filters run on the server, on demand (via the "Fetch" button / Enter in the
+  // search box). `appliedFilters` is the snapshot reflected in the list;
+  // `appliedRef` mirrors it for the long-lived fetch/refresh closures.
+  const [appliedFilters, setAppliedFilters] = useState<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
+  const appliedRef = useRef<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
+
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const res = await fetch(`/api/cases?limit=${loadedCountRef.current}&page=1`);
+      const res = await fetch(buildCasesQuery(appliedRef.current, loadedCountRef.current, 1));
       if (res.ok) {
         const json = await res.json();
         setCases(Array.isArray(json.data) ? json.data : []);
@@ -314,11 +351,44 @@ export default function CasesPage() {
     }
   };
 
+  // Snapshot the live filter bar and re-query the server from the first page.
+  // Pass EMPTY_CASE_FILTERS to clear.
+  const applyFilters = async (override?: AppliedCaseFilters) => {
+    const next: AppliedCaseFilters = override ?? {
+      search: search.trim(),
+      statuses: statusFilter === "All" ? [] : (STATUS_FILTER_MAP[statusFilter] ?? []),
+      category: typeFilter === "All" ? "" : typeFilter,
+      assignedTo: assignedFilter === "All" ? "" : assignedFilter,
+      from,
+      to,
+    };
+    appliedRef.current = next;
+    setAppliedFilters(next);
+    loadedCountRef.current = CASES_PAGE_SIZE;
+    setIsFetching(true);
+    try {
+      await fetchCases(false);
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setTypeFilter("All");
+    setStatusFilter("All");
+    setAssignedFilter("All");
+    setFrom("");
+    setTo("");
+    void applyFilters(EMPTY_CASE_FILTERS);
+  };
+
   const handleLoadMore = async () => {
+    if (loadedCountRef.current >= MAX_CASES) return;
     setIsLoadingMore(true);
     try {
       const nextPage = Math.floor(loadedCountRef.current / CASES_PAGE_SIZE) + 1;
-      const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=${nextPage}`);
+      const res = await fetch(buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, nextPage));
       if (res.ok) {
         const json = await res.json();
         const newRows = Array.isArray(json.data) ? json.data : [];
@@ -336,13 +406,13 @@ export default function CasesPage() {
   };
 
   // Periodic background refresh — re-fetches only the first page (newest
-  // CASES_PAGE_SIZE cases) instead of the whole accumulated list, so its cost
-  // stays constant no matter how many "Load more" pages are loaded. Updates
-  // existing rows in place and prepends brand-new cases; rows loaded via
-  // "Load more" beyond the first page are left untouched.
+  // CASES_PAGE_SIZE cases matching the applied filters) instead of the whole
+  // accumulated list, so its cost stays constant no matter how many "Load more"
+  // pages are loaded. Updates existing rows in place and prepends brand-new
+  // cases; rows loaded via "Load more" beyond the first page are left untouched.
   const refreshFirstPage = async () => {
     try {
-      const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=1`);
+      const res = await fetch(buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, 1));
       if (!res.ok) return;
       const json = await res.json();
       const freshRows: OpsCase[] = Array.isArray(json.data) ? json.data : [];
@@ -357,6 +427,8 @@ export default function CasesPage() {
     }
   };
 
+  // Initial load (top CASES_PAGE_SIZE, no filters) + a 30s refresh that re-runs
+  // whatever filter snapshot is currently applied.
   useEffect(() => {
     loadedCountRef.current = CASES_PAGE_SIZE;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
@@ -865,34 +937,23 @@ export default function CasesPage() {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
+  // The server already returns exactly the cases matching `appliedFilters`.
+  // Re-checking the structured filters here only stops a case that the 30s
+  // refresh prepended but that no longer matches from flashing into view; the
+  // text search (which can match files past the first) is left to the server.
   const filtered = useMemo(() => {
+    const f = appliedFilters;
+    const assignedId = f.assignedTo === "mine" ? activeUserId : f.assignedTo;
     return cases.filter((c) => {
-      const s = search.toLowerCase();
-      const friendlyId = (c.caseNumber || c.id || "").toLowerCase();
-      const friendlyRestoration = (
-        c.subTypeData
-          ? Object.entries(c.subTypeData)
-            .filter(([k, v]) => k !== "teeth" && k !== "crownBridgeTeeth" && k !== "toothSystem" && k !== "notes" && k !== "modelRequired" && typeof v === "string" && v && v.toLowerCase() !== "none")
-            .map(([, v]) => v).join(" - ")
-          : c.category || ""
-      ).toLowerCase();
-
-      const matchesSearch = !s || friendlyId.includes(s) || friendlyRestoration.includes(s);
-
-      const matchesStatus = statusFilter === "All" || (STATUS_FILTER_MAP[statusFilter]?.includes(c.status) ?? false);
-      const matchesType = typeFilter === "All" || c.category === typeFilter;
-      const matchesAssigned =
-        assignedFilter === "All" ||
-        (assignedFilter === "mine"
-          ? c.designerId === activeUserId || c.qcId === activeUserId
-          : c.designerId === assignedFilter || c.qcId === assignedFilter);
+      const matchesStatus = f.statuses.length === 0 || f.statuses.includes(c.status);
+      const matchesType = !f.category || c.category === f.category;
+      const matchesAssigned = !f.assignedTo || !assignedId || c.designerId === assignedId || c.qcId === assignedId;
       const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "";
-      const matchesFrom = !from || createdAtDate >= from;
-      const matchesTo = !to || createdAtDate <= to;
-
-      return matchesSearch && matchesStatus && matchesType && matchesAssigned && matchesFrom && matchesTo;
+      const matchesFrom = !f.from || createdAtDate >= f.from;
+      const matchesTo = !f.to || createdAtDate <= f.to;
+      return matchesStatus && matchesType && matchesAssigned && matchesFrom && matchesTo;
     });
-  }, [cases, search, statusFilter, typeFilter, assignedFilter, activeUserId, from, to]);
+  }, [cases, appliedFilters, activeUserId]);
 
   // ── QC "Approve all" (bulk approval, bypasses the checklist) ──────────────
   // A case is bulk-approvable when it sits in Internal QC and the current user
@@ -1073,7 +1134,7 @@ export default function CasesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-semibold text-foreground">Cases</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} shown · {cases.length} loaded{hasMore ? " · more available" : ""}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} shown{hasMore ? " · more available" : ""}</p>
           </div>
           <div className="flex gap-2 items-center">
             {canBulkApprove && (approvableCases.length > 0 || approveSelectMode) && (
@@ -1157,7 +1218,13 @@ export default function CasesPage() {
             <div className="flex flex-col lg:flex-row gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input className="pl-8 h-8 text-xs" placeholder="Search cases..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                <Input
+                  className="pl-8 h-8 text-xs"
+                  placeholder="Search by case #, type, client or file name..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void applyFilters(); }}
+                />
               </div>
               <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v)}>
                 <SelectTrigger className="w-full lg:w-48 h-8 text-xs"><SelectValue placeholder="Case type" /></SelectTrigger>
@@ -1188,7 +1255,11 @@ export default function CasesPage() {
               </Select>
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
-              <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={() => { setSearch(""); setTypeFilter("All"); setStatusFilter("All"); setAssignedFilter("All"); setFrom(""); setTo(""); }}>Clear</Button>
+              <Button size="sm" className="h-8 text-xs font-semibold gap-1.5" onClick={() => void applyFilters()} disabled={isFetching}>
+                {isFetching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                Fetch
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={clearFilters} disabled={isFetching}>Clear</Button>
             </div>
             <div className="flex gap-1 flex-wrap pt-0.5">
               {statusFilters.map((s) => (
@@ -1733,13 +1804,13 @@ export default function CasesPage() {
                       );
                     })
                   )}
-                  {!isLoading && filtered.length === 0 && (
+                  {!isLoading && !isFetching && filtered.length === 0 && (
                     <tr><td colSpan={approveSelectMode ? 10 : 9} className="px-3.5 py-6 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            {!isLoading && hasMore && (
+            {!isLoading && hasMore && cases.length < MAX_CASES && (
               <div className="p-3 border-t border-border/50 flex justify-center">
                 <Button
                   variant="outline"

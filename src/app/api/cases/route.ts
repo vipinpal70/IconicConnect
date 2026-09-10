@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum } from '@/src/db/schema/case';
+import { cases, caseFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum, serviceTypeEnum } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
-import { eq, and, inArray, sql, asc, desc } from 'drizzle-orm';
+import { eq, and, or, inArray, ilike, gte, lte, sql, asc, desc, type SQL } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
@@ -366,19 +366,130 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Math.max(Number(searchParams.get('limit') || 10), 1), 200);
+
+    const isAdmin = isValidRoleForType('admin_portal', profile.role)
+    const cacheClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id
+
+    // Hard row ceiling — 300 for the admin console, 200 for the lab / ops
+    // portals — so neither the query nor the browser list can grow unbounded.
+    // The pages default to and page in CASES_PAGE_SIZE (100) rows.
+    const maxRows = isAdmin ? 300 : 200;
+    const limit = Math.min(Math.max(Number(searchParams.get('limit') || 100), 1), maxRows);
     const page = Math.max(Number(searchParams.get('page') || 1), 1);
     const offset = (page - 1) * limit;
 
-    // Determine cache key before hitting DB
-    const isAdmin = isValidRoleForType('admin_portal', profile.role)
-    const cacheClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id
+    // ── Server-side list filters ────────────────────────────────────────────
+    // Every filter the cases pages expose is now applied here (triggered by the
+    // "Fetch" button) rather than in the browser over a pre-loaded page, so a
+    // filtered view spans every case. All are optional and AND-ed together.
+    //   search      — case #, category, sub-type, client/lab name, file name
+    //   statuses    — CSV of case_status enum values (pages send the mapped set)
+    //   serviceType — design_only | design_milling | milling_only
+    //   category    — exact case category
+    //   clientId    — exact owning client (admin only; others are auto-scoped)
+    //   assignedTo  — "me"/"mine" or a user id; matches designer OR qc
+    //   from / to   — inclusive createdAt date range (YYYY-MM-DD, UTC)
+    const searchTerm = (searchParams.get('search') || '').trim().slice(0, 100);
+    const hasSearch = searchTerm.length > 0;
+
+    const statuses = (searchParams.get('statuses') || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s): s is typeof caseStatusEnum.enumValues[number] =>
+        (caseStatusEnum.enumValues as readonly string[]).includes(s));
+
+    const serviceTypeParam = searchParams.get('serviceType');
+    const serviceType = (serviceTypeEnum.enumValues as readonly string[]).includes(serviceTypeParam ?? '')
+      ? (serviceTypeParam as typeof serviceTypeEnum.enumValues[number])
+      : null;
+
+    const categoryParam = (searchParams.get('category') || '').trim() || null;
+    const clientIdParam = (searchParams.get('clientId') || '').trim() || null;
+
+    const assignedParam = (searchParams.get('assignedTo') || '').trim();
+    // "me" / "mine" (the pages' own value) both mean the current user.
+    const assignedUserId = assignedParam === 'me' || assignedParam === 'mine'
+      ? profile.id
+      : (assignedParam || null);
+
+    const parseBoundary = (value: string | null, endOfDay: boolean): Date | null => {
+      if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+      const d = new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z`);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const fromDate = parseBoundary(searchParams.get('from'), false);
+    const toDate = parseBoundary(searchParams.get('to'), true);
+
+    const hasFilters =
+      hasSearch || statuses.length > 0 || !!serviceType || !!categoryParam ||
+      !!clientIdParam || !!assignedUserId || !!fromDate || !!toDate;
+
+    // Cache key (role + page + resolved limit)
     const casesCacheKey = isAdmin
       ? `cases:list:admin:p${page}:l${limit}`
       : `cases:list:client:${cacheClientId}:p${page}:l${limit}`
 
-    const cachedCases = await getCachedData<{ data: unknown[]; hasMore: boolean }>(casesCacheKey)
+    // Filtered views bypass the list cache — one entry per filter combination
+    // would flood Redis and slip past invalidateCasesCache().
+    const cachedCases = hasFilters
+      ? null
+      : await getCachedData<{ data: unknown[]; hasMore: boolean }>(casesCacheKey)
     if (cachedCases) return NextResponse.json(cachedCases)
+
+    // Build the search predicate. The file-name and client-name matches are
+    // resolved to id lists up front — each a single index-backed query (the
+    // file-name one rides the case_files trigram index from migration 0052) —
+    // so the main case query stays a plain `id IN (...)` rather than a
+    // per-row correlated sub-select.
+    let searchCondition: SQL | undefined;
+    if (hasSearch) {
+      const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+      const likePattern = `%${escapeLike(searchTerm)}%`;
+      const likePatternLower = likePattern.toLowerCase();
+
+      const [fileCaseIdRows, clientIdRows] = await Promise.all([
+        db.selectDistinct({ caseId: caseFiles.caseId })
+          .from(caseFiles)
+          .where(sql`lower(${caseFiles.fileName}) like ${likePatternLower}`)
+          .limit(5000),
+        db.select({ id: profiles.id })
+          .from(profiles)
+          .where(or(
+            ilike(profiles.labName, likePattern),
+            ilike(profiles.fullName, likePattern),
+            ilike(profiles.email, likePattern),
+          ))
+          .limit(2000),
+      ]);
+
+      const matchedFileCaseIds = fileCaseIdRows
+        .map((r) => r.caseId)
+        .filter((v): v is string => Boolean(v));
+      const matchedClientIds = clientIdRows.map((r) => r.id);
+
+      searchCondition = or(
+        ilike(cases.caseNumber, likePattern),
+        ilike(cases.category, likePattern),
+        sql`${cases.subTypeData}::text ilike ${likePattern}`,
+        matchedFileCaseIds.length ? inArray(cases.id, matchedFileCaseIds) : undefined,
+        matchedClientIds.length ? inArray(cases.clientId, matchedClientIds) : undefined,
+      );
+    }
+
+    // Combine every active filter into one AND-ed predicate.
+    const filterParts: (SQL | undefined)[] = [
+      searchCondition,
+      statuses.length > 0 ? inArray(cases.status, statuses) : undefined,
+      serviceType ? eq(cases.serviceType, serviceType) : undefined,
+      categoryParam ? eq(cases.category, categoryParam) : undefined,
+      clientIdParam ? eq(cases.clientId, clientIdParam) : undefined,
+      assignedUserId
+        ? or(eq(cases.designerId, assignedUserId), eq(cases.qcId, assignedUserId))
+        : undefined,
+      fromDate ? gte(cases.createdAt, fromDate) : undefined,
+      toDate ? lte(cases.createdAt, toDate) : undefined,
+    ];
+    const filterCondition = and(...filterParts);
 
     // Fetch one extra row to determine whether another page exists
     const fetchLimit = limit + 1;
@@ -387,18 +498,19 @@ export async function GET(req: NextRequest) {
 
     if (isAdmin) {
       results = await db.select(caseListSelection).from(cases)
+        .where(filterCondition)
         .orderBy(desc(cases.createdAt))
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'client') {
       results = await db.select(caseListSelection).from(cases)
-        .where(eq(cases.clientId, profile.id))
+        .where(and(eq(cases.clientId, profile.id), filterCondition))
         .orderBy(desc(cases.createdAt))
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'subuser') {
       results = await db.select(caseListSelection).from(cases)
-        .where(eq(cases.clientId, cacheClientId))
+        .where(and(eq(cases.clientId, cacheClientId), filterCondition))
         .orderBy(desc(cases.createdAt))
         .limit(fetchLimit)
         .offset(offset);
@@ -460,7 +572,7 @@ export async function GET(req: NextRequest) {
     }));
 
     const payload = { data: mappedResults, hasMore }
-    await setCachedData(casesCacheKey, payload, CASES_LIST_TTL)
+    if (!hasFilters) await setCachedData(casesCacheKey, payload, CASES_LIST_TTL)
     return NextResponse.json(payload);
   } catch (error: unknown) {
     console.error('Get cases error:', error);

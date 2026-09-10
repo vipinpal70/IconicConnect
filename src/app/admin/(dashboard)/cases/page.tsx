@@ -259,6 +259,34 @@ const removeExtensionFromString = (str: string) => {
 	return str;
 };
 
+// Snapshot of the filter bar last sent to the server. The inputs only update
+// local state; "Fetch" copies them here and the query key change makes React
+// Query re-run the list from page 1 with every filter applied server-side.
+type AppliedCaseFilters = {
+	search: string;
+	statuses: string[];
+	serviceType: string;
+	clientId: string;
+	assignedTo: string; // "", "mine", or a user id
+	from: string;
+	to: string;
+};
+const EMPTY_CASE_FILTERS: AppliedCaseFilters = {
+	search: "", statuses: [], serviceType: "", clientId: "", assignedTo: "", from: "", to: "",
+};
+
+function buildCasesQuery(f: AppliedCaseFilters, limit: number, page: number): string {
+	const p = new URLSearchParams({ limit: String(limit), page: String(page) });
+	if (f.search) p.set("search", f.search);
+	if (f.statuses.length) p.set("statuses", f.statuses.join(","));
+	if (f.serviceType) p.set("serviceType", f.serviceType);
+	if (f.clientId) p.set("clientId", f.clientId);
+	if (f.assignedTo) p.set("assignedTo", f.assignedTo);
+	if (f.from) p.set("from", f.from);
+	if (f.to) p.set("to", f.to);
+	return `/api/cases?${p.toString()}`;
+}
+
 export default function AdminCasesPage() {
 	const [isAddOpen, setIsAddOpen] = useState(false);
 	const [search, setSearch] = useState("");
@@ -280,7 +308,55 @@ export default function AdminCasesPage() {
 	const [approveChecklist, setApproveChecklist] = useState<
 		Record<string, boolean>
 	>({});
-	const CASES_PAGE_SIZE = 50;
+	// Fetch the 100 most recent cases by default and per "Load more"; cap the
+	// admin console at MAX_CASES rows in the browser (server-enforced too).
+	const CASES_PAGE_SIZE = 100;
+	const MAX_CASES = 300;
+
+	// Filters run on the server, on demand: the inputs above only set local
+	// state. "Fetch" (or Enter in the search box) copies them into
+	// `appliedFilters`, which is part of the query key, so React Query re-runs
+	// the list from page 1 with every filter applied server-side.
+	const [appliedFilters, setAppliedFilters] = useState<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
+	const appliedFiltersKey = JSON.stringify(appliedFilters);
+	const filtersActive = useMemo(
+		() =>
+			Boolean(
+				appliedFilters.search ||
+					appliedFilters.statuses.length ||
+					appliedFilters.serviceType ||
+					appliedFilters.clientId ||
+					appliedFilters.assignedTo ||
+					appliedFilters.from ||
+					appliedFilters.to,
+			),
+		[appliedFilters],
+	);
+
+	const applyFilters = (override?: AppliedCaseFilters) => {
+		setAppliedFilters(
+			override ?? {
+				search: search.trim(),
+				statuses: statusFilter === "All" ? [] : [statusFilter],
+				serviceType: serviceTypeFilter === "All" ? "" : serviceTypeFilter,
+				clientId: clientFilter === "All" ? "" : clientFilter,
+				assignedTo: assignedFilter === "All" ? "" : assignedFilter,
+				from,
+				to,
+			},
+		);
+	};
+
+	const clearFilters = () => {
+		setSearch("");
+		setStatusFilter("All");
+		setServiceTypeFilter("All");
+		setClientFilter("All");
+		setAssignedFilter("All");
+		setFrom("");
+		setTo("");
+		applyFilters(EMPTY_CASE_FILTERS);
+	};
 
 	// Fetch Cases list — each page fetches CASES_PAGE_SIZE new rows and is
 	// appended to the ones already loaded (not replaced). refetch() (called
@@ -291,15 +367,18 @@ export default function AdminCasesPage() {
 	const {
 		data: casesPages,
 		isLoading,
+		isFetching,
 		error,
 		refetch,
 		fetchNextPage,
 		hasNextPage,
 		isFetchingNextPage,
 	} = useInfiniteQuery<{ data: CaseRecord[]; hasMore: boolean }>({
-		queryKey: ["admin-cases"],
+		queryKey: ["admin-cases", appliedFiltersKey],
 		queryFn: async ({ pageParam }) => {
-			const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=${pageParam}`);
+			const res = await fetch(
+				buildCasesQuery(appliedFilters, CASES_PAGE_SIZE, pageParam as number),
+			);
 			if (!res.ok) {
 				const err = await res.json().catch(() => ({}));
 				throw new Error(err.error || "Failed to load cases");
@@ -308,7 +387,9 @@ export default function AdminCasesPage() {
 		},
 		initialPageParam: 1,
 		getNextPageParam: (lastPage, allPages) =>
-			lastPage.hasMore ? allPages.length + 1 : undefined,
+			lastPage.hasMore && allPages.length * CASES_PAGE_SIZE < MAX_CASES
+				? allPages.length + 1
+				: undefined,
 		staleTime: 20_000,
 	});
 
@@ -318,6 +399,10 @@ export default function AdminCasesPage() {
 	// prepending brand-new ones, leaving pages loaded via "Load more" as-is.
 	const queryClient = useQueryClient();
 	useEffect(() => {
+		// With filters applied the list is a filtered result set — the
+		// "newest 50" merge below doesn't apply, so pause it and let the
+		// query's own staleTime refetch handle freshness.
+		if (filtersActive) return;
 		const intervalId = window.setInterval(async () => {
 			try {
 				const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=1`);
@@ -327,7 +412,7 @@ export default function AdminCasesPage() {
 				queryClient.setQueryData<{
 					pages: { data: CaseRecord[]; hasMore: boolean }[];
 					pageParams: number[];
-				}>(["admin-cases"], (old) => {
+				}>(["admin-cases", appliedFiltersKey], (old) => {
 					if (!old || old.pages.length === 0) return old;
 					const firstPage = old.pages[0];
 					const newOnes = fresh.data.filter(
@@ -349,7 +434,7 @@ export default function AdminCasesPage() {
 			}
 		}, 30_000);
 		return () => window.clearInterval(intervalId);
-	}, [queryClient]);
+	}, [queryClient, filtersActive, appliedFiltersKey]);
 
 	const data = useMemo(
 		() => ({ data: (casesPages?.pages ?? []).flatMap((p) => p.data) }),
@@ -476,50 +561,34 @@ export default function AdminCasesPage() {
 		return membersData.filter((m) => m.role === "qc" && m.status === "active");
 	}, [membersData]);
 
+	// The server already returns exactly the cases matching `appliedFilters`.
+	// Re-checking the structured filters here only stops a case that the 30s
+	// refresh prepended but that no longer matches from flashing into view; the
+	// text search (which can match files past the first) is left to the server.
 	const filtered = useMemo(() => {
 		const cases = data?.data || [];
-		const term = search.toLowerCase();
+		const f = appliedFilters;
+		const assignedId = f.assignedTo === "mine" ? currentUser?.id : f.assignedTo;
 
 		return cases.filter((caseItem) => {
-			const client = clientsMap.get(caseItem.clientId);
-			const clientName = (
-				client?.labName ||
-				client?.fullName ||
-				""
-			).toLowerCase();
-			const restoration = renderSubTypeSummary(
-				caseItem.subTypeData,
-			).toLowerCase();
-
-			const matchesSearch =
-				!term ||
-				(caseItem.caseNumber || caseItem.id).toLowerCase().includes(term) ||
-				(caseItem.category || "").toLowerCase().includes(term) ||
-				restoration.includes(term) ||
-				clientName.includes(term);
-
 			const matchesStatus =
-				statusFilter === "All" || caseItem.status === statusFilter;
+				f.statuses.length === 0 || f.statuses.includes(caseItem.status);
 			const matchesServiceType =
-				serviceTypeFilter === "All" ||
-				(caseItem.serviceType ?? "design_only") === serviceTypeFilter;
-			const matchesClient =
-				clientFilter === "All" || caseItem.clientId === clientFilter;
+				!f.serviceType ||
+				(caseItem.serviceType ?? "design_only") === f.serviceType;
+			const matchesClient = !f.clientId || caseItem.clientId === f.clientId;
 			const matchesAssigned =
-				assignedFilter === "All" ||
-				(assignedFilter === "mine"
-					? caseItem.designerId === currentUser?.id ||
-						caseItem.qcId === currentUser?.id
-					: caseItem.designerId === assignedFilter ||
-						caseItem.qcId === assignedFilter);
+				!f.assignedTo ||
+				!assignedId || // "mine" before currentUser loads — trust the server
+				caseItem.designerId === assignedId ||
+				caseItem.qcId === assignedId;
 			const createdAtDate = caseItem.createdAt
 				? new Date(caseItem.createdAt).toISOString().split("T")[0]
 				: "";
-			const matchesFrom = !from || createdAtDate >= from;
-			const matchesTo = !to || createdAtDate <= to;
+			const matchesFrom = !f.from || createdAtDate >= f.from;
+			const matchesTo = !f.to || createdAtDate <= f.to;
 
 			return (
-				matchesSearch &&
 				matchesStatus &&
 				matchesServiceType &&
 				matchesClient &&
@@ -528,18 +597,7 @@ export default function AdminCasesPage() {
 				matchesTo
 			);
 		});
-	}, [
-		data,
-		search,
-		statusFilter,
-		serviceTypeFilter,
-		clientFilter,
-		assignedFilter,
-		currentUser,
-		clientsMap,
-		from,
-		to,
-	]);
+	}, [data, appliedFilters, currentUser]);
 
 	// Live database updates
 	const handleUpdate = async (
@@ -838,9 +896,12 @@ export default function AdminCasesPage() {
 							<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 							<Input
 								className="pl-8 h-8 text-xs"
-								placeholder="Search by case number, category or subtype..."
+								placeholder="Search by case number, category, subtype, client or file name..."
 								value={search}
 								onChange={(e) => setSearch(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") applyFilters();
+								}}
 							/>
 						</div>
 						<Select value={clientFilter} onValueChange={setClientFilter}>
@@ -973,18 +1034,24 @@ export default function AdminCasesPage() {
 							title="End date"
 						/>
 						<Button
+							size="sm"
+							className="h-8 text-xs gap-1.5"
+							onClick={() => applyFilters()}
+							disabled={isFetching}
+						>
+							{isFetching ? (
+								<RefreshCw className="h-3.5 w-3.5 animate-spin" />
+							) : (
+								<Search className="h-3.5 w-3.5" />
+							)}
+							Fetch
+						</Button>
+						<Button
 							variant="outline"
 							size="sm"
 							className="h-8 text-xs"
-							onClick={() => {
-								setSearch("");
-								setStatusFilter("All");
-								setServiceTypeFilter("All");
-								setClientFilter("All");
-								setAssignedFilter("All");
-								setFrom("");
-								setTo("");
-							}}
+							onClick={clearFilters}
+							disabled={isFetching}
 						>
 							Clear
 						</Button>

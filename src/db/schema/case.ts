@@ -218,6 +218,12 @@ export const caseFiles = pgTable('case_files', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   caseIdIdx: index('case_files_case_id_idx').on(table.caseId),
+  // Backs the case-list Universal Search's `lower(file_name) LIKE '%term%'`
+  // full/partial file-name match — see migration 0052. Requires pg_trgm.
+  fileNameTrgmIdx: index('case_files_file_name_trgm_idx').using(
+    'gin',
+    sql`lower(${table.fileName}) gin_trgm_ops`,
+  ),
 }))
 
 // Separate from `caseFiles` on purpose: caseFiles backs the client-facing "Case Files"

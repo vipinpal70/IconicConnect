@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useMemo, useState, useRef, useEffect } from "react";
@@ -129,6 +129,27 @@ const STATUS_FILTER_MAP: Record<string, string[]> = {
   "Cancelled": ["cancelled"],
 };
 
+// Fetch the 100 most recent cases by default and per "Load more"; never hold
+// more than MAX_CASES rows in the browser (server-enforced too).
+const CASES_PAGE_SIZE = 100;
+const MAX_CASES = 200;
+
+// Snapshot of the filter bar that was last sent to the server. The inputs only
+// update local state; "Fetch" copies them here and re-queries /api/cases so the
+// result spans every case, not just the page already loaded.
+type AppliedCaseFilters = { search: string; statuses: string[]; category: string; from: string; to: string };
+const EMPTY_CASE_FILTERS: AppliedCaseFilters = { search: "", statuses: [], category: "", from: "", to: "" };
+
+function buildCasesQuery(f: AppliedCaseFilters, limit: number): string {
+  const p = new URLSearchParams({ limit: String(limit), page: "1" });
+  if (f.search) p.set("search", f.search);
+  if (f.statuses.length) p.set("statuses", f.statuses.join(","));
+  if (f.category) p.set("category", f.category);
+  if (f.from) p.set("from", f.from);
+  if (f.to) p.set("to", f.to);
+  return `/api/cases?${p.toString()}`;
+}
+
 const hasAllRequiredCaseFields = (
   category: string,
   subTypeData: Record<string, any>,
@@ -176,7 +197,14 @@ export default function CasesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const pageLimitRef = useRef(10);
+  const [isFetching, setIsFetching] = useState(false);
+  const pageLimitRef = useRef(CASES_PAGE_SIZE);
+
+  // Filters run on the server, on demand (via the "Fetch" button / Enter in the
+  // search box). `appliedFilters` is the snapshot currently reflected in the
+  // list; `appliedRef` mirrors it for the long-lived fetch/interval closures.
+  const [appliedFilters, setAppliedFilters] = useState<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
+  const appliedRef = useRef<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
 
   const [holdCaseId, setHoldCaseId] = useState<string | null>(null);
   const [holdReasonSelect, setHoldReasonSelect] = useState("");
@@ -189,7 +217,7 @@ export default function CasesPage() {
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const res = await fetch(`/api/cases?limit=${pageLimitRef.current}&page=1`);
+      const res = await fetch(buildCasesQuery(appliedRef.current, pageLimitRef.current));
       if (res.ok) {
         const json = await res.json();
         setCases(Array.isArray(json.data) ? json.data : []);
@@ -203,6 +231,36 @@ export default function CasesPage() {
     } finally {
       if (showLoading) setIsLoading(false);
     }
+  };
+
+  // Snapshot the live filter bar and re-query the server. Pass EMPTY_CASE_FILTERS
+  // to clear. Resets paging back to the first CASES_PAGE_SIZE rows.
+  const applyFilters = async (override?: AppliedCaseFilters) => {
+    const next: AppliedCaseFilters = override ?? {
+      search: search.trim(),
+      statuses: statusFilter === "All" ? [] : (STATUS_FILTER_MAP[statusFilter] ?? []),
+      category: typeFilter === "All" ? "" : typeFilter,
+      from,
+      to,
+    };
+    appliedRef.current = next;
+    setAppliedFilters(next);
+    pageLimitRef.current = CASES_PAGE_SIZE;
+    setIsFetching(true);
+    try {
+      await fetchCases(false);
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setTypeFilter("All");
+    setStatusFilter("All");
+    setFrom("");
+    setTo("");
+    void applyFilters(EMPTY_CASE_FILTERS);
   };
 
   const openHoldDialog = (caseId: string) => {
@@ -278,28 +336,32 @@ export default function CasesPage() {
   };
 
   const handleLoadMore = async () => {
-    pageLimitRef.current += 10;
+    const prevLimit = pageLimitRef.current;
+    if (prevLimit >= MAX_CASES) return;
+    pageLimitRef.current = Math.min(prevLimit + CASES_PAGE_SIZE, MAX_CASES);
     setIsLoadingMore(true);
     try {
-      const res = await fetch(`/api/cases?limit=${pageLimitRef.current}&page=1`);
+      const res = await fetch(buildCasesQuery(appliedRef.current, pageLimitRef.current));
       if (res.ok) {
         const json = await res.json();
         setCases(Array.isArray(json.data) ? json.data : []);
         setHasMore(json.hasMore ?? false);
       } else {
-        pageLimitRef.current -= 10;
+        pageLimitRef.current = prevLimit;
         toast.error("Failed to load more cases");
       }
     } catch {
-      pageLimitRef.current -= 10;
+      pageLimitRef.current = prevLimit;
       toast.error("Failed to load more cases");
     } finally {
       setIsLoadingMore(false);
     }
   };
 
+  // Initial load (top CASES_PAGE_SIZE, no filters) + a 30s refresh that re-runs
+  // whatever filter snapshot is currently applied.
   useEffect(() => {
-    pageLimitRef.current = 10;
+    pageLimitRef.current = CASES_PAGE_SIZE;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
     const intervalId = window.setInterval(() => { void fetchCases(false); }, 30_000);
     return () => { window.clearTimeout(timeoutId); window.clearInterval(intervalId); };
@@ -587,40 +649,21 @@ export default function CasesPage() {
     );
   };
 
+  // The fetched `cases` already match `appliedFilters` (the server did it).
+  // Re-checking the structured filters here narrows the previous result set
+  // instantly while a new Fetch is in flight; text/file-name search is left to
+  // the server (it can match files past the first, which this can't see).
   const filtered = useMemo(() => {
+    const f = appliedFilters;
     return cases.filter((c) => {
-      const s = search.toLowerCase();
-      const friendlyId = (c.caseNumber || c.id || "").toLowerCase();
-      const friendlyRestoration = (
-        c.subTypeData
-          ? Object.entries(c.subTypeData)
-            .filter(([k, v]) => k !== 'teeth' && k !== 'crownBridgeTeeth' && k !== 'toothSystem' && k !== 'notes' && k !== 'modelRequired' && typeof v === 'string' && v && v.toLowerCase() !== 'none')
-            .map(([_, v]) => v)
-            .join(" - ")
-          : c.category || ""
-      ).toLowerCase();
-
-      const friendlyCaseName = (c.scanFileName || "").toLowerCase();
-
-      const matchesSearch =
-        !s ||
-        friendlyId.includes(s) ||
-        friendlyRestoration.includes(s) ||
-        friendlyCaseName.includes(s);
-
-      const matchesStatus =
-        statusFilter === "All" ||
-        (STATUS_FILTER_MAP[statusFilter]?.includes(c.status) ?? false);
-
-      const matchesType = typeFilter === "All" || c.category === typeFilter;
-
+      const matchesStatus = f.statuses.length === 0 || f.statuses.includes(c.status);
+      const matchesType = !f.category || c.category === f.category;
       const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : "";
-      const matchesFrom = !from || createdAtDate >= from;
-      const matchesTo = !to || createdAtDate <= to;
-
-      return matchesSearch && matchesStatus && matchesType && matchesFrom && matchesTo;
+      const matchesFrom = !f.from || createdAtDate >= f.from;
+      const matchesTo = !f.to || createdAtDate <= f.to;
+      return matchesStatus && matchesType && matchesFrom && matchesTo;
     });
-  }, [cases, search, statusFilter, typeFilter, from, to]);
+  }, [cases, appliedFilters]);
 
   const handleSubmit = async () => {
     if (submitCooldown || isSubmitting) return;
@@ -838,7 +881,7 @@ export default function CasesPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-semibold text-foreground">Cases</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} shown · {cases.length} loaded{hasMore ? " · more available" : ""}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} shown{hasMore ? " · more available" : ""}</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -1730,7 +1773,13 @@ export default function CasesPage() {
             <div className="flex flex-col lg:flex-row gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input className="pl-9 h-8 text-xs" placeholder="Search cases..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                <Input
+                  className="pl-9 h-8 text-xs"
+                  placeholder="Search by case #, type or file name..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void applyFilters(); }}
+                />
               </div>
               <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v)}>
                 <SelectTrigger className="w-full lg:w-48 h-8 text-xs"><SelectValue placeholder="Case type" /></SelectTrigger>
@@ -1742,16 +1791,20 @@ export default function CasesPage() {
               <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
               <Button
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                onClick={() => void applyFilters()}
+                disabled={isFetching}
+              >
+                {isFetching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                Fetch
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 className="h-8 text-xs"
-                onClick={() => {
-                  setSearch("")
-                  setTypeFilter("All")
-                  setStatusFilter("All")
-                  setFrom("")
-                  setTo("")
-                }}
+                onClick={clearFilters}
+                disabled={isFetching}
               >
                 Clear
               </Button>
@@ -1905,13 +1958,13 @@ export default function CasesPage() {
                       );
                     })
                   )}
-                  {!isLoading && filtered.length === 0 && (
+                  {!isLoading && !isFetching && filtered.length === 0 && (
                     <tr><td colSpan={9} className="px-3.5 py-8 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            {!isLoading && hasMore && (
+            {!isLoading && hasMore && cases.length < MAX_CASES && (
               <div className="p-3 border-t border-border/50 flex justify-center">
                 <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
                   onClick={handleLoadMore} disabled={isLoadingMore}>
