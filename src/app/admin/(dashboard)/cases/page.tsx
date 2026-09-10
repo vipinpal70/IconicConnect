@@ -313,38 +313,49 @@ export default function AdminCasesPage() {
 	const CASES_PAGE_SIZE = 100;
 	const MAX_CASES = 300;
 
-	// Filters run on the server, on demand: the inputs above only set local
-	// state. "Fetch" (or Enter in the search box) copies them into
-	// `appliedFilters`, which is part of the query key, so React Query re-runs
-	// the list from page 1 with every filter applied server-side.
+	// Two snapshots of the filter bar:
+	//   appliedFilters — narrows the rows already loaded in the browser ("Apply")
+	//   fetchFilters   — part of the query key, so it drives the server query
+	//                    ("Fetch"). "Clear" resets both; a plain "Apply" only
+	//                    touches appliedFilters, so it costs no request.
 	const [appliedFilters, setAppliedFilters] = useState<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
-	const appliedFiltersKey = JSON.stringify(appliedFilters);
+	const [fetchFilters, setFetchFilters] = useState<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
+	const fetchFiltersKey = JSON.stringify(fetchFilters);
 	const filtersActive = useMemo(
 		() =>
 			Boolean(
-				appliedFilters.search ||
-					appliedFilters.statuses.length ||
-					appliedFilters.serviceType ||
-					appliedFilters.clientId ||
-					appliedFilters.assignedTo ||
-					appliedFilters.from ||
-					appliedFilters.to,
+				fetchFilters.search ||
+					fetchFilters.statuses.length ||
+					fetchFilters.serviceType ||
+					fetchFilters.clientId ||
+					fetchFilters.assignedTo ||
+					fetchFilters.from ||
+					fetchFilters.to,
 			),
-		[appliedFilters],
+		[fetchFilters],
 	);
 
+	const snapshotFilters = (): AppliedCaseFilters => ({
+		search: search.trim(),
+		statuses: statusFilter === "All" ? [] : [statusFilter],
+		serviceType: serviceTypeFilter === "All" ? "" : serviceTypeFilter,
+		clientId: clientFilter === "All" ? "" : clientFilter,
+		assignedTo: assignedFilter === "All" ? "" : assignedFilter,
+		from,
+		to,
+	});
+
+	// Apply — narrow the loaded rows; no request.
 	const applyFilters = (override?: AppliedCaseFilters) => {
-		setAppliedFilters(
-			override ?? {
-				search: search.trim(),
-				statuses: statusFilter === "All" ? [] : [statusFilter],
-				serviceType: serviceTypeFilter === "All" ? "" : serviceTypeFilter,
-				clientId: clientFilter === "All" ? "" : clientFilter,
-				assignedTo: assignedFilter === "All" ? "" : assignedFilter,
-				from,
-				to,
-			},
-		);
+		setAppliedFilters(override ?? snapshotFilters());
+	};
+
+	// Fetch — send the filters to the server (query key change re-runs the list
+	// from page 1) and keep the loaded-row filter in sync.
+	const runFetch = (override?: AppliedCaseFilters) => {
+		const next = override ?? snapshotFilters();
+		setAppliedFilters(next);
+		setFetchFilters(next);
 	};
 
 	const clearFilters = () => {
@@ -355,7 +366,7 @@ export default function AdminCasesPage() {
 		setAssignedFilter("All");
 		setFrom("");
 		setTo("");
-		applyFilters(EMPTY_CASE_FILTERS);
+		runFetch(EMPTY_CASE_FILTERS);
 	};
 
 	// Fetch Cases list — each page fetches CASES_PAGE_SIZE new rows and is
@@ -374,10 +385,10 @@ export default function AdminCasesPage() {
 		hasNextPage,
 		isFetchingNextPage,
 	} = useInfiniteQuery<{ data: CaseRecord[]; hasMore: boolean }>({
-		queryKey: ["admin-cases", appliedFiltersKey],
+		queryKey: ["admin-cases", fetchFiltersKey],
 		queryFn: async ({ pageParam }) => {
 			const res = await fetch(
-				buildCasesQuery(appliedFilters, CASES_PAGE_SIZE, pageParam as number),
+				buildCasesQuery(fetchFilters, CASES_PAGE_SIZE, pageParam as number),
 			);
 			if (!res.ok) {
 				const err = await res.json().catch(() => ({}));
@@ -412,7 +423,7 @@ export default function AdminCasesPage() {
 				queryClient.setQueryData<{
 					pages: { data: CaseRecord[]; hasMore: boolean }[];
 					pageParams: number[];
-				}>(["admin-cases", appliedFiltersKey], (old) => {
+				}>(["admin-cases", fetchFiltersKey], (old) => {
 					if (!old || old.pages.length === 0) return old;
 					const firstPage = old.pages[0];
 					const newOnes = fresh.data.filter(
@@ -434,7 +445,7 @@ export default function AdminCasesPage() {
 			}
 		}, 30_000);
 		return () => window.clearInterval(intervalId);
-	}, [queryClient, filtersActive, appliedFiltersKey]);
+	}, [queryClient, filtersActive, fetchFiltersKey]);
 
 	const data = useMemo(
 		() => ({ data: (casesPages?.pages ?? []).flatMap((p) => p.data) }),
@@ -561,16 +572,27 @@ export default function AdminCasesPage() {
 		return membersData.filter((m) => m.role === "qc" && m.status === "active");
 	}, [membersData]);
 
-	// The server already returns exactly the cases matching `appliedFilters`.
-	// Re-checking the structured filters here only stops a case that the 30s
-	// refresh prepended but that no longer matches from flashing into view; the
-	// text search (which can match files past the first) is left to the server.
+	// Filters the currently-loaded rows by the applied snapshot. "Apply" runs
+	// this alone (no request); "Fetch" runs it over the fresh server result. The
+	// text match here is best-effort on the loaded row (case #, category,
+	// restoration, client name, first file name) — "Fetch" is what matches
+	// files past the first.
 	const filtered = useMemo(() => {
 		const cases = data?.data || [];
 		const f = appliedFilters;
+		const s = f.search.toLowerCase();
 		const assignedId = f.assignedTo === "mine" ? currentUser?.id : f.assignedTo;
 
 		return cases.filter((caseItem) => {
+			const client = clientsMap.get(caseItem.clientId);
+			const clientName = (client?.labName || client?.fullName || "").toLowerCase();
+			const matchesSearch =
+				!s ||
+				(caseItem.caseNumber || caseItem.id).toLowerCase().includes(s) ||
+				(caseItem.category || "").toLowerCase().includes(s) ||
+				renderSubTypeSummary(caseItem.subTypeData).toLowerCase().includes(s) ||
+				(caseItem.scanFileName || "").toLowerCase().includes(s) ||
+				clientName.includes(s);
 			const matchesStatus =
 				f.statuses.length === 0 || f.statuses.includes(caseItem.status);
 			const matchesServiceType =
@@ -589,6 +611,7 @@ export default function AdminCasesPage() {
 			const matchesTo = !f.to || createdAtDate <= f.to;
 
 			return (
+				matchesSearch &&
 				matchesStatus &&
 				matchesServiceType &&
 				matchesClient &&
@@ -597,7 +620,7 @@ export default function AdminCasesPage() {
 				matchesTo
 			);
 		});
-	}, [data, appliedFilters, currentUser]);
+	}, [data, appliedFilters, currentUser, clientsMap]);
 
 	// Live database updates
 	const handleUpdate = async (
@@ -891,7 +914,8 @@ export default function AdminCasesPage() {
 				</div>
 
 				<Card className="shadow-card border-border/50">
-					<CardContent className="p-2.5 flex flex-col lg:flex-row gap-2">
+					<CardContent className="p-2.5 space-y-2">
+						<div className="flex flex-col lg:flex-row gap-2">
 						<div className="relative flex-1">
 							<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 							<Input
@@ -1019,42 +1043,59 @@ export default function AdminCasesPage() {
 								</SelectItem>
 							</SelectContent>
 						</Select>
-						<Input
-							type="date"
-							value={from}
-							onChange={(e) => setFrom(e.target.value)}
-							className="w-full lg:w-36 h-8 text-xs"
-							title="Start date"
-						/>
-						<Input
-							type="date"
-							value={to}
-							onChange={(e) => setTo(e.target.value)}
-							className="w-full lg:w-36 h-8 text-xs"
-							title="End date"
-						/>
-						<Button
-							size="sm"
-							className="h-8 text-xs gap-1.5"
-							onClick={() => applyFilters()}
-							disabled={isFetching}
-						>
-							{isFetching ? (
-								<RefreshCw className="h-3.5 w-3.5 animate-spin" />
-							) : (
-								<Search className="h-3.5 w-3.5" />
-							)}
-							Fetch
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							className="h-8 text-xs"
-							onClick={clearFilters}
-							disabled={isFetching}
-						>
-							Clear
-						</Button>
+						</div>
+						{/* Date range + actions — below every other filter */}
+						<div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-border/50">
+							<span className="text-[11px] font-medium text-muted-foreground">Date range</span>
+							<Input
+								type="date"
+								aria-label="From date"
+								value={from}
+								onChange={(e) => setFrom(e.target.value)}
+								className="w-full sm:w-36 h-8 text-xs"
+								title="Start date"
+							/>
+							<Input
+								type="date"
+								aria-label="To date"
+								value={to}
+								onChange={(e) => setTo(e.target.value)}
+								className="w-full sm:w-36 h-8 text-xs"
+								title="End date"
+							/>
+							<div className="flex gap-2 sm:ml-auto">
+								<Button
+									size="sm"
+									variant="secondary"
+									className="h-8 text-xs"
+									onClick={() => applyFilters()}
+								>
+									Apply
+								</Button>
+								<Button
+									size="sm"
+									className="h-8 text-xs gap-1.5"
+									onClick={() => runFetch()}
+									disabled={isFetching}
+								>
+									{isFetching ? (
+										<RefreshCw className="h-3.5 w-3.5 animate-spin" />
+									) : (
+										<Search className="h-3.5 w-3.5" />
+									)}
+									Fetch
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									className="h-8 text-xs"
+									onClick={clearFilters}
+									disabled={isFetching}
+								>
+									Clear
+								</Button>
+							</div>
+						</div>
 					</CardContent>
 				</Card>
 

@@ -351,17 +351,26 @@ export default function CasesPage() {
     }
   };
 
-  // Snapshot the live filter bar and re-query the server from the first page.
-  // Pass EMPTY_CASE_FILTERS to clear.
-  const applyFilters = async (override?: AppliedCaseFilters) => {
-    const next: AppliedCaseFilters = override ?? {
-      search: search.trim(),
-      statuses: statusFilter === "All" ? [] : (STATUS_FILTER_MAP[statusFilter] ?? []),
-      category: typeFilter === "All" ? "" : typeFilter,
-      assignedTo: assignedFilter === "All" ? "" : assignedFilter,
-      from,
-      to,
-    };
+  const snapshotFilters = (): AppliedCaseFilters => ({
+    search: search.trim(),
+    statuses: statusFilter === "All" ? [] : (STATUS_FILTER_MAP[statusFilter] ?? []),
+    category: typeFilter === "All" ? "" : typeFilter,
+    assignedTo: assignedFilter === "All" ? "" : assignedFilter,
+    from,
+    to,
+  });
+
+  // Apply — narrow the cases already loaded in the browser. No network call.
+  const applyFilters = (override?: AppliedCaseFilters) => {
+    const next = override ?? snapshotFilters();
+    appliedRef.current = next;
+    setAppliedFilters(next);
+  };
+
+  // Fetch — re-query the server for the matching set (up to the cap), from the
+  // first page.
+  const runFetch = async (override?: AppliedCaseFilters) => {
+    const next = override ?? snapshotFilters();
     appliedRef.current = next;
     setAppliedFilters(next);
     loadedCountRef.current = CASES_PAGE_SIZE;
@@ -373,6 +382,7 @@ export default function CasesPage() {
     }
   };
 
+  // Clear — reset the inputs and the applied filter, and reload the default list.
   const clearFilters = () => {
     setSearch("");
     setTypeFilter("All");
@@ -380,7 +390,7 @@ export default function CasesPage() {
     setAssignedFilter("All");
     setFrom("");
     setTo("");
-    void applyFilters(EMPTY_CASE_FILTERS);
+    void runFetch(EMPTY_CASE_FILTERS);
   };
 
   const handleLoadMore = async () => {
@@ -937,21 +947,30 @@ export default function CasesPage() {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
-  // The server already returns exactly the cases matching `appliedFilters`.
-  // Re-checking the structured filters here only stops a case that the 30s
-  // refresh prepended but that no longer matches from flashing into view; the
-  // text search (which can match files past the first) is left to the server.
+  // Filters the currently-loaded `cases` by the applied snapshot. "Apply" runs
+  // this alone (no request); "Fetch" runs it over the fresh server result. The
+  // text match here is best-effort on the loaded row (case #, category, first
+  // file name, sub-type values) — "Fetch" is what matches files past the first.
   const filtered = useMemo(() => {
     const f = appliedFilters;
+    const s = f.search.toLowerCase();
     const assignedId = f.assignedTo === "mine" ? activeUserId : f.assignedTo;
     return cases.filter((c) => {
+      const matchesSearch =
+        !s ||
+        (c.caseNumber || c.id || "").toLowerCase().includes(s) ||
+        (c.category || "").toLowerCase().includes(s) ||
+        (c.scanFileName || "").toLowerCase().includes(s) ||
+        (c.subTypeData
+          ? Object.values(c.subTypeData).filter((v) => typeof v === "string").join(" ").toLowerCase().includes(s)
+          : false);
       const matchesStatus = f.statuses.length === 0 || f.statuses.includes(c.status);
       const matchesType = !f.category || c.category === f.category;
       const matchesAssigned = !f.assignedTo || !assignedId || c.designerId === assignedId || c.qcId === assignedId;
       const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "";
       const matchesFrom = !f.from || createdAtDate >= f.from;
       const matchesTo = !f.to || createdAtDate <= f.to;
-      return matchesStatus && matchesType && matchesAssigned && matchesFrom && matchesTo;
+      return matchesSearch && matchesStatus && matchesType && matchesAssigned && matchesFrom && matchesTo;
     });
   }, [cases, appliedFilters, activeUserId]);
 
@@ -1223,7 +1242,7 @@ export default function CasesPage() {
                   placeholder="Search by case #, type, client or file name..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") void applyFilters(); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") applyFilters(); }}
                 />
               </div>
               <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v)}>
@@ -1253,18 +1272,25 @@ export default function CasesPage() {
                   )}
                 </SelectContent>
               </Select>
-              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
-              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full lg:w-36 h-8 text-xs" />
-              <Button size="sm" className="h-8 text-xs font-semibold gap-1.5" onClick={() => void applyFilters()} disabled={isFetching}>
-                {isFetching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                Fetch
-              </Button>
-              <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={clearFilters} disabled={isFetching}>Clear</Button>
             </div>
             <div className="flex gap-1 flex-wrap pt-0.5">
               {statusFilters.map((s) => (
                 <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" className="h-7 px-2.5 text-xs font-normal" onClick={() => setStatusFilter(s)}>{s}</Button>
               ))}
+            </div>
+            {/* Date range + actions — below every other filter */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-border/50">
+              <span className="text-[11px] font-medium text-muted-foreground">Date range</span>
+              <Input type="date" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full sm:w-36 h-8 text-xs" />
+              <Input type="date" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full sm:w-36 h-8 text-xs" />
+              <div className="flex gap-2 sm:ml-auto">
+                <Button size="sm" variant="secondary" className="h-8 text-xs font-semibold" onClick={() => applyFilters()}>Apply</Button>
+                <Button size="sm" className="h-8 text-xs font-semibold gap-1.5" onClick={() => void runFetch()} disabled={isFetching}>
+                  {isFetching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                  Fetch
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={clearFilters} disabled={isFetching}>Clear</Button>
+              </div>
             </div>
           </CardContent>
         </Card>
