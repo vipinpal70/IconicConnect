@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
   ChevronLeft,
@@ -13,10 +13,22 @@ import {
   Info,
 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
+import { Label } from "@/src/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
 import type { ThreeShapeCase, DataQualityWarning } from "@/src/lib/three-shape/model"
+import type { ServiceType } from "@/src/lib/case-status-mapping"
 import { DraftCaseForm, type DraftSubTypeData } from "./DraftCaseForm"
 import { draftValid, highlightFields, isForced, openWarnings } from "./draft-logic"
+
+// Mirrors the copy in AddCaseDialog.tsx / client/(dashboard)/cases/page.tsx —
+// each case-creation surface keeps its own copy of this (pre-existing pattern
+// in this repo, not introduced here).
+const SERVICE_TYPE_COPY: Record<ServiceType, { label: string; description: string }> = {
+  design_only: { label: "Design Only", description: "Iconic delivers design files digitally" },
+  design_milling: { label: "Design + Milling", description: "Iconic designs, then mills and ships the physical product" },
+  milling_only: { label: "Milling Only", description: "Upload your finished design file — we mill and ship the physical product, no design work included" },
+}
 
 type UploadedRef = { fileUrl: string; fileName: string; fileSize: number; fileType: string }
 
@@ -56,6 +68,9 @@ interface DraftState {
   skip: boolean
   threeShape: ThreeShapeCase | null
   sourceZip: UploadedRef
+  // Per-draft, like the bulk tab's per-row selector — each zip can go
+  // through a different flow. Defaults to the client's first enabled flow.
+  serviceType: ServiceType
 }
 
 const MAX_FILES = 5
@@ -74,6 +89,34 @@ export function ThreeShapeImport({ onSubmitted, onClose }: ThreeShapeImportProps
   const [current, setCurrent] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Which flows this client can submit cases for — same endpoint the single/
+  // bulk tabs use. Fetched once; a client/subuser is fixed for the whole
+  // review session.
+  const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>(["design_only"])
+  useEffect(() => {
+    fetch("/api/client/service-types")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => setEnabledServiceTypes(json?.data?.enabledServiceTypes ?? ["design_only"]))
+      .catch(() => setEnabledServiceTypes(["design_only"]))
+  }, [])
+
+  // Keep every draft's serviceType valid as the enabled-flow set loads/changes
+  // (mirrors the single tab's equivalent effect for its one `serviceType`).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from a fetch result (enabledServiceTypes), not local render state
+    setDrafts((prev) => {
+      if (prev.length === 0) return prev
+      const fallback = enabledServiceTypes[0] ?? "design_only"
+      let changed = false
+      const next = prev.map((d) => {
+        if (enabledServiceTypes.includes(d.serviceType)) return d
+        changed = true
+        return { ...d, serviceType: fallback }
+      })
+      return changed ? next : prev
+    })
+  }, [enabledServiceTypes])
 
   const anyUploading = uploads.some((u) => u.status === "uploading")
   const uploadedOk = uploads.filter((u) => u.status === "done")
@@ -147,6 +190,7 @@ export function ThreeShapeImport({ onSubmitted, onClose }: ThreeShapeImportProps
       const byName = new Map(files.map((f) => [f.fileName, f]))
       // The route returns results in the same order as `files`; fall back to
       // name only if that ever changes.
+      const defaultServiceType = enabledServiceTypes[0] ?? "design_only"
       const next: DraftState[] = (json.results as ExtractApiResult[]).map((r, i) => {
         const sourceZip = (files[i] ?? byName.get(r.packageName)) as UploadedRef
         if (!r.ok || !r.draft) {
@@ -165,6 +209,7 @@ export function ThreeShapeImport({ onSubmitted, onClose }: ThreeShapeImportProps
             duplicateOf: null,
             threeShape: null,
             sourceZip,
+            serviceType: defaultServiceType,
           }
         }
         return {
@@ -183,6 +228,7 @@ export function ThreeShapeImport({ onSubmitted, onClose }: ThreeShapeImportProps
           skip: Boolean(r.duplicateOf),
           threeShape: r.threeShape ?? null,
           sourceZip,
+          serviceType: defaultServiceType,
         }
       })
       setDrafts(next)
@@ -223,6 +269,7 @@ export function ThreeShapeImport({ onSubmitted, onClose }: ThreeShapeImportProps
     try {
       const body = submittable.map((d) => ({
         category: d.category,
+        serviceType: d.serviceType,
         subTypeData: { ...d.subTypeData, threeShape: d.threeShape },
         uploadedFile: d.sourceZip,
         uploadedFiles: [d.sourceZip],
@@ -491,6 +538,33 @@ export function ThreeShapeImport({ onSubmitted, onClose }: ThreeShapeImportProps
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {enabledServiceTypes.length > 1 && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-gray-700">Service Type</Label>
+              <RadioGroup
+                value={d.serviceType}
+                onValueChange={(v) => patchDraft(current, { serviceType: v as ServiceType })}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
+              >
+                {enabledServiceTypes.map((flow) => (
+                  <label
+                    key={flow}
+                    htmlFor={`ts-service-${flow}`}
+                    className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${
+                      d.serviceType === flow ? "border-emerald-600 bg-emerald-50" : "border-border"
+                    }`}
+                  >
+                    <RadioGroupItem value={flow} id={`ts-service-${flow}`} className="mt-0.5" disabled={d.skip || submitting} />
+                    <span>
+                      <span className="block text-xs font-semibold text-foreground">{SERVICE_TYPE_COPY[flow].label}</span>
+                      <span className="block text-[11px] text-muted-foreground">{SERVICE_TYPE_COPY[flow].description}</span>
+                    </span>
+                  </label>
+                ))}
+              </RadioGroup>
             </div>
           )}
 
