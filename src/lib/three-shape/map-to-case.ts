@@ -43,7 +43,6 @@ export interface MappedDraft {
 export interface MapOptions {
   /** Fallback when the file gives us nothing — never inferred from a scan. */
   modelRequired?: 'yes' | 'no'
-  includePatientName?: boolean
 }
 
 /** Abutment material keywords that mean a milled *custom* abutment. */
@@ -241,7 +240,11 @@ export function mapOrderToDraft(
     }
   }
 
-  subTypeData.notes = buildNotes(parsed, options)
+  // Left blank for the lab/client to fill in themselves — the extracted
+  // order metadata (lab instructions, source order, units, material, …)
+  // isn't lost, it's already on subTypeData.threeShape and shown in the
+  // "Imported from 3Shape" panel (CaseDetailView.tsx), not duplicated here.
+  subTypeData.notes = ''
 
   return { category, scriptCategory, subTypeData, warnings }
 }
@@ -288,36 +291,3 @@ function matchAppliance(text: string): string | null {
   return null
 }
 
-function buildNotes(parsed: ParsedOrder, options: MapOptions): string {
-  const { order, units, scans, connectorGroups } = parsed
-  const lines: string[] = []
-  if (order.comments.trim()) {
-    lines.push('--- Lab instructions (3Shape OrderComments) ---', order.comments.trim(), '')
-  } else {
-    lines.push('--- No lab instructions in the scan file — check for a separate brief ---', '')
-  }
-  lines.push('--- Imported from 3Shape scan file ---')
-  lines.push(
-    `Source order: ${order.orderId ?? 'n/a'}${order.clientOrderNo ? ` (client ref ${order.clientOrderNo})` : ''}`,
-  )
-  // Patient names are deliberately not stored on cases
-  // (0005_remove_patient_name_from_cases.sql), so keep them out unless asked.
-  if (options.includePatientName && order.patientName) lines.push(`Patient: ${order.patientName}`)
-  lines.push(`Indication: ${order.itemsSummary || units.map((u) => u.indication).join(', ')}`)
-  const numbered = units.filter((u) => u.unn)
-  if (numbered.length) {
-    lines.push(
-      `Units: ${numbered.map((u) => `${u.indication} — UNN ${u.unn} (FDI ${u.fdi})`).join('; ')}`,
-    )
-  }
-  if (connectorGroups.length) {
-    lines.push(`Connected spans (UNN): ${connectorGroups.map((g) => g.join('-')).join(', ')}`)
-  }
-  const materials = [...new Set(units.map((u) => u.material).filter(Boolean))]
-  if (materials.length) lines.push(`Material: ${materials.join(' | ')}`)
-  if (order.shade) lines.push(`Shade: ${order.shade}`)
-  if (order.designModuleLabel) lines.push(`Design module: ${order.designModuleLabel}`)
-  if (scans.length) lines.push(`Scans: ${scans.map((s) => s.label).join(', ')}`)
-  if (order.scanDate) lines.push(`Scanned: ${order.scanDate}`)
-  return lines.join('\n')
-}
