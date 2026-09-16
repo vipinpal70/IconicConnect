@@ -18,7 +18,7 @@ export type DraftSubTypeData = Record<string, unknown> & {
   teeth?: number[]
   crownBridgeTeeth?: number[]
   toothSystem?: "USA" | "FDI"
-  modelRequired?: "yes" | "no"
+  modelRequired?: "yes" | "no" | null
   notes?: string
 }
 
@@ -96,9 +96,13 @@ export function DraftCaseForm({
 
         {!isModel && (
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-gray-700">Model Required?</Label>
+            <Label className="text-xs font-semibold text-gray-700">Model Required? *</Label>
             <RadioGroup
-              value={subTypeData.modelRequired === "yes" ? "yes" : "no"}
+              value={
+                subTypeData.modelRequired === "yes" || subTypeData.modelRequired === "no"
+                  ? subTypeData.modelRequired
+                  : undefined
+              }
               onValueChange={(v) => set({ modelRequired: v as "yes" | "no" })}
               className="flex gap-6 pt-1.5"
             >
@@ -118,7 +122,7 @@ export function DraftCaseForm({
       {fields.map((field) => (
         <div className="space-y-1.5" key={field.name}>
           <Label className="text-xs font-semibold text-gray-700">
-            {field.label}
+            {field.label}{!field.optional && " *"}
             {flagged.has(field.name) && (
               <span className="ml-1.5 text-[10px] font-medium text-amber-600">needs review</span>
             )}
@@ -190,6 +194,12 @@ export function DraftCaseForm({
               onChangeSystem={(sys) => set({ toothSystem: sys })}
             />
           </div>
+          {crownBridgeTeeth.length === 0 && (
+            <p className="text-[11px] text-amber-600">
+              Not required to submit, but the design team will need this — consider selecting the
+              attachment teeth before sending.
+            </p>
+          )}
         </div>
       )}
 

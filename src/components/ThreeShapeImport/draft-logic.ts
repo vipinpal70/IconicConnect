@@ -43,7 +43,16 @@ export function isForced(d: DraftLike): boolean {
   return Boolean(d.duplicateOf) && !d.skip
 }
 
-/** Can this draft be submitted as-is? Skipped drafts never block the batch. */
+/**
+ * Can this draft be submitted as-is? Skipped drafts never block the batch.
+ *
+ * Category, the primary Case Type (caseType / caseType1 — enforced via
+ * CASE_HIERARCHY's `optional` flags), a Tooth Selection, and (outside 3D
+ * Model) an explicit Model Required choice are required. Every secondary
+ * field — Arch, Occlusion, the Implant Crown & Bridge attachment and its
+ * teeth, 3D Model's Model Type/Articulator/Drain Holes — is optional and
+ * doesn't block submission (case-modification-plan.md §1 & §3, revised).
+ */
 export function draftValid(d: DraftLike): boolean {
   if (d.skip) return true
   if (!d.ok) return false
@@ -51,21 +60,18 @@ export function draftValid(d: DraftLike): boolean {
 
   const fields = CASE_HIERARCHY[d.category]?.fields ?? []
   const dynOk = fields.every((f) => f.optional || Boolean(d.subTypeData[f.name]))
+  if (!dynOk) return false
 
   const teethLen = Array.isArray(d.subTypeData.teeth) ? d.subTypeData.teeth.length : 0
   const teethOk =
     d.category === "3D Model" ? d.subTypeData.die !== "Yes" || teethLen > 0 : teethLen > 0
+  if (!teethOk) return false
 
-  let ok = dynOk && teethOk
-  if (
-    d.category === "Implants" &&
-    d.subTypeData.caseType2 &&
-    d.subTypeData.caseType2 !== "None"
-  ) {
-    const cb = Array.isArray(d.subTypeData.crownBridgeTeeth)
-      ? d.subTypeData.crownBridgeTeeth.length
-      : 0
-    ok = ok && cb > 0
+  // modelRequired doesn't apply to 3D Model (see DraftCaseForm/map-to-case) —
+  // everywhere else the lab must actively pick Yes/No, same as the manual
+  // case-creation forms.
+  if (d.category !== "3D Model") {
+    return d.subTypeData.modelRequired === "yes" || d.subTypeData.modelRequired === "no"
   }
-  return ok
+  return true
 }

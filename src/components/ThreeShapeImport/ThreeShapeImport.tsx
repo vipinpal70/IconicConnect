@@ -512,7 +512,10 @@ export function ThreeShapeImport({ onSubmitted, onClose }: ThreeShapeImportProps
                     : [],
                   toothSystem: prev.subTypeData.toothSystem ?? "USA",
                   notes: typeof prev.subTypeData.notes === "string" ? prev.subTypeData.notes : "",
-                  modelRequired: category === "3D Model" ? undefined : "no",
+                  // Unset, not defaulted — the lab must actively confirm
+                  // Yes/No for the new category (case-modification-plan.md §1);
+                  // still omitted entirely for 3D Model, which never uses it.
+                  modelRequired: category === "3D Model" ? undefined : null,
                 },
                 warnings: [],
                 requiresReview: false,

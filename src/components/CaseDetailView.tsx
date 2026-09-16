@@ -28,7 +28,7 @@ import {
 	type ServiceType,
 	type CaseStatus,
 } from "@/src/lib/case-status-mapping";
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import {
 	Dialog,
@@ -236,6 +236,15 @@ type CasePreviewFile = {
 	createdAt: string;
 };
 
+type CaseReferenceFile = {
+	id: string;
+	fileName: string;
+	fileUrl: string;
+	fileType: string | null;
+	fileSize: number | null;
+	createdAt: string;
+};
+
 type CaseActivity = {
 	id: string;
 	action: string;
@@ -407,6 +416,8 @@ export function CaseDetailView({
 	);
 	const replacePreviewInputRef = useRef<HTMLInputElement>(null);
 	const [isHoldDialogOpen, setIsHoldDialogOpen] = useState(false);
+	const [isReferenceImagesOpen, setIsReferenceImagesOpen] = useState(false);
+	const [referenceImagesIndex, setReferenceImagesIndex] = useState(0);
 	const [holdReasonSelect, setHoldReasonSelect] = useState("");
 	const [holdCustomReason, setHoldCustomReason] = useState("");
 	const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
@@ -729,6 +740,20 @@ export function CaseDetailView({
 		staleTime: 30_000, // files don't change frequently
 	});
 
+	const { data: referenceFilesResponse } = useQuery<{ data: CaseReferenceFile[] }>({
+		queryKey: ["case-reference-files", caseId],
+		queryFn: async () => {
+			const res = await fetch(`/api/cases/${caseId}/reference-files`);
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error(err.error || "Failed to fetch reference images");
+			}
+			return res.json();
+		},
+		retry: false,
+		staleTime: 30_000, // set once at creation, don't change frequently
+	});
+
 	const { data: previewFilesResponse } = useQuery<{ data: CasePreviewFile[] }>({
 		queryKey: ["case-preview-files", caseId],
 		queryFn: async () => {
@@ -746,6 +771,23 @@ export function CaseDetailView({
 	const caseRecord = caseResponse?.data;
 	const files = filesResponse?.data || [];
 	const previewFiles = previewFilesResponse?.data || [];
+	const referenceImages = referenceFilesResponse?.data || [];
+
+	// Left/right arrow-key navigation while the reference-images carousel is open.
+	useEffect(() => {
+		if (!isReferenceImagesOpen || referenceImages.length === 0) return;
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "ArrowLeft") {
+				setReferenceImagesIndex((i) => (i - 1 + referenceImages.length) % referenceImages.length);
+			}
+			if (e.key === "ArrowRight") {
+				setReferenceImagesIndex((i) => (i + 1) % referenceImages.length);
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [isReferenceImagesOpen, referenceImages.length]);
+
 	const activities = caseRecord?.timeline || [];
 	const displayActivities = toViewerSafeActivities(activities, chatSide);
 
@@ -1022,6 +1064,25 @@ export function CaseDetailView({
 											)
 										}
 									/>
+									{referenceImages.length > 0 && (
+										<DetailRow
+											label="Reference Images"
+											value={
+												<Button
+													type="button"
+													variant="outline"
+													size="sm"
+													className="h-7 text-xs"
+													onClick={() => {
+														setReferenceImagesIndex(0);
+														setIsReferenceImagesOpen(true);
+													}}
+												>
+													Preview
+												</Button>
+											}
+										/>
+									)}
 									<DetailRow
 										label="Designer"
 										value={
@@ -1820,6 +1881,58 @@ export function CaseDetailView({
 							{isSubmitting ? "Cancelling..." : "Yes, Cancel Case"}
 						</Button>
 					</div>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={isReferenceImagesOpen} onOpenChange={setIsReferenceImagesOpen}>
+				<DialogContent className="max-w-3xl w-[95vw] p-0 bg-black border-0 overflow-hidden">
+					<DialogHeader className="sr-only">
+						<DialogTitle>Reference Images</DialogTitle>
+					</DialogHeader>
+					{referenceImages.length > 0 && (
+						<div className="relative flex items-center justify-center min-h-[60vh]">
+							{referenceImages.length > 1 && (
+								<button
+									type="button"
+									onClick={() =>
+										setReferenceImagesIndex(
+											(i) => (i - 1 + referenceImages.length) % referenceImages.length
+										)
+									}
+									className="absolute left-2 z-10 h-9 w-9 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+									aria-label="Previous image"
+								>
+									<ChevronLeft className="h-5 w-5" />
+								</button>
+							)}
+
+							{/* eslint-disable-next-line @next/next/no-img-element */}
+							<img
+								src={referenceImages[referenceImagesIndex]?.fileUrl}
+								alt={referenceImages[referenceImagesIndex]?.fileName || "Reference image"}
+								className="max-h-[75vh] max-w-full object-contain"
+							/>
+
+							{referenceImages.length > 1 && (
+								<button
+									type="button"
+									onClick={() =>
+										setReferenceImagesIndex((i) => (i + 1) % referenceImages.length)
+									}
+									className="absolute right-2 z-10 h-9 w-9 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+									aria-label="Next image"
+								>
+									<ChevronRight className="h-5 w-5" />
+								</button>
+							)}
+
+							<div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2">
+								<span className="text-[11px] font-medium text-white/80 bg-black/50 rounded-full px-2 py-0.5">
+									{referenceImagesIndex + 1} / {referenceImages.length}
+								</span>
+							</div>
+						</div>
+					)}
 				</DialogContent>
 			</Dialog>
 		</div>,
