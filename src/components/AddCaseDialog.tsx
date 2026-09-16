@@ -127,6 +127,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitCooldown, setSubmitCooldown] = useState(false)
   const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Synchronous re-entrancy lock for handleSubmit — a plain ref, not state.
+  // A fast double-click can fire the handler twice before a setState-based
+  // guard (isSubmitting/submitCooldown) has actually re-rendered and disabled
+  // the button, sending two requests and showing two error toasts for one
+  // logical submit. Checked+set synchronously as the first thing in the
+  // handler, so the second call is blocked immediately.
+  const isSubmittingLockRef = useRef(false)
   const singleFileRef = useRef<HTMLInputElement>(null)
   const libraryFileRef = useRef<HTMLInputElement>(null)
 
@@ -454,7 +461,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   }
 
   const handleSubmit = async () => {
-    if (submitCooldown || isSubmitting) return
+    if (isSubmittingLockRef.current || submitCooldown || isSubmitting) return
 
     if (role === "admin" && !selectedClientId) {
       toast.error("Please select a client.")
@@ -485,6 +492,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       return
     }
 
+    isSubmittingLockRef.current = true
     setIsSubmitting(true)
     setSubmitCooldown(true)
     if (cooldownTimerRef.current) {
@@ -535,6 +543,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     } catch {
       toast.error("An error occurred during submission.")
     } finally {
+      isSubmittingLockRef.current = false
       setIsSubmitting(false)
     }
   }

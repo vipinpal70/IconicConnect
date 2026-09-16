@@ -488,6 +488,15 @@ export default function CasesPage() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [submitCooldown, setSubmitCooldown] = useState(false);
 	const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
+	// Synchronous re-entrancy locks for handleSubmit/handleBulkSubmit — a plain
+	// ref, not state. A fast double-click can fire the handler twice before a
+	// setState-based guard (isSubmitting/submitCooldown) has actually re-rendered
+	// and disabled the button, sending two requests and showing two error toasts
+	// for one logical submit. Checked+set synchronously as the very first thing
+	// in each handler, so the second call is blocked immediately regardless of
+	// React's state-update timing.
+	const isSubmittingLockRef = useRef(false);
+	const isBulkSubmittingLockRef = useRef(false);
 
 	useEffect(() => {
 		return () => {
@@ -787,7 +796,7 @@ export default function CasesPage() {
 	}, [cases, search, statusFilter, typeFilter, from, to]);
 
 	const handleSubmit = async () => {
-		if (submitCooldown || isSubmitting) return;
+		if (isSubmittingLockRef.current || submitCooldown || isSubmitting) return;
 
 		if (
 			!hasAllRequiredCaseFields(
@@ -811,6 +820,7 @@ export default function CasesPage() {
 			return;
 		}
 
+		isSubmittingLockRef.current = true;
 		setIsSubmitting(true);
 		setSubmitCooldown(true);
 		if (cooldownTimerRef.current) {
@@ -874,6 +884,7 @@ export default function CasesPage() {
 			toast.error("An error occurred during submission.");
 			console.error("Single submit error:", error);
 		} finally {
+			isSubmittingLockRef.current = false;
 			setIsSubmitting(false);
 		}
 	};
@@ -965,7 +976,7 @@ export default function CasesPage() {
 		setBulkRows((prev) => prev.filter((_, idx) => idx !== i));
 
 	const handleBulkSubmit = async () => {
-		if (submitCooldown || isSubmitting) return;
+		if (isBulkSubmittingLockRef.current || submitCooldown || isSubmitting) return;
 
 		if (bulkRows.length === 0) return;
 
@@ -988,6 +999,7 @@ export default function CasesPage() {
 			return;
 		}
 
+		isBulkSubmittingLockRef.current = true;
 		setIsSubmitting(true);
 		setSubmitCooldown(true);
 		if (cooldownTimerRef.current) {
@@ -1036,6 +1048,7 @@ export default function CasesPage() {
 			toast.error("An error occurred during submission.");
 			console.error("Bulk submit error:", error);
 		} finally {
+			isBulkSubmittingLockRef.current = false;
 			setIsSubmitting(false);
 		}
 	};
