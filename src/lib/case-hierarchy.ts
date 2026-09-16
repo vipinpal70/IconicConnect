@@ -21,6 +21,14 @@ export interface CaseHierarchyCategory {
 
 const ARCH_OPTIONS = ['Upper', 'Lower', 'Both Arches'] as const
 
+// The primary "Case Type" selector (caseType / caseType1 — the field that
+// names the specific service being requested, and what
+// getRequiredServiceSelections/the price-list "isEnabled" check below
+// validates against) stays required for every category. Every secondary
+// field (Arch, Occlusion, the Implant Crown & Bridge attachment, 3D Model's
+// Model Type/Articulator/Drain Holes/Die) is optional — still rendered so a
+// lab can fill it in, but doesn't block submission when left blank
+// (case-modification-plan.md §3, revised).
 export const CASE_HIERARCHY: Record<string, CaseHierarchyCategory> = {
   'Crown & Bridge': {
     fields: [
@@ -30,7 +38,7 @@ export const CASE_HIERARCHY: Record<string, CaseHierarchyCategory> = {
   Dentures: {
     fields: [
       { name: 'caseType1', label: 'Case Type', type: 'select', options: ['Reference Denture', 'Copy Denture', 'Immediate Denture', 'Full Denture', 'Partial Denture'] },
-      { name: 'caseType2', label: 'Arch', type: 'select', options: [...ARCH_OPTIONS] },
+      { name: 'caseType2', label: 'Arch', type: 'select', options: [...ARCH_OPTIONS], optional: true },
     ],
   },
   Cosmetics: {
@@ -41,8 +49,8 @@ export const CASE_HIERARCHY: Record<string, CaseHierarchyCategory> = {
   Appliances: {
     fields: [
       { name: 'caseType1', label: 'Case Type', type: 'select', options: ['Night Guards', 'Sport Guards', 'Mouth Guards', 'NTI'] },
-      { name: 'occlusion', label: 'Occlusion', type: 'select', options: ['Even Occlusion', 'Custom'] },
-      { name: 'arch', label: 'Arch', type: 'select', options: [...ARCH_OPTIONS] },
+      { name: 'occlusion', label: 'Occlusion', type: 'select', options: ['Even Occlusion', 'Custom'], optional: true },
+      { name: 'arch', label: 'Arch', type: 'select', options: [...ARCH_OPTIONS], optional: true },
     ],
   },
   Implants: {
@@ -54,10 +62,10 @@ export const CASE_HIERARCHY: Record<string, CaseHierarchyCategory> = {
   '3D Model': {
     fields: [
       { name: 'caseType1', label: 'Case Type', type: 'select', options: ['Full Arch Model', 'Quad Model', 'Contact Model', 'Horse Shoe Model', 'Implant Model'] },
-      { name: 'caseType2', label: 'Model Type', type: 'select', options: ['Hollow', 'Solid'] },
-      { name: 'articulator', label: 'Articulator', type: 'select', options: ['Yes', 'No'] },
-      { name: 'drainHoles', label: 'Drain Holes', type: 'select', options: ['Yes', 'No'] },
-      { name: 'die', label: 'Die', type: 'select', options: ['Yes', 'No'] },
+      { name: 'caseType2', label: 'Model Type', type: 'select', options: ['Hollow', 'Solid'], optional: true },
+      { name: 'articulator', label: 'Articulator', type: 'select', options: ['Yes', 'No'], optional: true },
+      { name: 'drainHoles', label: 'Drain Holes', type: 'select', options: ['Yes', 'No'], optional: true },
+      { name: 'die', label: 'Die', type: 'select', options: ['Yes', 'No'], optional: true },
     ],
   },
 }

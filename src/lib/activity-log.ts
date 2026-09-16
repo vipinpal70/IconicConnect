@@ -32,6 +32,7 @@ export function formatActivityActor(actor: Pick<Profile, 'fullName' | 'labName' 
 
 export function formatActivityLabel(action: string, details: ActivityDetails, actorRole?: string) {
   if (action === 'case.created') return 'Case submitted by client'
+  if (action === 'case.xml_extracted') return '3Shape packages extracted for review'
   if (action === 'case.file_uploaded') {
     if (actorRole === 'designer') return 'Designer uploaded design'
     return 'Case file uploaded'

@@ -337,6 +337,13 @@
       "when": 1789000000000,
       "tag": "0052_case_file_name_search_index",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789000100000,
+      "tag": "0053_case_reference_files",
+      "breakpoints": true
     }
   ]
 }
