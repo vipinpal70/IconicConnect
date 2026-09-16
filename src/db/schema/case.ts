@@ -190,9 +190,29 @@ export const caseFiles = pgTable('case_files', {
   caseIdIdx: index('case_files_case_id_idx').on(table.caseId),
 }))
 
+// Reference images uploaded by the client/lab at case-creation time (up to
+// 5, optional — case-modification-plan.md §2). Kept as its own table, not
+// reusing case_files, so reference images never leak into the client-facing
+// "Case Files" (input scan) list or the file-name duplicate-detection check
+// in POST /api/cases.
+export const caseReferenceFiles = pgTable('case_reference_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  caseId: uuid('case_id').references(() => cases.id).notNull(),
+  uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
+  fileName: varchar('file_name', { length: 255 }).notNull(),
+  fileUrl: text('file_url').notNull(),
+  fileType: varchar('file_type', { length: 100 }),
+  fileSize: bigint('file_size', { mode: 'number' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  caseIdIdx: index('case_reference_files_case_id_idx').on(table.caseId),
+}))
+
 export type Case = typeof cases.$inferSelect
 export type NewCase = typeof cases.$inferInsert
 export type CaseMessage = typeof caseMessages.$inferSelect
 export type NewCaseMessage = typeof caseMessages.$inferInsert
 export type CaseFile = typeof caseFiles.$inferSelect
 export type NewCaseFile = typeof caseFiles.$inferInsert
+export type CaseReferenceFile = typeof caseReferenceFiles.$inferSelect
+export type NewCaseReferenceFile = typeof caseReferenceFiles.$inferInsert

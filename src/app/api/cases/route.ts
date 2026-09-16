@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum } from '@/src/db/schema/case';
+import { cases, caseFiles, caseReferenceFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and, inArray, sql, asc, desc } from 'drizzle-orm';
@@ -10,6 +10,7 @@ import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
 import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
+import { resolveDuplicates, normalizeCaseFileName, type ActiveCaseKey } from '@/src/lib/case-duplicate';
 
 const CASES_LIST_TTL = 300 // 5 minutes
 
@@ -59,8 +60,18 @@ type CasePayload = {
   category?: string;
   subTypeData?: Record<string, unknown>;
   dueDate?: string;
+  // 3Shape XML Import only: when true, an entry whose zip name + tooth
+  // selection matches an existing ACTIVE case for this client is silently
+  // skipped instead of 409-ing the whole request.
+  skipIfDuplicate?: boolean;
+  // 3Shape XML Import only: the client saw the "looks like a duplicate" flag on
+  // this entry and chose to create it anyway — bypass BOTH the strict 409 and
+  // the soft skip for this one entry.
+  forceCreate?: boolean;
   uploadedFile?: { fileName: string; fileUrl: string; fileType: string; fileSize: number };
   uploadedFiles?: Array<{ fileName: string; fileUrl: string; fileType: string; fileSize: number }>;
+  // Optional reference images (up to 5) — case-modification-plan.md §2.
+  referenceImages?: Array<{ fileName: string; fileUrl: string; fileType: string; fileSize: number }>;
   preferredTeethLibrary?: string;
   teethLibraryFileUrl?: string | null;
   teethLibraryFileName?: string | null;
@@ -138,29 +149,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to determine Client ID' }, { status: 400 });
     }
 
+    const caseFileNames = (c: CasePayload): string[] => {
+      const names: string[] = [];
+      if (c.uploadedFile?.fileName) names.push(c.uploadedFile.fileName);
+      if (Array.isArray(c.uploadedFiles)) {
+        for (const uf of c.uploadedFiles) if (uf.fileName) names.push(uf.fileName);
+      }
+      return names;
+    };
+    const payloadTeeth = (c: CasePayload): number[] => {
+      const t = (c.subTypeData as { teeth?: unknown } | undefined)?.teeth;
+      return Array.isArray(t) ? (t as number[]) : [];
+    };
+
+    // Entries the 3Shape import flow marks skippable — a name+tooth match against
+    // an active case (or an earlier entry in this batch) drops just that entry.
+    let skipIndices = new Set<number>();
+    let skipped: Array<{ fileName: string; teeth: number[]; existingCaseNumber: string | null }> = [];
+
     // Block a client/subuser from resubmitting a case file that's already
     // being worked on in one of their own active (non-finished) cases.
     if (profile.role === 'client' || profile.role === 'subuser') {
-      const fileNames = Array.from(new Set(
-        casesArray.flatMap((c) => {
-          const names: string[] = [];
-          if (c.uploadedFile?.fileName) names.push(c.uploadedFile.fileName);
-          if (Array.isArray(c.uploadedFiles)) {
-            for (const uf of c.uploadedFiles) {
-              if (uf.fileName) names.push(uf.fileName);
-            }
-          }
-          return names;
-        })
+      // --- strict path: any file collision 409s the whole request (unchanged).
+      // 3Shape-import entries opt out via skipIfDuplicate; a forced entry (the
+      // client dismissed the duplicate flag) opts out too. ---
+      const strictFileNames = Array.from(new Set(
+        casesArray.filter((c) => !c.skipIfDuplicate && !c.forceCreate).flatMap(caseFileNames)
       ));
-
-      if (fileNames.length > 0) {
+      if (strictFileNames.length > 0) {
         const duplicate = await db
           .select({ fileName: caseFiles.fileName, caseNumber: cases.caseNumber, status: cases.status })
           .from(caseFiles)
           .innerJoin(cases, eq(caseFiles.caseId, cases.id))
           .where(and(
-            inArray(caseFiles.fileName, fileNames),
+            inArray(caseFiles.fileName, strictFileNames),
             eq(cases.clientId, clientId),
             inArray(cases.status, ACTIVE_CASE_STATUSES)
           ))
@@ -172,6 +194,54 @@ export async function POST(req: NextRequest) {
             error: `The file "${duplicate.fileName}" was already uploaded in case ${duplicate.caseNumber || ''} (${CLIENT_STATUS_LABELS[duplicate.status]}). Please wait for that case to finish before resubmitting the same file.`
           }, { status: 409 });
         }
+      }
+
+      // --- soft path: 3Shape import — skip an entry that duplicates an active
+      // case by zip name + tooth-selection overlap. ---
+      const softEntries = casesArray
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => c.skipIfDuplicate === true && caseFileNames(c).length > 0);
+
+      if (softEntries.length > 0) {
+        const activeRows = await db
+          .select({ id: cases.id, caseNumber: cases.caseNumber, subTypeData: cases.subTypeData })
+          .from(cases)
+          .where(and(eq(cases.clientId, clientId), inArray(cases.status, ACTIVE_CASE_STATUSES)));
+
+        const activeIds = activeRows.map((r) => r.id);
+        const earliestName = new Map<string, string>();
+        if (activeIds.length > 0) {
+          const rows = await db
+            .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
+            .from(caseFiles)
+            .where(inArray(caseFiles.caseId, activeIds))
+            .orderBy(asc(caseFiles.createdAt));
+          for (const row of rows) {
+            if (row.caseId && !earliestName.has(row.caseId)) earliestName.set(row.caseId, row.fileName);
+          }
+        }
+        const activeByName = new Map<string, ActiveCaseKey[]>();
+        for (const r of activeRows) {
+          const fn = earliestName.get(r.id);
+          if (!fn) continue;
+          const teethArr = (r.subTypeData as { teeth?: unknown } | null)?.teeth;
+          const teeth = new Set<number>(Array.isArray(teethArr) ? (teethArr as number[]) : []);
+          const key = normalizeCaseFileName(fn);
+          const bucket = activeByName.get(key) ?? [];
+          bucket.push({ caseNumber: r.caseNumber, teeth });
+          activeByName.set(key, bucket);
+        }
+
+        const resolution = resolveDuplicates(
+          softEntries.map(({ c, i }) => ({
+            index: i,
+            fileName: caseFileNames(c)[0],
+            teeth: payloadTeeth(c),
+          })),
+          activeByName,
+        );
+        skipIndices = resolution.skipIndices;
+        skipped = resolution.skipped;
       }
     }
 
@@ -185,8 +255,39 @@ export async function POST(req: NextRequest) {
     await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS cases_number_seq START 1`);
 
     for (let i = 0; i < casesArray.length; i++) {
+      if (skipIndices.has(i)) continue;
       const caseData = casesArray[i];
       const file = files[i];
+
+      // Server-side enforcement of case-modification-plan.md §1 & §3 — the
+      // authoritative guard, since it also protects the raw JSON/mobile-client
+      // path that bypasses every web form's client-side validation.
+      if (!caseData.category) {
+        return NextResponse.json({ error: 'Category is required.' }, { status: 400 });
+      }
+      const hasFile = Boolean(caseData.uploadedFile)
+        || (Array.isArray(caseData.uploadedFiles) && caseData.uploadedFiles.length > 0)
+        || Boolean(file);
+      if (!hasFile) {
+        return NextResponse.json({ error: 'At least one case file is required.' }, { status: 400 });
+      }
+      const teethArr = (caseData.subTypeData as { teeth?: unknown } | undefined)?.teeth;
+      if (!Array.isArray(teethArr) || teethArr.length === 0) {
+        return NextResponse.json({ error: 'At least one tooth selection is required.' }, { status: 400 });
+      }
+      const modelRequired = (caseData.subTypeData as { modelRequired?: unknown } | undefined)?.modelRequired;
+      if (modelRequired !== 'yes' && modelRequired !== 'no') {
+        return NextResponse.json(
+          { error: 'Please specify whether a model is required for this case.' },
+          { status: 400 }
+        );
+      }
+      if (Array.isArray(caseData.referenceImages) && caseData.referenceImages.length > 5) {
+        return NextResponse.json(
+          { error: 'A maximum of 5 reference images is allowed per case.' },
+          { status: 400 }
+        );
+      }
 
       const seqResult = await db.execute(sql`SELECT nextval('cases_number_seq') AS n`)
       // drizzle-orm/postgres-js returns rows as a RowList (array-like); handle both shapes
@@ -266,6 +367,19 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      if (Array.isArray(caseData.referenceImages)) {
+        for (const img of caseData.referenceImages) {
+          await db.insert(caseReferenceFiles).values({
+            caseId: insertedCase.id,
+            uploadedBy: user.id,
+            fileName: img.fileName,
+            fileUrl: img.fileUrl,
+            fileType: img.fileType ?? null,
+            fileSize: img.fileSize ? Number(img.fileSize) : null,
+          });
+        }
+      }
+
       logActivity({
         actor: profile,
         action: 'case.created',
@@ -287,7 +401,9 @@ export async function POST(req: NextRequest) {
       await invalidateCasesCache(clientId);
     }
 
-    return NextResponse.json({ data: isArray ? results : results[0] }, { status: 201 });
+    // `skipped` is always present but empty unless a 3Shape-import entry was
+    // dropped as a duplicate — existing callers read `data` only.
+    return NextResponse.json({ data: isArray ? results : results[0], skipped }, { status: 201 });
   } catch (error: unknown) {
     const err = error as Record<string, unknown>
     const cause = err?.cause as Record<string, unknown> | undefined

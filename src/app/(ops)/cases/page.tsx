@@ -29,7 +29,7 @@ interface BulkRow {
   file: File;
   category: string;
   subTypeData: Record<string, string>;
-  modelRequired: "yes" | "no";
+  modelRequired: "yes" | "no" | null;
   teeth: number[];
   toothSystem: "USA" | "FDI";
   notes: string;
@@ -202,46 +202,57 @@ const STATUS_FILTER_MAP: Record<string, string[]> = {
   "Cancelled": ["cancelled"],
 };
 
+// Only Category, a Case File, a Tooth Selection, and the Model Required
+// choice are required to submit — every category sub-type field is optional.
 const hasAllRequiredCaseFields = (
   category: string,
   subTypeData: Record<string, string>,
   notes: string,
   teeth: number[],
-  uploadedFile: unknown
+  uploadedFile: unknown,
+  modelRequired?: "yes" | "no" | null
 ) => {
   const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || [];
-  const allDynamicFieldsSelected = fields.every((field) => Boolean(subTypeData[field.name]));
-  return Boolean(category && uploadedFile && allDynamicFieldsSelected && teeth.length > 0);
+  const allDynamicFieldsSelected = fields.every((field) => (field as { optional?: boolean }).optional || Boolean(subTypeData[field.name]));
+  return Boolean(
+    category &&
+    uploadedFile &&
+    allDynamicFieldsSelected &&
+    teeth.length > 0 &&
+    (modelRequired === "yes" || modelRequired === "no")
+  );
 };
 
+// Every field here is optional — still rendered so a case can be filled in
+// when known, but none of them block submission when left blank.
 const CASE_HIERARCHY = {
   "Crown & Bridges": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] },
+      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"], optional: true },
     ],
   },
   "Denture": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Both Arches"] },
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"], optional: true },
+      { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Both Arches"], optional: true },
     ],
   },
   "Cosmetics": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"] },
+      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"], optional: true },
     ],
   },
   "Appliances": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"] },
-      { name: "occlusion", label: "Occlusion", type: "select", options: ["even occlusion", "custom"] },
-      { name: "arch", label: "Arch", type: "select", options: ["Lower", "Upper"] },
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"], optional: true },
+      { name: "occlusion", label: "Occlusion", type: "select", options: ["even occlusion", "custom"], optional: true },
+      { name: "arch", label: "Arch", type: "select", options: ["Lower", "Upper"], optional: true },
     ],
   },
   "Implant": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
-      { name: "caseType2", label: "Case Type 2", type: "select", options: ["crown", "bridge", "coping", "screw retained", "in-lay", "on-lay"] },
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"], optional: true },
+      { name: "caseType2", label: "Case Type 2", type: "select", options: ["crown", "bridge", "coping", "screw retained", "in-lay", "on-lay"], optional: true },
     ],
   },
 };
@@ -653,7 +664,8 @@ export default function CasesPage() {
   // Add Case form state
   const [category, setCategory] = useState<string>("Crown & Bridges");
   const [subTypeData, setSubTypeData] = useState<Record<string, string>>({});
-  const [modelRequired, setModelRequired] = useState("no");
+  // No default — the lab/ops user must actively pick Yes/No; see handleSubmit's guard.
+  const [modelRequired, setModelRequired] = useState<"yes" | "no" | null>(null);
   const [teeth, setTeeth] = useState<number[]>([]);
   const [toothSystem, setToothSystem] = useState<"USA" | "FDI">("USA");
   const [notes, setNotes] = useState("");
@@ -884,8 +896,8 @@ export default function CasesPage() {
   };
 
   const handleSubmit = async () => {
-    if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile)) {
-      toast.error("Please complete all fields, select teeth, and upload a file.");
+    if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile, modelRequired)) {
+      toast.error("Please select a category, choose teeth, upload a file, and specify whether a model is required.");
       return;
     }
     const formData = new FormData();
@@ -900,7 +912,7 @@ export default function CasesPage() {
       if (res.ok) {
         toast.success("Case submitted successfully!");
         setUploadOpen(false);
-        setNotes(""); setTeeth([]); setToothSystem("USA"); setModelRequired("no");
+        setNotes(""); setTeeth([]); setToothSystem("USA"); setModelRequired(null);
         setCategory("Crown & Bridges"); setSubTypeData({});
         setSingleFile(null); setUploadedFileUrl(null); setUploadedFile(null);
         loadedCountRef.current += 1;
@@ -923,7 +935,7 @@ export default function CasesPage() {
     }
     const rows: BulkRow[] = pickedFiles.map((f) => ({
       fileName: f.name, file: f, category: "Crown & Bridges", subTypeData: {},
-      modelRequired: "no", teeth: [], toothSystem: "USA", notes: "",
+      modelRequired: null, teeth: [], toothSystem: "USA", notes: "",
       uploadProgress: 0, uploadedUrl: null, isUploading: true,
       caseId: crypto.randomUUID(),
     }));
@@ -945,8 +957,8 @@ export default function CasesPage() {
 
   const handleBulkSubmit = async () => {
     if (bulkRows.length === 0) return;
-    if (bulkRows.some((row) => !hasAllRequiredCaseFields(row.category, row.subTypeData, row.notes, row.teeth, row.uploadedFile))) {
-      toast.error("Complete all fields, teeth selection, and file upload for every case.");
+    if (bulkRows.some((row) => !hasAllRequiredCaseFields(row.category, row.subTypeData, row.notes, row.teeth, row.uploadedFile, row.modelRequired))) {
+      toast.error("Complete category, teeth selection, file upload, and the Model Required choice for every case.");
       return;
     }
     const formData = new FormData();

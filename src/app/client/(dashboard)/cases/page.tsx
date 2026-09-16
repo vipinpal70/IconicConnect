@@ -8,6 +8,7 @@ import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
+import { ThreeShapeImport } from "@/src/components/ThreeShapeImport/ThreeShapeImport";
 import { type CaseStatus } from "@/src/data/demoData";
 import {
 	Plus,
@@ -61,7 +62,7 @@ interface BulkRow {
 	file: File;
 	category: string;
 	subTypeData: Record<string, any>;
-	modelRequired: "yes" | "no";
+	modelRequired: "yes" | "no" | null;
 	teeth: number[];
 	toothSystem: "USA" | "FDI";
 	notes: string;
@@ -190,6 +191,9 @@ const STATUS_FILTER_MAP: Record<string, string[]> = {
 	Cancelled: ["cancelled"],
 };
 
+// Only Category, a Case File, and a Tooth Selection are required to submit —
+// every category sub-type field (incl. the Implant Crown & Bridge attachment
+// and its teeth) is optional, enforced client- and server-side.
 const hasAllRequiredCaseFields = (
 	category: string,
 	subTypeData: Record<string, any>,
@@ -197,28 +201,18 @@ const hasAllRequiredCaseFields = (
 	teeth: number[],
 	uploadedFile: unknown,
 	crownBridgeTeeth?: number[],
+	modelRequired?: "yes" | "no" | null,
 ) => {
-	const fields =
-		CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || [];
-	const allDynamicFieldsSelected = fields.every(
-		(field: any) => field.optional || Boolean(subTypeData[field.name]),
+	return Boolean(
+		category &&
+		uploadedFile &&
+		teeth.length > 0 &&
+		(modelRequired === "yes" || modelRequired === "no"),
 	);
-
-	let isValid = Boolean(
-		category && uploadedFile && allDynamicFieldsSelected && teeth.length > 0,
-	);
-
-	if (category === "Implant") {
-		const cbType = subTypeData.caseType2;
-		if (cbType && cbType !== "None") {
-			const cbTeeth = crownBridgeTeeth || subTypeData.crownBridgeTeeth;
-			isValid = isValid && Boolean(cbTeeth && cbTeeth.length > 0);
-		}
-	}
-
-	return isValid;
 };
 
+// Every field here is optional — still rendered so a lab can fill them in
+// when known, but none of them block submission when left blank.
 const CASE_HIERARCHY = {
 	"Crown & Bridges": {
 		fields: [
@@ -235,6 +229,7 @@ const CASE_HIERARCHY = {
 					"In-Lay",
 					"On-Lay",
 				],
+				optional: true,
 			},
 		],
 	},
@@ -251,12 +246,14 @@ const CASE_HIERARCHY = {
 					"Full Denture",
 					"Partial Denture",
 				],
+				optional: true,
 			},
 			{
 				name: "caseType2",
 				label: "Case Type 2",
 				type: "select",
 				options: ["Lower", "Upper", "Both Arches"],
+				optional: true,
 			},
 		],
 	},
@@ -267,6 +264,7 @@ const CASE_HIERARCHY = {
 				label: "Case Type",
 				type: "select",
 				options: ["Digital Wax Up", "Vineers", "Snap on Smile"],
+				optional: true,
 			},
 		],
 	},
@@ -277,18 +275,21 @@ const CASE_HIERARCHY = {
 				label: "Case Type 1",
 				type: "select",
 				options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"],
+				optional: true,
 			},
 			{
 				name: "occlusion",
 				label: "Occlusion",
 				type: "select",
 				options: ["even occlusion", "custom"],
+				optional: true,
 			},
 			{
 				name: "arch",
 				label: "Arch",
 				type: "select",
 				options: ["Lower", "Upper"],
+				optional: true,
 			},
 		],
 	},
@@ -299,6 +300,7 @@ const CASE_HIERARCHY = {
 				label: "Sub Type 1",
 				type: "select",
 				options: ["Robotic", "Custom", "Ti-Base"],
+				optional: true,
 			},
 			{
 				name: "caseType2",
@@ -437,7 +439,8 @@ export default function CasesPage() {
 
 	const [category, setCategory] = useState<string>("Crown & Bridges");
 	const [subTypeData, setSubTypeData] = useState<Record<string, any>>({});
-	const [modelRequired, setModelRequired] = useState("no");
+	// No default — the lab must actively pick Yes/No; see handleSubmit's guard.
+	const [modelRequired, setModelRequired] = useState<"yes" | "no" | null>(null);
 	const [teeth, setTeeth] = useState<number[]>([]);
 	const [crownBridgeTeeth, setCrownBridgeTeeth] = useState<number[]>([]);
 	const [toothSystem, setToothSystem] = useState<"USA" | "FDI">("USA");
@@ -453,6 +456,15 @@ export default function CasesPage() {
 		fileType: string;
 	} | null>(null);
 	const [labName, setLabName] = useState<string>("Client");
+
+	// Reference Images State (optional, up to 5)
+	const [referenceImages, setReferenceImages] = useState<
+		Array<{ fileUrl: string; fileName: string; fileSize: number; fileType: string }>
+	>([]);
+	const [isUploadingReferenceImages, setIsUploadingReferenceImages] = useState(false);
+	const [referenceImagesUploadProgress, setReferenceImagesUploadProgress] = useState(0);
+	const referenceImagesRef = useRef<HTMLInputElement>(null);
+	const MAX_REFERENCE_IMAGES = 5;
 
 	const [preferredTeethLibrary, setPreferredTeethLibrary] =
 		useState<string>("default");
@@ -560,6 +572,74 @@ export default function CasesPage() {
 				setUploadProgress(0);
 			},
 		);
+	};
+
+	const handleReferenceImagesSelect = async (files: File[]) => {
+		const remainingSlots = MAX_REFERENCE_IMAGES - referenceImages.length;
+		if (remainingSlots <= 0) {
+			toast.error(`You can attach at most ${MAX_REFERENCE_IMAGES} reference images.`);
+			return;
+		}
+
+		const candidates = files.slice(0, remainingSlots);
+		if (files.length > remainingSlots) {
+			toast.warning(
+				`Only ${remainingSlots} more reference image(s) can be added (max ${MAX_REFERENCE_IMAGES}).`,
+			);
+		}
+
+		const validFiles: File[] = [];
+		for (const file of candidates) {
+			if (!file.type.startsWith("image/")) {
+				toast.warning(`Skipped "${file.name}": only image files are allowed.`);
+				continue;
+			}
+			const check = validateFile(file);
+			if (!check.isValid) {
+				toast.warning(`Skipped "${file.name}": ${check.error}`);
+				continue;
+			}
+			validFiles.push(file);
+		}
+
+		if (validFiles.length === 0) return;
+
+		setIsUploadingReferenceImages(true);
+		setReferenceImagesUploadProgress(0);
+
+		const uploadedResults: Array<{ fileUrl: string; fileName: string; fileSize: number; fileType: string }> = [];
+
+		try {
+			for (let i = 0; i < validFiles.length; i++) {
+				const file = validFiles[i];
+				const onFileProgress = (pct: number) => {
+					const baseProgress = (i / validFiles.length) * 100;
+					const fileContribution = (pct / 100) * (100 / validFiles.length);
+					setReferenceImagesUploadProgress(Math.round(baseProgress + fileContribution));
+				};
+
+				await new Promise<void>((resolve, reject) => {
+					uploadFileWithXHR(
+						file,
+						labName,
+						onFileProgress,
+						(res) => {
+							uploadedResults.push(res);
+							resolve();
+						},
+						(err) => reject(new Error(`Failed to upload ${file.name}: ${err}`)),
+					);
+				});
+			}
+
+			setReferenceImages((prev) => [...prev, ...uploadedResults]);
+			toast.success(`Attached ${validFiles.length} reference image(s).`);
+		} catch (err: any) {
+			toast.error(err.message || "Failed to upload one or more reference images.");
+		} finally {
+			setIsUploadingReferenceImages(false);
+			if (referenceImagesRef.current) referenceImagesRef.current.value = "";
+		}
 	};
 
 	const handleLibraryFileSelect = async (file: File) => {
@@ -717,10 +797,11 @@ export default function CasesPage() {
 				teeth,
 				uploadedFile,
 				crownBridgeTeeth,
+				modelRequired,
 			)
 		) {
 			toast.error(
-				"Please complete all fields, select teeth, and upload a file.",
+				"Please select a category, choose teeth, upload a file, and specify whether a model is required.",
 			);
 			return;
 		}
@@ -753,6 +834,7 @@ export default function CasesPage() {
 					: {}),
 			},
 			uploadedFile,
+			referenceImages,
 			preferredTeethLibrary,
 			teethLibraryFileUrl: uploadedLibraryFile?.fileUrl || null,
 			teethLibraryFileName: uploadedLibraryFile?.fileName || null,
@@ -772,12 +854,13 @@ export default function CasesPage() {
 				setNotes("");
 				setTeeth([]);
 				setCrownBridgeTeeth([]);
-				setModelRequired("no");
+				setModelRequired(null);
 				setCategory("Crown & Bridges");
 				setSubTypeData({});
 				setSingleFile(null);
 				setUploadedFileUrl(null);
 				setUploadedFile(null);
+				setReferenceImages([]);
 				setPreferredTeethLibrary("default");
 				setUploadedLibraryFile(null);
 				pageLimitRef.current += 1;
@@ -816,7 +899,7 @@ export default function CasesPage() {
 				file: f,
 				category: "Crown & Bridges",
 				subTypeData: {},
-				modelRequired: "no",
+				modelRequired: null,
 				teeth: [],
 				toothSystem: "USA",
 				notes: "",
@@ -894,11 +977,13 @@ export default function CasesPage() {
 					row.notes,
 					row.teeth,
 					row.uploadedFile,
+					undefined,
+					row.modelRequired,
 				),
 		);
 		if (hasInvalidRow) {
 			toast.error(
-				"Complete all fields, teeth selection, and file upload for every case.",
+				"Complete category, teeth selection, file upload, and the Model Required choice for every case.",
 			);
 			return;
 		}
@@ -1064,9 +1149,10 @@ export default function CasesPage() {
 								<DialogTitle>Submit New Case</DialogTitle>
 							</DialogHeader>
 							<Tabs defaultValue="single" className="mt-2">
-								<TabsList className="grid w-full grid-cols-2">
+								<TabsList className="grid w-full grid-cols-3">
 									<TabsTrigger value="single">Single Case</TabsTrigger>
 									<TabsTrigger value="bulk">Bulk Upload</TabsTrigger>
+									<TabsTrigger value="xml">3Shape Import</TabsTrigger>
 								</TabsList>
 
 								<TabsContent value="single" className="space-y-5 mt-4">
@@ -1188,6 +1274,74 @@ export default function CasesPage() {
 										)}
 									</div>
 
+									{/* Reference Images (optional, up to 5) */}
+									<div className="space-y-2">
+										<Label>
+											Reference Images (optional)
+											{referenceImages.length > 0
+												? ` — ${referenceImages.length}/${MAX_REFERENCE_IMAGES}`
+												: ""}
+										</Label>
+										<input
+											ref={referenceImagesRef}
+											type="file"
+											accept="image/*"
+											multiple
+											className="hidden"
+											onChange={(e) => {
+												const files = e.target.files ? Array.from(e.target.files) : [];
+												if (files.length > 0) handleReferenceImagesSelect(files);
+											}}
+										/>
+										{referenceImages.length > 0 && (
+											<div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+												{referenceImages.map((img, idx) => (
+													<div
+														key={idx}
+														className="relative group aspect-square rounded-md overflow-hidden border border-zinc-200 bg-zinc-50"
+													>
+														<img
+															src={img.fileUrl}
+															alt={img.fileName}
+															className="w-full h-full object-cover"
+														/>
+														<button
+															type="button"
+															onClick={async (e) => {
+																e.preventDefault();
+																e.stopPropagation();
+																await handleDeleteUploadedFile(img.fileName);
+																setReferenceImages((prev) =>
+																	prev.filter((_, i) => i !== idx),
+																);
+															}}
+															className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+														>
+															<X className="h-3 w-3" />
+														</button>
+													</div>
+												))}
+											</div>
+										)}
+										{isUploadingReferenceImages ? (
+											<div className="border-2 border-dashed rounded-lg p-4 text-center border-emerald-500 bg-emerald-50/10">
+												<p className="text-xs font-medium text-foreground">
+													Uploading... {referenceImagesUploadProgress}%
+												</p>
+											</div>
+										) : referenceImages.length < MAX_REFERENCE_IMAGES ? (
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() => referenceImagesRef.current?.click()}
+												className="h-8 text-xs flex items-center gap-1.5"
+											>
+												<Upload className="h-3 w-3" /> Add Reference Images
+											</Button>
+										) : null}
+									</div>
+
 									{category === "Implant" ? (
 										<>
 											<div className="space-y-2">
@@ -1262,10 +1416,10 @@ export default function CasesPage() {
 											</div>
 
 											<div className="space-y-2">
-												<Label>Model Required?</Label>
+												<Label>Model Required? *</Label>
 												<RadioGroup
-													value={modelRequired}
-													onValueChange={setModelRequired}
+													value={modelRequired ?? undefined}
+													onValueChange={(v) => setModelRequired(v as "yes" | "no")}
 													className="flex gap-6 pt-2"
 												>
 													<div className="flex items-center gap-2">
@@ -1467,6 +1621,13 @@ export default function CasesPage() {
 															system={toothSystem}
 															onChangeSystem={setToothSystem}
 														/>
+														{crownBridgeTeeth.length === 0 && (
+															<p className="text-[11px] text-amber-600">
+																Not required to submit, but the design team
+																will need this — consider selecting the
+																attachment teeth before sending.
+															</p>
+														)}
 													</div>
 												)}
 										</>
@@ -1501,10 +1662,10 @@ export default function CasesPage() {
 													</Select>
 												</div>
 												<div className="space-y-2">
-													<Label>Model Required?</Label>
+													<Label>Model Required? *</Label>
 													<RadioGroup
-														value={modelRequired}
-														onValueChange={setModelRequired}
+														value={modelRequired ?? undefined}
+														onValueChange={(v) => setModelRequired(v as "yes" | "no")}
 														className="flex gap-6 pt-2"
 													>
 														<div className="flex items-center gap-2">
@@ -1907,10 +2068,10 @@ export default function CasesPage() {
 																</div>
 																<div className="space-y-1">
 																	<Label className="text-xs">
-																		Model Required?
+																		Model Required? *
 																	</Label>
 																	<RadioGroup
-																		value={row.modelRequired}
+																		value={row.modelRequired ?? undefined}
 																		onValueChange={(v) =>
 																			updateBulkRow(i, {
 																				modelRequired: v as "yes" | "no",
@@ -2164,6 +2325,22 @@ export default function CasesPage() {
 											</Button>
 										</>
 									)}
+								</TabsContent>
+
+								{/* forceMount so uploads/drafts survive a tab switch; the
+									dialog still unmounts it on close for a fresh start. */}
+								<TabsContent
+									value="xml"
+									forceMount
+									className="mt-4 data-[state=inactive]:hidden"
+								>
+									<ThreeShapeImport
+										onSubmitted={() => {
+											pageLimitRef.current += 1;
+											fetchCases();
+										}}
+										onClose={() => setUploadOpen(false)}
+									/>
 								</TabsContent>
 							</Tabs>
 						</DialogContent>

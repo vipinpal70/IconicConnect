@@ -1,4 +1,5 @@
 "use client"
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 
 import React, { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
@@ -39,33 +40,36 @@ interface Field {
 
 const ARCH_OPTIONS = ["Upper", "Lower", "Both Arches"] as const
 
+// Every field here is optional — only Category, a Case File, and a Tooth
+// Selection are required to submit a case. Still rendered (a lab can fill
+// these in when known) but no longer blocks submission when left blank.
 const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
   "Crown & Bridge": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] }
+      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"], optional: true }
     ]
   },
   "Denture": {
     fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
-      { name: "caseType2", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"], optional: true },
+      { name: "caseType2", label: "Arch", type: "select", options: [...ARCH_OPTIONS], optional: true }
     ]
   },
   "Cosmetic": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"] }
+      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"], optional: true }
     ]
   },
   "Appliance": {
     fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Night Guard", "Sport Guard", "Mouth Guard", "NTI"] },
-      { name: "occlusion", label: "Occlusion", type: "select", options: ["Even Occlusion", "Custom"] },
-      { name: "arch", label: "Arch", type: "select", options: [...ARCH_OPTIONS] }
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Night Guard", "Sport Guard", "Mouth Guard", "NTI"], optional: true },
+      { name: "occlusion", label: "Occlusion", type: "select", options: ["Even Occlusion", "Custom"], optional: true },
+      { name: "arch", label: "Arch", type: "select", options: [...ARCH_OPTIONS], optional: true }
     ]
   },
   "Implant": {
     fields: [
-      { name: "caseType1", label: "Sub Type", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
+      { name: "caseType1", label: "Sub Type", type: "select", options: ["Robotic", "Custom", "Ti-Base"], optional: true },
       { name: "caseType2", label: "Crown & Bridge type", type: "select", options: ["None", "Crown", "Bridge"], optional: true }
     ]
   }
@@ -79,7 +83,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   // Form State
   const [category, setCategory] = useState<string>("Crown & Bridge")
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({})
-  const [modelRequired, setModelRequired] = useState("no")
+  // No default — the lab must actively pick Yes/No; see handleSubmit's guard.
+  const [modelRequired, setModelRequired] = useState<"yes" | "no" | null>(null)
   const [teeth, setTeeth] = useState<number[]>([])
   const [crownBridgeTeeth, setCrownBridgeTeeth] = useState<number[]>([])
   const [toothSystem, setToothSystem] = useState<"USA" | "FDI">("USA")
@@ -94,6 +99,18 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   }>>([])
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+
+  // Reference Images State (optional, up to 5)
+  const [referenceImages, setReferenceImages] = useState<Array<{
+    fileUrl: string
+    fileName: string
+    fileSize: number
+    fileType: string
+  }>>([])
+  const [isUploadingReferenceImages, setIsUploadingReferenceImages] = useState(false)
+  const [referenceImagesUploadProgress, setReferenceImagesUploadProgress] = useState(0)
+  const referenceImagesRef = useRef<HTMLInputElement>(null)
+  const MAX_REFERENCE_IMAGES = 5
 
   // Teeth Library State
   const [preferredTeethLibrary, setPreferredTeethLibrary] = useState<string>("default")
@@ -203,12 +220,13 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       setTargetLabName("Client")
       setCategory("Crown & Bridge")
       setSubTypeData({})
-      setModelRequired("no")
+      setModelRequired(null)
       setTeeth([])
       setCrownBridgeTeeth([])
       setToothSystem("USA")
       setNotes("")
       setUploadedFilesList([])
+      setReferenceImages([])
       setPreferredTeethLibrary("default")
       setUploadedLibraryFile(null)
       setGeneratedCaseId(generateCaseId("Crown & Bridge"))
@@ -360,6 +378,81 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     }
   }
 
+  const validateReferenceImage = (file: File): { isValid: boolean; error?: string } => {
+    const base = validateFile(file)
+    if (!base.isValid) return base
+    if (!file.type.startsWith("image/")) {
+      return { isValid: false, error: "Only image files are allowed for reference images." }
+    }
+    return { isValid: true }
+  }
+
+  const handleReferenceImagesSelect = async (files: File[]) => {
+    if (role === "admin" && !selectedClientId) {
+      toast.error("Please select a client before uploading files.")
+      return
+    }
+
+    const remainingSlots = MAX_REFERENCE_IMAGES - referenceImages.length
+    if (remainingSlots <= 0) {
+      toast.error(`You can attach at most ${MAX_REFERENCE_IMAGES} reference images.`)
+      return
+    }
+
+    const candidates = files.slice(0, remainingSlots)
+    if (files.length > remainingSlots) {
+      toast.warning(`Only ${remainingSlots} more reference image(s) can be added (max ${MAX_REFERENCE_IMAGES}).`)
+    }
+
+    const validFiles: File[] = []
+    for (const file of candidates) {
+      const check = validateReferenceImage(file)
+      if (check.isValid) {
+        validFiles.push(file)
+      } else {
+        toast.warning(`Skipped "${file.name}": ${check.error}`)
+      }
+    }
+
+    if (validFiles.length === 0) return
+
+    setIsUploadingReferenceImages(true)
+    setReferenceImagesUploadProgress(0)
+
+    const uploadedResults: Array<{ fileUrl: string; fileName: string; fileSize: number; fileType: string }> = []
+
+    try {
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i]
+        const onFileProgress = (pct: number) => {
+          const baseProgress = (i / validFiles.length) * 100
+          const fileContribution = (pct / 100) * (100 / validFiles.length)
+          setReferenceImagesUploadProgress(Math.round(baseProgress + fileContribution))
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          uploadFileWithXHR(
+            file,
+            onFileProgress,
+            (res) => {
+              uploadedResults.push(res)
+              resolve()
+            },
+            (err) => reject(new Error(`Failed to upload ${file.name}: ${err}`))
+          )
+        })
+      }
+
+      setReferenceImages((prev) => [...prev, ...uploadedResults])
+      toast.success(`Attached ${validFiles.length} reference image(s).`)
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload one or more reference images.")
+    } finally {
+      setIsUploadingReferenceImages(false)
+      if (referenceImagesRef.current) referenceImagesRef.current.value = ""
+    }
+  }
+
   const handleSubmit = async () => {
     if (submitCooldown || isSubmitting) return
 
@@ -368,19 +461,22 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       return
     }
 
-    if (isUploading || isLibraryUploading) {
+    if (isUploading || isLibraryUploading || isUploadingReferenceImages) {
       toast.error("Please wait for all file uploads to complete.")
       return
     }
 
-    // Validation
-    const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
-    const allFieldsFilled = fields.every((f) => f.optional || subTypeData[f.name])
+    // Validation — only Category, a Case File, and a Tooth Selection are
+    // required to submit; every category sub-type field is optional.
     const teethValid = teeth.length > 0
-    const implantCrownBridgeValid = category === "Implant" && subTypeData.caseType2 !== "None" ? crownBridgeTeeth.length > 0 : true
 
-    if (!allFieldsFilled || !teethValid || uploadedFilesList.length === 0 || !implantCrownBridgeValid) {
-      toast.error("Please complete all fields, select teeth, and upload at least one file.")
+    if (!category || !teethValid || uploadedFilesList.length === 0) {
+      toast.error("Please select a category, choose teeth, and upload at least one file.")
+      return
+    }
+
+    if (modelRequired !== "yes" && modelRequired !== "no") {
+      toast.error("Please specify whether a model is required for this case.")
       return
     }
 
@@ -413,6 +509,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       caseNumber: generatedCaseId,
       uploadedFile: uploadedFilesList[0] || null,
       uploadedFiles: uploadedFilesList,
+      referenceImages,
       preferredTeethLibrary,
       teethLibraryFileUrl: uploadedLibraryFile?.fileUrl || null,
       teethLibraryFileName: uploadedLibraryFile?.fileName || null
@@ -599,6 +696,62 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
             )}
           </div>
 
+          {/* Reference Images (optional, up to 5) */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-gray-700">
+              Reference Images (optional) {referenceImages.length > 0 && `— ${referenceImages.length}/${MAX_REFERENCE_IMAGES}`}
+            </Label>
+            <input
+              ref={referenceImagesRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = e.target.files ? Array.from(e.target.files) : []
+                if (files.length > 0) handleReferenceImagesSelect(files)
+              }}
+            />
+            {referenceImages.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {referenceImages.map((img, idx) => (
+                  <div key={idx} className="relative group aspect-square rounded-md overflow-hidden border border-zinc-200 bg-zinc-50">
+                    <img src={img.fileUrl} alt={img.fileName} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={async (e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        await handleDeleteUploadedFile(img.fileName)
+                        setReferenceImages((prev) => prev.filter((_, i) => i !== idx))
+                      }}
+                      className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {isUploadingReferenceImages ? (
+              <div className="border-2 border-dashed rounded-lg p-4 text-center border-emerald-500 bg-emerald-50/10">
+                <p className="text-xs font-medium text-foreground">Uploading... {referenceImagesUploadProgress}%</p>
+              </div>
+            ) : referenceImages.length < MAX_REFERENCE_IMAGES ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isSubmitting}
+                onClick={() => referenceImagesRef.current?.click()}
+                className="h-8 text-xs flex items-center gap-1.5 bg-white hover:bg-zinc-50 border-zinc-200"
+              >
+                <Upload className="h-3 w-3" /> Add Reference Images
+              </Button>
+            ) : null}
+          </div>
+
           {/* Form Fields */}
           {category === "Implant" ? (
             <>
@@ -640,8 +793,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs font-semibold text-gray-700">Model Required?</Label>
-                <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-1">
+                <Label className="text-xs font-semibold text-gray-700">Model Required? *</Label>
+                <RadioGroup value={modelRequired ?? undefined} onValueChange={(v) => setModelRequired(v as "yes" | "no")} className="flex gap-6 pt-1">
                   <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes-admin" /><Label htmlFor="m-yes-admin" className="font-normal text-xs">Yes</Label></div>
                   <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no-admin" /><Label htmlFor="m-no-admin" className="font-normal text-xs">No</Label></div>
                 </RadioGroup>
@@ -791,6 +944,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-gray-700">Teeth for Crown & Bridge Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
                   <ToothChart selected={crownBridgeTeeth} onChange={setCrownBridgeTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                  {crownBridgeTeeth.length === 0 && (
+                    <p className="text-[11px] text-amber-600">
+                      Not required to submit, but the design team will need this — consider selecting the attachment teeth before sending.
+                    </p>
+                  )}
                 </div>
               )}
             </>
@@ -811,8 +969,8 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-gray-700">Model Required?</Label>
-                  <RadioGroup value={modelRequired} onValueChange={setModelRequired} className="flex gap-6 pt-1">
+                  <Label className="text-xs font-semibold text-gray-700">Model Required? *</Label>
+                  <RadioGroup value={modelRequired ?? undefined} onValueChange={(v) => setModelRequired(v as "yes" | "no")} className="flex gap-6 pt-1">
                     <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes-admin" /><Label htmlFor="m-yes-admin" className="font-normal text-xs">Yes</Label></div>
                     <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no-admin" /><Label htmlFor="m-no-admin" className="font-normal text-xs">No</Label></div>
                   </RadioGroup>
