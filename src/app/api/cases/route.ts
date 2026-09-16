@@ -265,6 +265,18 @@ export async function POST(req: NextRequest) {
       if (!caseData.category) {
         return NextResponse.json({ error: 'Category is required.' }, { status: 400 });
       }
+      // The primary "Case Type" selector — every category's hierarchy (across
+      // all three independently-drifted copies: AddCaseDialog, client page,
+      // ops page) names it either `caseType` (single-field categories) or
+      // `caseType1` (multi-field categories), so checking both generically
+      // works regardless of which form/taxonomy submitted the request. Kept
+      // required (unlike the secondary sub-type fields) — it's the field
+      // that actually names the service being requested, and on xml-feature
+      // it's also what the price-list "isEnabled" check validates against.
+      const subTypeDataForCheck = (caseData.subTypeData as { caseType?: unknown; caseType1?: unknown } | undefined) || {};
+      if (!subTypeDataForCheck.caseType && !subTypeDataForCheck.caseType1) {
+        return NextResponse.json({ error: 'Case type is required.' }, { status: 400 });
+      }
       const hasFile = Boolean(caseData.uploadedFile)
         || (Array.isArray(caseData.uploadedFiles) && caseData.uploadedFiles.length > 0)
         || Boolean(file);

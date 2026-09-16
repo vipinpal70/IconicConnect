@@ -223,35 +223,36 @@ const hasAllRequiredCaseFields = (
   );
 };
 
-// Every field here is optional — still rendered so a case can be filled in
-// when known, but none of them block submission when left blank.
+// Category, the primary Case Type (caseType / caseType1), a Case File, and a
+// Tooth Selection are required to submit. Every secondary field is optional
+// — still rendered, but doesn't block submission when left blank.
 const CASE_HIERARCHY = {
   "Crown & Bridges": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"], optional: true },
+      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] },
     ],
   },
   "Denture": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"], optional: true },
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
       { name: "caseType2", label: "Case Type 2", type: "select", options: ["Lower", "Upper", "Both Arches"], optional: true },
     ],
   },
   "Cosmetics": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"], optional: true },
+      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Vineers", "Snap on Smile"] },
     ],
   },
   "Appliances": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"], optional: true },
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"] },
       { name: "occlusion", label: "Occlusion", type: "select", options: ["even occlusion", "custom"], optional: true },
       { name: "arch", label: "Arch", type: "select", options: ["Lower", "Upper"], optional: true },
     ],
   },
   "Implant": {
     fields: [
-      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"], optional: true },
+      { name: "caseType1", label: "Case Type 1", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
       { name: "caseType2", label: "Case Type 2", type: "select", options: ["crown", "bridge", "coping", "screw retained", "in-lay", "on-lay"], optional: true },
     ],
   },

@@ -124,7 +124,7 @@ export function DraftCaseForm({
       {fields.map((field) => (
         <div className="space-y-1.5" key={field.name}>
           <Label className="text-xs font-semibold text-gray-700">
-            {field.label}
+            {field.label}{!field.optional && " *"}
             {flagged.has(field.name) && (
               <span className="ml-1.5 text-[10px] font-medium text-amber-600">needs review</span>
             )}

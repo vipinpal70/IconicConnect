@@ -3,6 +3,7 @@
  * unit-tested without a DOM. The component holds `DraftState[]`; these functions
  * derive validity, which warnings are still "open", and which fields to flag.
  */
+import { CASE_HIERARCHY } from "@/src/lib/case-hierarchy"
 import type { DataQualityWarning } from "@/src/lib/three-shape/model"
 import type { DraftSubTypeData } from "./DraftCaseForm"
 
@@ -45,15 +46,20 @@ export function isForced(d: DraftLike): boolean {
 /**
  * Can this draft be submitted as-is? Skipped drafts never block the batch.
  *
- * Only Category, a Case File (owned by the carousel, not this draft), and a
- * Tooth Selection are required (case-modification-plan.md §3) — every
- * category sub-type field, including the Implant Crown & Bridge attachment
- * and its teeth, is optional and no longer blocks submission.
+ * Category, the primary Case Type (caseType / caseType1), a Case File (owned
+ * by the carousel, not this draft), and a Tooth Selection are required
+ * (case-modification-plan.md §3, revised) — every secondary sub-type field,
+ * including the Implant Crown & Bridge attachment and its teeth, is optional
+ * and doesn't block submission.
  */
 export function draftValid(d: DraftLike): boolean {
   if (d.skip) return true
   if (!d.ok) return false
   if (!d.category) return false
+
+  const fields = CASE_HIERARCHY[d.category]?.fields ?? []
+  const dynOk = fields.every((f) => f.optional || Boolean(d.subTypeData[f.name]))
+  if (!dynOk) return false
 
   const teethLen = Array.isArray(d.subTypeData.teeth) ? d.subTypeData.teeth.length : 0
   if (teethLen === 0) return false

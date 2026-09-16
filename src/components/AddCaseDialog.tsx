@@ -40,36 +40,37 @@ interface Field {
 
 const ARCH_OPTIONS = ["Upper", "Lower", "Both Arches"] as const
 
-// Every field here is optional — only Category, a Case File, and a Tooth
-// Selection are required to submit a case. Still rendered (a lab can fill
-// these in when known) but no longer blocks submission when left blank.
+// Category, a Case File, a Tooth Selection, and the primary "Case Type"
+// selector (caseType / caseType1) are required to submit a case. Every
+// secondary field (Arch, Occlusion, the Implant Crown & Bridge attachment)
+// is optional — still rendered, but doesn't block submission when blank.
 const CASE_HIERARCHY: Record<string, { fields: Field[] }> = {
   "Crown & Bridge": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"], optional: true }
+      { name: "caseType", label: "Case Type", type: "select", options: ["Crown", "Bridge", "Cutback", "Coping", "Screw Retained", "In-Lay", "On-Lay"] }
     ]
   },
   "Denture": {
     fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"], optional: true },
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Reference Denture", "Copy Denture", "Immediate Denture", "Full Denture", "Partial Denture"] },
       { name: "caseType2", label: "Arch", type: "select", options: [...ARCH_OPTIONS], optional: true }
     ]
   },
   "Cosmetic": {
     fields: [
-      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"], optional: true }
+      { name: "caseType", label: "Case Type", type: "select", options: ["Digital Wax Up", "Veneers", "Snap on Smile"] }
     ]
   },
   "Appliance": {
     fields: [
-      { name: "caseType1", label: "Case Type", type: "select", options: ["Night Guard", "Sport Guard", "Mouth Guard", "NTI"], optional: true },
+      { name: "caseType1", label: "Case Type", type: "select", options: ["Night Guard", "Sport Guard", "Mouth Guard", "NTI"] },
       { name: "occlusion", label: "Occlusion", type: "select", options: ["Even Occlusion", "Custom"], optional: true },
       { name: "arch", label: "Arch", type: "select", options: [...ARCH_OPTIONS], optional: true }
     ]
   },
   "Implant": {
     fields: [
-      { name: "caseType1", label: "Sub Type", type: "select", options: ["Robotic", "Custom", "Ti-Base"], optional: true },
+      { name: "caseType1", label: "Sub Type", type: "select", options: ["Robotic", "Custom", "Ti-Base"] },
       { name: "caseType2", label: "Crown & Bridge type", type: "select", options: ["None", "Crown", "Bridge"], optional: true }
     ]
   }
@@ -473,12 +474,15 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
       return
     }
 
-    // Validation — only Category, a Case File, and a Tooth Selection are
-    // required to submit; every category sub-type field is optional.
+    // Validation — Category, the primary Case Type, a Case File, and a Tooth
+    // Selection are required to submit; every secondary sub-type field
+    // (Arch, Occlusion, the Implant Crown & Bridge attachment) is optional.
+    const fields = CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || []
+    const allFieldsFilled = fields.every((f) => f.optional || subTypeData[f.name])
     const teethValid = teeth.length > 0
 
-    if (!category || !teethValid || uploadedFilesList.length === 0) {
-      toast.error("Please select a category, choose teeth, and upload at least one file.")
+    if (!category || !allFieldsFilled || !teethValid || uploadedFilesList.length === 0) {
+      toast.error("Please select a category and case type, choose teeth, and upload at least one file.")
       return
     }
 
@@ -779,7 +783,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs font-semibold text-gray-700">Sub Type 1</Label>
+                <Label className="text-xs font-semibold text-gray-700">Sub Type 1 *</Label>
                 <Select
                   disabled={isSubmitting}
                   value={subTypeData["caseType1"] || ""}
@@ -989,7 +993,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               {/* Dynamic Fields */}
               {CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields.map((field) => (
                 <div className="space-y-2" key={field.name}>
-                  <Label className="text-xs font-semibold text-gray-700">{field.label}</Label>
+                  <Label className="text-xs font-semibold text-gray-700">{field.label}{!field.optional && " *"}</Label>
                   <Select
                     disabled={isSubmitting}
                     value={subTypeData[field.name] || ""}

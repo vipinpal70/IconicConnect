@@ -36,12 +36,14 @@ describe('draftValid', () => {
     expect(draftValid(base({ category: null }))).toBe(false)
   })
 
-  it('every category sub-type field is optional — a blank caseType1 no longer blocks a Denture draft', () => {
+  it('requires the primary Case Type (caseType1) for Denture; the secondary Arch does not', () => {
     const d = base({
       category: 'Denture',
       subTypeData: { teeth: [7, 8], toothSystem: 'USA', notes: '', caseType2: 'Upper', modelRequired: 'no' },
     })
-    expect(draftValid(d)).toBe(true) // caseType1 blank — still valid
+    expect(draftValid(d)).toBe(false) // caseType1 blank
+    d.subTypeData.caseType1 = 'Full Denture'
+    expect(draftValid(d)).toBe(true) // caseType2 (Arch) still optional
   })
 
   it('requires teeth for every category (no 3D Model carve-out on this branch)', () => {
@@ -53,7 +55,7 @@ describe('draftValid', () => {
     expect(draftValid(base({ subTypeData: { teeth: [12], toothSystem: 'USA', notes: '', caseType: 'Crown', modelRequired: 'no' } }))).toBe(true)
   })
 
-  it('Implant with a Crown/Bridge attachment no longer requires crownBridgeTeeth to submit', () => {
+  it('Implant with the primary Case Type filled and a Crown/Bridge attachment does not require crownBridgeTeeth', () => {
     const d = base({
       category: 'Implant',
       subTypeData: {
@@ -61,7 +63,15 @@ describe('draftValid', () => {
         caseType1: 'Ti-Base', caseType2: 'Crown', crownBridgeTeeth: [],
       },
     })
-    expect(draftValid(d)).toBe(true)
+    expect(draftValid(d)).toBe(true) // caseType1 (primary) present; crownBridgeTeeth still optional
+  })
+
+  it('Implant without the primary Case Type (caseType1) is invalid, even with teeth and modelRequired set', () => {
+    const d = base({
+      category: 'Implant',
+      subTypeData: { teeth: [4], toothSystem: 'USA', notes: '', modelRequired: 'no' },
+    })
+    expect(draftValid(d)).toBe(false)
   })
 })
 

@@ -30,19 +30,21 @@ export interface CaseHierarchyCategory {
   fields: CaseHierarchyField[]
 }
 
-// Every field is optional — only Category, a Case File, and a Tooth
-// Selection are required to submit a case (case-modification-plan.md §3).
-// Still rendered/read from the extracted draft so a lab can review and fill
-// them in, but none of them block submission when left blank.
+// Category, a Case File, a Tooth Selection, and the primary "Case Type"
+// selector (caseType / caseType1 — the field that names the specific
+// service being requested) are required to submit a case. Every secondary
+// field (Arch, Occlusion, the Implant Crown & Bridge attachment) is
+// optional — still rendered so a lab can fill them in, but doesn't block
+// submission when left blank (case-modification-plan.md §3, revised).
 export const CASE_HIERARCHY: Record<string, CaseHierarchyCategory> = {
   'Crown & Bridges': {
     fields: [
-      { name: 'caseType', label: 'Case Type', type: 'select', options: ['Crown', 'Bridge', 'Cutback', 'Coping', 'Screw Retained', 'In-Lay', 'On-Lay'], optional: true },
+      { name: 'caseType', label: 'Case Type', type: 'select', options: ['Crown', 'Bridge', 'Cutback', 'Coping', 'Screw Retained', 'In-Lay', 'On-Lay'] },
     ],
   },
   Denture: {
     fields: [
-      { name: 'caseType1', label: 'Case Type 1', type: 'select', options: ['Reference Denture', 'Copy Denture', 'Immediate Denture', 'Full Denture', 'Partial Denture'], optional: true },
+      { name: 'caseType1', label: 'Case Type 1', type: 'select', options: ['Reference Denture', 'Copy Denture', 'Immediate Denture', 'Full Denture', 'Partial Denture'] },
       { name: 'caseType2', label: 'Case Type 2', type: 'select', options: ['Lower', 'Upper', 'Both Arches'], optional: true },
     ],
   },
@@ -51,12 +53,12 @@ export const CASE_HIERARCHY: Record<string, CaseHierarchyCategory> = {
       // "Vineers" is a pre-existing typo in the client page's option list, not
       // a new one introduced here — kept verbatim so submitted cases match
       // what the manual form itself produces (see taxonomy.ts's alias entry).
-      { name: 'caseType', label: 'Case Type', type: 'select', options: ['Digital Wax Up', 'Vineers', 'Snap on Smile'], optional: true },
+      { name: 'caseType', label: 'Case Type', type: 'select', options: ['Digital Wax Up', 'Vineers', 'Snap on Smile'] },
     ],
   },
   Appliances: {
     fields: [
-      { name: 'caseType1', label: 'Case Type 1', type: 'select', options: ['Night Guards', 'Sports Guard', 'Mouth Guard', 'NTI'], optional: true },
+      { name: 'caseType1', label: 'Case Type 1', type: 'select', options: ['Night Guards', 'Sports Guard', 'Mouth Guard', 'NTI'] },
       { name: 'occlusion', label: 'Occlusion', type: 'select', options: ['even occlusion', 'custom'], optional: true },
       // No "Both Arches" here (unlike Denture below) — matches the client
       // page exactly. A scan that infers "Both Arches" for an appliance is
@@ -66,7 +68,7 @@ export const CASE_HIERARCHY: Record<string, CaseHierarchyCategory> = {
   },
   Implant: {
     fields: [
-      { name: 'caseType1', label: 'Sub Type 1', type: 'select', options: ['Robotic', 'Custom', 'Ti-Base'], optional: true },
+      { name: 'caseType1', label: 'Sub Type 1', type: 'select', options: ['Robotic', 'Custom', 'Ti-Base'] },
       { name: 'caseType2', label: 'Crown & Bridge type', type: 'select', options: ['None', 'Crown', 'Bridge'], optional: true },
     ],
   },

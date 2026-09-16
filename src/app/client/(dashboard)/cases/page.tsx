@@ -203,16 +203,24 @@ const hasAllRequiredCaseFields = (
 	crownBridgeTeeth?: number[],
 	modelRequired?: "yes" | "no" | null,
 ) => {
+	const fields =
+		CASE_HIERARCHY[category as keyof typeof CASE_HIERARCHY]?.fields || [];
+	const allDynamicFieldsSelected = fields.every(
+		(field: any) => field.optional || Boolean(subTypeData[field.name]),
+	);
 	return Boolean(
 		category &&
 		uploadedFile &&
+		allDynamicFieldsSelected &&
 		teeth.length > 0 &&
 		(modelRequired === "yes" || modelRequired === "no"),
 	);
 };
 
-// Every field here is optional — still rendered so a lab can fill them in
-// when known, but none of them block submission when left blank.
+// Category, the primary Case Type (caseType / caseType1), a Case File, and a
+// Tooth Selection are required to submit. Every secondary field (Arch,
+// Occlusion, the Implant Crown & Bridge attachment) is optional — still
+// rendered, but doesn't block submission when left blank.
 const CASE_HIERARCHY = {
 	"Crown & Bridges": {
 		fields: [
@@ -229,7 +237,6 @@ const CASE_HIERARCHY = {
 					"In-Lay",
 					"On-Lay",
 				],
-				optional: true,
 			},
 		],
 	},
@@ -246,7 +253,6 @@ const CASE_HIERARCHY = {
 					"Full Denture",
 					"Partial Denture",
 				],
-				optional: true,
 			},
 			{
 				name: "caseType2",
@@ -264,7 +270,6 @@ const CASE_HIERARCHY = {
 				label: "Case Type",
 				type: "select",
 				options: ["Digital Wax Up", "Vineers", "Snap on Smile"],
-				optional: true,
 			},
 		],
 	},
@@ -275,7 +280,6 @@ const CASE_HIERARCHY = {
 				label: "Case Type 1",
 				type: "select",
 				options: ["Night Guards", "Sports Guard", "Mouth Guard", "NTI"],
-				optional: true,
 			},
 			{
 				name: "occlusion",
@@ -300,7 +304,6 @@ const CASE_HIERARCHY = {
 				label: "Sub Type 1",
 				type: "select",
 				options: ["Robotic", "Custom", "Ti-Base"],
-				optional: true,
 			},
 			{
 				name: "caseType2",
@@ -810,7 +813,7 @@ export default function CasesPage() {
 			)
 		) {
 			toast.error(
-				"Please select a category, choose teeth, upload a file, and specify whether a model is required.",
+				"Please select a category and case type, choose teeth, upload a file, and specify whether a model is required.",
 			);
 			return;
 		}
@@ -994,7 +997,7 @@ export default function CasesPage() {
 		);
 		if (hasInvalidRow) {
 			toast.error(
-				"Complete category, teeth selection, file upload, and the Model Required choice for every case.",
+				"Complete category, case type, teeth selection, file upload, and the Model Required choice for every case.",
 			);
 			return;
 		}
@@ -1702,7 +1705,7 @@ export default function CasesPage() {
 												category as keyof typeof CASE_HIERARCHY
 											]?.fields.map((field) => (
 												<div className="space-y-2" key={field.name}>
-													<Label>{field.label}</Label>
+													<Label>{field.label}{!(field as { optional?: boolean }).optional && " *"}</Label>
 													<Select
 														value={subTypeData[field.name] || ""}
 														onValueChange={(v) =>
@@ -2261,6 +2264,7 @@ export default function CasesPage() {
 																		<div className="space-y-1" key={field.name}>
 																			<Label className="text-xs">
 																				{field.label}
+																				{!(field as { optional?: boolean }).optional && " *"}
 																			</Label>
 																			<Select
 																				value={
