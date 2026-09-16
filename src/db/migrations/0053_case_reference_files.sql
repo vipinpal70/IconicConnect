@@ -16,8 +16,9 @@ CREATE TABLE IF NOT EXISTS "case_reference_files" (
 -- IF NOT EXISTS has no equivalent for ADD CONSTRAINT, and this table (with
 -- both FKs already in place) was created manually on some environments
 -- while this migration was blocked earlier in development — guard each
--- with the same DO $$ ... EXCEPTION pattern 0046_drop_service_catalog_
--- service_type.sql uses, so a re-run doesn't fail on an already-applied DB.
+-- with the same DO $$ ... EXCEPTION pattern already used elsewhere in this
+-- repo (e.g. 0046_milling_schema.sql), so a re-run doesn't fail on an
+-- already-applied DB.
 DO $$ BEGIN
   ALTER TABLE "case_reference_files" ADD CONSTRAINT "case_reference_files_case_id_cases_id_fk" FOREIGN KEY ("case_id") REFERENCES "public"."cases"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION WHEN duplicate_object THEN null;
