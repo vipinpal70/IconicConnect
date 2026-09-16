@@ -108,16 +108,31 @@ export function MillingServiceCatalogTable({ centerId, serviceType }: { centerId
 
   const usedKeys = new Set((rows ?? []).map((r) => `${r.category}::${r.subCategory}`))
   const availableOptions = (optionsQuery.data ?? []).filter((o) => !usedKeys.has(`${o.category}::${o.subCategory}`))
+  // Categories that still have at least one sub-type not yet on this centre's
+  // catalog — the only ones offered in the "Add service" dropdown.
+  const availableCategories = Array.from(new Set(availableOptions.map((o) => o.category)))
 
   const updateRow = (index: number, patch: Partial<CatalogRow>) => {
     setRows((prev) => (prev ? prev.map((r, i) => (i === index ? { ...r, ...patch } : r)) : prev))
     setDirty(true)
   }
 
-  const addRow = (option: CatalogOption) => {
+  // Adds one row per sub-type still missing under the chosen category (skips
+  // sub-types already on this centre's catalog rather than duplicating them).
+  const addCategory = (category: string) => {
+    const missing = availableOptions.filter((o) => o.category === category)
+    if (missing.length === 0) return
     setRows((prev) => [
       ...(prev ?? []),
-      { category: option.category, subCategory: option.subCategory, unitType: option.unitType, partnerRate: 0, monthlyCapacity: null, turnaroundDays: null, isActive: true },
+      ...missing.map((option) => ({
+        category: option.category,
+        subCategory: option.subCategory,
+        unitType: option.unitType,
+        partnerRate: 0,
+        monthlyCapacity: null,
+        turnaroundDays: null,
+        isActive: true,
+      })),
     ])
     setDirty(true)
   }
@@ -265,20 +280,17 @@ export function MillingServiceCatalogTable({ centerId, serviceType }: { centerId
 
       <div className="flex items-center justify-between gap-3">
         <Select
-          onValueChange={(value) => {
-            const option = availableOptions.find((o) => `${o.category}::${o.subCategory}` === value)
-            if (option) addRow(option)
-          }}
+          onValueChange={(value) => addCategory(value)}
           value=""
-          disabled={availableOptions.length === 0}
+          disabled={availableCategories.length === 0}
         >
           <SelectTrigger className="h-8 w-64 text-xs">
-            <SelectValue placeholder={availableOptions.length === 0 ? "All services added" : "+ Add service"} />
+            <SelectValue placeholder={availableCategories.length === 0 ? "All services added" : "+ Add service"} />
           </SelectTrigger>
           <SelectContent>
-            {availableOptions.map((o) => (
-              <SelectItem key={`${o.category}::${o.subCategory}`} value={`${o.category}::${o.subCategory}`}>
-                {o.category} — {o.subCategory}
+            {availableCategories.map((category) => (
+              <SelectItem key={category} value={category}>
+                {category}
               </SelectItem>
             ))}
           </SelectContent>
