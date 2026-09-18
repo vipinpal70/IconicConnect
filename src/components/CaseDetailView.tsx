@@ -835,7 +835,6 @@ export function CaseDetailView({
             <CardContent className="p-0">
               <CaseChat
                 caseId={caseRecord.id}
-                side={chatSide}
                 className="border-none rounded-none"
                 heightClass="h-[360px]"
                 disabled={caseRecord.status === "client_reject"}

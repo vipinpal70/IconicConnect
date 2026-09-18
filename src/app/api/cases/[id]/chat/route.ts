@@ -107,13 +107,8 @@ export async function POST(
       return NextResponse.json({ error: 'Message text or file attachment is required' }, { status: 400 });
     }
 
-    // 2. Role restriction check: ONLY clients and subusers can upload files!
+    // 2. Anyone with chat access (checked above via canAccessCaseChat) may attach a file.
     if (fileUrl) {
-      const isClientRole = profile.role === 'client' || profile.role === 'subuser';
-      if (!isClientRole) {
-        return NextResponse.json({ error: 'Forbidden: Admins, designers, and QC leads cannot send media files.' }, { status: 403 });
-      }
-
       // Check max file size limit (500MB)
       if (fileSize && Number(fileSize) > 500 * 1024 * 1024) {
         return NextResponse.json({ error: 'Forbidden: File size exceeds the 500MB limit for chat messages' }, { status: 400 });
