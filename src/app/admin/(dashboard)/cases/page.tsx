@@ -1669,7 +1669,6 @@ export default function AdminCasesPage() {
 								<TabsContent value="chat" className="mt-3">
 									<CaseChat
 										caseId={openCase.id}
-										side="admin"
 										heightClass="h-[400px]"
 									/>
 								</TabsContent>
