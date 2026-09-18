@@ -50,10 +50,7 @@ export async function GET(req: NextRequest) {
       const clientLab = getProfileLabName(profile);
       if (
         profile.labName === labName ||
-        clientLab === labName ||
-        (profile.fullName && profile.fullName === labName) ||
-        (profile.email && profile.email === labName) ||
-        labName === 'UnknownLab'
+        clientLab === labName
       ) {
         allowed = true;
       }
@@ -65,10 +62,7 @@ export async function GET(req: NextRequest) {
           const parentLab = getProfileLabName(parentClient);
           if (
             parentClient.labName === labName ||
-            parentLab === labName ||
-            (parentClient.fullName && parentClient.fullName === labName) ||
-            (parentClient.email && parentClient.email === labName) ||
-            labName === 'UnknownLab'
+            parentLab === labName
           ) {
             allowed = true;
           }
@@ -164,10 +158,7 @@ export async function DELETE(req: NextRequest) {
       const clientLab = getProfileLabName(profile);
       if (
         profile.labName === labName ||
-        clientLab === labName ||
-        (profile.fullName && profile.fullName === labName) ||
-        (profile.email && profile.email === labName) ||
-        labName === 'UnknownLab'
+        clientLab === labName
       ) {
         allowed = true;
       }
@@ -179,10 +170,7 @@ export async function DELETE(req: NextRequest) {
           const parentLab = getProfileLabName(parentClient);
           if (
             parentClient.labName === labName ||
-            parentLab === labName ||
-            (parentClient.fullName && parentClient.fullName === labName) ||
-            (parentClient.email && parentClient.email === labName) ||
-            labName === 'UnknownLab'
+            parentLab === labName
           ) {
             allowed = true;
           }
