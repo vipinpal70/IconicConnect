@@ -11,9 +11,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/ca
 import { Badge } from "@/src/components/ui/badge"
 import { toast } from "sonner"
 import { Switch } from "@/src/components/ui/switch"
-import { ArrowLeft, Building2, Save, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
+import { ArrowLeft, Building2, Save, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp, RefreshCw, KeyRound } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/src/components/ui/tabs"
 import { PriceListTable } from "@/src/components/PriceListTable"
+import { ResetPasswordModal } from "../_components/ResetPasswordModal"
 import type { PreferenceFormRecord } from "@/src/lib/preference-forms"
 import type { PriceListEntryFull } from "@/src/lib/price-list-shared"
 import type { ServiceType } from "@/src/lib/case-status-mapping"
@@ -70,6 +71,7 @@ export default function ClientProfilePage() {
   const [enabledOverrides, setEnabledOverrides] = useState<Record<string, boolean>>({})
   const [refreshingPrices, setRefreshingPrices] = useState(false)
   const [activeTab, setActiveTab] = useState<ServiceType>("design_only")
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
 
   const clientQuery = useQuery<ClientProfile>({
     queryKey: ["admin-client", clientId],
@@ -328,10 +330,21 @@ export default function ClientProfilePage() {
           {/* Client Information */}
           <Card className="shadow-card">
             <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-                <Building2 className="h-3.5 w-3.5 text-primary" />
-                Client information
-              </CardTitle>
+              <div className="flex items-center justify-between gap-4">
+                <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Building2 className="h-3.5 w-3.5 text-primary" />
+                  Client information
+                </CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs h-7 shrink-0"
+                  onClick={() => setResetPasswordOpen(true)}
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Reset Password
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-2 px-4 pb-4">
               <Info label="Lab Name" value={client?.labName || "-"} />
@@ -534,8 +547,14 @@ export default function ClientProfilePage() {
             </CardContent>
           </Card>
         </div>
+
+        <ResetPasswordModal
+          client={client ? { id: client.id, labName: client.labName, email: client.email } : null}
+          open={resetPasswordOpen}
+          onOpenChange={setResetPasswordOpen}
+        />
       </div>
-    
+
   )
 }
 
