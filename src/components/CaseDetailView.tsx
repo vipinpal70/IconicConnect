@@ -1610,7 +1610,7 @@ export function CaseDetailView({
 								<CardContent className="p-0">
 									<CaseChat
 										caseId={caseRecord.id}
-										side={chatSide}
+										clientId={caseRecord.clientId}
 										className="border-none rounded-none"
 										heightClass="h-[360px]"
 										disabled={caseRecord.status === "client_reject"}

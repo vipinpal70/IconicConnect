@@ -24,13 +24,15 @@ interface ChatMessage {
 
 interface Props {
   caseId: string
-  side: "lab" | "admin"
+  /** The case's owning client — required so admin/QC/designer uploads are stored under the
+   * client's own lab namespace instead of the uploader's (which would 404/403 for the client). */
+  clientId?: string | null
   className?: string
   heightClass?: string
   disabled?: boolean
 }
 
-export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", disabled }: Props) {
+export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]", disabled }: Props) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null)
   const [forbidden, setForbidden] = useState(false)
   const [text, setText] = useState("")
@@ -123,11 +125,6 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (side !== "lab") {
-      toast.error("Admins and QC operators can only send text messages.")
-      return
-    }
-
     const maxLimit = 500 * 1024 * 1024 // 500MB
     if (file.size > maxLimit) {
       toast.error("File size exceeds the 500MB chat message upload limit.")
@@ -153,7 +150,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
     try {
       await uploadFileInChunks(
         file,
-        {},
+        { clientId },
         (percent) => {
           setUploadProgress(percent)
         },
@@ -267,7 +264,7 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
         ) : (
           <div className="space-y-2">
             {sortedMessages.map((m) => {
-              const isAdminColumn = ["admin", "qc", "designer"].includes(m.senderRole)
+              const isAdminColumn = ["admin", "qc", "designer", "account_manager", "consultant"].includes(m.senderRole)
               const alignment = isAdminColumn ? "justify-end" : "justify-start"
 
               return (
@@ -326,27 +323,23 @@ export function CaseChat({ caseId, side, className, heightClass = "h-[500px]", d
         </div>
       ) : (
         <div className="flex gap-1.5 p-2 border-t border-border bg-card items-center">
-          {side === "lab" && (
-            <>
-              <input
-                type="file"
-                className="hidden"
-                onChange={handleFileChange}
-                id="chat-file-input"
-                accept=".png,.jpg,.jpeg,.mp4,.mkv,.avi,.mov,.webm,.pdf,.zip,.doc,.docx,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico"
-              />
-              <Button
-                size="icon"
-                variant="outline"
-                disabled={uploading}
-                onClick={() => document.getElementById("chat-file-input")?.click()}
-                title="Attach media files (images, video, zip, pdf, docs upto 500MB)"
-                className="h-8 w-8 shrink-0 border-border hover:bg-muted"
-              >
-                <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-              </Button>
-            </>
-          )}
+          <input
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+            id="chat-file-input"
+            accept=".png,.jpg,.jpeg,.mp4,.mkv,.avi,.mov,.webm,.pdf,.zip,.doc,.docx,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico"
+          />
+          <Button
+            size="icon"
+            variant="outline"
+            disabled={uploading}
+            onClick={() => document.getElementById("chat-file-input")?.click()}
+            title="Attach media files (images, video, zip, pdf, docs upto 500MB)"
+            className="h-8 w-8 shrink-0 border-border hover:bg-muted"
+          >
+            <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
 
           <Input
             placeholder="Type a message…"
