@@ -45,6 +45,7 @@ const getPreviewFileType = (url: string | null | undefined): 'html' | 'image' | 
 
 type CaseRecord = {
   id: string
+  clientId: string
   caseNumber: string | null
   category: string | null
   subTypeData: Record<string, unknown> | null
@@ -835,6 +836,7 @@ export function CaseDetailView({
             <CardContent className="p-0">
               <CaseChat
                 caseId={caseRecord.id}
+                clientId={caseRecord.clientId}
                 className="border-none rounded-none"
                 heightClass="h-[360px]"
                 disabled={caseRecord.status === "client_reject"}

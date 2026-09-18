@@ -24,12 +24,15 @@ interface ChatMessage {
 
 interface Props {
   caseId: string
+  /** The case's owning client — required so admin/QC/designer uploads are stored under the
+   * client's own lab namespace instead of the uploader's (which would 404/403 for the client). */
+  clientId?: string | null
   className?: string
   heightClass?: string
   disabled?: boolean
 }
 
-export function CaseChat({ caseId, className, heightClass = "h-[500px]", disabled }: Props) {
+export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]", disabled }: Props) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null)
   const [forbidden, setForbidden] = useState(false)
   const [text, setText] = useState("")
@@ -147,7 +150,7 @@ export function CaseChat({ caseId, className, heightClass = "h-[500px]", disable
     try {
       await uploadFileInChunks(
         file,
-        {},
+        { clientId },
         (percent) => {
           setUploadProgress(percent)
         },
