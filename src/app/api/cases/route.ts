@@ -34,6 +34,7 @@ const caseListSelection = {
   subTypeData: cases.subTypeData,
   status: cases.status,
   serviceType: cases.serviceType,
+  designSource: cases.designSource,
   holdReason: cases.holdReason,
   cancelReason: cases.cancelReason,
   feedbackReason: cases.feedbackReason,

@@ -120,7 +120,17 @@ export async function assignDesignCentre(params: {
  * at the centre must go On Hold first (§13.1 #4), same rule as reassigning
  * to a different centre.
  */
-export async function withdrawDesignCentreToInternal(params: { caseId: string; designerId: string; actorId: string }) {
+export async function withdrawDesignCentreToInternal(params: {
+  caseId: string
+  designerId: string
+  actorId: string
+  // Only needed when withdrawing from an exception status that also needs to
+  // resume the lifecycle (client_reject -> allocated_to_designer,
+  // client_feedback -> in_progress) — mirrors what the plain internal
+  // re-allocation path already does at those same two states. Omitted for
+  // on_hold, which stays on_hold until a separate "Resume Case" action.
+  status?: 'allocated_to_designer' | 'in_progress'
+}) {
   const existing = await getAssignment(params.caseId)
   if (!existing?.designCenterId) return
 
@@ -131,7 +141,12 @@ export async function withdrawDesignCentreToInternal(params: { caseId: string; d
 
   await db
     .update(cases)
-    .set({ designSource: 'internal', designerId: params.designerId, updatedAt: new Date() })
+    .set({
+      designSource: 'internal',
+      designerId: params.designerId,
+      ...(params.status ? { status: params.status } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(cases.id, params.caseId))
 
   await recordHistory({

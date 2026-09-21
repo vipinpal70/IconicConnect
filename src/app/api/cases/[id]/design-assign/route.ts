@@ -191,12 +191,26 @@ export async function DELETE(
     }
 
     const body = await req.json().catch(() => ({}))
-    const { designerId } = body
+    const { designerId, status: nextStatus } = body
     if (!designerId || typeof designerId !== 'string') {
       return NextResponse.json({ error: 'designerId is required to reassign the case internally' }, { status: 400 })
     }
 
-    await withdrawDesignCentreToInternal({ caseId: id, designerId, actorId: auth.profile.id })
+    // Optional — only sent when switching a rejected/feedback case straight
+    // to an internal designer, so the lifecycle resumes at the same point
+    // the plain internal re-allocation path already resumes it at.
+    let status: 'allocated_to_designer' | 'in_progress' | undefined
+    if (nextStatus !== undefined) {
+      if (nextStatus === 'allocated_to_designer' && caseRecord.status === 'client_reject') {
+        status = 'allocated_to_designer'
+      } else if (nextStatus === 'in_progress' && caseRecord.status === 'client_feedback') {
+        status = 'in_progress'
+      } else {
+        return NextResponse.json({ error: 'Invalid status transition for this withdrawal' }, { status: 400 })
+      }
+    }
+
+    await withdrawDesignCentreToInternal({ caseId: id, designerId, actorId: auth.profile.id, status })
 
     await invalidateCasesCache(caseRecord.clientId).catch(() => {})
     await deleteCachedData(`case:detail:${id}`).catch(() => {})

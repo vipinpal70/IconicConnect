@@ -677,6 +677,39 @@ export default function AdminCasesPage() {
 		}
 	};
 
+	// Switches a partner-designed case to an internal designer. Unlike a plain
+	// handleUpdate({designerId}), this also clears the still-live design
+	// centre assignment atomically server-side (case-flow-update-plan.md
+	// §13.2 #8) — using handleUpdate here instead would leave the old
+	// design partner's assignment row dangling.
+	const handleWithdrawToInternal = async (
+		caseId: string,
+		designerId: string,
+		status: "allocated_to_designer" | "in_progress" | undefined,
+		successMessage: string,
+	) => {
+		setUpdatingId(caseId);
+		try {
+			const res = await fetch(`/api/cases/${caseId}/design-assign`, {
+				method: "DELETE",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ designerId, ...(status ? { status } : {}) }),
+			});
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error(err.error || "Failed to reassign case internally");
+			}
+			toast.success(successMessage);
+			refetch();
+			queryClient.invalidateQueries({ queryKey: ["admin-milling-cases-list"] });
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Something went wrong";
+			toast.error(msg);
+		} finally {
+			setUpdatingId(null);
+		}
+	};
+
 	const handleDeleteCase = async (caseId: string) => {
 		setUpdatingId(caseId);
 		try {
@@ -1519,74 +1552,49 @@ export default function AdminCasesPage() {
 																			>
 																				Back to designer
 																			</Button>
-																			{caseItem.serviceType !== "milling_only" &&
-																				caseItem.designSource !== "partner" && (
+																			{/* No "Re-assign Design Partner" here — a rejected/feedback
+																				case always goes back to the SAME centre (they get their
+																				own "Resume Design"/"Apply Feedback" action in their
+																				portal); admin/QC may still switch it to an internal
+																				designer, which needs the withdraw-aware handler below. */}
+																			{caseItem.serviceType !== "milling_only" && (
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
 																					disabled={isMutating}
 																					label="Re-allocate"
-																					onPick={(mId, role) =>
-																						handleUpdate(
-																							caseItem.id,
-																							role === "qc" ? { qcId: mId } : { designerId: mId, status: "in_progress" },
-																							role === "qc" ? `Re-allocated QC lead to case` : `Re-allocated designer to case`,
-																						)
-																					}
+																					onPick={(mId, role) => {
+																						if (role === "qc") {
+																							handleUpdate(caseItem.id, { qcId: mId }, `Re-allocated QC lead to case`);
+																						} else if (caseItem.designSource === "partner") {
+																							handleWithdrawToInternal(caseItem.id, mId, "in_progress", "Reassigned to internal designer");
+																						} else {
+																							handleUpdate(caseItem.id, { designerId: mId, status: "in_progress" }, `Re-allocated designer to case`);
+																						}
+																					}}
 																				/>
 																			)}
-																			{caseItem.serviceType !== "milling_only" &&
-																				(currentUser?.role === "admin" ||
-																					currentUser?.role === "qc") && (
-																					<Button
-																						size="sm"
-																						variant="outline"
-																						disabled={isMutating}
-																						onClick={() => setAssignDesignPartnerCase(caseItem)}
-																						className="h-7 text-[10px] px-2.5"
-																					>
-																						<Factory className="h-3 w-3 mr-0.5" />
-																						{caseItem.designSource === "partner"
-																							? "Re-assign Design Partner"
-																							: "Design Partner"}
-																					</Button>
-																				)}
 																		</>
 																	)}
 																	{caseItem.status === "client_reject" && (
 																		<>
-																			{caseItem.serviceType !== "milling_only" &&
-																				caseItem.designSource !== "partner" && (
+																			{caseItem.serviceType !== "milling_only" && (
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
 																					disabled={isMutating}
 																					label="Re-allocate"
-																					onPick={(mId, role) =>
-																						handleUpdate(
-																							caseItem.id,
-																							role === "qc" ? { qcId: mId } : { designerId: mId, status: "allocated_to_designer" },
-																							role === "qc" ? `Re-allocated QC lead to rejected case` : `Re-allocated designer to rejected case`,
-																						)
-																					}
+																					onPick={(mId, role) => {
+																						if (role === "qc") {
+																							handleUpdate(caseItem.id, { qcId: mId }, `Re-allocated QC lead to rejected case`);
+																						} else if (caseItem.designSource === "partner") {
+																							handleWithdrawToInternal(caseItem.id, mId, "allocated_to_designer", "Reassigned to internal designer");
+																						} else {
+																							handleUpdate(caseItem.id, { designerId: mId, status: "allocated_to_designer" }, `Re-allocated designer to rejected case`);
+																						}
+																					}}
 																				/>
 																			)}
-																			{caseItem.serviceType !== "milling_only" &&
-																				(currentUser?.role === "admin" ||
-																					currentUser?.role === "qc") && (
-																					<Button
-																						size="sm"
-																						variant="outline"
-																						disabled={isMutating}
-																						onClick={() => setAssignDesignPartnerCase(caseItem)}
-																						className="h-7 text-[10px] px-2.5"
-																					>
-																						<Factory className="h-3 w-3 mr-0.5" />
-																						{caseItem.designSource === "partner"
-																							? "Re-assign Design Partner"
-																							: "Design Partner"}
-																					</Button>
-																				)}
 																		</>
 																	)}
 																	{caseItem.status === "on_hold" && (
@@ -1606,20 +1614,24 @@ export default function AdminCasesPage() {
 																				<RefreshCw className="h-3 w-3 mr-0.5" />{" "}
 																				Resume Case
 																			</Button>
-																			{caseItem.serviceType !== "milling_only" &&
-																				caseItem.designSource !== "partner" && (
+																			{/* On Hold is a deliberate pause, so - unlike client_reject/
+																			   client_feedback - admin/QC may freely pick a different design
+																			   partner here too, not just switch to internal. */}
+																			{caseItem.serviceType !== "milling_only" && (
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
 																					disabled={isMutating}
 																					label="Re-allocate"
-																					onPick={(mId, role) =>
-																						handleUpdate(
-																							caseItem.id,
-																							role === "qc" ? { qcId: mId } : { designerId: mId },
-																							role === "qc" ? `Re-allocated QC lead to on-hold case` : `Allocated designer to on-hold case`,
-																						)
-																					}
+																					onPick={(mId, role) => {
+																						if (role === "qc") {
+																							handleUpdate(caseItem.id, { qcId: mId }, `Re-allocated QC lead to on-hold case`);
+																						} else if (caseItem.designSource === "partner") {
+																							handleWithdrawToInternal(caseItem.id, mId, undefined, "Reassigned to internal designer");
+																						} else {
+																							handleUpdate(caseItem.id, { designerId: mId }, `Allocated designer to on-hold case`);
+																						}
+																					}}
 																				/>
 																			)}
 																			{caseItem.serviceType !== "milling_only" &&
