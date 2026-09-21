@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { millingCaseAssignments, millingCenters } from '@/src/db/schema/milling'
-import { eq } from 'drizzle-orm'
+import { eq, isNotNull } from 'drizzle-orm'
 import { requireAdmin } from '@/src/lib/milling/admin-guard'
 import { getUnitPrice } from '@/src/lib/invoice'
 import { resolveCaseSubCategory } from '@/src/lib/pricing'
@@ -14,11 +14,13 @@ export async function GET() {
   try {
     const centers = await db.select().from(millingCenters)
 
+    // Production-leg assignments only — analytics reports milling cost/
+    // revenue/TAT, unaffected by which centre (if any) did the design.
     const assignments = await db
       .select({
-        millingCenterId: millingCaseAssignments.millingCenterId,
+        productionCenterId: millingCaseAssignments.productionCenterId,
         millingStatus: millingCaseAssignments.millingStatus,
-        assignedAt: millingCaseAssignments.assignedAt,
+        productionAssignedAt: millingCaseAssignments.productionAssignedAt,
         updatedAt: millingCaseAssignments.updatedAt,
         caseId: cases.id,
         clientId: cases.clientId,
@@ -27,10 +29,11 @@ export async function GET() {
       })
       .from(millingCaseAssignments)
       .innerJoin(cases, eq(cases.id, millingCaseAssignments.caseId))
+      .where(isNotNull(millingCaseAssignments.productionCenterId))
 
     const perCenter = await Promise.all(
       centers.map(async (center) => {
-        const centerAssignments = assignments.filter((a) => a.millingCenterId === center.id)
+        const centerAssignments = assignments.filter((a) => a.productionCenterId === center.id)
 
         let customerRevenue = 0
         for (const a of centerAssignments) {
@@ -40,10 +43,10 @@ export async function GET() {
           customerRevenue += await getUnitPrice(a.clientId, a.category, subCategory, 'design_milling')
         }
 
-        const delivered = centerAssignments.filter((a) => a.millingStatus === 'delivered')
+        const delivered = centerAssignments.filter((a) => a.millingStatus === 'delivered' && a.productionAssignedAt)
         const avgTatDays = delivered.length
           ? delivered.reduce((sum, a) => {
-              const days = (a.updatedAt.getTime() - a.assignedAt.getTime()) / (1000 * 60 * 60 * 24)
+              const days = (a.updatedAt.getTime() - a.productionAssignedAt!.getTime()) / (1000 * 60 * 60 * 24)
               return sum + days
             }, 0) / delivered.length
           : null

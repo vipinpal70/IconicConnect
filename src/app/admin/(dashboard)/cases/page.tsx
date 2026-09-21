@@ -41,6 +41,7 @@ import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval
 import { toast } from "sonner";
 import { AddCaseDialog } from "@/src/components/AddCaseDialog";
 import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
+import { AssignDesignPartnerDialog } from "@/src/components/AssignDesignPartnerDialog";
 import {
 	Search,
 	ShieldCheck,
@@ -69,6 +70,7 @@ type CaseRecord = {
 	subTypeData: Record<string, unknown> | null;
 	status: string;
 	serviceType?: "design_only" | "design_milling" | "milling_only";
+	designSource?: "internal" | "partner";
 	designerId: string | null;
 	qcId: string | null;
 	accountManagerId: string | null;
@@ -300,6 +302,7 @@ export default function AdminCasesPage() {
 	const [updatingId, setUpdatingId] = useState<string | null>(null);
 	const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
 	const [assignMillingCase, setAssignMillingCase] = useState<CaseRecord | null>(null);
+	const [assignDesignPartnerCase, setAssignDesignPartnerCase] = useState<CaseRecord | null>(null);
 	const [selectedQcId, setSelectedQcId] = useState<string>("");
 	const [pendingCaseAction, setPendingCaseAction] =
 		useState<CaseActionDialogState>(null);
@@ -486,9 +489,17 @@ export default function AdminCasesPage() {
 		staleTime: 5 * 60_000, // team roster rarely changes
 	});
 
-	// Fetch Design+Milling assignment info (centre name + milling status per case)
+	// Fetch Design+Milling assignment info (design/production centre + milling status per case)
 	const { data: millingCasesData } = useQuery<
-		Array<{ id: string; millingCenterId: string | null; millingCenterName: string | null; millingStatus: string | null }>
+		Array<{
+			id: string;
+			designCenterId: string | null;
+			designCenterName: string | null;
+			productionCenterId: string | null;
+			millingCenterName: string | null;
+			millingStatus: string | null;
+			autoAdvanceToMilling: boolean | null;
+		}>
 	>({
 		queryKey: ["admin-milling-cases-list"],
 		queryFn: async () => {
@@ -501,9 +512,17 @@ export default function AdminCasesPage() {
 	});
 
 	const millingByCaseId = useMemo(() => {
-		const map = new Map<string, { millingCenterName: string | null; millingStatus: string | null }>();
+		const map = new Map<
+			string,
+			{ designCenterName: string | null; millingCenterName: string | null; millingStatus: string | null; autoAdvanceToMilling: boolean | null }
+		>();
 		for (const row of millingCasesData ?? []) {
-			map.set(row.id, { millingCenterName: row.millingCenterName, millingStatus: row.millingStatus });
+			map.set(row.id, {
+				designCenterName: row.designCenterName,
+				millingCenterName: row.millingCenterName,
+				millingStatus: row.millingStatus,
+				autoAdvanceToMilling: row.autoAdvanceToMilling,
+			});
 		}
 		return map;
 	}, [millingCasesData]);
@@ -753,18 +772,26 @@ export default function AdminCasesPage() {
 				const { data: updatedCase } = await res.json();
 				const skipsClientReview =
 					updatedCase?.serviceType === "design_milling";
+				// Flow 3 (case-flow-update-plan.md §7.3) auto-advances the case
+				// straight to ready_for_milling server-side when its design was
+				// committed up front to the same centre — status is no longer
+				// internal_qc in that case, so there's nothing left to pick here.
+				const needsMillingCentrePick =
+					skipsClientReview && updatedCase?.status === "internal_qc";
 
 				toast.success(
-					skipsClientReview
+					needsMillingCentrePick
 						? "QC checklist complete — select a milling centre to continue"
-						: actionConfig.successMessage,
+						: skipsClientReview
+							? "QC checklist complete — sent to the assigned centre for milling"
+							: actionConfig.successMessage,
 				);
 				refetch();
 				if (updatedCase && openCase && openCase.id === pendingCaseAction.caseId) {
 					setOpenCase(updatedCase);
 				}
 				closeCaseActionDialog();
-				if (skipsClientReview && updatedCase) {
+				if (needsMillingCentrePick && updatedCase) {
 					setAssignMillingCase(updatedCase);
 				}
 			} catch (err: unknown) {
@@ -1291,7 +1318,8 @@ export default function AdminCasesPage() {
 																				<ShieldCheck className="h-3 w-3 mr-0.5" />
 																				Validate
 																			</Button>
-																			{caseItem.serviceType !== "milling_only" && (
+																			{caseItem.serviceType !== "milling_only" &&
+																				caseItem.designSource !== "partner" && (
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
@@ -1305,11 +1333,19 @@ export default function AdminCasesPage() {
 																					}
 																				/>
 																			)}
+																			{caseItem.designSource === "partner" && (
+																				<span className="inline-flex items-center gap-1 h-7 px-2 text-[10px] rounded-md bg-violet-50 text-violet-700 border border-violet-200 font-semibold">
+																					<Factory className="h-3 w-3" />
+																					{millingByCaseId.get(caseItem.id)
+																						?.designCenterName ?? "Design Partner"}
+																				</span>
+																			)}
 																		</>
 																	)}
 
 																	{caseItem.status === "scan_not_verified" &&
-																		caseItem.serviceType !== "milling_only" && (
+																		caseItem.serviceType !== "milling_only" &&
+																		caseItem.designSource !== "partner" && (
 																		<AllocateMenu
 																			designers={designers}
 																			qcs={qcs}
@@ -1330,19 +1366,43 @@ export default function AdminCasesPage() {
 																		caseItem.status === "in_progress") &&
 																		caseItem.serviceType !== "milling_only" && (
 																		<>
-																			{!caseItem.designerId ? (
-																				<AllocateMenu
-																					designers={designers}
-																					qcs={qcs}
-																					disabled={isMutating}
-																					onPick={(dId) =>
-																						handleUpdate(
-																							caseItem.id,
-																							{ designerId: dId },
-																							`Allocated designer to case`,
-																						)
-																					}
-																				/>
+																			{caseItem.designSource === "partner" ? (
+																				<span className="inline-flex items-center gap-1 h-7 px-2 text-[10px] rounded-md bg-violet-50 text-violet-700 border border-violet-200 font-semibold">
+																					<Factory className="h-3 w-3" />
+																					{millingByCaseId.get(caseItem.id)
+																						?.designCenterName ?? "Design Partner"}
+																				</span>
+																			) : !caseItem.designerId ? (
+																				<>
+																					<AllocateMenu
+																						designers={designers}
+																						qcs={qcs}
+																						disabled={isMutating}
+																						onPick={(dId) =>
+																							handleUpdate(
+																								caseItem.id,
+																								{ designerId: dId },
+																								`Allocated designer to case`,
+																							)
+																						}
+																					/>
+																					{caseItem.status === "scan_verified" &&
+																						(currentUser?.role === "admin" ||
+																							currentUser?.role === "qc") && (
+																							<Button
+																								size="sm"
+																								variant="outline"
+																								disabled={isMutating}
+																								onClick={() =>
+																									setAssignDesignPartnerCase(caseItem)
+																								}
+																								className="h-7 text-[10px] px-2.5"
+																							>
+																								<Factory className="h-3 w-3 mr-0.5" />
+																								Design Partner
+																							</Button>
+																						)}
+																				</>
 																			) : (
 																				<>
 																					{!caseItem.qcId ? (
@@ -1459,7 +1519,8 @@ export default function AdminCasesPage() {
 																			>
 																				Back to designer
 																			</Button>
-																			{caseItem.serviceType !== "milling_only" && (
+																			{caseItem.serviceType !== "milling_only" &&
+																				caseItem.designSource !== "partner" && (
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
@@ -1474,11 +1535,28 @@ export default function AdminCasesPage() {
 																					}
 																				/>
 																			)}
+																			{caseItem.serviceType !== "milling_only" &&
+																				(currentUser?.role === "admin" ||
+																					currentUser?.role === "qc") && (
+																					<Button
+																						size="sm"
+																						variant="outline"
+																						disabled={isMutating}
+																						onClick={() => setAssignDesignPartnerCase(caseItem)}
+																						className="h-7 text-[10px] px-2.5"
+																					>
+																						<Factory className="h-3 w-3 mr-0.5" />
+																						{caseItem.designSource === "partner"
+																							? "Re-assign Design Partner"
+																							: "Design Partner"}
+																					</Button>
+																				)}
 																		</>
 																	)}
 																	{caseItem.status === "client_reject" && (
 																		<>
-																			{caseItem.serviceType !== "milling_only" && (
+																			{caseItem.serviceType !== "milling_only" &&
+																				caseItem.designSource !== "partner" && (
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
@@ -1493,6 +1571,22 @@ export default function AdminCasesPage() {
 																					}
 																				/>
 																			)}
+																			{caseItem.serviceType !== "milling_only" &&
+																				(currentUser?.role === "admin" ||
+																					currentUser?.role === "qc") && (
+																					<Button
+																						size="sm"
+																						variant="outline"
+																						disabled={isMutating}
+																						onClick={() => setAssignDesignPartnerCase(caseItem)}
+																						className="h-7 text-[10px] px-2.5"
+																					>
+																						<Factory className="h-3 w-3 mr-0.5" />
+																						{caseItem.designSource === "partner"
+																							? "Re-assign Design Partner"
+																							: "Design Partner"}
+																					</Button>
+																				)}
 																		</>
 																	)}
 																	{caseItem.status === "on_hold" && (
@@ -1512,7 +1606,8 @@ export default function AdminCasesPage() {
 																				<RefreshCw className="h-3 w-3 mr-0.5" />{" "}
 																				Resume Case
 																			</Button>
-																			{caseItem.serviceType !== "milling_only" && (
+																			{caseItem.serviceType !== "milling_only" &&
+																				caseItem.designSource !== "partner" && (
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
@@ -1527,6 +1622,22 @@ export default function AdminCasesPage() {
 																					}
 																				/>
 																			)}
+																			{caseItem.serviceType !== "milling_only" &&
+																				(currentUser?.role === "admin" ||
+																					currentUser?.role === "qc") && (
+																					<Button
+																						size="sm"
+																						variant="outline"
+																						disabled={isMutating}
+																						onClick={() => setAssignDesignPartnerCase(caseItem)}
+																						className="h-7 text-[10px] px-2.5"
+																					>
+																						<Factory className="h-3 w-3 mr-0.5" />
+																						{caseItem.designSource === "partner"
+																							? "Re-assign Design Partner"
+																							: "Design Partner"}
+																					</Button>
+																				)}
 																		</>
 																	)}
 																</>
@@ -2368,6 +2479,21 @@ export default function AdminCasesPage() {
 					caseNumber={assignMillingCase.caseNumber}
 					open={!!assignMillingCase}
 					onOpenChange={(o) => !o && setAssignMillingCase(null)}
+				/>
+			)}
+
+			{assignDesignPartnerCase && (
+				<AssignDesignPartnerDialog
+					caseId={assignDesignPartnerCase.id}
+					caseNumber={assignDesignPartnerCase.caseNumber}
+					serviceType={assignDesignPartnerCase.serviceType ?? "design_only"}
+					qcs={qcs}
+					open={!!assignDesignPartnerCase}
+					onOpenChange={(o) => !o && setAssignDesignPartnerCase(null)}
+					onAssigned={() => {
+						refetch();
+						setAssignDesignPartnerCase(null);
+					}}
 				/>
 			)}
 		</>

@@ -20,12 +20,6 @@ import {
 } from "@/src/components/ui/select";
 import { Factory } from "lucide-react";
 import { toast } from "sonner";
-import type { RoutingResult } from "@/src/lib/milling/routing-engine";
-
-interface MillingAssignmentView {
-	productionCenterId: string;
-	productionCenterName: string | null;
-}
 
 interface EligibleCenter {
 	id: string;
@@ -35,47 +29,71 @@ interface EligibleCenter {
 	turnaroundDays: number | null;
 }
 
-export function AssignMillingCenterDialog({
+interface QcOption {
+	id: string;
+	fullName: string | null;
+}
+
+/**
+ * "Assign to Design Partner" — case-flow-update-plan.md §6.1/§7.2/§7.3.
+ * Hands the design leg of a Design Only / Design + Milling case to an
+ * eligible Milling Centre instead of an internal designer. Admin/QC only.
+ * A QC lead must be picked in the same action — the centre has no way to
+ * pick one itself. For a Design + Milling case, "This centre will also mill
+ * the case" commits the production leg to the same centre up front (Flow 3)
+ * so QC's approval auto-advances it into production with no second pick.
+ */
+export function AssignDesignPartnerDialog({
 	caseId,
 	caseNumber,
+	serviceType,
+	qcs,
 	open,
 	onOpenChange,
 	onAssigned,
 }: {
 	caseId: string;
 	caseNumber?: string | null;
+	serviceType: "design_only" | "design_milling" | "milling_only";
+	qcs: QcOption[];
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onAssigned?: () => void;
 }) {
 	const queryClient = useQueryClient();
 	const [selectedCenterId, setSelectedCenterId] = useState("");
+	const [selectedQcId, setSelectedQcId] = useState("");
 	const [notes, setNotes] = useState("");
+	const [autoAdvance, setAutoAdvance] = useState(false);
 
 	const { data, isLoading } = useQuery<{
-		assignment: MillingAssignmentView | null;
-		recommendation: RoutingResult | null;
 		eligibleCenters: EligibleCenter[];
+		canAutoAdvance: boolean;
 	}>({
-		queryKey: ["case-milling-assign", caseId],
+		queryKey: ["case-design-assign", caseId],
 		enabled: open,
 		queryFn: async () => {
-			const res = await fetch(`/api/cases/${caseId}/milling-assign`);
+			const res = await fetch(`/api/cases/${caseId}/design-assign`);
 			if (!res.ok)
 				throw new Error(
 					(await res.json().catch(() => ({}))).error ||
-						"Failed to load milling assignment",
+						"Failed to load design-partner options",
 				);
 			return (await res.json()).data;
 		},
 	});
 
 	const assignMutation = useMutation({
-		mutationFn: async (centerId: string) => {
-			const res = await fetch(`/api/cases/${caseId}/milling-assign`, {
+		mutationFn: async () => {
+			const res = await fetch(`/api/cases/${caseId}/design-assign`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ millingCenterId: centerId, notes: notes || undefined }),
+				body: JSON.stringify({
+					centerId: selectedCenterId,
+					qcId: selectedQcId,
+					autoAdvanceToMilling: autoAdvance,
+					notes: notes || undefined,
+				}),
 			});
 			if (!res.ok)
 				throw new Error(
@@ -84,8 +102,7 @@ export function AssignMillingCenterDialog({
 			return res.json();
 		},
 		onSuccess: () => {
-			toast.success("Case assigned to milling centre");
-			queryClient.invalidateQueries({ queryKey: ["case-milling-assign", caseId] });
+			toast.success("Case assigned to design partner");
 			queryClient.invalidateQueries({ queryKey: ["admin-cases"] });
 			queryClient.invalidateQueries({ queryKey: ["admin-milling-cases-list"] });
 			onAssigned?.();
@@ -97,17 +114,15 @@ export function AssignMillingCenterDialog({
 	const handleClose = (v: boolean) => {
 		if (!v) {
 			setSelectedCenterId("");
+			setSelectedQcId("");
 			setNotes("");
+			setAutoAdvance(false);
 		}
 		onOpenChange(v);
 	};
 
-	const recommendation = data?.recommendation ?? null;
-	// Only centres that have "Design + Milling"/"Milling Only" enabled AND
-	// have actively priced this case's exact restoration under that flow —
-	// case-flow-update-plan.md §9. Replaces the old "every active centre"
-	// list, which didn't check enablement/pricing at all.
 	const eligibleCenters = data?.eligibleCenters ?? [];
+	const canAutoAdvance = serviceType === "design_milling" && (data?.canAutoAdvance ?? false);
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
@@ -115,7 +130,7 @@ export function AssignMillingCenterDialog({
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2 text-sm">
 						<Factory className="h-4 w-4" />
-						Select milling centre{caseNumber ? ` · ${caseNumber}` : ""}
+						Assign to Design Partner{caseNumber ? ` · ${caseNumber}` : ""}
 					</DialogTitle>
 				</DialogHeader>
 
@@ -123,38 +138,8 @@ export function AssignMillingCenterDialog({
 					<p className="text-xs text-muted-foreground py-6 text-center">Loading…</p>
 				) : (
 					<div className="space-y-4 mt-1">
-						{recommendation?.primary && (
-							<div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
-								<p className="font-semibold text-foreground">
-									Recommended: {recommendation.primary.center.name}
-								</p>
-								<p className="text-muted-foreground mt-0.5">
-									Current load: {recommendation.primary.currentLoad} active case
-									{recommendation.primary.currentLoad === 1 ? "" : "s"}
-									{recommendation.matchedRule
-										? ` · matched rule "${recommendation.matchedRule.name}"`
-										: ""}
-								</p>
-								{recommendation.fallback && (
-									<p className="text-muted-foreground mt-0.5">
-										Fallback: {recommendation.fallback.center.name}
-									</p>
-								)}
-								<Button
-									size="sm"
-									className="mt-2"
-									disabled={assignMutation.isPending}
-									onClick={() => assignMutation.mutate(recommendation.primary!.center.id)}
-								>
-									Accept recommendation
-								</Button>
-							</div>
-						)}
-
 						<div className="space-y-1.5">
-							<Label className="text-xs">
-								{recommendation?.primary ? "Or pick a different centre" : "Pick a milling centre"}
-							</Label>
+							<Label className="text-xs">Design partner centre</Label>
 							<Select value={selectedCenterId} onValueChange={setSelectedCenterId}>
 								<SelectTrigger className="h-9">
 									<SelectValue placeholder="Select an eligible centre" />
@@ -165,29 +150,63 @@ export function AssignMillingCenterDialog({
 											{c.name} · {c.partnerRate}/{c.unitType.replace("per_", "")}
 										</SelectItem>
 									))}
-									{eligibleCenters.length === 0 && (
-										<p className="text-xs p-2 text-muted-foreground">
-											No centre has this restoration enabled and priced under this flow yet.
-										</p>
-									)}
+								</SelectContent>
+							</Select>
+							{eligibleCenters.length === 0 && (
+								<p className="text-[11px] text-muted-foreground">
+									No centre has this restoration enabled and priced for design under this flow yet.
+								</p>
+							)}
+						</div>
+
+						<div className="space-y-1.5">
+							<Label className="text-xs">
+								QC lead (required — the centre can&apos;t pick one itself)
+							</Label>
+							<Select value={selectedQcId} onValueChange={setSelectedQcId}>
+								<SelectTrigger className="h-9">
+									<SelectValue placeholder="Select a QC lead" />
+								</SelectTrigger>
+								<SelectContent>
+									{qcs.map((qc) => (
+										<SelectItem key={qc.id} value={qc.id}>
+											{qc.fullName ?? "Unnamed QC"}
+										</SelectItem>
+									))}
 								</SelectContent>
 							</Select>
 						</div>
 
+						{canAutoAdvance && (
+							<label className="flex items-start gap-2 text-xs cursor-pointer">
+								<input
+									type="checkbox"
+									checked={autoAdvance}
+									onChange={(e) => setAutoAdvance(e.target.checked)}
+									className="mt-0.5 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+								/>
+								<span>
+									<span className="font-medium">This centre will also mill the case.</span>{" "}
+									Once QC approves, it goes straight to this centre for production —
+									no separate milling assignment step.
+								</span>
+							</label>
+						)}
+
 						<div className="space-y-1.5">
-							<Label className="text-xs">Design notes for the milling centre (no client info)</Label>
+							<Label className="text-xs">Notes for the design partner (no client info)</Label>
 							<Textarea
 								rows={3}
 								value={notes}
 								onChange={(e) => setNotes(e.target.value)}
-								placeholder="Manufacturing instructions, material, shade, etc."
+								placeholder="Design instructions, material, shade, etc."
 							/>
 						</div>
 
 						<Button
 							className="w-full"
-							disabled={!selectedCenterId || assignMutation.isPending}
-							onClick={() => assignMutation.mutate(selectedCenterId)}
+							disabled={!selectedCenterId || !selectedQcId || assignMutation.isPending}
+							onClick={() => assignMutation.mutate()}
 						>
 							{assignMutation.isPending ? "Assigning…" : "Assign"}
 						</Button>

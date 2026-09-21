@@ -344,6 +344,13 @@
       "when": 1789000100000,
       "tag": "0053_case_reference_files",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789000200000,
+      "tag": "0054_design_partner_flow",
+      "breakpoints": true
     }
   ]
 }

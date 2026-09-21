@@ -26,7 +26,7 @@ export async function PATCH(
     const [assignment] = await db
       .select()
       .from(millingCaseAssignments)
-      .where(and(eq(millingCaseAssignments.caseId, id), eq(millingCaseAssignments.millingCenterId, auth.millingCenterId)))
+      .where(and(eq(millingCaseAssignments.caseId, id), eq(millingCaseAssignments.productionCenterId, auth.millingCenterId)))
       .limit(1)
 
     if (!assignment) {

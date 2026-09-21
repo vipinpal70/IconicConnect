@@ -8,6 +8,7 @@ import { logActivity } from '@/src/lib/activity-log'
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher'
 import { CASE_APPROVAL_CHECKLIST, normalizeCaseApprovalChecklist } from '@/src/lib/case-approval'
 import { invalidateCasesCache, deleteCachedData } from '@/src/lib/redis-cache'
+import { autoAdvanceIfCommitted } from '@/src/lib/milling/assignment'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error'
@@ -121,6 +122,20 @@ export async function POST(
     const caseUrl = `/cases/${id}`
     const caseNumber = updatedCase.caseNumber ?? caseRecord.caseNumber ?? ''
 
+    // Flow 3 (case-flow-update-plan.md §7.3): if this case's design was
+    // committed up front to also mill with the same centre, send it straight
+    // into production now — no separate "Assign to Milling Centre" click.
+    // Falls back to leaving the case at Internal QC (today's behavior) if
+    // the committed centre is no longer usable or this isn't a Flow-3 case.
+    let finalCase = updatedCase
+    if (skipsClientReview) {
+      const advanced = await autoAdvanceIfCommitted({ caseId: id, actorId: profile.id })
+      if (advanced) {
+        const [refetched] = await db.select().from(cases).where(eq(cases.id, id)).limit(1)
+        if (refetched) finalCase = refetched
+      }
+    }
+
     await Promise.all([
       invalidateCasesCache(caseRecord.clientId),
       deleteCachedData(`case:detail:${id}`),
@@ -148,7 +163,7 @@ export async function POST(
           approvalChecklist: caseRecord.approvalChecklist ?? [],
         },
         changes: {
-          status: skipsClientReview ? caseRecord.status : 'submitted_to_client',
+          status: finalCase.status,
           approvalChecklist: normalizedChecklist,
           approvalChecklistComplete: true,
           caseUrl,
@@ -156,7 +171,7 @@ export async function POST(
       },
     })
 
-    return NextResponse.json({ data: updatedCase })
+    return NextResponse.json({ data: finalCase })
   } catch (error) {
     console.error('Approve case error:', error)
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })

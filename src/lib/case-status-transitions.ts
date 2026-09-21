@@ -16,6 +16,16 @@ export type Role = 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | '
 const MILLING_ROLES: Role[] = ['milling_admin', 'milling_production', 'milling_support']
 const CLIENT_ROLES: Role[] = ['client', 'subuser']
 
+// A milling-portal user acting as a Design Partner (case-flow-update-plan.md
+// §6.2) may only ever drive a case between these two design-phase statuses —
+// Start Design (allocated_to_designer -> in_progress) and Submit for Review
+// (in_progress -> internal_qc). They can never self-allocate
+// (allocated_to_designer is set by admin/QC at hand-off) and never touch a
+// client-facing or terminal status. Ownership of the actual assignment
+// (designCenterId matches their centre) is enforced at the route level, same
+// as every other fine-grained rule this coarse guard sits in front of.
+const MILLING_DESIGN_ACTIONABLE_TARGETS: CaseStatus[] = ['in_progress', 'internal_qc']
+
 export type TransitionCheckInput = {
   serviceType: ServiceType
   role: Role
@@ -60,8 +70,12 @@ export function canTransitionCaseStatus(input: TransitionCheckInput): Transition
     return { allowed: false, reason: 'Design + Milling cases must complete Internal QC before entering production' }
   }
 
-  if (MILLING_ROLES.includes(role) && !MILLING_PRODUCTION_STATUSES.includes(targetStatus)) {
-    return { allowed: false, reason: 'Milling portal users can only set production statuses' }
+  if (
+    MILLING_ROLES.includes(role) &&
+    !MILLING_PRODUCTION_STATUSES.includes(targetStatus) &&
+    !MILLING_DESIGN_ACTIONABLE_TARGETS.includes(targetStatus)
+  ) {
+    return { allowed: false, reason: 'Milling portal users can only set production or design-progress statuses' }
   }
 
   return { allowed: true }

@@ -52,7 +52,6 @@ import {
 } from "@/src/lib/case-utils";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { Upload, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
-import type { MillingCenter } from "@/src/db/schema/milling";
 import type { RoutingResult } from "@/src/lib/milling/routing-engine";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 
@@ -1941,14 +1940,16 @@ export function CaseDetailView({
 
 interface MillingAssignmentView {
 	id: string;
-	millingCenterId: string;
-	millingCenterName: string | null;
+	designCenterId: string | null;
+	productionCenterId: string;
+	productionCenterName: string | null;
 	millingStatus: string;
 	carrier: string | null;
 	trackingNumber: string | null;
 	shipmentEta: string | null;
 	notes: string | null;
-	assignedAt: string;
+	autoAdvanceToMilling: boolean;
+	productionAssignedAt: string;
 }
 
 function MillingTab({
@@ -1966,6 +1967,13 @@ function MillingTab({
 	const { data, isLoading } = useQuery<{
 		assignment: MillingAssignmentView | null;
 		recommendation: RoutingResult | null;
+		eligibleCenters: {
+			id: string;
+			name: string;
+			partnerRate: string;
+			unitType: string;
+			turnaroundDays: number | null;
+		}[];
 	}>({
 		queryKey: ["case-milling-assign", caseId],
 		queryFn: async () => {
@@ -1976,15 +1984,6 @@ function MillingTab({
 						"Failed to load milling assignment",
 				);
 			return (await res.json()).data;
-		},
-	});
-
-	const { data: centers = [] } = useQuery<MillingCenter[]>({
-		queryKey: ["admin-milling-centers-active"],
-		queryFn: async () => {
-			const res = await fetch("/api/admin/milling/centers");
-			if (!res.ok) return [];
-			return (await res.json()).data ?? [];
 		},
 	});
 
@@ -2026,7 +2025,7 @@ function MillingTab({
 
 	const assignment = data?.assignment ?? null;
 	const recommendation = data?.recommendation ?? null;
-	const activeCenters = centers.filter((c) => c.active);
+	const eligibleCenters = data?.eligibleCenters ?? [];
 	const millingActivities = timeline.filter((t) =>
 		t.action.startsWith("case.milling"),
 	);
@@ -2085,14 +2084,19 @@ function MillingTab({
 								onValueChange={setSelectedCenterId}
 							>
 								<SelectTrigger className="h-9">
-									<SelectValue placeholder="Select an active centre" />
+									<SelectValue placeholder="Select an eligible centre" />
 								</SelectTrigger>
 								<SelectContent>
-									{activeCenters.map((c) => (
+									{eligibleCenters.map((c) => (
 										<SelectItem key={c.id} value={c.id}>
-											{c.name}
+											{c.name} · {c.partnerRate}/{c.unitType.replace("per_", "")}
 										</SelectItem>
 									))}
+									{eligibleCenters.length === 0 && (
+										<p className="text-xs p-2 text-muted-foreground">
+											No centre has this restoration enabled and priced under this flow yet.
+										</p>
+									)}
 								</SelectContent>
 							</Select>
 						</div>
@@ -2140,7 +2144,7 @@ function MillingTab({
 						<CardContent className="p-4 space-y-2 text-sm">
 							<DetailRow
 								label="Assigned centre"
-								value={assignment.millingCenterName ?? "—"}
+								value={assignment.productionCenterName ?? "—"}
 							/>
 							<DetailRow
 								label="Milling status"
@@ -2152,8 +2156,14 @@ function MillingTab({
 							/>
 							<DetailRow
 								label="Assigned"
-								value={new Date(assignment.assignedAt).toLocaleString()}
+								value={new Date(assignment.productionAssignedAt).toLocaleString()}
 							/>
+							{assignment.autoAdvanceToMilling && (
+								<DetailRow
+									label="Commitment"
+									value="Same centre committed to design + milling (Flow 3)"
+								/>
+							)}
 							{assignment.notes && (
 								<DetailRow label="Design notes" value={assignment.notes} />
 							)}

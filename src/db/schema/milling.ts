@@ -16,6 +16,7 @@ import {
 import { sql } from 'drizzle-orm'
 import { unitTypeEnum } from './price-list'
 import { cases, serviceTypeEnum } from './case'
+import { profiles } from './profile'
 
 // Mirrors the milling-stage subset of case_status (case.ts) as its own
 // Postgres enum type, scoped to just the values a milling assignment can be in.
@@ -25,6 +26,26 @@ export const millingStatusEnum = pgEnum('milling_status', [
   'milling_qc',
   'dispatched',
   'delivered',
+])
+
+// What a centre is on the hook for on a given case — drives which of
+// designCenterId/productionCenterId on milling_case_assignments is set.
+// See case-flow-update-plan.md §5.1.
+export const assignmentScopeEnum = pgEnum('assignment_scope', [
+  'design',
+  'milling',
+  'design_milling',
+])
+
+// case_center_assignment_history — which leg of the case an event is about.
+export const assignmentRoleEnum = pgEnum('assignment_role', ['design', 'milling'])
+
+// case_center_assignment_history — what happened to that leg's assignment.
+export const assignmentActionEnum = pgEnum('assignment_action', [
+  'assigned',
+  'reassigned',
+  'withdrawn',
+  'auto_advanced',
 ])
 
 export const millingCenters = pgTable('milling_centers', {
@@ -117,6 +138,9 @@ export const millingRoutingRules = pgTable(
   })
 )
 
+// One row per case — the *current* state of who's handling it. Full history
+// of every assign/reassign/withdraw is in caseCenterAssignmentHistory below;
+// this table only ever reflects "right now." See case-flow-update-plan.md §5.1.
 export const millingCaseAssignments = pgTable(
   'milling_case_assignments',
   {
@@ -125,10 +149,20 @@ export const millingCaseAssignments = pgTable(
       .references(() => cases.id, { onDelete: 'cascade' })
       .notNull()
       .unique(),
-    millingCenterId: uuid('milling_center_id')
-      .references(() => millingCenters.id)
-      .notNull(),
-    millingStatus: millingStatusEnum('milling_status').notNull(),
+    // Which of the 3 flow decisions this assignment represents — kept in
+    // sync with which of the two center-id columns below are populated.
+    scope: assignmentScopeEnum('scope').notNull().default('milling'),
+    // Set when a centre is designing this case (Flow 1 / Flow 3).
+    designCenterId: uuid('design_center_id').references(() => millingCenters.id),
+    // Set when a centre is manufacturing this case (Flow 2 / Flow 3, or milling_only).
+    productionCenterId: uuid('production_center_id').references(() => millingCenters.id),
+    // Set only when scope = 'design_milling': the moment QC approves, the
+    // case auto-advances into production under productionCenterId with no
+    // separate admin "assign milling centre" action. See case-flow-update-plan.md §7.3.
+    autoAdvanceToMilling: boolean('auto_advance_to_milling').default(false).notNull(),
+    // Null while the case is purely in the design stage (no production leg
+    // yet) — only meaningful once productionCenterId is set.
+    millingStatus: millingStatusEnum('milling_status'),
     carrier: varchar('carrier', { length: 50 }),
     trackingNumber: varchar('tracking_number', { length: 100 }),
     shipmentEta: date('shipment_eta'),
@@ -138,12 +172,41 @@ export const millingCaseAssignments = pgTable(
     // lab (email, phone, other PII, pricing) is stripped from milling APIs.
     shipToName: varchar('ship_to_name', { length: 150 }),
     shipToAddress: text('ship_to_address'),
-    assignedAt: timestamp('assigned_at').defaultNow().notNull(),
+    designAssignedAt: timestamp('design_assigned_at'),
+    productionAssignedAt: timestamp('production_assigned_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    millingCenterIdIdx: index('milling_case_assignments_center_id_idx').on(table.millingCenterId),
+    designCenterIdIdx: index('milling_case_assignments_design_center_id_idx').on(table.designCenterId),
+    productionCenterIdIdx: index('milling_case_assignments_production_center_id_idx').on(table.productionCenterId),
+  })
+)
+
+// Append-only audit log of every assignment/reassignment/withdrawal on
+// either leg of a case — case-flow-update-plan.md §5.1a. millingCaseAssignments
+// above only ever holds current state; this table is what makes "Centre B was
+// tried and went inactive, Centre C took over" queryable.
+export const caseCenterAssignmentHistory = pgTable(
+  'case_center_assignment_history',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    caseId: uuid('case_id')
+      .references(() => cases.id, { onDelete: 'cascade' })
+      .notNull(),
+    role: assignmentRoleEnum('role').notNull(),
+    action: assignmentActionEnum('action').notNull(),
+    // The centre *after* this event; null = withdrawn back to unassigned/internal.
+    millingCenterId: uuid('milling_center_id').references(() => millingCenters.id),
+    // The centre *before* this event, if any.
+    previousCenterId: uuid('previous_center_id').references(() => millingCenters.id),
+    // Who performed it; null for 'auto_advanced' (system-triggered).
+    actorId: uuid('actor_id').references(() => profiles.id),
+    reason: text('reason'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    caseIdIdx: index('case_center_assignment_history_case_id_idx').on(table.caseId),
   })
 )
 
@@ -155,3 +218,5 @@ export type MillingRoutingRule = typeof millingRoutingRules.$inferSelect
 export type NewMillingRoutingRule = typeof millingRoutingRules.$inferInsert
 export type MillingCaseAssignment = typeof millingCaseAssignments.$inferSelect
 export type NewMillingCaseAssignment = typeof millingCaseAssignments.$inferInsert
+export type CaseCenterAssignmentHistoryEntry = typeof caseCenterAssignmentHistory.$inferSelect
+export type NewCaseCenterAssignmentHistoryEntry = typeof caseCenterAssignmentHistory.$inferInsert

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { millingCaseAssignments, millingStatusEnum } from '@/src/db/schema/milling'
@@ -13,9 +13,19 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const statusFilter = searchParams.get('status')
+    // 'design' = this centre's Design Queue (case-flow-update-plan.md §7.2/§7.3
+    // — assigned as designCenterId, any case status). Default/'production' =
+    // today's manufacturing queue (productionCenterId, and only once it has
+    // actually entered production — millingStatus is null while a Flow-3
+    // commitment hasn't auto-advanced yet).
+    const queue = searchParams.get('queue') === 'design' ? 'design' : 'production'
 
-    const conditions = [eq(millingCaseAssignments.millingCenterId, auth.millingCenterId)]
-    if (statusFilter && (millingStatusEnum.enumValues as readonly string[]).includes(statusFilter)) {
+    const conditions =
+      queue === 'design'
+        ? [eq(millingCaseAssignments.designCenterId, auth.millingCenterId)]
+        : [eq(millingCaseAssignments.productionCenterId, auth.millingCenterId), isNotNull(millingCaseAssignments.millingStatus)]
+
+    if (queue === 'production' && statusFilter && (millingStatusEnum.enumValues as readonly string[]).includes(statusFilter)) {
       conditions.push(eq(millingCaseAssignments.millingStatus, statusFilter as (typeof millingStatusEnum.enumValues)[number]))
     }
 
@@ -41,13 +51,15 @@ export async function GET(req: NextRequest) {
         if (!caseRecord) return null
         return {
           ...toMillingCaseView(caseRecord),
+          status: caseRecord.status,
+          queue,
           millingStatus: a.millingStatus,
           shipToName: a.shipToName,
           shipToAddress: a.shipToAddress,
           carrier: a.carrier,
           trackingNumber: a.trackingNumber,
           shipmentEta: a.shipmentEta,
-          assignedAt: a.assignedAt,
+          assignedAt: queue === 'design' ? a.designAssignedAt : a.productionAssignedAt,
         }
       })
       .filter((row): row is NonNullable<typeof row> => Boolean(row))

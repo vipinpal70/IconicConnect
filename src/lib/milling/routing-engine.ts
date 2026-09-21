@@ -94,18 +94,19 @@ async function currentLoadByCenter(centerIds: string[]): Promise<Map<string, num
   if (!centerIds.length) return new Map()
 
   const rows = await db
-    .select({ millingCenterId: millingCaseAssignments.millingCenterId })
+    .select({ productionCenterId: millingCaseAssignments.productionCenterId })
     .from(millingCaseAssignments)
     .where(
       and(
-        inArray(millingCaseAssignments.millingCenterId, centerIds),
+        inArray(millingCaseAssignments.productionCenterId, centerIds),
         ne(millingCaseAssignments.millingStatus, 'delivered')
       )
     )
 
   const counts = new Map<string, number>()
   for (const row of rows) {
-    counts.set(row.millingCenterId, (counts.get(row.millingCenterId) ?? 0) + 1)
+    if (!row.productionCenterId) continue
+    counts.set(row.productionCenterId, (counts.get(row.productionCenterId) ?? 0) + 1)
   }
   return counts
 }

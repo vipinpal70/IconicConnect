@@ -39,6 +39,14 @@ export const caseStatusEnum = pgEnum('case_status', [
 
 export const serviceTypeEnum = pgEnum('service_type', ['design_only', 'design_milling', 'milling_only'])
 
+// Who is doing the design work on this case — 'internal' (a designer/qc
+// profile, via cases.designerId) or 'partner' (a Design-capable Milling
+// Centre, via milling_case_assignments.designCenterId). A denormalized
+// read-optimization, not a second source of truth — see
+// case-flow-update-plan.md §5.2. Always 'internal' for milling_only cases,
+// which have no design phase at all.
+export const designSourceEnum = pgEnum('design_source', ['internal', 'partner'])
+
 export const CASE_LIFECYCLE_STEPS = [
   'Submitted',
   'In Validation',
@@ -160,6 +168,7 @@ export const cases = pgTable('cases', {
   // Status
   status: caseStatusEnum('status').default('scan_received').notNull(),
   serviceType: serviceTypeEnum('service_type').default('design_only').notNull(),
+  designSource: designSourceEnum('design_source').default('internal').notNull(),
   holdReason: text('hold_reason'),
   cancelReason: text('cancel_reason'),
   feedbackReason: text('feedback_reason'),

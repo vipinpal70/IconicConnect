@@ -6,6 +6,8 @@ import { profiles } from '@/src/db/schema/profile'
 import { millingCaseAssignments, millingCenters } from '@/src/db/schema/milling'
 import { requireStaffRole } from '@/src/lib/milling/admin-guard'
 import { routeCase } from '@/src/lib/milling/routing-engine'
+import { getEligibleCenters } from '@/src/lib/milling/eligibility'
+import { assignProductionCentre } from '@/src/lib/milling/assignment'
 import { resolveCaseSubCategory } from '@/src/lib/pricing'
 import { logActivity } from '@/src/lib/activity-log'
 import { invalidateCasesCache } from '@/src/lib/redis-cache'
@@ -41,14 +43,6 @@ async function getMillableCase(id: string) {
   return caseRecord
 }
 
-function buildShipTo(client: typeof profiles.$inferSelect) {
-  const shipToName = client.labName || client.fullName || null
-  const shipToAddress = [client.city, client.state, client.postalCode, client.country]
-    .filter(Boolean)
-    .join(', ') || null
-  return { shipToName, shipToAddress }
-}
-
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -66,36 +60,50 @@ export async function GET(
     const [assignment] = await db
       .select({
         id: millingCaseAssignments.id,
-        millingCenterId: millingCaseAssignments.millingCenterId,
-        millingCenterName: millingCenters.name,
+        designCenterId: millingCaseAssignments.designCenterId,
+        productionCenterId: millingCaseAssignments.productionCenterId,
+        productionCenterName: millingCenters.name,
         millingStatus: millingCaseAssignments.millingStatus,
         carrier: millingCaseAssignments.carrier,
         trackingNumber: millingCaseAssignments.trackingNumber,
         shipmentEta: millingCaseAssignments.shipmentEta,
         notes: millingCaseAssignments.notes,
-        assignedAt: millingCaseAssignments.assignedAt,
+        autoAdvanceToMilling: millingCaseAssignments.autoAdvanceToMilling,
+        productionAssignedAt: millingCaseAssignments.productionAssignedAt,
       })
       .from(millingCaseAssignments)
-      .leftJoin(millingCenters, eq(millingCenters.id, millingCaseAssignments.millingCenterId))
+      .leftJoin(millingCenters, eq(millingCenters.id, millingCaseAssignments.productionCenterId))
       .where(eq(millingCaseAssignments.caseId, id))
       .limit(1)
 
-    if (assignment) {
-      return NextResponse.json({ data: { assignment, recommendation: null } })
+    // millingStatus is only ever set once a case has actually entered
+    // production — an assignment row can exist with only designCenterId
+    // populated (Flow 1, design still in progress) or with
+    // productionCenterId pre-committed but millingStatus still null (Flow 3,
+    // not yet auto-advanced). Both read as "not in production yet" here.
+    if (assignment?.millingStatus) {
+      return NextResponse.json({ data: { assignment, recommendation: null, eligibleCenters: [] } })
     }
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.clientId)).limit(1)
     const subCategory = caseRecord.category ? resolveCaseSubCategory(caseRecord.category, caseRecord.subTypeData) : null
 
-    const recommendation = await routeCase({
-      category: caseRecord.category ?? undefined,
-      subCategory: subCategory ?? undefined,
-      clientId: caseRecord.clientId,
-      state: client?.state ?? undefined,
-      country: client?.country ?? undefined,
-    })
+    const [recommendation, eligibleCenters] = await Promise.all([
+      routeCase({
+        category: caseRecord.category ?? undefined,
+        subCategory: subCategory ?? undefined,
+        clientId: caseRecord.clientId,
+        state: client?.state ?? undefined,
+        country: client?.country ?? undefined,
+      }),
+      getEligibleCenters({
+        category: caseRecord.category ?? '',
+        subTypeData: caseRecord.subTypeData,
+        serviceType: caseRecord.serviceType,
+      }),
+    ])
 
-    return NextResponse.json({ data: { assignment: null, recommendation } })
+    return NextResponse.json({ data: { assignment: null, recommendation, eligibleCenters } })
   } catch (error) {
     console.error('[cases/[id]/milling-assign GET]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -138,48 +146,24 @@ export async function POST(
       return NextResponse.json({ error: 'Milling centre not found or inactive' }, { status: 404 })
     }
 
-    const [client] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.clientId)).limit(1)
-    if (!client) {
-      return NextResponse.json({ error: 'Client profile not found' }, { status: 404 })
+    const eligibleCenters = await getEligibleCenters({
+      category: caseRecord.category ?? '',
+      subTypeData: caseRecord.subTypeData,
+      serviceType: caseRecord.serviceType,
+    })
+    if (!eligibleCenters.some((c) => c.id === millingCenterId)) {
+      return NextResponse.json(
+        { error: 'This centre has not enabled or priced this restoration under this flow' },
+        { status: 400 }
+      )
     }
 
-    const [existing] = await db
-      .select()
-      .from(millingCaseAssignments)
-      .where(eq(millingCaseAssignments.caseId, id))
-      .limit(1)
-
-    const { shipToName, shipToAddress } = buildShipTo(client)
-
-    const [assignment] = await db
-      .insert(millingCaseAssignments)
-      .values({
-        caseId: id,
-        millingCenterId,
-        millingStatus: 'ready_for_milling',
-        notes: notes || null,
-        shipToName,
-        shipToAddress,
-        assignedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: millingCaseAssignments.caseId,
-        set: {
-          millingCenterId,
-          millingStatus: 'ready_for_milling',
-          notes: notes || null,
-          shipToName,
-          shipToAddress,
-          assignedAt: new Date(),
-          updatedAt: new Date(),
-        },
-      })
-      .returning()
-
-    await db
-      .update(cases)
-      .set({ status: 'ready_for_milling', updatedAt: new Date() })
-      .where(eq(cases.id, id))
+    await assignProductionCentre({
+      caseId: id,
+      centerId: millingCenterId,
+      actorId: auth.profile.id,
+      notes: typeof notes === 'string' ? notes : null,
+    })
 
     await invalidateCasesCache(caseRecord.clientId).catch(() => {})
 
@@ -190,9 +174,14 @@ export async function POST(
       details: {
         millingCenterId,
         millingCenterName: center.name,
-        previousCenterId: existing?.millingCenterId ?? null,
       },
     }).catch((err) => console.error('[case.milling_assigned logActivity]', err))
+
+    const [assignment] = await db
+      .select()
+      .from(millingCaseAssignments)
+      .where(eq(millingCaseAssignments.caseId, id))
+      .limit(1)
 
     return NextResponse.json({ data: assignment })
   } catch (error) {
