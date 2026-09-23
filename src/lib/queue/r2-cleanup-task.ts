@@ -2,9 +2,10 @@ import 'dotenv/config';
 import { db } from '../../db';
 import { caseFiles, casePreviewFiles, caseReferenceFiles, caseHoldFiles, cases } from '../../db/schema/case';
 import { chatMessages } from '../../db/schema/chat';
+import { millingCenters } from '../../db/schema/milling';
 import { isNotNull } from 'drizzle-orm';
 import { R2_BUCKET } from '../r2';
-import { listAllR2Objects, deleteKeys } from '../r2-objects';
+import { listAllR2Objects, deleteKeys, keyFromProxyUrl } from '../r2-objects';
 
 /**
  * R2 orphan cleanup.
@@ -19,9 +20,25 @@ import { listAllR2Objects, deleteKeys } from '../r2-objects';
  * stayed behind. This task lists the bucket, subtracts everything still
  * referenced in the DB, and deletes the remainder.
  *
+ * ── Every writer into R2_BUCKET, and where its reference lives (keep this list
+ * exhaustive — an object here whose reference isn't protected below gets deleted
+ * the same as a genuine orphan) ──
+ *   - POST /api/cases/upload            → proxy URL in case_files / case_preview_files /
+ *                                          case_reference_files / case_hold_files / cases.
+ *                                          (output|preview|teethLibrary)File / chat_messages
+ *   - POST /api/cases/bulk/upload       → staged under `bulk-staging/`, never referenced
+ *                                          directly — bulk/confirm COPYs it to a proxy-URL
+ *                                          key above (or it's abandoned and SHOULD be reaped)
+ *   - POST /api/admin/milling/centers/[id]/contract → RAW key (no proxy URL) in
+ *                                          milling_centers.contract_doc_key
+ * If you add a new upload route, add its reference column to the `protect*` calls below
+ * in the same commit — this file has already had two silent, live gaps found this way
+ * (hold images, then milling contract docs) before this comment existed.
+ *
  * Run directly:   npx tsx src/lib/queue/r2-cleanup-task.ts
  *   --dry-run     list what would be deleted without deleting
- *   --force       delete even if the DB reports zero references (see safety valve)
+ *   --force       delete even if the DB reports zero references, or if the batch
+ *                 trips the mass-deletion circuit breaker (see safety valves)
  */
 
 // Keep objects modified within this window. A completed multipart upload writes
@@ -30,26 +47,6 @@ import { listAllR2Objects, deleteKeys } from '../r2-objects';
 // comfortably longer than the gap between upload-complete and DB insert.
 const GRACE_PERIOD_MS =
   (Number(process.env.R2_CLEANUP_GRACE_HOURS) || 2) * 60 * 60 * 1000;
-
-/**
- * Rebuild the R2 object key from a stored proxy URL.
- * Returns null for anything that isn't an `/api/cases/files` proxy URL
- * (e.g. legacy Supabase public URLs, which don't live in R2).
- */
-function keyFromProxyUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  const qIndex = url.indexOf('?');
-  if (qIndex === -1) return null;
-  if (!url.slice(0, qIndex).endsWith('/api/cases/files')) return null;
-
-  const params = new URLSearchParams(url.slice(qIndex + 1));
-  const labName = params.get('labName'); // URLSearchParams decodes for us
-  const fileName = params.get('fileName');
-  if (!labName || !fileName) return null;
-
-  // Mirrors objectKey() in the upload/download routes: `${labName}/${fileName}`
-  return `${labName}/${fileName}`;
-}
 
 export async function runR2Cleanup(
   options: { dryRun?: boolean; force?: boolean } = {}
@@ -62,7 +59,7 @@ export async function runR2Cleanup(
   );
 
   // 1. Collect every R2 key referenced anywhere in the database.
-  const [attachmentRows, previewFileRows, referenceImageRows, holdFileRows, caseRows, chatRows] = await Promise.all([
+  const [attachmentRows, previewFileRows, referenceImageRows, holdFileRows, caseRows, chatRows, millingCenterRows] = await Promise.all([
     db.select({ fileUrl: caseFiles.fileUrl }).from(caseFiles),
     db.select({ fileUrl: casePreviewFiles.fileUrl }).from(casePreviewFiles),
     db.select({ fileUrl: caseReferenceFiles.fileUrl }).from(caseReferenceFiles),
@@ -78,11 +75,20 @@ export async function runR2Cleanup(
       .select({ fileUrl: chatMessages.fileUrl })
       .from(chatMessages)
       .where(isNotNull(chatMessages.fileUrl)),
+    db
+      .select({ contractDocKey: millingCenters.contractDocKey })
+      .from(millingCenters)
+      .where(isNotNull(millingCenters.contractDocKey)),
   ]);
 
   const referencedKeys = new Set<string>();
   const protect = (url: string | null | undefined) => {
     const key = keyFromProxyUrl(url);
+    if (key) referencedKeys.add(key);
+  };
+  // For columns that store the raw R2 key directly (not a `/api/cases/files`
+  // proxy URL) — currently just milling_centers.contract_doc_key.
+  const protectRawKey = (key: string | null | undefined) => {
     if (key) referencedKeys.add(key);
   };
 
@@ -96,6 +102,7 @@ export async function runR2Cleanup(
     protect(r.teethLibraryFileUrl);
   });
   chatRows.forEach((r) => protect(r.fileUrl));
+  millingCenterRows.forEach((r) => protectRawKey(r.contractDocKey));
 
   console.log(`[R2 Cleanup] ${referencedKeys.size} R2 keys are referenced by the database.`);
 
@@ -121,13 +128,37 @@ export async function runR2Cleanup(
     toDelete.push(obj.key);
   }
 
-  // Safety valve: a DB glitch that returns zero references would otherwise wipe
+  // Safety valve 1: a DB glitch that returns zero references would otherwise wipe
   // the whole bucket. Refuse to mass-delete on an empty reference set unless the
   // caller explicitly forces it.
   if (referencedKeys.size === 0 && toDelete.length > 0 && !force) {
     console.error(
       `[R2 Cleanup] ABORTING: database reported 0 referenced keys but ${toDelete.length} objects ` +
         `are eligible for deletion. This usually means a query failed. Re-run with --force to override.`
+    );
+    return;
+  }
+
+  // Safety valve 2 — mass-deletion circuit breaker: a genuinely abandoned upload
+  // is a handful of objects at a time. A batch this large almost always means a
+  // NEW writer path was added into R2_BUCKET without adding its reference column
+  // to step 1 above (this has already happened twice — see the comment at the top
+  // of this file) — every one of that writer's objects looks unreferenced and
+  // ages past the grace period together. Refuse to run unattended past this size;
+  // an operator must look at --dry-run output and explicitly --force it through.
+  const CIRCUIT_BREAKER_COUNT = Number(process.env.R2_CLEANUP_MAX_DELETE) || 100;
+  const CIRCUIT_BREAKER_RATIO = 0.2; // >20% of the whole bucket in one run
+  if (
+    !force &&
+    toDelete.length > CIRCUIT_BREAKER_COUNT &&
+    objects.length > 0 &&
+    toDelete.length / objects.length > CIRCUIT_BREAKER_RATIO
+  ) {
+    console.error(
+      `[R2 Cleanup] ABORTING: ${toDelete.length}/${objects.length} objects ` +
+        `(${Math.round((toDelete.length / objects.length) * 100)}%) are eligible for deletion — ` +
+        `over the ${CIRCUIT_BREAKER_COUNT}-object / ${CIRCUIT_BREAKER_RATIO * 100}% circuit-breaker threshold. ` +
+        `Run with --dry-run to inspect the list before deciding this is really expected, then re-run with --force.`
     );
     return;
   }

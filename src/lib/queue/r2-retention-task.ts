@@ -6,10 +6,18 @@ import { listAllR2Objects, deleteKeys } from '../r2-objects';
  * R2 age-based retention.
  *
  * Deletes EVERY object in the bucket that has been stored for at least
- * RETENTION_MONTHS (default 3), regardless of whether it is still referenced by
- * a case. This is an unconditional retention policy — old files are removed even
- * if a case still links to them, which will break those cases' downloads. Runs
- * quarterly via r2-retention-scheduler.ts.
+ * RETENTION_MONTHS (default 3) — R2 storage only, no database reads or writes.
+ * It doesn't distinguish by file type (case files, reference images, hold
+ * images, preview files, output files, chat attachments, milling contracts,
+ * etc. all go through the same objectKey() scheme in R2_BUCKET), so every
+ * type is covered by construction, uniformly, with no per-table logic needed
+ * or wanted here — deliberately kept simple and storage-only rather than
+ * reaching into the DB to clean up references, which is a separate concern.
+ *
+ * This is an unconditional retention policy — old files are removed even if a
+ * case (or chat message, or milling centre) still links to them, which will
+ * break those downloads once the object is gone; the DB row/column is left
+ * exactly as-is. Runs quarterly via r2-retention-scheduler.ts.
  *
  * Age is measured from each object's R2 LastModified timestamp.
  *
