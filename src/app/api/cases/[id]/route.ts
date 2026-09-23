@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, EDITABLE_STATUSES, caseMessages, caseFiles } from '@/src/db/schema/case';
+import { cases, EDITABLE_STATUSES, caseMessages, caseFiles, caseHoldFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and, or, like, sql } from 'drizzle-orm';
@@ -526,11 +526,82 @@ export async function PUT(
       updateData.submittedToClientAt = null
     }
 
-    if (Object.keys(updateData).length === 0) {
+    // Hold images (hold_images-plan.md §4.2/§5): only meaningful alongside an
+    // authorized `on_hold` transition, inserted in the same DB transaction as
+    // the status update below so the two can never diverge — cancel the Hold
+    // dialog before confirming and nothing here ever runs, so nothing needs
+    // cleaning up. Authorization is inherited from whichever role-branch above
+    // actually set `updateData.status` to 'on_hold' (each already enforces the
+    // same admin-or-assigned-QC/designer ownership rule this feature needs —
+    // see §1's transition table) — the role check below is defense-in-depth,
+    // not the primary gate.
+    const MAX_HOLD_FILES = 5;
+    const HOLD_IMAGE_UPLOAD_ROLES = new Set(['admin', 'qc', 'designer']);
+    type PendingHoldImage = { fileName: string; fileUrl: string; fileType?: string | null; fileSize?: number | null };
+    let holdImagesToInsert: PendingHoldImage[] = [];
+
+    if (
+      Array.isArray(body.holdImages) &&
+      body.holdImages.length > 0 &&
+      updateData.status === 'on_hold' &&
+      HOLD_IMAGE_UPLOAD_ROLES.has(profile.role)
+    ) {
+      const rawImages = body.holdImages as unknown[];
+      for (const img of rawImages) {
+        const candidate = img as Partial<PendingHoldImage> | null;
+        if (!candidate || typeof candidate.fileUrl !== 'string' || !candidate.fileUrl || typeof candidate.fileName !== 'string' || !candidate.fileName) {
+          return NextResponse.json({ error: 'Bad Request: Each hold image needs a fileUrl and fileName' }, { status: 400 });
+        }
+      }
+      const images = rawImages as PendingHoldImage[];
+
+      // De-dupe within this one request — the same file picked twice in one dialog session.
+      const seen = new Set<string>();
+      const withinBatch: PendingHoldImage[] = [];
+      for (const img of images) {
+        const key = `${img.fileName}::${img.fileSize ?? ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        withinBatch.push(img);
+      }
+
+      // De-dupe against images already attached to this case (any earlier hold).
+      const existingHoldFiles = await db.select({ fileName: caseHoldFiles.fileName, fileSize: caseHoldFiles.fileSize })
+        .from(caseHoldFiles)
+        .where(eq(caseHoldFiles.caseId, id));
+      const existingKeys = new Set(existingHoldFiles.map((f) => `${f.fileName}::${f.fileSize ?? ''}`));
+
+      holdImagesToInsert = withinBatch.filter((img) => !existingKeys.has(`${img.fileName}::${img.fileSize ?? ''}`));
+
+      if (existingHoldFiles.length + holdImagesToInsert.length > MAX_HOLD_FILES) {
+        return NextResponse.json({ error: `A case can have at most ${MAX_HOLD_FILES} hold images` }, { status: 400 });
+      }
+    }
+
+    if (Object.keys(updateData).length === 0 && holdImagesToInsert.length === 0) {
       return NextResponse.json({ error: 'No updates permitted or values provided to set' }, { status: 400 });
     }
 
-    const updatedCase = await db.update(cases).set(updateData).where(eq(cases.id, id)).returning();
+    const updatedCase = await db.transaction(async (tx) => {
+      const updated = Object.keys(updateData).length > 0
+        ? await tx.update(cases).set(updateData).where(eq(cases.id, id)).returning()
+        : [caseRecord];
+
+      if (holdImagesToInsert.length > 0) {
+        await tx.insert(caseHoldFiles).values(
+          holdImagesToInsert.map((img) => ({
+            caseId: id,
+            uploadedBy: user.id,
+            fileName: img.fileName,
+            fileUrl: img.fileUrl,
+            fileType: img.fileType ?? null,
+            fileSize: img.fileSize ?? null,
+          }))
+        );
+      }
+
+      return updated;
+    });
 
     // Dispatch Notifications after successful DB update
     if (updatedCase.length > 0) {
@@ -724,6 +795,19 @@ export async function PUT(
         },
       },
     }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
+
+    if (holdImagesToInsert.length > 0) {
+      logActivity({
+        actor: profile,
+        action: 'case.hold_files_uploaded',
+        caseId: id,
+        details: {
+          caseNumber: caseRecord.caseNumber,
+          count: holdImagesToInsert.length,
+          fileNames: holdImagesToInsert.map((img) => img.fileName),
+        },
+      }).catch((err) => console.error('[CaseActivityLog] Failed to log hold file upload:', err));
+    }
 
     if (updatedCase.length > 0) {
       await Promise.all([

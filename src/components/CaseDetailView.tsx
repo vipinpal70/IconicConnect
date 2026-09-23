@@ -244,6 +244,26 @@ type CaseReferenceFile = {
 	createdAt: string;
 };
 
+type CaseHoldFile = {
+	id: string;
+	fileName: string;
+	fileUrl: string;
+	fileType: string | null;
+	fileSize: number | null;
+	createdAt: string;
+	uploadedByName?: string | null;
+};
+
+// Not yet attached to the case — uploaded to R2 but only committed to
+// case_hold_files once "Confirm" is clicked, so cancelling the Hold dialog
+// never leaves orphaned rows (hold_images-plan.md §4.2).
+type PendingHoldImage = {
+	fileName: string;
+	fileUrl: string;
+	fileType: string;
+	fileSize: number;
+};
+
 type CaseActivity = {
 	id: string;
 	action: string;
@@ -419,6 +439,12 @@ export function CaseDetailView({
 	const [referenceImagesIndex, setReferenceImagesIndex] = useState(0);
 	const [holdReasonSelect, setHoldReasonSelect] = useState("");
 	const [holdCustomReason, setHoldCustomReason] = useState("");
+	const [holdImagesPending, setHoldImagesPending] = useState<PendingHoldImage[]>([]);
+	const [isUploadingHoldImages, setIsUploadingHoldImages] = useState(false);
+	const [holdImagesUploadProgress, setHoldImagesUploadProgress] = useState(0);
+	const holdImagesInputRef = useRef<HTMLInputElement>(null);
+	const [isHoldImagesPreviewOpen, setIsHoldImagesPreviewOpen] = useState(false);
+	const [holdImagesPreviewIndex, setHoldImagesPreviewIndex] = useState(0);
 	const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
 	const [changeNotes, setChangeNotes] = useState("");
 	const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
@@ -440,11 +466,13 @@ export function CaseDetailView({
 	const handleStatusChange = async (
 		targetStatus: string,
 		holdReason?: string,
+		holdImages?: PendingHoldImage[],
 	) => {
 		if (targetStatus === "on_hold" && !holdReason) {
 			setIsHoldDialogOpen(true);
 			setHoldReasonSelect("");
 			setHoldCustomReason("");
+			setHoldImagesPending([]);
 			return;
 		}
 
@@ -456,14 +484,19 @@ export function CaseDetailView({
 				body: JSON.stringify({
 					status: targetStatus,
 					...(holdReason ? { holdReason } : {}),
+					...(holdImages && holdImages.length > 0 ? { holdImages } : {}),
 				}),
 			});
 			if (res.ok) {
 				toast.success(`Case status updated successfully!`);
 				setIsHoldDialogOpen(false);
+				setHoldImagesPending([]);
 				await queryClient.invalidateQueries({ queryKey: ["case", caseId] });
 				await queryClient.invalidateQueries({
 					queryKey: ["case-files", caseId],
+				});
+				await queryClient.invalidateQueries({
+					queryKey: ["case-hold-files", caseId],
 				});
 				router.refresh();
 			} else {
@@ -489,11 +522,119 @@ export function CaseDetailView({
 			toast.error("Please specify your reason for holding the case.");
 			return;
 		}
+		if (isUploadingHoldImages) {
+			toast.error("Please wait for image upload to finish.");
+			return;
+		}
 		const finalReason =
 			holdReasonSelect === "Other (please specify)"
 				? holdCustomReason.trim()
 				: holdReasonSelect;
-		void handleStatusChange("on_hold", finalReason);
+		void handleStatusChange("on_hold", finalReason, holdImagesPending);
+	};
+
+	// Only JPG/PNG/WEBP — HEIC (default iPhone camera format) has no decoder in
+	// most non-Apple browsers and would render as a broken image for most
+	// viewers; SVG is excluded too since it's executable XML, not a photo
+	// (hold_images-plan.md §4.6/§4.7).
+	const HOLD_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+	const MAX_HOLD_IMAGES = 5;
+	const MAX_HOLD_IMAGE_SIZE = 15 * 1024 * 1024; // 15MB — a phone photo, not scan data
+
+	const handleHoldImagesSelect = async (files: File[]) => {
+		if (!caseRecord) return;
+
+		const alreadyAttached = (holdImagesResponse?.data || []).length;
+		const remainingSlots = MAX_HOLD_IMAGES - alreadyAttached - holdImagesPending.length;
+		if (remainingSlots <= 0) {
+			toast.error(`You can attach at most ${MAX_HOLD_IMAGES} hold images.`);
+			return;
+		}
+
+		const candidates = files.slice(0, remainingSlots);
+		if (files.length > remainingSlots) {
+			toast.warning(`Only ${remainingSlots} more hold image(s) can be added (max ${MAX_HOLD_IMAGES}).`);
+		}
+
+		const isDuplicate = (name: string, size: number) =>
+			(holdImagesResponse?.data || []).some((f) => f.fileName === name && f.fileSize === size) ||
+			holdImagesPending.some((f) => f.fileName === name && f.fileSize === size);
+
+		const validFiles: File[] = [];
+		for (const file of candidates) {
+			if (!HOLD_IMAGE_MIME_TYPES.has(file.type)) {
+				toast.warning(`Skipped "${file.name}": only JPG, PNG or WEBP images are supported (no HEIC/SVG).`);
+				continue;
+			}
+			if (file.size > MAX_HOLD_IMAGE_SIZE) {
+				toast.warning(`Skipped "${file.name}": exceeds the 15MB limit for hold images.`);
+				continue;
+			}
+			if (isDuplicate(file.name, file.size)) {
+				toast.warning(`"${file.name}" is already attached to this case's hold record.`);
+				continue;
+			}
+			validFiles.push(file);
+		}
+
+		if (validFiles.length === 0) return;
+
+		setIsUploadingHoldImages(true);
+		setHoldImagesUploadProgress(0);
+
+		const uploaded: PendingHoldImage[] = [];
+		try {
+			for (let i = 0; i < validFiles.length; i++) {
+				const file = validFiles[i];
+				// Lab- and case-scoped storage key (hold_images-plan.md §4.10/§5):
+				// `${labName}/hold-images/${caseId}/${uuid}-${originalName}` — no
+				// two cases can ever collide on the same R2 object. The display
+				// `fileName` sent below stays the clean original name.
+				const storageFile = new File(
+					[file],
+					`hold-images/${caseRecord.id}/${crypto.randomUUID()}-${file.name}`,
+					{ type: file.type },
+				);
+				const onFileProgress = (pct: number) => {
+					const baseProgress = (i / validFiles.length) * 100;
+					const fileContribution = (pct / 100) * (100 / validFiles.length);
+					setHoldImagesUploadProgress(Math.round(baseProgress + fileContribution));
+				};
+
+				await new Promise<void>((resolve, reject) => {
+					uploadFileInChunks(
+						storageFile,
+						{ clientId: caseRecord.clientId },
+						onFileProgress,
+						(res) => {
+							uploaded.push({
+								fileUrl: res.fileUrl,
+								fileName: file.name,
+								fileType: file.type,
+								fileSize: file.size,
+							});
+							resolve();
+						},
+						(err) => reject(new Error(`Failed to upload ${file.name}: ${err}`)),
+					);
+				});
+			}
+
+			setHoldImagesPending((prev) => [...prev, ...uploaded]);
+			toast.success(`Attached ${uploaded.length} hold image(s) — click Confirm to save.`);
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "Failed to upload one or more hold images.");
+		} finally {
+			setIsUploadingHoldImages(false);
+			if (holdImagesInputRef.current) holdImagesInputRef.current.value = "";
+		}
+	};
+
+	// Not yet confirmed, so nothing was ever persisted — just drop it locally.
+	// The already-uploaded R2 object is reaped by the existing orphan-cleanup
+	// job like any other abandoned upload (hold_images-plan.md §4.2).
+	const handleRemovePendingHoldImage = (index: number) => {
+		setHoldImagesPending((prev) => prev.filter((_, i) => i !== index));
 	};
 
 	const handleConfirmChangeRequest = async () => {
@@ -767,10 +908,25 @@ export function CaseDetailView({
 		staleTime: 30_000,
 	});
 
+	const { data: holdImagesResponse } = useQuery<{ data: CaseHoldFile[] }>({
+		queryKey: ["case-hold-files", caseId],
+		queryFn: async () => {
+			const res = await fetch(`/api/cases/${caseId}/hold-files`);
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({}));
+				throw new Error(err.error || "Failed to fetch hold images");
+			}
+			return res.json();
+		},
+		retry: false,
+		staleTime: 30_000,
+	});
+
 	const caseRecord = caseResponse?.data;
 	const files = filesResponse?.data || [];
 	const previewFiles = previewFilesResponse?.data || [];
 	const referenceImages = referenceFilesResponse?.data || [];
+	const holdImages = holdImagesResponse?.data || [];
 
 	// Left/right arrow-key navigation while the reference-images carousel is open.
 	useEffect(() => {
@@ -786,6 +942,21 @@ export function CaseDetailView({
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [isReferenceImagesOpen, referenceImages.length]);
+
+	// Left/right arrow-key navigation while the hold-images carousel is open.
+	useEffect(() => {
+		if (!isHoldImagesPreviewOpen || holdImages.length === 0) return;
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "ArrowLeft") {
+				setHoldImagesPreviewIndex((i) => (i - 1 + holdImages.length) % holdImages.length);
+			}
+			if (e.key === "ArrowRight") {
+				setHoldImagesPreviewIndex((i) => (i + 1) % holdImages.length);
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [isHoldImagesPreviewOpen, holdImages.length]);
 
 	const activities = caseRecord?.timeline || [];
 	const displayActivities = toViewerSafeActivities(activities, chatSide);
@@ -855,6 +1026,20 @@ export function CaseDetailView({
 					</p>
 				</div>
 				<div className="ml-auto flex items-center gap-2">
+					{holdImages.length > 0 && (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="h-7 text-xs gap-1.5"
+							onClick={() => {
+								setHoldImagesPreviewIndex(0);
+								setIsHoldImagesPreviewOpen(true);
+							}}
+						>
+							⏸ Hold Images ({holdImages.length})
+						</Button>
+					)}
 					{caseRecord.autoApproved && (
 						<span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
 							⏱ Auto-Approved
@@ -1625,7 +1810,10 @@ export function CaseDetailView({
 			<Dialog
 				open={isHoldDialogOpen}
 				onOpenChange={(open) => {
-					if (!open) setIsHoldDialogOpen(false);
+					if (!open) {
+						setIsHoldDialogOpen(false);
+						setHoldImagesPending([]);
+					}
 				}}
 			>
 				<DialogContent className="sm:max-w-[480px] bg-white text-gray-900 border border-gray-200 shadow-xl rounded-lg">
@@ -1687,12 +1875,85 @@ export function CaseDetailView({
 								/>
 							</div>
 						)}
+
+						{chatSide === "admin" && (
+							<div className="space-y-2">
+								<Label className="text-sm font-semibold text-gray-700">
+									Hold Images (optional)
+									{holdImagesPending.length > 0 &&
+										` — ${holdImagesPending.length}/${MAX_HOLD_IMAGES}`}
+								</Label>
+								<input
+									ref={holdImagesInputRef}
+									type="file"
+									accept="image/jpeg,image/png,image/webp"
+									multiple
+									className="hidden"
+									onChange={(e) => {
+										const files = Array.from(e.target.files || []);
+										e.target.value = "";
+										if (files.length > 0) void handleHoldImagesSelect(files);
+									}}
+								/>
+								{holdImagesPending.length > 0 && (
+									<div className="flex flex-wrap gap-2">
+										{holdImagesPending.map((img, idx) => (
+											<div
+												key={`${img.fileUrl}-${idx}`}
+												className="relative w-16 h-16 rounded-md overflow-hidden border border-gray-300 group"
+											>
+												{/* eslint-disable-next-line @next/next/no-img-element */}
+												<img
+													src={img.fileUrl}
+													alt={img.fileName}
+													className="w-full h-full object-cover"
+												/>
+												<button
+													type="button"
+													onClick={() => handleRemovePendingHoldImage(idx)}
+													className="absolute top-0.5 right-0.5 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5"
+												>
+													<Trash2 className="h-3 w-3" />
+												</button>
+											</div>
+										))}
+									</div>
+								)}
+								{isUploadingHoldImages ? (
+									<p className="text-xs font-medium text-gray-600">
+										Uploading... {holdImagesUploadProgress}%
+									</p>
+								) : holdImagesPending.length +
+										holdImages.length <
+									MAX_HOLD_IMAGES ? (
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										className="h-8 text-xs gap-1.5"
+										onClick={() => holdImagesInputRef.current?.click()}
+									>
+										<Upload className="h-3.5 w-3.5" /> Add Images
+									</Button>
+								) : (
+									<p className="text-[11px] text-gray-500">
+										Maximum of {MAX_HOLD_IMAGES} hold images reached.
+									</p>
+								)}
+								<p className="text-[11px] text-gray-500">
+									JPG, PNG or WEBP, up to 15MB each.
+								</p>
+							</div>
+						)}
 					</div>
 
 					<div className="flex justify-end gap-2 mt-4">
 						<Button
 							variant="outline"
-							onClick={() => setIsHoldDialogOpen(false)}
+							onClick={() => {
+								setIsHoldDialogOpen(false);
+								setHoldImagesPending([]);
+							}}
 							className="text-gray-700 border-gray-300 font-normal hover:bg-gray-100"
 							disabled={isSubmitting}
 						>
@@ -1702,6 +1963,7 @@ export function CaseDetailView({
 							onClick={handleConfirmHold}
 							disabled={
 								isSubmitting ||
+								isUploadingHoldImages ||
 								!holdReasonSelect ||
 								(holdReasonSelect === "Other (please specify)" &&
 									!holdCustomReason.trim())
@@ -1928,6 +2190,63 @@ export function CaseDetailView({
 							<div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2">
 								<span className="text-[11px] font-medium text-white/80 bg-black/50 rounded-full px-2 py-0.5">
 									{referenceImagesIndex + 1} / {referenceImages.length}
+								</span>
+							</div>
+						</div>
+					)}
+				</DialogContent>
+			</Dialog>
+
+			{/* Hold Images Carousel — each slide labeled with upload date so images
+			    from different hold cycles are at least distinguishable even though
+			    they aren't formally grouped by hold event (hold_images-plan.md §4.4) */}
+			<Dialog open={isHoldImagesPreviewOpen} onOpenChange={setIsHoldImagesPreviewOpen}>
+				<DialogContent className="max-w-3xl w-[95vw] p-0 bg-black border-0 overflow-hidden">
+					<DialogHeader className="sr-only">
+						<DialogTitle>Hold Images</DialogTitle>
+					</DialogHeader>
+					{holdImages.length > 0 && (
+						<div className="relative flex items-center justify-center min-h-[60vh]">
+							{holdImages.length > 1 && (
+								<button
+									type="button"
+									onClick={() =>
+										setHoldImagesPreviewIndex(
+											(i) => (i - 1 + holdImages.length) % holdImages.length
+										)
+									}
+									className="absolute left-2 z-10 h-9 w-9 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+									aria-label="Previous image"
+								>
+									<ChevronLeft className="h-5 w-5" />
+								</button>
+							)}
+
+							{/* eslint-disable-next-line @next/next/no-img-element */}
+							<img
+								src={holdImages[holdImagesPreviewIndex]?.fileUrl}
+								alt={holdImages[holdImagesPreviewIndex]?.fileName || "Hold image"}
+								className="max-h-[75vh] max-w-full object-contain"
+							/>
+
+							{holdImages.length > 1 && (
+								<button
+									type="button"
+									onClick={() =>
+										setHoldImagesPreviewIndex((i) => (i + 1) % holdImages.length)
+									}
+									className="absolute right-2 z-10 h-9 w-9 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+									aria-label="Next image"
+								>
+									<ChevronRight className="h-5 w-5" />
+								</button>
+							)}
+
+							<div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2">
+								<span className="text-[11px] font-medium text-white/80 bg-black/50 rounded-full px-2 py-0.5">
+									{holdImagesPreviewIndex + 1} / {holdImages.length}
+									{holdImages[holdImagesPreviewIndex]?.createdAt &&
+										` · ${new Date(holdImages[holdImagesPreviewIndex].createdAt).toLocaleDateString()}`}
 								</span>
 							</div>
 						</div>

@@ -269,6 +269,25 @@ export const caseReferenceFiles = pgTable('case_reference_files', {
   caseIdIdx: index('case_reference_files_case_id_idx').on(table.caseId),
 }))
 
+// Images explaining why a case was put on hold (hold_images-plan.md). Its own
+// table for the same reason as casePreviewFiles/caseReferenceFiles above — kept
+// out of case_files so these never leak into the client-facing "Case Files"
+// list or its duplicate-detection check. Flat/unscoped by hold event on purpose:
+// mirrors how cases.holdReason itself accumulates text across repeat holds
+// rather than resetting — see hold_images-plan.md §4.4 for the trade-off.
+export const caseHoldFiles = pgTable('case_hold_files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  caseId: uuid('case_id').references(() => cases.id).notNull(),
+  uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
+  fileName: varchar('file_name', { length: 255 }).notNull(),
+  fileUrl: text('file_url').notNull(),
+  fileType: varchar('file_type', { length: 100 }),
+  fileSize: bigint('file_size', { mode: 'number' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  caseIdIdx: index('case_hold_files_case_id_idx').on(table.caseId),
+}))
+
 export type Case = typeof cases.$inferSelect
 export type NewCase = typeof cases.$inferInsert
 export type CaseMessage = typeof caseMessages.$inferSelect
@@ -279,3 +298,5 @@ export type CasePreviewFile = typeof casePreviewFiles.$inferSelect
 export type NewCasePreviewFile = typeof casePreviewFiles.$inferInsert
 export type CaseReferenceFile = typeof caseReferenceFiles.$inferSelect
 export type NewCaseReferenceFile = typeof caseReferenceFiles.$inferInsert
+export type CaseHoldFile = typeof caseHoldFiles.$inferSelect
+export type NewCaseHoldFile = typeof caseHoldFiles.$inferInsert
