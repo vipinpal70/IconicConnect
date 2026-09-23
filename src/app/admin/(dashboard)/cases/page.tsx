@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { AddCaseDialog } from "@/src/components/AddCaseDialog";
 import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
 import { AssignDesignPartnerDialog } from "@/src/components/AssignDesignPartnerDialog";
+import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 import {
 	Search,
 	ShieldCheck,
@@ -139,6 +140,7 @@ type CaseActionDialogState = {
 	caseId: string;
 	action: CaseActionType;
 	caseNumber?: string | null;
+	clientId?: string;
 } | null;
 
 const CASE_ACTIONS: Record<
@@ -308,6 +310,8 @@ export default function AdminCasesPage() {
 		useState<CaseActionDialogState>(null);
 	const [caseActionReason, setCaseActionReason] = useState("");
 	const [holdReasonSelect, setHoldReasonSelect] = useState("");
+	const [holdImagesPending, setHoldImagesPending] = useState<PendingHoldImage[]>([]);
+	const [isUploadingHoldImages, setIsUploadingHoldImages] = useState(false);
 	const [approveChecklist, setApproveChecklist] = useState<
 		Record<string, boolean>
 	>({});
@@ -644,7 +648,7 @@ export default function AdminCasesPage() {
 	// Live database updates
 	const handleUpdate = async (
 		caseId: string,
-		patch: Record<string, string | number | boolean | null>,
+		patch: Record<string, string | number | boolean | null | PendingHoldImage[]>,
 		successMessage: string,
 	) => {
 		setUpdatingId(caseId);
@@ -737,11 +741,13 @@ export default function AdminCasesPage() {
 		caseId: string,
 		action: CaseActionType,
 		caseNumber?: string | null,
+		clientId?: string,
 	) => {
-		setPendingCaseAction({ caseId, action, caseNumber });
+		setPendingCaseAction({ caseId, action, caseNumber, clientId });
 		setCaseActionReason("");
 		setHoldReasonSelect("");
 		setApproveChecklist({});
+		setHoldImagesPending([]);
 
 		if (action === "approve") {
 			void (async () => {
@@ -768,6 +774,7 @@ export default function AdminCasesPage() {
 		setCaseActionReason("");
 		setHoldReasonSelect("");
 		setApproveChecklist({});
+		setHoldImagesPending([]);
 	};
 
 	const confirmCaseAction = async () => {
@@ -847,6 +854,10 @@ export default function AdminCasesPage() {
 			} else {
 				reason = holdReasonSelect;
 			}
+			if (isUploadingHoldImages) {
+				toast.error("Please wait for image upload to finish.");
+				return;
+			}
 		} else {
 			if (actionConfig.reasonKey && !actionConfig.optionalReason && !reason) {
 				toast.error(
@@ -856,10 +867,13 @@ export default function AdminCasesPage() {
 			}
 		}
 
-		const patch =
+		const patch: Record<string, string | number | boolean | null | PendingHoldImage[]> =
 			actionConfig.reasonKey && reason
 				? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
 				: { status: actionConfig.status };
+		if (pendingCaseAction.action === "hold" && holdImagesPending.length > 0) {
+			patch.holdImages = holdImagesPending;
+		}
 		await handleUpdate(
 			pendingCaseAction.caseId,
 			patch,
@@ -1881,6 +1895,7 @@ export default function AdminCasesPage() {
 																			caseItem.id,
 																			"hold",
 																			caseItem.caseNumber,
+																			caseItem.clientId,
 																		);
 																	}}
 																	className="h-7 text-[10px] px-2 font-bold bg-gray-500 hover:bg-gray-600 text-white shadow-sm transition-all"
@@ -2337,6 +2352,16 @@ export default function AdminCasesPage() {
 												className="min-h-[80px] text-xs bg-gray-100 border text-gray-900 placeholder:text-gray-400 focus-visible:ring-primary/80"
 											/>
 										)}
+
+										{pendingCaseAction.clientId && (
+											<HoldImagesField
+												caseId={pendingCaseAction.caseId}
+												clientId={pendingCaseAction.clientId}
+												value={holdImagesPending}
+												onChange={setHoldImagesPending}
+												onUploadingChange={setIsUploadingHoldImages}
+											/>
+										)}
 									</div>
 								) : (
 									<Textarea
@@ -2364,6 +2389,7 @@ export default function AdminCasesPage() {
 								(pendingCaseAction
 									? pendingCaseAction.action === "hold"
 										? !holdReasonSelect ||
+											isUploadingHoldImages ||
 											(holdReasonSelect === "Other (please specify)" &&
 												!caseActionReason.trim())
 										: pendingCaseAction.action === "approve"

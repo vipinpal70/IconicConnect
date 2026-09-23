@@ -54,6 +54,7 @@ import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { Upload, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import type { RoutingResult } from "@/src/lib/milling/routing-engine";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
+import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 
 /**
  * Read-only summary of a case created via 3Shape XML Import. Reads the
@@ -254,16 +255,6 @@ type CaseHoldFile = {
 	uploadedByName?: string | null;
 };
 
-// Not yet attached to the case — uploaded to R2 but only committed to
-// case_hold_files once "Confirm" is clicked, so cancelling the Hold dialog
-// never leaves orphaned rows (hold_images-plan.md §4.2).
-type PendingHoldImage = {
-	fileName: string;
-	fileUrl: string;
-	fileType: string;
-	fileSize: number;
-};
-
 type CaseActivity = {
 	id: string;
 	action: string;
@@ -441,8 +432,6 @@ export function CaseDetailView({
 	const [holdCustomReason, setHoldCustomReason] = useState("");
 	const [holdImagesPending, setHoldImagesPending] = useState<PendingHoldImage[]>([]);
 	const [isUploadingHoldImages, setIsUploadingHoldImages] = useState(false);
-	const [holdImagesUploadProgress, setHoldImagesUploadProgress] = useState(0);
-	const holdImagesInputRef = useRef<HTMLInputElement>(null);
 	const [isHoldImagesPreviewOpen, setIsHoldImagesPreviewOpen] = useState(false);
 	const [holdImagesPreviewIndex, setHoldImagesPreviewIndex] = useState(0);
 	const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
@@ -531,110 +520,6 @@ export function CaseDetailView({
 				? holdCustomReason.trim()
 				: holdReasonSelect;
 		void handleStatusChange("on_hold", finalReason, holdImagesPending);
-	};
-
-	// Only JPG/PNG/WEBP — HEIC (default iPhone camera format) has no decoder in
-	// most non-Apple browsers and would render as a broken image for most
-	// viewers; SVG is excluded too since it's executable XML, not a photo
-	// (hold_images-plan.md §4.6/§4.7).
-	const HOLD_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-	const MAX_HOLD_IMAGES = 5;
-	const MAX_HOLD_IMAGE_SIZE = 15 * 1024 * 1024; // 15MB — a phone photo, not scan data
-
-	const handleHoldImagesSelect = async (files: File[]) => {
-		if (!caseRecord) return;
-
-		const alreadyAttached = (holdImagesResponse?.data || []).length;
-		const remainingSlots = MAX_HOLD_IMAGES - alreadyAttached - holdImagesPending.length;
-		if (remainingSlots <= 0) {
-			toast.error(`You can attach at most ${MAX_HOLD_IMAGES} hold images.`);
-			return;
-		}
-
-		const candidates = files.slice(0, remainingSlots);
-		if (files.length > remainingSlots) {
-			toast.warning(`Only ${remainingSlots} more hold image(s) can be added (max ${MAX_HOLD_IMAGES}).`);
-		}
-
-		const isDuplicate = (name: string, size: number) =>
-			(holdImagesResponse?.data || []).some((f) => f.fileName === name && f.fileSize === size) ||
-			holdImagesPending.some((f) => f.fileName === name && f.fileSize === size);
-
-		const validFiles: File[] = [];
-		for (const file of candidates) {
-			if (!HOLD_IMAGE_MIME_TYPES.has(file.type)) {
-				toast.warning(`Skipped "${file.name}": only JPG, PNG or WEBP images are supported (no HEIC/SVG).`);
-				continue;
-			}
-			if (file.size > MAX_HOLD_IMAGE_SIZE) {
-				toast.warning(`Skipped "${file.name}": exceeds the 15MB limit for hold images.`);
-				continue;
-			}
-			if (isDuplicate(file.name, file.size)) {
-				toast.warning(`"${file.name}" is already attached to this case's hold record.`);
-				continue;
-			}
-			validFiles.push(file);
-		}
-
-		if (validFiles.length === 0) return;
-
-		setIsUploadingHoldImages(true);
-		setHoldImagesUploadProgress(0);
-
-		const uploaded: PendingHoldImage[] = [];
-		try {
-			for (let i = 0; i < validFiles.length; i++) {
-				const file = validFiles[i];
-				// Lab- and case-scoped storage key (hold_images-plan.md §4.10/§5):
-				// `${labName}/hold-images/${caseId}/${uuid}-${originalName}` — no
-				// two cases can ever collide on the same R2 object. The display
-				// `fileName` sent below stays the clean original name.
-				const storageFile = new File(
-					[file],
-					`hold-images/${caseRecord.id}/${crypto.randomUUID()}-${file.name}`,
-					{ type: file.type },
-				);
-				const onFileProgress = (pct: number) => {
-					const baseProgress = (i / validFiles.length) * 100;
-					const fileContribution = (pct / 100) * (100 / validFiles.length);
-					setHoldImagesUploadProgress(Math.round(baseProgress + fileContribution));
-				};
-
-				await new Promise<void>((resolve, reject) => {
-					uploadFileInChunks(
-						storageFile,
-						{ clientId: caseRecord.clientId },
-						onFileProgress,
-						(res) => {
-							uploaded.push({
-								fileUrl: res.fileUrl,
-								fileName: file.name,
-								fileType: file.type,
-								fileSize: file.size,
-							});
-							resolve();
-						},
-						(err) => reject(new Error(`Failed to upload ${file.name}: ${err}`)),
-					);
-				});
-			}
-
-			setHoldImagesPending((prev) => [...prev, ...uploaded]);
-			toast.success(`Attached ${uploaded.length} hold image(s) — click Confirm to save.`);
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "Failed to upload one or more hold images.");
-		} finally {
-			setIsUploadingHoldImages(false);
-			if (holdImagesInputRef.current) holdImagesInputRef.current.value = "";
-		}
-	};
-
-	// Not yet confirmed, so nothing was ever persisted — just drop it locally.
-	// The already-uploaded R2 object is reaped by the existing orphan-cleanup
-	// job like any other abandoned upload (hold_images-plan.md §4.2).
-	const handleRemovePendingHoldImage = (index: number) => {
-		setHoldImagesPending((prev) => prev.filter((_, i) => i !== index));
 	};
 
 	const handleConfirmChangeRequest = async () => {
@@ -1876,74 +1761,14 @@ export function CaseDetailView({
 							</div>
 						)}
 
-						{chatSide === "admin" && (
-							<div className="space-y-2">
-								<Label className="text-sm font-semibold text-gray-700">
-									Hold Images (optional)
-									{holdImagesPending.length > 0 &&
-										` — ${holdImagesPending.length}/${MAX_HOLD_IMAGES}`}
-								</Label>
-								<input
-									ref={holdImagesInputRef}
-									type="file"
-									accept="image/jpeg,image/png,image/webp"
-									multiple
-									className="hidden"
-									onChange={(e) => {
-										const files = Array.from(e.target.files || []);
-										e.target.value = "";
-										if (files.length > 0) void handleHoldImagesSelect(files);
-									}}
-								/>
-								{holdImagesPending.length > 0 && (
-									<div className="flex flex-wrap gap-2">
-										{holdImagesPending.map((img, idx) => (
-											<div
-												key={`${img.fileUrl}-${idx}`}
-												className="relative w-16 h-16 rounded-md overflow-hidden border border-gray-300 group"
-											>
-												{/* eslint-disable-next-line @next/next/no-img-element */}
-												<img
-													src={img.fileUrl}
-													alt={img.fileName}
-													className="w-full h-full object-cover"
-												/>
-												<button
-													type="button"
-													onClick={() => handleRemovePendingHoldImage(idx)}
-													className="absolute top-0.5 right-0.5 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5"
-												>
-													<Trash2 className="h-3 w-3" />
-												</button>
-											</div>
-										))}
-									</div>
-								)}
-								{isUploadingHoldImages ? (
-									<p className="text-xs font-medium text-gray-600">
-										Uploading... {holdImagesUploadProgress}%
-									</p>
-								) : holdImagesPending.length +
-										holdImages.length <
-									MAX_HOLD_IMAGES ? (
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										className="h-8 text-xs gap-1.5"
-										onClick={() => holdImagesInputRef.current?.click()}
-									>
-										<Upload className="h-3.5 w-3.5" /> Add Images
-									</Button>
-								) : (
-									<p className="text-[11px] text-gray-500">
-										Maximum of {MAX_HOLD_IMAGES} hold images reached.
-									</p>
-								)}
-								<p className="text-[11px] text-gray-500">
-									JPG, PNG or WEBP, up to 15MB each.
-								</p>
-							</div>
+						{chatSide === "admin" && caseRecord && (
+							<HoldImagesField
+								caseId={caseRecord.id}
+								clientId={caseRecord.clientId}
+								value={holdImagesPending}
+								onChange={setHoldImagesPending}
+								onUploadingChange={setIsUploadingHoldImages}
+							/>
 						)}
 					</div>
 

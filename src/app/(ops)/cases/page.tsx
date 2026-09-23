@@ -21,6 +21,7 @@ import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { BulkOutputUploadModal } from "@/src/components/BulkOutputUploadModal";
+import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 
 interface BulkRow {
   fileName: string;
@@ -101,6 +102,7 @@ type CaseActionDialogState = {
   caseId: string;
   action: CaseActionType;
   caseNumber?: string | null;
+  clientId?: string;
 } | null;
 
 const CASE_ACTIONS: Record<
@@ -462,6 +464,8 @@ export default function CasesPage() {
   const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null);
   const [caseActionReason, setCaseActionReason] = useState("");
   const [holdReasonSelect, setHoldReasonSelect] = useState("");
+  const [holdImagesPending, setHoldImagesPending] = useState<PendingHoldImage[]>([]);
+  const [isUploadingHoldImages, setIsUploadingHoldImages] = useState(false);
   const [approveChecklist, setApproveChecklist] = useState<Record<string, boolean>>({});
   const [approveSelectMode, setApproveSelectMode] = useState(false);
   const [selectedApproveIds, setSelectedApproveIds] = useState<Set<string>>(new Set());
@@ -502,7 +506,7 @@ export default function CasesPage() {
 
   const handleUpdate = async (
     caseId: string,
-    patch: Record<string, string | number | boolean | null>,
+    patch: Record<string, string | number | boolean | null | PendingHoldImage[]>,
     successMessage: string
   ): Promise<boolean> => {
     setUpdatingId(caseId);
@@ -531,11 +535,12 @@ export default function CasesPage() {
 
   // FIX: Removed setTimeout — it caused a race condition where Radix's outside-click
   // handler would fire after the tick and immediately close the dialog before it opened.
-  const openCaseActionDialog = (caseId: string, action: CaseActionType, caseNumber?: string | null) => {
-    setPendingCaseAction({ caseId, action, caseNumber });
+  const openCaseActionDialog = (caseId: string, action: CaseActionType, caseNumber?: string | null, clientId?: string) => {
+    setPendingCaseAction({ caseId, action, caseNumber, clientId });
     setCaseActionReason("");
     setHoldReasonSelect("");
     setApproveChecklist({});
+    setHoldImagesPending([]);
 
     if (action === "approve") {
       void (async () => {
@@ -560,6 +565,7 @@ export default function CasesPage() {
     setCaseActionReason("");
     setHoldReasonSelect("");
     setApproveChecklist({});
+    setHoldImagesPending([]);
   };
 
   const confirmCaseAction = async () => {
@@ -619,6 +625,10 @@ export default function CasesPage() {
       } else {
         reason = holdReasonSelect;
       }
+      if (isUploadingHoldImages) {
+        toast.error("Please wait for image upload to finish.");
+        return;
+      }
     } else {
       if (actionConfig.reasonKey && !actionConfig.optionalReason && !reason) {
         toast.error(`Please enter a ${actionConfig.reasonLabel?.toLowerCase() || "reason"}.`);
@@ -626,9 +636,12 @@ export default function CasesPage() {
       }
     }
 
-    const patch = actionConfig.reasonKey && reason
+    const patch: Record<string, string | number | boolean | null | PendingHoldImage[]> = actionConfig.reasonKey && reason
       ? { status: actionConfig.status, [actionConfig.reasonKey]: reason }
       : { status: actionConfig.status };
+    if (pendingCaseAction.action === "hold" && holdImagesPending.length > 0) {
+      patch.holdImages = holdImagesPending;
+    }
     const updated = await handleUpdate(pendingCaseAction.caseId, patch, actionConfig.successMessage);
     if (updated) closeCaseActionDialog();
   };
@@ -1776,7 +1789,7 @@ export default function CasesPage() {
                               {/* Hold — available to any assigned/admin user at any stage other than on_hold/approved/delivered */}
                               {!["on_hold", "approved", "delivered", "cancelled"].includes(c.status) && (isAdmin || (isQc && (isQcOnCase || isDesignerOnCase)) || (isDesigner && isDesignerOnCase)) && (
                                 <Button size="sm" disabled={isMutating || !!pendingCaseAction}
-                                  onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber); }}
+                                  onClick={(e) => { e.stopPropagation(); openCaseActionDialog(c.id, "hold", c.caseNumber, c.clientId ?? undefined); }}
                                   className="h-7 text-[10px] px-2 py-0.5 font-semibold uppercase tracking-wider bg-gray-500 hover:bg-gray-600 text-white shadow-sm">
                                   <PauseCircle className="h-3 w-3 mr-1" /> Hold
                                 </Button>
@@ -1951,6 +1964,17 @@ export default function CasesPage() {
                       className="min-h-[100px] bg-primary/80 border-primary-50/50 text-white placeholder:text-zinc-400 focus-visible:ring-emerald-500"
                     />
                   )}
+
+                  {pendingCaseAction.clientId && (
+                    <HoldImagesField
+                      caseId={pendingCaseAction.caseId}
+                      clientId={pendingCaseAction.clientId}
+                      value={holdImagesPending}
+                      onChange={setHoldImagesPending}
+                      onUploadingChange={setIsUploadingHoldImages}
+                      theme="dark"
+                    />
+                  )}
                 </div>
               ) : (
                 <Textarea
@@ -1971,7 +1995,7 @@ export default function CasesPage() {
                 updatingId === pendingCaseAction?.caseId ||
                 (pendingCaseAction
                   ? pendingCaseAction.action === "hold"
-                    ? !holdReasonSelect || (holdReasonSelect === "Other (please specify)" && !caseActionReason.trim())
+                    ? !holdReasonSelect || isUploadingHoldImages || (holdReasonSelect === "Other (please specify)" && !caseActionReason.trim())
                     : pendingCaseAction.action === "approve"
                       ? !QC_CHECKLIST.every((item) => approveChecklist[item])
                       : Boolean(
