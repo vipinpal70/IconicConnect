@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { profiles, subUsers } from '@/src/db/schema/profile'
-import { cases } from '@/src/db/schema/case'
-import { invoices } from '@/src/db/schema/invoice'
-import { supportTickets } from '@/src/db/schema/support-ticket'
-import { supportCallbackRequests } from '@/src/db/schema/support-callback-request'
+import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
-import { supabaseAdmin } from '@/src/lib/supabase/admin'
 import { getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache'
 import { logActivity } from '@/src/lib/activity-log'
+import { deleteClientCompletely } from '@/src/lib/admin/delete-client'
 
 const CLIENT_TTL = 3600 // 1 hour
 const clientKey = (id: string) => `client:${id}`
@@ -142,11 +138,12 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/admin/clients/[id] — permanently remove a client.
-// Blocked whenever the client has any history (cases, invoices, sub-users,
-// support tickets/callbacks) — those relations don't cascade-delete, and
-// removing a client with real history would either fail loudly or silently
-// orphan billing/audit records. Deactivate is the safe default for that case.
+// DELETE /api/admin/clients/[id] — permanently remove a client: every
+// sub-user, case, file record, invoice, support ticket/callback, and
+// activity-log entry linked to them, plus their (and their sub-users')
+// Supabase Auth login. Irreversible — the admin UI gates this behind a
+// confirmation dialog; there is no history-preserving fallback here anymore.
+// Use PATCH { status: 'inactive' } to block access while keeping history.
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -161,51 +158,14 @@ export async function DELETE(
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
 
-    const [
-      [caseRow],
-      [invoiceRow],
-      [subUserRow],
-      [ticketRow],
-      [callbackRow],
-    ] = await Promise.all([
-      db.select({ id: cases.id }).from(cases).where(eq(cases.clientId, id)).limit(1),
-      db.select({ id: invoices.id }).from(invoices).where(eq(invoices.clientId, id)).limit(1),
-      db.select({ id: subUsers.id }).from(subUsers).where(eq(subUsers.clientId, id)).limit(1),
-      db.select({ id: supportTickets.id }).from(supportTickets).where(eq(supportTickets.clientId, id)).limit(1),
-      db.select({ id: supportCallbackRequests.id }).from(supportCallbackRequests).where(eq(supportCallbackRequests.clientId, id)).limit(1),
-    ])
-
-    const blockers: string[] = []
-    if (caseRow) blockers.push('cases')
-    if (invoiceRow) blockers.push('invoices')
-    if (subUserRow) blockers.push('sub-users')
-    if (ticketRow) blockers.push('support tickets')
-    if (callbackRow) blockers.push('support callback requests')
-
-    if (blockers.length > 0) {
-      return NextResponse.json(
-        {
-          error: `Cannot delete this client — they still have ${blockers.join(', ')}. Deactivate the client instead to block their access while keeping their history intact.`,
-        },
-        { status: 409 }
-      )
-    }
-
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id)
-    if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 })
-    }
-
+    let result
     try {
-      await db.delete(profiles).where(eq(profiles.id, id))
+      result = await deleteClientCompletely(id)
     } catch (dbError) {
-      // Safety net for any relation we didn't explicitly check above (e.g.
-      // activity log entries) — the auth user is already gone at this point,
-      // so surface a clear message rather than a raw FK violation.
-      console.error('[admin/clients/[id] DELETE] profile row delete failed', dbError)
+      console.error('[admin/clients/[id] DELETE] cascade delete failed', dbError)
       return NextResponse.json(
-        { error: 'Client login was removed, but their profile still has other linked records and could not be fully deleted. Deactivate instead for a clean removal.' },
-        { status: 409 }
+        { error: 'Failed to delete client — nothing was changed.' },
+        { status: 500 }
       )
     }
 
@@ -214,8 +174,22 @@ export async function DELETE(
     await logActivity({
       actor: auth.profile,
       action: 'client.deleted',
-      details: { clientId: id, labName: client.labName, email: client.email },
+      details: {
+        clientId: id,
+        labName: client.labName,
+        email: client.email,
+        casesDeleted: result.casesDeleted,
+        subUsersDeleted: result.subUserProfileIds.length,
+        authDeleteErrors: result.authDeleteErrors,
+      },
     }).catch((err) => console.error('[client.deleted logActivity]', err))
+
+    if (result.authDeleteErrors.length > 0) {
+      return NextResponse.json({
+        success: true,
+        warning: `Client data was deleted, but ${result.authDeleteErrors.length} login(s) could not be removed from Supabase Auth. Check server logs and remove them manually if needed.`,
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

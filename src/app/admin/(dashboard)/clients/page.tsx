@@ -17,7 +17,7 @@ import {
 } from "@/src/components/ui/dropdown-menu"
 import {
   Building2, Mail, Phone, MapPin, ShieldCheck, ArrowRight, CircleCheck, CircleX,
-  RefreshCw, MoreVertical, UserX, UserCheck, Trash2,
+  RefreshCw, MoreVertical, UserX, UserCheck, Trash2, AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -59,6 +59,7 @@ export default function AdminClients() {
   const queryClient = useQueryClient()
   const [onboardOpen, setOnboardOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [clientToDelete, setClientToDelete] = useState<ClientProfile | null>(null)
 
   const { data: clients, isLoading, error } = useQuery<ClientProfile[]>({
     queryKey: ["pendingClients"],
@@ -139,9 +140,14 @@ export default function AdminClients() {
       }
       return res.json()
     },
-    onSuccess: () => {
+    onSuccess: (data: { warning?: string }) => {
       queryClient.invalidateQueries({ queryKey: ["pendingClients"] })
-      toast.success("Client deleted")
+      setClientToDelete(null)
+      if (data?.warning) {
+        toast.warning(data.warning)
+      } else {
+        toast.success("Client deleted")
+      }
     },
     onError: (err: Error) => toast.error(err.message),
   })
@@ -251,11 +257,7 @@ export default function AdminClients() {
                         <DropdownMenuItem
                           className="gap-1.5 text-xs text-red-500 hover:text-red-600 focus:text-red-600 focus:bg-red-50"
                           disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (confirm(`Permanently delete ${client.labName || client.fullName || client.email}? This only works if they have no cases, invoices, sub-users, or support history.`)) {
-                              deleteMutation.mutate(client.id)
-                            }
-                          }}
+                          onClick={() => setClientToDelete(client)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           Delete
@@ -386,8 +388,53 @@ export default function AdminClients() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={!!clientToDelete} onOpenChange={(open) => !open && setClientToDelete(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="h-4 w-4" />
+                Delete this client permanently?
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 text-xs text-muted-foreground">
+              <p>
+                This will permanently delete{" "}
+                <span className="font-semibold text-foreground">
+                  {clientToDelete?.labName || clientToDelete?.fullName || clientToDelete?.email}
+                </span>{" "}
+                and cannot be undone, including:
+              </p>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Their login and every sub-user login under this lab</li>
+                <li>All cases, uploaded files, and chat/message history</li>
+                <li>Invoices and their price list</li>
+                <li>Support tickets and callback requests</li>
+                <li>Notifications and activity history</li>
+              </ul>
+              <p>
+                If you only want to block their access while keeping their history, use{" "}
+                <span className="font-medium text-foreground">Deactivate</span> instead.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setClientToDelete(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={deleteMutation.isPending}
+                onClick={() => clientToDelete && deleteMutation.mutate(clientToDelete.id)}
+              >
+                {deleteMutation.isPending ? "Deleting…" : "Delete permanently"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
-    
+
   )
 }
 
