@@ -14,6 +14,7 @@
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "db:clean": "node scripts/clean-test-data.mjs",
+    "db:clean:dry": "node scripts/clean-test-data.mjs --dry-run",
     "db:clean-old-files": "node scripts/delete-old-case-files.mjs",
     "db:seed-milling-only-catalog": "node scripts/seed-milling-only-catalog.mjs",
     "db:seed-3d-model-catalog": "node scripts/seed-3d-model-catalog.mjs",
