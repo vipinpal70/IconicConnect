@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { supabaseAdmin } from '@/src/lib/supabase/admin'
-import { queueEmail } from '@/src/lib/queue/jobs'
+import { queueEmailSafely } from '@/src/lib/queue/jobs'
 import { logActivity } from '@/src/lib/activity-log'
 import type { Profile } from '@/src/db/schema/profile'
 
@@ -73,7 +73,7 @@ export async function createMillingUser(input: CreateMillingUserInput) {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-  await queueEmail({
+  const { queued: emailQueued, error: emailError } = await queueEmailSafely({
     to: email,
     subject: 'Your IconicConnect Milling Portal Credentials',
     type: 'credentials',
@@ -91,13 +91,16 @@ export async function createMillingUser(input: CreateMillingUserInput) {
         <p style="color:#6b7280;font-size:13px;">Please change your password after your first login.</p>
       </div>
     `,
-  }).catch((err) => console.error('[milling_user.created] Failed to queue credentials email:', err))
+  })
+  if (!emailQueued) {
+    console.error('[milling_user.created] Failed to queue credentials email:', emailError)
+  }
 
   await logActivity({
     actor,
     action: 'milling_user.created',
-    details: { userId: authData.user.id, email, fullName, role, millingCenterId },
+    details: { userId: authData.user.id, email, fullName, role, millingCenterId, emailQueued },
   }).catch((err) => console.error('[milling_user.created logActivity]', err))
 
-  return authData.user
+  return { user: authData.user, emailQueued }
 }

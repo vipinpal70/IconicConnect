@@ -73,11 +73,12 @@ export async function POST(req: NextRequest) {
     // The centre row above is already committed, so a failure here is reported
     // as a warning rather than failing the whole request — admin can still add
     // the login afterwards via "Manage" on the centre.
-    let user: Awaited<ReturnType<typeof createMillingUser>> | null = null
+    let user: Awaited<ReturnType<typeof createMillingUser>>['user'] | null = null
     let userError: string | null = null
+    let emailQueued: boolean | null = null
     if (password) {
       try {
-        user = await createMillingUser({
+        const result = await createMillingUser({
           email,
           password,
           fullName: contactName || name,
@@ -87,13 +88,15 @@ export async function POST(req: NextRequest) {
           phone,
           actor: auth.profile,
         })
+        user = result.user
+        emailQueued = result.emailQueued
       } catch (err) {
         userError = err instanceof Error ? err.message : 'Failed to create login'
         console.error('[admin/milling/centers POST] createMillingUser failed', err)
       }
     }
 
-    return NextResponse.json({ data: center, user, userError }, { status: 201 })
+    return NextResponse.json({ data: center, user, userError, emailQueued }, { status: 201 })
   } catch (error) {
     console.error('[admin/milling/centers POST]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

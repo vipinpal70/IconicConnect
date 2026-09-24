@@ -8,7 +8,7 @@ import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 import { Badge } from "@/src/components/ui/badge";
-import { UserPlus, RefreshCw, Copy, CheckCircle2, KeyRound, X, Trash2 } from "lucide-react";
+import { UserPlus, RefreshCw, Copy, CheckCircle2, KeyRound, X, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import type { MillingCenter } from "@/src/db/schema/milling";
 
@@ -41,9 +41,11 @@ export function ManageUsersDialog({
   const queryClient = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [generatedPass, setGeneratedPass] = useState<string | null>(null);
+  const [newUserEmailFailed, setNewUserEmailFailed] = useState(false);
   const [resetTarget, setResetTarget] = useState<MillingUser | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [resetEmailFailed, setResetEmailFailed] = useState(false);
 
   const usersQuery = useQuery<MillingUser[]>({
     queryKey: ["milling-center-users", center?.id],
@@ -68,8 +70,9 @@ export function ManageUsersDialog({
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: { emailQueued?: boolean }) => {
       setGeneratedPass(form.password);
+      setNewUserEmailFailed(data.emailQueued === false);
       queryClient.invalidateQueries({ queryKey: ["milling-center-users", center?.id] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -83,6 +86,7 @@ export function ManageUsersDialog({
   const resetForm = () => {
     setForm(emptyForm);
     setGeneratedPass(null);
+    setNewUserEmailFailed(false);
   };
 
   const resetPasswordMutation = useMutation({
@@ -98,7 +102,10 @@ export function ManageUsersDialog({
       }
       return res.json();
     },
-    onSuccess: () => setResetSent(true),
+    onSuccess: (data: { emailQueued?: boolean }) => {
+      setResetSent(true);
+      setResetEmailFailed(data.emailQueued === false);
+    },
     onError: (err: Error) => toast.error(err.message),
   });
 
@@ -106,6 +113,7 @@ export function ManageUsersDialog({
     setResetTarget(null);
     setResetPassword("");
     setResetSent(false);
+    setResetEmailFailed(false);
   };
 
   const deleteMutation = useMutation({
@@ -203,9 +211,18 @@ export function ManageUsersDialog({
               </div>
 
               {resetSent ? (
-                <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 text-center space-y-3">
-                  <CheckCircle2 className="w-6 h-6 text-green-500 mx-auto" />
-                  <p className="text-sm text-foreground">New password emailed to <span className="font-medium">{resetTarget.email}</span></p>
+                <div className={`border rounded-xl p-4 text-center space-y-3 ${resetEmailFailed ? "bg-amber-50 border-amber-200" : "bg-primary/5 border-primary/10"}`}>
+                  {resetEmailFailed ? (
+                    <>
+                      <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto" />
+                      <p className="text-sm text-amber-800">Password updated, but we couldn&apos;t email <span className="font-medium">{resetTarget.email}</span> — share it manually.</p>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-6 h-6 text-green-500 mx-auto" />
+                      <p className="text-sm text-foreground">New password emailed to <span className="font-medium">{resetTarget.email}</span></p>
+                    </>
+                  )}
                   <div className="bg-white border border-border rounded-lg p-2.5 flex items-center justify-between">
                     <code className="text-sm font-mono font-bold text-primary">{resetPassword}</code>
                     <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(resetPassword); toast.success("Password copied"); }}>
@@ -242,9 +259,18 @@ export function ManageUsersDialog({
               )}
             </div>
           ) : generatedPass ? (
-            <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 text-center space-y-3">
-              <CheckCircle2 className="w-6 h-6 text-green-500 mx-auto" />
-              <p className="text-sm text-foreground">Credentials sent to <span className="font-medium">{form.email}</span></p>
+            <div className={`border rounded-xl p-4 text-center space-y-3 ${newUserEmailFailed ? "bg-amber-50 border-amber-200" : "bg-primary/5 border-primary/10"}`}>
+              {newUserEmailFailed ? (
+                <>
+                  <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto" />
+                  <p className="text-sm text-amber-800">User added, but we couldn&apos;t email <span className="font-medium">{form.email}</span> — share the password below with them directly.</p>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-6 h-6 text-green-500 mx-auto" />
+                  <p className="text-sm text-foreground">Credentials sent to <span className="font-medium">{form.email}</span></p>
+                </>
+              )}
               <div className="bg-white border border-border rounded-lg p-2.5 flex items-center justify-between">
                 <code className="text-sm font-mono font-bold text-primary">{generatedPass}</code>
                 <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(generatedPass); toast.success("Password copied"); }}>

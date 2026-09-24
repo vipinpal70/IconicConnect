@@ -186,12 +186,21 @@ export default function ProfilePage() {
         const err = await res.json();
         throw new Error(err.error || "Failed to create user");
       }
-      const { data: u } = await res.json();
+      const { data: u, emailQueued } = await res.json();
       setUsers((prev) => [...prev, u]);
       setUserDraft({ role: "Coordinator" });
       setUserOpen(false);
+      if (emailQueued === false) {
+        // Reveal the password inline since the automated email didn't go
+        // out — this is the only place the new team member's password is
+        // otherwise visible.
+        setShowPwd((prev) => ({ ...prev, [u.id]: true }));
+        toast.warning(`${u.name || u.email} was added, but we couldn't email their credentials — share the password below with them directly.`);
+      } else {
+        toast.success(`${u.name || u.email} was added and emailed their login credentials.`);
+      }
     } catch (err: any) {
-      alert(err.message || "Failed to create user");
+      toast.error(err.message || "Failed to create user");
     }
   };
 

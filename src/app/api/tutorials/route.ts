@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       title: inserted.title,
       category: inserted.category,
       description: inserted.description,
-    })
+    }).catch((err) => console.error('[tutorial.created] Failed to dispatch notifications:', err))
 
     await logActivity({
       actor: admin.profile!,

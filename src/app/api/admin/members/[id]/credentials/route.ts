@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/src/lib/supabase/admin';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
+import { queueEmailSafely } from '@/src/lib/queue/jobs';
 
 export async function POST(
   req: NextRequest,
@@ -53,9 +54,11 @@ export async function POST(
       return NextResponse.json({ error: authError.message }, { status: 400 });
     }
 
-    // 3. Send email with new credentials via Queue
-    const { queueEmail } = await import('@/src/lib/queue/jobs');
-    await queueEmail({
+    // 3. Send email with new credentials via Queue — queueEmailSafely never
+    // throws, so a queue/Redis failure here can't 500 a request whose primary
+    // action (the password change above) already succeeded.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const { queued: emailQueued, error: emailError } = await queueEmailSafely({
       to: profile.email,
       subject: 'Your IconicConnect Password has been Reset',
       type: 'credentials',
@@ -63,12 +66,15 @@ export async function POST(
         <h1>New Password Generated</h1>
         <p>Hello ${profile.fullName || profile.email},</p>
         <p>Your password for IconicConnect has been reset by an administrator.</p>
-        <p><strong>Login URL:</strong> http://localhost:3000/auth/sign-in</p>
+        <p><strong>Login URL:</strong> ${appUrl}/auth/sign-in</p>
         <p><strong>Email:</strong> ${profile.email}</p>
         <p><strong>New Password:</strong> ${password}</p>
         <p>Please change your password after logging in.</p>
       `
     });
+    if (!emailQueued) {
+      console.error('[member.password_reset] Failed to queue credentials email:', emailError);
+    }
 
     await logActivity({
       actor: actorProfile,
@@ -77,10 +83,11 @@ export async function POST(
         memberId: id,
         email: profile.email,
         role: profile.role,
+        emailQueued,
       },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, emailQueued });
   } catch (error) {
     console.error('Error resetting credentials:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

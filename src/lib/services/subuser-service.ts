@@ -21,7 +21,7 @@ export class SubUserService {
       role: 'Owner' | 'Manager' | 'Coordinator' | 'Technician'
       password?: string
     }
-  ): Promise<Profile> {
+  ): Promise<{ profile: Profile; emailQueued: boolean }> {
     const { name, username, email, role, password } = data
 
     if (!name || !username || !email) {
@@ -61,14 +61,19 @@ export class SubUserService {
         clientId
       )
 
-      // 4. Send welcome credentials email
-      await sendCredentialsEmail({
+      // 4. Send welcome credentials email — sendCredentialsEmail never throws
+      // (it wraps queueEmailSafely), so this can't fail the request; but the
+      // caller still needs to know whether it actually queued so the client
+      // admin isn't told "emailed" when it wasn't (the new team member's
+      // password otherwise only lives in the reveal-password UI).
+      const { success: emailQueued, error: emailError } = await sendCredentialsEmail({
         email,
         password: mainPassword,
         name,
-      }).catch((err) => {
-        console.error('[WelcomeEmail] Failed to dispatch credentials email:', err)
       })
+      if (!emailQueued) {
+        console.error('[WelcomeEmail] Failed to dispatch credentials email:', emailError)
+      }
 
       // 5. Send welcome in-app notification
       await NotificationService.dispatch({
@@ -82,7 +87,7 @@ export class SubUserService {
         console.error('[WelcomeNotification] Failed to dispatch welcome notification:', err)
       })
 
-      return profile
+      return { profile, emailQueued }
     } catch (dbError) {
       // Rollback Auth user if database insertion fails
       await supabaseAdmin.auth.admin.deleteUser(userId).catch((err) => {

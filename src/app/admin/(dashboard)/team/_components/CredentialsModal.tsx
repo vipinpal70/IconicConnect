@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useState } from "react"
 import { useMutation } from "@tanstack/react-query"
-import { KeyRound, Copy, RefreshCw, X, Eye, EyeOff, Mail } from "lucide-react"
+import { KeyRound, Copy, RefreshCw, X, Eye, EyeOff, Mail, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
@@ -25,6 +25,11 @@ interface CredentialsModalProps {
 export function CredentialsModal({ member, open, onOpenChange }: CredentialsModalProps) {
   const [newPassword, setNewPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  // Set only when the password change succeeded but the notification email
+  // failed to queue — keeps the modal open with the password visible instead
+  // of silently closing, since that would otherwise be the only place it
+  // exists (the member has no other way to get it).
+  const [emailFailed, setEmailFailed] = useState(false)
 
   const mutation = useMutation({
     mutationFn: async (password: string) => {
@@ -40,10 +45,15 @@ export function CredentialsModal({ member, open, onOpenChange }: CredentialsModa
       }
       return res.json()
     },
-    onSuccess: () => {
-      toast.success('Credentials updated and email sent!')
-      setNewPassword('')
-      onOpenChange(false)
+    onSuccess: (data: { emailQueued?: boolean }) => {
+      if (data.emailQueued === false) {
+        setEmailFailed(true)
+        toast.warning("Password updated, but the email couldn't be sent — share it manually.")
+      } else {
+        toast.success('Credentials updated and email sent!')
+        setNewPassword('')
+        onOpenChange(false)
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message)
@@ -62,8 +72,18 @@ export function CredentialsModal({ member, open, onOpenChange }: CredentialsModa
     setNewPassword(Math.random().toString(36).slice(-10) + "!")
   }
 
+  const handleOpenChange = (next: boolean) => {
+    if (mutation.isPending) return
+    if (!next) {
+      setNewPassword('')
+      setShowPassword(false)
+      setEmailFailed(false)
+    }
+    onOpenChange(next)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -72,6 +92,36 @@ export function CredentialsModal({ member, open, onOpenChange }: CredentialsModa
           </DialogTitle>
         </DialogHeader>
 
+        {emailFailed ? (
+          <>
+            <div className="py-4 space-y-3">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800">
+                  The password was updated, but we couldn&apos;t send the notification email to{" "}
+                  <span className="font-medium">{member?.email}</span>. Share the password below with them directly.
+                </p>
+              </div>
+              <div className="bg-muted border border-border rounded-lg p-2.5 flex items-center justify-between">
+                <code className="text-sm font-mono font-bold text-primary">{newPassword}</code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(newPassword)
+                    toast.success('Password copied')
+                  }}
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button className="w-full" onClick={() => handleOpenChange(false)}>Done</Button>
+            </DialogFooter>
+          </>
+        ) : (
+        <>
         <div className="space-y-4 py-4">
           <div className="space-y-1">
             <Label className="text-muted-foreground text-xs uppercase tracking-wider">Member</Label>
@@ -83,7 +133,7 @@ export function CredentialsModal({ member, open, onOpenChange }: CredentialsModa
             <Label>New Password</Label>
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Input 
+                <Input
                   type={showPassword ? "text" : "password"}
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
@@ -108,11 +158,13 @@ export function CredentialsModal({ member, open, onOpenChange }: CredentialsModa
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="ghost" onClick={() => handleOpenChange(false)}>Cancel</Button>
           <Button onClick={handleReset} disabled={mutation.isPending}>
             {mutation.isPending ? 'Updating...' : 'Update & Notify'}
           </Button>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   )

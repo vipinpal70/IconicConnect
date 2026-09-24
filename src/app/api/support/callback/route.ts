@@ -67,6 +67,9 @@ export async function POST() {
       clientName,
       labName,
       requesterName: requester,
+    }).catch((err) => {
+      console.error('[support_callback.created] Failed to dispatch notifications:', err)
+      return { attempted: 0, succeeded: 0, failed: 0 }
     })
 
     await logActivity({

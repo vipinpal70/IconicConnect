@@ -81,7 +81,7 @@ export async function PATCH(
         event: notificationEvent,
         ticketStatus: (status ?? ticket.status) as string,
         adminNotes: updateData.adminNotes ?? ticket.adminNotes ?? null,
-      })
+      }).catch((err) => console.error('[support_ticket.updated] Failed to dispatch notification:', err))
     }
 
     await logActivity({

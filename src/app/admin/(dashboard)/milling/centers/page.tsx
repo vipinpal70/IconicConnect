@@ -96,6 +96,8 @@ export default function MillingCentersPage() {
       if (form.password) {
         if (data.userError) {
           toast.error(`Centre onboarded, but the login was not created: ${data.userError}`, { duration: 10000 });
+        } else if (data.emailQueued === false) {
+          toast.warning(`Centre onboarded and login created, but the credentials email couldn't be sent — share the password with them directly.`, { duration: 10000 });
         } else {
           toast.success("Centre onboarded and login credentials emailed");
         }

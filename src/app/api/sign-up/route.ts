@@ -92,7 +92,6 @@ export async function POST(req: NextRequest) {
         city: body.city || null,
         state: body.state || null,
         country: body.country || null,
-        password: body.password || null,
         enabledServiceTypes,
       },
     }).catch((err) => console.error('[sign-up logActivity]', err))

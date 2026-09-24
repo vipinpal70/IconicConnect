@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Milling centre not found' }, { status: 404 });
     }
 
-    const user = await createMillingUser({
+    const { user, emailQueued } = await createMillingUser({
       email,
       password,
       fullName,
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       actor: actorProfile,
     });
 
-    return NextResponse.json({ success: true, user });
+    return NextResponse.json({ success: true, user, emailQueued });
   } catch (error) {
     console.error('Error creating milling user:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 });

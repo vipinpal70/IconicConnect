@@ -8,7 +8,7 @@ import { logActivity } from '@/src/lib/activity-log';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
-import { queueEmail } from '@/src/lib/queue/jobs';
+import { queueEmailSafely } from '@/src/lib/queue/jobs';
 import { handleProfileCreated } from '@/src/lib/price-list';
 import { deleteCachedData } from '@/src/lib/redis-cache';
 
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Send credentials email
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    await queueEmail({
+    const { queued: emailQueued, error: emailError } = await queueEmailSafely({
       to: email,
       subject: 'Your IconicConnect Login Credentials',
       type: 'credentials',
@@ -161,7 +161,10 @@ export async function POST(req: NextRequest) {
           <p style="color:#6b7280;font-size:13px;">Please change your password after your first login.</p>
         </div>
       `,
-    }).catch((err) => console.error('[member.created] Failed to queue credentials email:', err));
+    });
+    if (!emailQueued) {
+      console.error('[member.created] Failed to queue credentials email:', emailError);
+    }
 
     await logActivity({
       actor: actorProfile,
@@ -173,13 +176,14 @@ export async function POST(req: NextRequest) {
         role,
         userType,
         phone,
+        emailQueued,
       },
     });
 
     // Invalidate clients list so the next fetch reflects the new member
     await deleteCachedData('clients:list').catch(() => {})
 
-    return NextResponse.json({ success: true, user: authData.user });
+    return NextResponse.json({ success: true, user: authData.user, emailQueued });
   } catch (error) {
     console.error('Error creating member:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

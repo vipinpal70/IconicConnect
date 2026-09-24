@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { UserPlus, Mail, Shield, Copy, CheckCircle2, RefreshCw, X, KeyRound } from "lucide-react"
+import { UserPlus, Mail, Shield, Copy, CheckCircle2, RefreshCw, X, KeyRound, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
@@ -34,6 +34,7 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
     userType: '', // derived from role
   })
   const [generatedPass, setGeneratedPass] = useState<string | null>(null)
+  const [emailFailed, setEmailFailed] = useState(false)
 
   // Derived userType based on role
   const handleRoleChange = (role: string) => {
@@ -57,8 +58,14 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
       }
       return res.json()
     },
-    onSuccess: () => {
-      toast.success('Member added successfully!')
+    onSuccess: (data: { emailQueued?: boolean }) => {
+      const failed = data.emailQueued === false
+      setEmailFailed(failed)
+      if (failed) {
+        toast.warning("Member added, but the credentials email couldn't be sent — share the password manually.")
+      } else {
+        toast.success('Member added successfully!')
+      }
       setGeneratedPass(formData.password)
       queryClient.invalidateQueries({ queryKey: ['members'] })
     },
@@ -88,6 +95,7 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
   const resetForm = () => {
     setFormData({ fullName: '', email: '', password: '', role: '', userType: '' })
     setGeneratedPass(null)
+    setEmailFailed(false)
     onOpenChange(false)
   }
 
@@ -103,14 +111,16 @@ export function AddMemberModal({ open, onOpenChange }: AddMemberModalProps) {
 
         {generatedPass ? (
           <div className="space-y-6 py-4">
-            <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center space-y-4">
+            <div className={`border rounded-xl p-6 text-center space-y-4 ${emailFailed ? "bg-amber-50 border-amber-200" : "bg-primary/5 border-primary/10"}`}>
               <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm">
-                <CheckCircle2 className="w-6 h-6 text-green-500" />
+                {emailFailed ? <AlertTriangle className="w-6 h-6 text-amber-600" /> : <CheckCircle2 className="w-6 h-6 text-green-500" />}
               </div>
               <div>
-                <h3 className="font-semibold text-foreground">Member Onboarded!</h3>
+                <h3 className="font-semibold text-foreground">{emailFailed ? "Member Onboarded — Email Not Sent" : "Member Onboarded!"}</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Credentials have been sent to <span className="font-medium text-foreground">{formData.email}</span>
+                  {emailFailed
+                    ? <>We couldn&apos;t email the credentials to <span className="font-medium text-foreground">{formData.email}</span> — share the password below with them directly.</>
+                    : <>Credentials have been sent to <span className="font-medium text-foreground">{formData.email}</span></>}
                 </p>
               </div>
               <div className="bg-white border border-border rounded-lg p-3 flex items-center justify-between">

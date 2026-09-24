@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Name, email, and role are required' }, { status: 400 })
     }
 
-    const newSubUser = await service.createSubUser(profile.id, {
+    const { profile: newSubUser, emailQueued } = await service.createSubUser(profile.id, {
       name,
       username: username || email.split('@')[0],
       email,
@@ -85,10 +85,10 @@ export async function POST(req: NextRequest) {
     await logActivity({
       actor: profile,
       action: 'subuser.created',
-      details: { subuserId: newSubUser.id, email: newSubUser.email, fullName: newSubUser.fullName, role },
+      details: { subuserId: newSubUser.id, email: newSubUser.email, fullName: newSubUser.fullName, role, emailQueued },
     }).catch((err) => console.error('[subuser.created logActivity]', err))
 
-    return NextResponse.json({ data: formatted }, { status: 201 })
+    return NextResponse.json({ data: formatted, emailQueued }, { status: 201 })
   } catch (error) {
     console.error('[POST /api/client/subusers]', error)
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })

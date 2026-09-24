@@ -52,10 +52,14 @@ export async function POST(req: NextRequest) {
     const tokenHash = linkData.properties.hashed_token;
     const customResetUrl = `${origin}/auth/verify?token_hash=${tokenHash}&type=recovery&next=/auth/reset-password`;
 
-    // 3. Queue the custom email via our Resend Worker
-    const { queueEmail } = await import('@/src/lib/queue/jobs');
-    
-    await queueEmail({
+    // 3. Queue the custom email via our Resend Worker. This is the entire
+    // point of the request (unlike an admin-initiated password reset, there
+    // is no already-succeeded primary action to protect) — so a queue
+    // failure is reported honestly as an error rather than a false "sent",
+    // with a specific message instead of the generic catch-all below.
+    const { queueEmailSafely } = await import('@/src/lib/queue/jobs');
+
+    const { queued, error: emailError } = await queueEmailSafely({
       to: email,
       subject: 'Reset your IconicConnect Password',
       type: 'reset-password', // using specific queue type
@@ -74,6 +78,11 @@ export async function POST(req: NextRequest) {
         </div>
       `
     });
+
+    if (!queued) {
+      console.error('Failed to queue password reset email:', emailError);
+      return NextResponse.json({ error: 'Failed to send the reset email — please try again in a moment.' }, { status: 502 });
+    }
 
     return NextResponse.json({ success: true, message: 'Password reset link sent to your email' });
   } catch (error) {

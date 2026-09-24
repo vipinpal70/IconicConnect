@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/src/lib/supabase/admin'
 import { eq } from 'drizzle-orm'
 import { requireAdmin } from '@/src/lib/milling/admin-guard'
 import { logActivity } from '@/src/lib/activity-log'
-import { queueEmail } from '@/src/lib/queue/jobs'
+import { queueEmailSafely } from '@/src/lib/queue/jobs'
 
 // POST /api/admin/milling/users/[id]/credentials — admin resets a milling
 // portal user's password and emails them the new credentials.
@@ -42,7 +42,7 @@ export async function POST(
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    await queueEmail({
+    const { queued: emailQueued, error: emailError } = await queueEmailSafely({
       to: user.email,
       subject: 'Your IconicConnect Milling Portal Password has been Reset',
       type: 'credentials',
@@ -59,15 +59,18 @@ export async function POST(
           <p style="color:#6b7280;font-size:13px;">Please change your password after logging in.</p>
         </div>
       `,
-    }).catch((err) => console.error('[milling_user.password_reset] Failed to queue credentials email:', err))
+    })
+    if (!emailQueued) {
+      console.error('[milling_user.password_reset] Failed to queue credentials email:', emailError)
+    }
 
     await logActivity({
       actor: auth.profile,
       action: 'milling_user.password_reset',
-      details: { userId: id, email: user.email },
+      details: { userId: id, email: user.email, emailQueued },
     }).catch((err) => console.error('[milling_user.password_reset logActivity]', err))
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, emailQueued })
   } catch (error) {
     console.error('[admin/milling/users/[id]/credentials POST]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

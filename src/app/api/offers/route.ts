@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
       brand: inserted.brand,
       discount: inserted.discount,
       category: inserted.category,
-    })
+    }).catch((err) => console.error('[offer.created] Failed to dispatch notifications:', err))
 
     await logActivity({
       actor: userContext.profile,

@@ -5,7 +5,7 @@ import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
 import { supabaseAdmin } from '@/src/lib/supabase/admin'
 import { logActivity } from '@/src/lib/activity-log'
-import { queueEmail } from '@/src/lib/queue/jobs'
+import { queueEmailSafely } from '@/src/lib/queue/jobs'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -94,7 +94,7 @@ export async function POST(
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    await queueEmail({
+    const { queued: emailQueued, error: emailError } = await queueEmailSafely({
       to: client.email,
       subject: 'Your IconicConnect Password has been Reset',
       type: 'credentials',
@@ -111,15 +111,18 @@ export async function POST(
           <p style="color:#6b7280;font-size:13px;">Please change your password after logging in.</p>
         </div>
       `,
-    }).catch((err) => console.error('[client.password_reset] Failed to queue credentials email:', err))
+    })
+    if (!emailQueued) {
+      console.error('[client.password_reset] Failed to queue credentials email:', emailError)
+    }
 
     await logActivity({
       actor: auth.profile,
       action: 'client.password_reset',
-      details: { clientId: id, labName: client.labName, email: client.email },
+      details: { clientId: id, labName: client.labName, email: client.email, emailQueued },
     }).catch((err) => console.error('[client.password_reset logActivity]', err))
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, emailQueued })
   } catch (error) {
     console.error('[admin/clients/[id]/credentials POST]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

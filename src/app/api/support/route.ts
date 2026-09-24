@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
       category: ticket.category,
       priority: ticket.priority,
       clientName: profile.labName || profile.fullName || profile.email || 'Client',
-    })
+    }).catch((err) => console.error('[support_ticket.created] Failed to dispatch notifications:', err))
 
     await logActivity({
       actor: profile,
