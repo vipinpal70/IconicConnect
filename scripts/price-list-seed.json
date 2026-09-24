@@ -1,0 +1,753 @@
+{
+  "_note": "System-level DEFAULT price list (service_catalog) only — never touches a client's own price list (client_price_list). Edit any defaultPrice/unitType/isActive/sortOrder below, then run: npx tsx scripts/seed-price-list.ts --apply (omit --apply first to preview as a dry run). Existing rows are matched by (category, subCategory, serviceType) and overridden with whatever is in this file; rows that don't exist yet are created. design_milling and milling_only start at the design_only price as a placeholder and isActive:false — these are separate commercial decisions, not a copy of Design pricing, so review the numbers and flip isActive to true only once they're real.",
+  "design_only": [
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Crown",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": true,
+      "sortOrder": 1
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Bridge",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": true,
+      "sortOrder": 2
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Cutback",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": true,
+      "sortOrder": 3
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Coping",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": true,
+      "sortOrder": 4
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Screw Retained",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 5
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "In-Lay",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 6
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "On-Lay",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 7
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Robotic",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": true,
+      "sortOrder": 8
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Ti-Base",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": true,
+      "sortOrder": 9
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Custom",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": true,
+      "sortOrder": 10
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Night Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 11
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Sport Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 12
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Mouth Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 13
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "NTI",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 14
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Reference Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 15
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Copy Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 16
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Immediate Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 17
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Full Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 18
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Partial Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 19
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Digital Wax Up",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 20
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Veneers",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 21
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Snap on Smile",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": true,
+      "sortOrder": 22
+    },
+    {
+      "category": "Model",
+      "subCategory": "3D Model",
+      "unitType": "per_case",
+      "defaultPrice": 4.00,
+      "isActive": true,
+      "sortOrder": 23
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Full Arch Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": true,
+      "sortOrder": 24
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Quad Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": true,
+      "sortOrder": 25
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Contact Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": true,
+      "sortOrder": 26
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Horse Shoe Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": true,
+      "sortOrder": 27
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Implant Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": true,
+      "sortOrder": 28
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Die",
+      "unitType": "per_tooth",
+      "defaultPrice": 0.50,
+      "isActive": true,
+      "sortOrder": 29
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Articulator",
+      "unitType": "per_case",
+      "defaultPrice": 0.50,
+      "isActive": true,
+      "sortOrder": 30
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Drain Holes",
+      "unitType": "per_case",
+      "defaultPrice": 0.00,
+      "isActive": true,
+      "sortOrder": 31
+    }
+  ],
+  "design_milling": [
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Crown",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 1
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Bridge",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": false,
+      "sortOrder": 2
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Cutback",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": false,
+      "sortOrder": 3
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Coping",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": false,
+      "sortOrder": 4
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Screw Retained",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 5
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "In-Lay",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 6
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "On-Lay",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 7
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Robotic",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 8
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Ti-Base",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 9
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Custom",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 10
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Night Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 11
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Sport Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 12
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Mouth Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 13
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "NTI",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 14
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Reference Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 15
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Copy Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 16
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Immediate Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 17
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Full Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 18
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Partial Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 19
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Digital Wax Up",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 20
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Veneers",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 21
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Snap on Smile",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 22
+    },
+    {
+      "category": "Model",
+      "subCategory": "3D Model",
+      "unitType": "per_case",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 23
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Full Arch Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 24
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Quad Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 25
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Contact Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 26
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Horse Shoe Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 27
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Implant Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 28
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Die",
+      "unitType": "per_tooth",
+      "defaultPrice": 0.50,
+      "isActive": false,
+      "sortOrder": 29
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Articulator",
+      "unitType": "per_case",
+      "defaultPrice": 0.50,
+      "isActive": false,
+      "sortOrder": 30
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Drain Holes",
+      "unitType": "per_case",
+      "defaultPrice": 0.00,
+      "isActive": false,
+      "sortOrder": 31
+    }
+  ],
+  "milling_only": [
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Crown",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 1
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Bridge",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": false,
+      "sortOrder": 2
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Cutback",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": false,
+      "sortOrder": 3
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Coping",
+      "unitType": "per_tooth",
+      "defaultPrice": 5.00,
+      "isActive": false,
+      "sortOrder": 4
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "Screw Retained",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 5
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "In-Lay",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 6
+    },
+    {
+      "category": "Crown & Bridge",
+      "subCategory": "On-Lay",
+      "unitType": "per_tooth",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 7
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Robotic",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 8
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Ti-Base",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 9
+    },
+    {
+      "category": "Implants",
+      "subCategory": "Custom",
+      "unitType": "per_tooth",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 10
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Night Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 11
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Sport Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 12
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "Mouth Guards",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 13
+    },
+    {
+      "category": "Appliances",
+      "subCategory": "NTI",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 14
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Reference Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 15
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Copy Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 16
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Immediate Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 17
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Full Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 18
+    },
+    {
+      "category": "Dentures",
+      "subCategory": "Partial Denture",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 19
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Digital Wax Up",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 20
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Veneers",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 21
+    },
+    {
+      "category": "Cosmetics",
+      "subCategory": "Snap on Smile",
+      "unitType": "per_arch",
+      "defaultPrice": 7.0,
+      "isActive": false,
+      "sortOrder": 22
+    },
+    {
+      "category": "Model",
+      "subCategory": "3D Model",
+      "unitType": "per_case",
+      "defaultPrice": 4.00,
+      "isActive": false,
+      "sortOrder": 23
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Full Arch Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 24
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Quad Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 25
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Contact Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 26
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Horse Shoe Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 27
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Implant Model",
+      "unitType": "per_case",
+      "defaultPrice": 3.50,
+      "isActive": false,
+      "sortOrder": 28
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Die",
+      "unitType": "per_tooth",
+      "defaultPrice": 0.50,
+      "isActive": false,
+      "sortOrder": 29
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Articulator",
+      "unitType": "per_case",
+      "defaultPrice": 0.50,
+      "isActive": false,
+      "sortOrder": 30
+    },
+    {
+      "category": "3D Model",
+      "subCategory": "Drain Holes",
+      "unitType": "per_case",
+      "defaultPrice": 0.00,
+      "isActive": false,
+      "sortOrder": 31
+    }
+  ]
+}

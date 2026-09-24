@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles, subUsers } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
@@ -110,10 +110,27 @@ export async function getServiceCatalog(
 export async function seedClientPriceList(clientId: string, createdById?: string | null) {
   await ensureServiceCatalogSeeded()
 
+  // Only seed rows for the flows this client actually has enabled — this
+  // used to select every active catalog row across all three service types
+  // regardless of profiles.enabledServiceTypes, so e.g. a Design Only client
+  // would silently also get Design + Milling / Milling Only rows seeded into
+  // their price list the moment those flows had any active default pricing.
+  // Read fresh on every call (not cached) so this also picks up a flow an
+  // admin enables for the client *after* signup, the next time this runs —
+  // see setClientEnabledServiceTypes below, which now calls this directly.
+  const [client] = await db
+    .select({ enabledServiceTypes: profiles.enabledServiceTypes })
+    .from(profiles)
+    .where(eq(profiles.id, clientId))
+    .limit(1)
+  const enabledServiceTypes = (
+    client?.enabledServiceTypes?.length ? client.enabledServiceTypes : ['design_only']
+  ) as CatalogServiceType[]
+
   const catalog = await db
     .select()
     .from(serviceCatalog)
-    .where(eq(serviceCatalog.isActive, true))
+    .where(and(eq(serviceCatalog.isActive, true), inArray(serviceCatalog.serviceType, enabledServiceTypes)))
     .orderBy(serviceCatalog.sortOrder)
 
   if (catalog.length === 0) return
@@ -226,6 +243,14 @@ export async function setClientEnabledServiceTypes(clientId: string, types: Serv
     .update(profiles)
     .set({ enabledServiceTypes: types, updatedAt: new Date() })
     .where(eq(profiles.id, clientId))
+
+  // Seed price-list rows for any newly-enabled flow immediately, rather than
+  // waiting for this client to happen to open that flow's price list page
+  // (getPriceListForClient's lazy seedClientPriceList call would eventually
+  // catch it, but there's no reason to make it wait).
+  await seedClientPriceList(clientId).catch((err) =>
+    console.error('[setClientEnabledServiceTypes] Failed to seed price list for newly enabled flow(s):', err)
+  )
 }
 
 // Reconciles the service_catalog table against `defaultItems` below — safe to
@@ -252,7 +277,7 @@ export async function ensureServiceCatalogSeeded() {
     { category: 'Implants', subCategory: 'Ti-Base', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 9 },
     { category: 'Implants', subCategory: 'Custom', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 10 },
     { category: 'Appliances', subCategory: 'Night Guards', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 11 },
-    { category: 'Appliances', subCategory: 'Spot Guards', unitType: 'per_arch' as const, defaultPrice: '20.00', sortOrder: 12 },
+    { category: 'Appliances', subCategory: 'Sport Guards', unitType: 'per_arch' as const, defaultPrice: '20.00', sortOrder: 12 },
     { category: 'Appliances', subCategory: 'Mouth Guards', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 13 },
     { category: 'Appliances', subCategory: 'NTI', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 14 },
     { category: 'Dentures', subCategory: 'Reference Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 15 },
