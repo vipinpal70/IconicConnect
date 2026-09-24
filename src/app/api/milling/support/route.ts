@@ -5,7 +5,7 @@ import { profiles } from '@/src/db/schema/profile'
 import { supportTickets } from '@/src/db/schema/support-ticket'
 import { millingCenters } from '@/src/db/schema/milling'
 import { requireMillingUser } from '@/src/lib/milling/portal-guard'
-import { SUPPORT_TICKET_TYPES } from '@/src/lib/support-tickets'
+import { SUPPORT_TICKET_TYPES, SUPPORT_TICKET_PRIORITIES } from '@/src/lib/support-tickets'
 import { notifySupportTicketCreated } from '@/src/lib/notifications/notification-dispatcher'
 import { logActivity } from '@/src/lib/activity-log'
 
@@ -43,12 +43,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { subject, message, category } = body
+    const { subject, message, category, priority } = body
 
     if (!subject || !message) {
       return NextResponse.json({ error: 'subject and message are required' }, { status: 400 })
     }
     const resolvedCategory = SUPPORT_TICKET_TYPES.includes(category) ? category : 'other'
+    const resolvedPriority = SUPPORT_TICKET_PRIORITIES.includes(priority) ? priority : 'medium'
 
     const [center] = await db.select().from(millingCenters).where(eq(millingCenters.id, auth.millingCenterId)).limit(1)
 
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
         subject,
         message,
         category: resolvedCategory,
+        priority: resolvedPriority,
         createdBy: auth.profile.id,
       })
       .returning()

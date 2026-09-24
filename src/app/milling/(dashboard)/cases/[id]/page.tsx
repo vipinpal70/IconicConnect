@@ -32,6 +32,31 @@ interface PreviewFileRow {
   createdAt: string;
 }
 
+function isImageFile(fileType: string | null, fileName: string): boolean {
+  if (fileType?.startsWith("image/")) return true;
+  return /\.(png|jpe?g|webp|gif|bmp|svg|heic|heif)$/i.test(fileName);
+}
+
+// Both legs write to the same `notes` field on the assignment row
+// (milling-portal-plan.md §6 #4) — this only disambiguates the label shown,
+// it doesn't split the underlying data.
+function notesLabel(record: Pick<MillingCaseDetail, "isDesignCentre" | "isProductionCentre">): string {
+  if (record.isDesignCentre && record.isProductionCentre) return "Notes from Iconic (design + manufacturing)";
+  if (record.isProductionCentre) return "Manufacturing notes from Iconic";
+  return "Design notes from Iconic";
+}
+
+// The status dropdown never offers an earlier stage than the one already
+// recorded — milling-portal-plan.md §6 #1. Forward skips (e.g. straight to
+// "Delivered") stay allowed, since some centres genuinely don't track every
+// intermediate stage separately; only walking backward is disallowed.
+function forwardStatusOptions(current: MillingStatus | null): MillingStatus[] {
+  const all = millingStatusEnum.enumValues;
+  if (!current) return [...all];
+  const currentIndex = all.indexOf(current);
+  return all.filter((_, i) => i >= currentIndex);
+}
+
 interface MillingCaseDetail {
   caseId: string;
   caseNumber: string | null;
@@ -49,6 +74,7 @@ interface MillingCaseDetail {
   shipToAddress: string | null;
   carrier: string | null;
   trackingNumber: string | null;
+  shipmentEta: string | null;
   outputFile: string | null;
   previewFile: string | null;
   outputNote: string | null;
@@ -91,6 +117,7 @@ export default function MillingCaseDetailPage({ params }: { params: Promise<{ id
   const [status, setStatus] = useState<MillingStatus | null>(null);
   const [carrier, setCarrier] = useState<"UPS" | "FedEx" | "DHL">("UPS");
   const [tracking, setTracking] = useState("");
+  const [eta, setEta] = useState("");
   const [flagMessage, setFlagMessage] = useState("");
   const [outputNote, setOutputNote] = useState("");
 
@@ -146,7 +173,7 @@ export default function MillingCaseDetailPage({ params }: { params: Promise<{ id
       const res = await fetch(`/api/milling/cases/${id}/shipment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ carrier, trackingNumber: tracking }),
+        body: JSON.stringify({ carrier, trackingNumber: tracking, shipmentEta: eta || undefined }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed to record shipment");
       return res.json();
@@ -252,7 +279,7 @@ export default function MillingCaseDetailPage({ params }: { params: Promise<{ id
             <Row k="Teeth" v={record.toothNumbers.length ? `#${record.toothNumbers.join(", #")}` : "—"} />
             <Row k="Due" v={record.dueDate ? new Date(record.dueDate).toLocaleDateString() : "—"} />
             <div className="pt-2 border-t border-border">
-              <p className="text-muted-foreground mb-1">Notes from Iconic</p>
+              <p className="text-muted-foreground mb-1">{notesLabel(record)}</p>
               <p className="text-foreground">{record.notes || "—"}</p>
             </div>
             <div className="pt-2 border-t border-border">
@@ -330,25 +357,47 @@ export default function MillingCaseDetailPage({ params }: { params: Promise<{ id
                     />
                   </div>
 
-                  <div className="border border-dashed border-border rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-foreground">Preview image</p>
-                      <p className="text-xs text-muted-foreground">{record.previewFiles.length} uploaded</p>
+                  <div className="border border-dashed border-border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-foreground">Preview image</p>
+                        <p className="text-xs text-muted-foreground">{record.previewFiles.length} uploaded</p>
+                      </div>
+                      <Button variant="outline" size="sm" disabled={designFileMutation.isPending} onClick={() => previewInputRef.current?.click()}>
+                        <Upload className="h-3.5 w-3.5 mr-1.5" /> Upload preview
+                      </Button>
+                      <input
+                        ref={previewInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) designFileMutation.mutate({ file, kind: "preview" });
+                          e.target.value = "";
+                        }}
+                      />
                     </div>
-                    <Button variant="outline" size="sm" disabled={designFileMutation.isPending} onClick={() => previewInputRef.current?.click()}>
-                      <Upload className="h-3.5 w-3.5 mr-1.5" /> Upload preview
-                    </Button>
-                    <input
-                      ref={previewInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) designFileMutation.mutate({ file, kind: "preview" });
-                        e.target.value = "";
-                      }}
-                    />
+                    {record.previewFiles.length > 0 && (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {record.previewFiles.map((f) => (
+                          <a key={f.id} href={f.fileUrl} target="_blank" rel="noreferrer" className="block group">
+                            {isImageFile(f.fileType, f.fileName) ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={f.fileUrl}
+                                alt={f.fileName}
+                                className="w-full aspect-square object-cover rounded-md border border-border group-hover:opacity-80 transition-opacity"
+                              />
+                            ) : (
+                              <div className="w-full aspect-square rounded-md border border-border bg-muted flex items-center justify-center text-[10px] text-muted-foreground p-1 text-center group-hover:opacity-80 transition-opacity">
+                                {f.fileName}
+                              </div>
+                            )}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <Button
@@ -429,11 +478,12 @@ export default function MillingCaseDetailPage({ params }: { params: Promise<{ id
                   <Select value={currentStatus ?? undefined} onValueChange={(v) => setStatus(v as MillingStatus)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {millingStatusEnum.enumValues.map((s) => (
+                      {forwardStatusOptions(record.millingStatus).map((s) => (
                         <SelectItem key={s} value={s}>{INTERNAL_STATUS_LABELS[s]}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-[11px] text-muted-foreground">Only forward moves are offered — a case can&apos;t be walked back to an earlier stage from here.</p>
                 </div>
                 <Button disabled={statusMutation.isPending || !currentStatus} onClick={() => currentStatus && statusMutation.mutate(currentStatus)}>
                   {statusMutation.isPending ? "Saving…" : "Save status"}
@@ -458,9 +508,13 @@ export default function MillingCaseDetailPage({ params }: { params: Promise<{ id
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2 md:col-span-2">
+              <div className="space-y-2">
                 <Label>Tracking number</Label>
                 <Input value={tracking} onChange={(e) => setTracking(e.target.value)} placeholder="e.g. 1Z999AA10000000" />
+              </div>
+              <div className="space-y-2">
+                <Label>Estimated delivery</Label>
+                <Input type="date" value={eta} onChange={(e) => setEta(e.target.value)} />
               </div>
               <Button
                 className="md:col-span-3"
@@ -470,7 +524,10 @@ export default function MillingCaseDetailPage({ params }: { params: Promise<{ id
                 {shipmentMutation.isPending ? "Recording…" : "Generate shipment"}
               </Button>
               {record.trackingNumber && (
-                <p className="md:col-span-3 text-xs text-muted-foreground">Current: {record.carrier} · {record.trackingNumber}</p>
+                <p className="md:col-span-3 text-xs text-muted-foreground">
+                  Current: {record.carrier} · {record.trackingNumber}
+                  {record.shipmentEta && ` · ETA ${new Date(record.shipmentEta).toLocaleDateString()}`}
+                </p>
               )}
             </CardContent>
           </Card>

@@ -6,6 +6,7 @@ import {
   Headset,
   LogOut,
   Factory,
+  Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -39,6 +40,7 @@ interface MillingMe {
 const NAV_ITEMS = [
   { title: "Dashboard", url: "/milling/dashboard", icon: LayoutDashboard },
   { title: "Assigned Cases", url: "/milling/cases", icon: ClipboardList },
+  { title: "My Services", url: "/milling/services", icon: Wrench },
   { title: "Support", url: "/milling/support", icon: Headset },
 ]
 

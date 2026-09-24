@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
@@ -10,8 +10,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import { MillingStatusBadge, type MillingStatus } from "@/src/components/MillingStatusBadge";
 import { INTERNAL_STATUS_LABELS } from "@/src/db/schema/case";
 import { millingStatusEnum } from "@/src/db/schema/milling";
-import { Search, Download } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { Search, Link2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { dueDateTone, DUE_DATE_TONE_CLASSES } from "@/src/lib/milling/due-date";
 
 interface MillingCaseRow {
   caseId: string;
@@ -24,6 +25,11 @@ interface MillingCaseRow {
   status: string;
   queue: "design" | "production";
   millingStatus: MillingStatus | null;
+  committedToProduction: boolean;
+}
+
+interface ServicesResponse {
+  catalog: { category: string }[];
 }
 
 const STATUS_FILTERS: ("all" | MillingStatus)[] = ["all", ...millingStatusEnum.enumValues];
@@ -40,10 +46,32 @@ function designStatusLabel(status: string): string {
 }
 
 export default function MillingCasesPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-20 text-muted-foreground">Loading…</div>}>
+      <MillingCasesPageInner />
+    </Suspense>
+  );
+}
+
+function MillingCasesPageInner() {
   const router = useRouter();
-  const [queue, setQueue] = useState<"production" | "design">("production");
+  const searchParams = useSearchParams();
+  const [queue, setQueue] = useState<"production" | "design">(
+    searchParams.get("queue") === "design" ? "design" : "production",
+  );
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"all" | MillingStatus>("all");
+  const [category, setCategory] = useState<string>("all");
+
+  // Keep the URL in sync so the tab is shareable/deep-linkable (dashboard's
+  // "Design Queue"/"Production Queue" buttons and any notification link land
+  // on the right tab) — milling-portal-plan.md §5 #2.
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("queue", queue);
+    router.replace(`/milling/cases?${params.toString()}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue]);
 
   const { data: cases = [], isLoading } = useQuery<MillingCaseRow[]>({
     queryKey: ["milling-cases", queue, queue === "production" ? status : null],
@@ -57,9 +85,25 @@ export default function MillingCasesPage() {
     },
   });
 
+  const { data: services } = useQuery<ServicesResponse>({
+    queryKey: ["milling-services"],
+    queryFn: async () => {
+      const res = await fetch("/api/milling/services");
+      if (!res.ok) return { catalog: [] };
+      const json = await res.json();
+      return json.data;
+    },
+  });
+  const categories = useMemo(
+    () => Array.from(new Set((services?.catalog ?? []).map((row) => row.category))).sort(),
+    [services],
+  );
+
   const list = cases.filter((c) => {
     const s = q.toLowerCase();
-    return !s || (c.caseNumber ?? "").toLowerCase().includes(s) || (c.subCategory ?? "").toLowerCase().includes(s);
+    const matchesSearch = !s || (c.caseNumber ?? "").toLowerCase().includes(s) || (c.subCategory ?? "").toLowerCase().includes(s);
+    const matchesCategory = category === "all" || c.category === category;
+    return matchesSearch && matchesCategory;
   });
 
   return (
@@ -82,6 +126,15 @@ export default function MillingCasesPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input className="pl-9" placeholder="Search by case number or restoration…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="lg:w-48"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {queue === "production" && (
             <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
               <SelectTrigger className="lg:w-56"><SelectValue /></SelectTrigger>
@@ -115,35 +168,42 @@ export default function MillingCasesPage() {
                       {queue === "design" ? "No cases in your design queue." : "No cases assigned yet."}
                     </td>
                   </tr>
-                ) : list.map((c) => (
-                  <tr key={c.caseId} className="border-b border-border last:border-0 hover:bg-muted/40">
-                    <td className="px-4 py-3 font-medium text-primary">{c.caseNumber ?? c.caseId}</td>
-                    <td className="px-4 py-3">
-                      <p className="text-foreground">{c.subCategory ?? "—"}</p>
-                      <p className="text-xs text-muted-foreground">{c.category}</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.toothNumbers.length ? `#${c.toothNumbers.join(", #")}` : "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.modelRequired ? "Yes" : "No"}</td>
-                    <td className="px-4 py-3">
-                      {c.queue === "production" && c.millingStatus ? (
-                        <MillingStatusBadge status={c.millingStatus} />
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap bg-primary/10 text-primary border border-primary/20">
-                          {designStatusLabel(c.status)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{c.dueDate ? new Date(c.dueDate).toLocaleDateString() : "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1.5">
+                ) : list.map((c) => {
+                  const tone = dueDateTone(c.dueDate);
+                  return (
+                    <tr key={c.caseId} className="border-b border-border last:border-0 hover:bg-muted/40">
+                      <td className="px-4 py-3 font-medium text-primary">{c.caseNumber ?? c.caseId}</td>
+                      <td className="px-4 py-3">
+                        <p className="text-foreground">{c.subCategory ?? "—"}</p>
+                        <p className="text-xs text-muted-foreground">{c.category}</p>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{c.toothNumbers.length ? `#${c.toothNumbers.join(", #")}` : "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{c.modelRequired ? "Yes" : "No"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          {c.queue === "production" && c.millingStatus ? (
+                            <MillingStatusBadge status={c.millingStatus} />
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap bg-primary/10 text-primary border border-primary/20">
+                              {designStatusLabel(c.status)}
+                            </span>
+                          )}
+                          {c.queue === "design" && c.committedToProduction && (
+                            <span title="This case is already committed to your centre for milling once QC approves">
+                              <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className={`px-4 py-3 whitespace-nowrap ${DUE_DATE_TONE_CLASSES[tone]}`}>
+                        {c.dueDate ? new Date(c.dueDate).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-4 py-3">
                         <Button size="sm" variant="outline" onClick={() => router.push(`/milling/cases/${c.caseId}`)}>Open</Button>
-                        {c.queue === "production" && (
-                          <Button size="sm" variant="ghost" title="Download design files"><Download className="h-3.5 w-3.5" /></Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

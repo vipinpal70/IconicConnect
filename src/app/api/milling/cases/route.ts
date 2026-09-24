@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const statusFilter = searchParams.get('status')
+    const categoryFilter = searchParams.get('category')
     // 'design' = this centre's Design Queue (case-flow-update-plan.md §7.2/§7.3
     // — assigned as designCenterId, any case status). Default/'production' =
     // today's manufacturing queue (productionCenterId, and only once it has
@@ -54,6 +55,11 @@ export async function GET(req: NextRequest) {
           status: caseRecord.status,
           queue,
           millingStatus: a.millingStatus,
+          // Flow 3 commitment (case-flow-update-plan.md §7.3) — only
+          // meaningful on the Design Queue tab, where it tells the centre
+          // this case will auto-continue to them for production once QC
+          // approves, with no separate assignment step.
+          committedToProduction: a.autoAdvanceToMilling,
           shipToName: a.shipToName,
           shipToAddress: a.shipToAddress,
           carrier: a.carrier,
@@ -63,6 +69,7 @@ export async function GET(req: NextRequest) {
         }
       })
       .filter((row): row is NonNullable<typeof row> => Boolean(row))
+      .filter((row) => !categoryFilter || row.category === categoryFilter)
 
     return NextResponse.json({ data })
   } catch (error) {

@@ -1,5 +1,15 @@
-import type { Case } from '@/src/db/schema/case'
 import { resolveCaseSubCategory } from '@/src/lib/pricing'
+
+// Structural, not the full `Case` row — lets callers that only selected a
+// handful of columns (e.g. a joined dashboard query) pass their row through
+// without a cast, while a full `Case` row still satisfies it as-is.
+export interface MillingCaseViewSource {
+  id: string
+  caseNumber: string | null
+  category: string | null
+  subTypeData: unknown
+  dueDate: Date | null
+}
 
 export interface MillingCaseView {
   caseId: string
@@ -27,7 +37,7 @@ function extractToothNumbers(subTypeData: unknown): number[] {
  * clientId or any other client-identifying field — shipToName/shipToAddress
  * on the assignment are the only client-identifying data a milling centre gets.
  */
-export function toMillingCaseView(caseRecord: Case): MillingCaseView {
+export function toMillingCaseView(caseRecord: MillingCaseViewSource): MillingCaseView {
   const data = (caseRecord.subTypeData as Record<string, unknown>) || {}
   return {
     caseId: caseRecord.id,

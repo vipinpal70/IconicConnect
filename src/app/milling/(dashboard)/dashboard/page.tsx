@@ -3,8 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
-import { Factory, PenTool, CheckCircle2, Truck, Package } from "lucide-react";
+import { Factory, PenTool, CheckCircle2, Truck, Package, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { dueDateTone, DUE_DATE_TONE_CLASSES } from "@/src/lib/milling/due-date";
 
 interface MillingMe {
   fullName: string | null;
@@ -12,11 +13,31 @@ interface MillingMe {
   center: { name: string } | null;
 }
 
+interface DueSoonRow {
+  caseId: string;
+  caseNumber: string | null;
+  subCategory: string | null;
+  category: string | null;
+  dueDate: string | null;
+  queue: "design" | "production";
+  status: string;
+  overdue: boolean;
+}
+
+interface CapacityRow {
+  category: string;
+  subCategory: string;
+  used: number;
+  cap: number;
+}
+
 interface MillingDashboardData {
   buckets: Record<string, number>;
   currentLoad: number;
   designQueueCount: number;
   avgTatDays: number | null;
+  dueSoon: DueSoonRow[];
+  capacity: CapacityRow[];
 }
 
 interface NotificationRow {
@@ -52,6 +73,8 @@ export default function MillingDashboardPage() {
   });
 
   const buckets = dashboard?.buckets ?? {};
+  const dueSoon = dashboard?.dueSoon ?? [];
+  const capacity = dashboard?.capacity ?? [];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -80,7 +103,14 @@ export default function MillingDashboardPage() {
                   <div><p className="text-xs text-muted-foreground">Active cases</p><p className="text-2xl font-semibold text-foreground">{dashboard?.currentLoad ?? 0}</p></div>
                   <div><p className="text-xs text-muted-foreground">Avg TAT (delivered)</p><p className="text-2xl font-semibold text-foreground">{dashboard?.avgTatDays !== null && dashboard?.avgTatDays !== undefined ? `${dashboard.avgTatDays}d` : "—"}</p></div>
                 </div>
-                <Button className="mt-6 w-full" onClick={() => router.push("/milling/cases")}>Open case queue</Button>
+                <div className="mt-6 flex gap-2">
+                  <Button className="flex-1" variant="outline" onClick={() => router.push("/milling/cases?queue=design")}>
+                    <PenTool className="h-3.5 w-3.5 mr-1.5" /> Design Queue
+                  </Button>
+                  <Button className="flex-1" onClick={() => router.push("/milling/cases?queue=production")}>
+                    <Factory className="h-3.5 w-3.5 mr-1.5" /> Production Queue
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
@@ -96,6 +126,67 @@ export default function MillingDashboardPage() {
                       <p className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString()}</p>
                     </div>
                   ))
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card className="shadow-card lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" /> Due soon
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {dueSoon.length === 0 ? (
+                  <p className="text-sm text-muted-foreground p-4">Nothing actionable is due soon.</p>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {dueSoon.map((row) => {
+                      const tone = row.overdue ? "overdue" : dueDateTone(row.dueDate);
+                      return (
+                        <button
+                          key={`${row.caseId}-${row.queue}`}
+                          onClick={() => router.push(`/milling/cases/${row.caseId}`)}
+                          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-primary">{row.caseNumber ?? row.caseId}</p>
+                            <p className="text-xs text-muted-foreground">{row.subCategory ?? row.category ?? "—"} · {row.queue === "design" ? "Design" : "Production"}</p>
+                          </div>
+                          <p className={`text-xs whitespace-nowrap ${DUE_DATE_TONE_CLASSES[tone]}`}>
+                            {row.dueDate ? new Date(row.dueDate).toLocaleDateString() : "No due date"}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-card">
+              <CardHeader className="pb-2"><CardTitle className="text-base">Capacity this month</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {capacity.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No monthly capacity limits set on your services.</p>
+                ) : (
+                  capacity.map((row) => {
+                    const pct = row.cap > 0 ? Math.min(100, Math.round((row.used / row.cap) * 100)) : 0;
+                    const barColor = pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500";
+                    return (
+                      <div key={`${row.category}-${row.subCategory}`}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-foreground font-medium">{row.subCategory}</span>
+                          <span className="text-muted-foreground">{row.used}/{row.cap}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </CardContent>
             </Card>
