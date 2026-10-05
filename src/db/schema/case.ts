@@ -190,6 +190,11 @@ export const cases = pgTable('cases', {
   tat: integer('tat'), // Turn Around Time in minutes (deliveredTime - startTime)
   dueDate: timestamp('due_date'),
   timeline: jsonb('timeline').$type<CaseTimelineEvent[]>().default(sql`'[]'::jsonb`).notNull(),
+  // Bulk-download tracking cache (source of truth: case_bulk_downloads). NULL = never downloaded.
+  // client_output_downloaded_at is lab-visible; internal_files_downloaded_at is staff-only and must be
+  // stripped from every lab-role response.
+  clientOutputDownloadedAt: timestamp('client_output_downloaded_at'),
+  internalFilesDownloadedAt: timestamp('internal_files_downloaded_at'),
   outputFile: text('output_file'),
   previewFile: text('preview_file'),
   outputNote: text('output_note'),

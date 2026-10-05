@@ -1,3 +1,5 @@
+import { stripStaffOnlyCaseFields } from '@/src/lib/case-access';
+import { getLatestCompleted } from '@/src/lib/bulk-download/tracking';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
@@ -50,6 +52,8 @@ const caseListSelection = {
   createdAt: cases.createdAt,
   updatedAt: cases.updatedAt,
   outputFile: cases.outputFile,
+  clientOutputDownloadedAt: cases.clientOutputDownloadedAt,
+  internalFilesDownloadedAt: cases.internalFilesDownloadedAt,
   previewFile: cases.previewFile,
   preferredTeethLibrary: cases.preferredTeethLibrary,
   teethLibraryFileUrl: cases.teethLibraryFileUrl,
@@ -475,7 +479,7 @@ export async function POST(req: NextRequest) {
         },
       }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
 
-      results.push(insertedCase);
+      results.push(stripStaffOnlyCaseFields(insertedCase, profile.role) as typeof insertedCase);
     }
 
     if (clientId) {
@@ -711,14 +715,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const mappedResults = results.map(r => ({
+    // Staff see who last bulk-downloaded each case's lab files; labs never get the staff-only fields.
+    const staffDownloadCaseIds = isAdmin ? results.filter((r) => r.internalFilesDownloadedAt).map((r) => r.id) : [];
+    const staffDownloads = await getLatestCompleted(staffDownloadCaseIds, 'internal_files');
+
+    const mappedResults = results.map(r => stripStaffOnlyCaseFields({
       ...r,
+      internalFilesDownloadedBy: staffDownloads.get(r.id)?.downloadedByName ?? null,
       designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
       clientDisplayName: r.clientId ? (clientsMap.get(r.clientId) || null) : null,
       todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,
       hasUnreadChat: chatMetadata.get(r.id)?.hasUnreadChat ?? false,
       scanFileName: scanFileMap.get(r.id) ?? null,
-    }));
+    }, profile.role));
 
     const payload = { data: mappedResults, hasMore }
     if (!hasFilters) await setCachedData(casesCacheKey, payload, CASES_LIST_TTL)

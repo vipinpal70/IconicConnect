@@ -1,3 +1,4 @@
+import { caseBulkDownloads } from '@/src/db/schema/bulk-download';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
@@ -15,7 +16,7 @@ import { canTransitionCaseStatus } from '@/src/lib/case-status-transitions';
 import { canCancelCase } from '@/src/lib/case-utils';
 import type { CaseStatus, ServiceType } from '@/src/lib/case-status-mapping';
 import { millingCaseAssignments } from '@/src/db/schema/milling';
-import { denyUnlessMillingAssigned, timelineForClient, isLabRole } from '@/src/lib/case-access';
+import { denyUnlessMillingAssigned, timelineForClient, isLabRole, stripStaffOnlyCaseFields } from '@/src/lib/case-access';
 
 const CASE_DETAIL_TTL = 300 // 5 minutes
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat';
@@ -106,7 +107,7 @@ export async function GET(
         return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 });
       }
       return NextResponse.json({
-        data: isLabRole(profile.role) ? { ...cachedDetail, timeline: timelineForClient(cachedDetail.timeline) } : cachedDetail,
+        data: isLabRole(profile.role) ? stripStaffOnlyCaseFields({ ...cachedDetail, timeline: timelineForClient(cachedDetail.timeline) }, profile.role) : cachedDetail,
       });
     }
 
@@ -143,7 +144,7 @@ export async function GET(
     const detailPayload = { ...caseRecord, designerName, qcName, accountManagerName }
     await setCachedData(detailCacheKey, detailPayload, CASE_DETAIL_TTL)
     return NextResponse.json({
-      data: isLabRole(profile.role) ? { ...detailPayload, timeline: timelineForClient(detailPayload.timeline) } : detailPayload,
+      data: isLabRole(profile.role) ? stripStaffOnlyCaseFields({ ...detailPayload, timeline: timelineForClient(detailPayload.timeline) }, profile.role) : detailPayload,
     });
   } catch (error: unknown) {
     console.error('Get case error:', error);
@@ -836,7 +837,7 @@ export async function PUT(
       ])
     }
 
-    return NextResponse.json({ data: updatedCase[0] });
+    return NextResponse.json({ data: stripStaffOnlyCaseFields(updatedCase[0], profile.role) });
   } catch (error: unknown) {
     console.error('Update case error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
@@ -922,6 +923,7 @@ export async function DELETE(
       await tx.delete(caseMessages).where(eq(caseMessages.caseId, id));
 
       // 6. Delete case files records associated with the case
+      await tx.delete(caseBulkDownloads).where(eq(caseBulkDownloads.caseId, id));
       await tx.delete(caseFiles).where(eq(caseFiles.caseId, id));
 
       // 7. Finally delete the case

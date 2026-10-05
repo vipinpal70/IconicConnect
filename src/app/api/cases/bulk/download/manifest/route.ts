@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticate, readRequest, validateCount } from '@/src/lib/bulk-download/access'
-import { buildManifest, parseInclude } from '@/src/lib/bulk-download/service'
+import { buildManifest, parseInclude, wantsIncludeDownloaded } from '@/src/lib/bulk-download/service'
 
 export const runtime = 'nodejs'
 
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const bad = validateCount(caseIds)
     if (bad) return bad
     return NextResponse.json(
-      await buildManifest(auth.profile, 'internal_files', caseIds, parseInclude(fields.include)),
+      await buildManifest(auth.profile, 'internal_files', caseIds, parseInclude(fields.include), wantsIncludeDownloaded(fields)),
     )
   } catch (error: unknown) {
     console.error('[bulk download manifest]', error)

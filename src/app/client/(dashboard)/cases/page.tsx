@@ -201,6 +201,9 @@ export default function CasesPage() {
   const bulk = useBulkSelection();
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const isOutputDownloadable = (c: any) => c.status === "submitted_to_client" || c.status === "approved";
+  // Cases the lab already bulk-downloaded: shown with a badge, left out of "select all", and hideable.
+  const [hideDownloaded, setHideDownloaded] = useState(true);
+  const needsDownload = (c: any) => isOutputDownloadable(c) && !c.clientOutputDownloadedAt;
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -1040,6 +1043,10 @@ export default function CasesPage() {
                 <Button size="sm" className="h-8 text-xs gap-1.5" disabled={bulk.selected.size === 0} onClick={() => setBulkDialogOpen(true)}>
                   <FileArchive className="h-3.5 w-3.5" /> Download ({bulk.selected.size})
                 </Button>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
+                  <input type="checkbox" checked={hideDownloaded} onChange={(e) => setHideDownloaded(e.target.checked)} />
+                  Hide downloaded
+                </label>
                 <Button variant="outline" size="sm" className="h-8 text-xs" onClick={bulk.exit}>Cancel</Button>
               </>
             ) : (
@@ -2041,8 +2048,8 @@ export default function CasesPage() {
                         <input
                           type="checkbox"
                           title="Select all loaded cases ready for download"
-                          checked={filtered.filter(isOutputDownloadable).length > 0 && filtered.filter(isOutputDownloadable).every((c) => bulk.selected.has(c.id))}
-                          onChange={(e) => bulk.setAll(e.target.checked ? filtered.filter(isOutputDownloadable).map((c) => c.id) : [])}
+                          checked={filtered.filter(needsDownload).length > 0 && filtered.filter(needsDownload).every((c) => bulk.selected.has(c.id))}
+                          onChange={(e) => bulk.setAll(e.target.checked ? filtered.filter(needsDownload).map((c) => c.id) : [])}
                         />
                       </th>
                     )}
@@ -2067,7 +2074,7 @@ export default function CasesPage() {
                       </tr>
                     ))
                   ) : (
-                    filtered.map((c) => {
+                    (bulk.selectMode && hideDownloaded ? filtered.filter((c) => !c.clientOutputDownloadedAt) : filtered).map((c) => {
                       const toothNumbers = c.subTypeData?.teeth || [];
                       const toothSystem = c.subTypeData?.toothSystem || "USA";
                       const restoration = c.subTypeData
@@ -2106,6 +2113,14 @@ export default function CasesPage() {
                               >
                                 {c.caseNumber || c.id}
                               </Link>
+                              {c.clientOutputDownloadedAt && (
+                                <span
+                                  className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700"
+                                  title={`Outputs downloaded on ${new Date(c.clientOutputDownloadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
+                                >
+                                  Downloaded
+                                </span>
+                              )}
                               {(() => {
                                 const hasUnreadChat = Boolean(c.hasUnreadChat);
                                 const todayCount = (c as any).todayMessagesCount || 0;

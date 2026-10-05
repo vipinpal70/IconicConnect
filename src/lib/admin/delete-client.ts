@@ -1,3 +1,4 @@
+import { caseBulkDownloads } from '@/src/db/schema/bulk-download'
 import { eq, inArray, or } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles, subUsers } from '@/src/db/schema/profile'
@@ -61,6 +62,7 @@ export async function deleteClientCompletely(clientId: string): Promise<DeleteCl
       await tx.delete(casePreviewFiles).where(inArray(casePreviewFiles.caseId, caseIds))
       await tx.delete(caseReferenceFiles).where(inArray(caseReferenceFiles.caseId, caseIds))
       await tx.delete(caseHoldFiles).where(inArray(caseHoldFiles.caseId, caseIds))
+      await tx.delete(caseBulkDownloads).where(inArray(caseBulkDownloads.caseId, caseIds))
     }
 
     await tx.delete(supportTickets).where(eq(supportTickets.clientId, clientId))

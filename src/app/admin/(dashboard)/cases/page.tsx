@@ -84,6 +84,8 @@ type CaseRecord = {
 	todayMessagesCount?: number;
 	hasUnreadChat?: boolean;
 	outputFile?: string | null;
+	internalFilesDownloadedAt?: string | null;
+	internalFilesDownloadedBy?: string | null;
 	previewFile?: string | null;
 	outputNote?: string | null;
 	scanFileName?: string | null;
@@ -298,6 +300,7 @@ export default function AdminCasesPage() {
 	// Bulk download of the client/lab's case files (internal side).
 	const dl = useBulkSelection();
 	const [dlDialogOpen, setDlDialogOpen] = useState(false);
+	const [hideDownloaded, setHideDownloaded] = useState(true);
 	const [isAddOpen, setIsAddOpen] = useState(false);
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("All");
@@ -943,6 +946,10 @@ export default function AdminCasesPage() {
 								>
 									<FileArchive className="h-3.5 w-3.5" /> Download
 								</Button>
+								<label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
+									<input type="checkbox" checked={hideDownloaded} onChange={(e) => setHideDownloaded(e.target.checked)} />
+									Hide downloaded
+								</label>
 								<Button size="sm" variant="ghost" className="h-8 text-xs" onClick={dl.exit}>
 									Cancel
 								</Button>
@@ -1217,8 +1224,8 @@ export default function AdminCasesPage() {
 												<input
 													type="checkbox"
 													aria-label="Select all loaded cases"
-													checked={filtered.length > 0 && filtered.slice(0, dl.max).every((c) => dl.selected.has(c.id))}
-													onChange={(e) => dl.setAll(e.target.checked ? filtered.map((c) => c.id) : [])}
+													checked={filtered.filter((c) => !c.internalFilesDownloadedAt).length > 0 && filtered.filter((c) => !c.internalFilesDownloadedAt).slice(0, dl.max).every((c) => dl.selected.has(c.id))}
+													onChange={(e) => dl.setAll(e.target.checked ? filtered.filter((c) => !c.internalFilesDownloadedAt).map((c) => c.id) : [])}
 													className="h-4 w-4 rounded border-border cursor-pointer"
 												/>
 											</th>
@@ -1287,7 +1294,7 @@ export default function AdminCasesPage() {
 											</td>
 										</tr>
 									) : (
-										filtered.map((caseItem) => {
+										(dl.selectMode && hideDownloaded ? filtered.filter((c) => !c.internalFilesDownloadedAt) : filtered).map((caseItem) => {
 											const client = clientsMap.get(caseItem.clientId);
 											const clientDisplayName =
 												client?.labName || client?.fullName || "—";
@@ -1328,6 +1335,14 @@ export default function AdminCasesPage() {
 															>
 																{caseItem.caseNumber || caseItem.id}
 															</Link>
+															{caseItem.internalFilesDownloadedAt && (
+																<span
+																	className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700"
+																	title={`Files downloaded on ${new Date(caseItem.internalFilesDownloadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${caseItem.internalFilesDownloadedBy ? ` by ${caseItem.internalFilesDownloadedBy}` : ""}`}
+																>
+																	Downloaded{caseItem.internalFilesDownloadedBy ? ` · ${caseItem.internalFilesDownloadedBy}` : ""}
+																</span>
+															)}
 														</div>
 													</td>
 													<td className="px-3.5 py-2 text-[11px] text-black font-semibold">
@@ -2595,6 +2610,7 @@ export default function AdminCasesPage() {
 				scope="internal_files"
 				caseIds={Array.from(dl.selected)}
 				onStarted={dl.exit}
+				canReset
 			/>
 		</>
 	);

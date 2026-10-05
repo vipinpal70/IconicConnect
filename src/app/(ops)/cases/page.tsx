@@ -81,6 +81,8 @@ type OpsCase = {
   };
   dueDate?: string | null;
   outputFile?: string | null;
+  internalFilesDownloadedAt?: string | null;
+  internalFilesDownloadedBy?: string | null;
   previewFile?: string | null;
   outputNote?: string | null;
   todayMessagesCount?: number;
@@ -473,6 +475,7 @@ export default function CasesPage() {
   // Bulk download of the client/lab's case files — separate from approve mode; the two are mutually exclusive.
   const dl = useBulkSelection();
   const [dlDialogOpen, setDlDialogOpen] = useState(false);
+  const [hideDownloaded, setHideDownloaded] = useState(true);
   const [selectedApproveIds, setSelectedApproveIds] = useState<Set<string>>(new Set());
   const [showApproveAllModal, setShowApproveAllModal] = useState(false);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
@@ -1187,6 +1190,10 @@ export default function CasesPage() {
                   <Button size="sm" className="h-8 text-xs gap-1.5" disabled={dl.selected.size === 0} onClick={() => setDlDialogOpen(true)}>
                     <FileArchive className="h-3.5 w-3.5" /> Download
                   </Button>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
+                    <input type="checkbox" checked={hideDownloaded} onChange={(e) => setHideDownloaded(e.target.checked)} />
+                    Hide downloaded
+                  </label>
                   <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={dl.exit}>Cancel</Button>
                 </div>
               ) : (
@@ -1346,8 +1353,8 @@ export default function CasesPage() {
                         <input
                           type="checkbox"
                           aria-label="Select all loaded cases"
-                          checked={filtered.length > 0 && filtered.slice(0, dl.max).every((c) => dl.selected.has(c.id))}
-                          onChange={(e) => dl.setAll(e.target.checked ? filtered.map((c) => c.id) : [])}
+                          checked={filtered.filter((c) => !c.internalFilesDownloadedAt).length > 0 && filtered.filter((c) => !c.internalFilesDownloadedAt).slice(0, dl.max).every((c) => dl.selected.has(c.id))}
+                          onChange={(e) => dl.setAll(e.target.checked ? filtered.filter((c) => !c.internalFilesDownloadedAt).map((c) => c.id) : [])}
                           className="h-4 w-4 rounded border-border cursor-pointer"
                         />
                       </th>
@@ -1378,7 +1385,7 @@ export default function CasesPage() {
                       </tr>
                     ))
                   ) : (
-                    filtered.map((c) => {
+                    (dl.selectMode && hideDownloaded ? filtered.filter((c) => !c.internalFilesDownloadedAt) : filtered).map((c) => {
                       const toothNumbers = c.subTypeData?.teeth || [];
                       const toothSys = c.subTypeData?.toothSystem || "USA";
                       const restoration = c.subTypeData
@@ -1468,6 +1475,14 @@ export default function CasesPage() {
                               >
                                 {c.caseNumber || c.id}
                               </Link>
+                              {c.internalFilesDownloadedAt && (
+                                <span
+                                  className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700"
+                                  title={`Files downloaded on ${new Date(c.internalFilesDownloadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${c.internalFilesDownloadedBy ? ` by ${c.internalFilesDownloadedBy}` : ""}`}
+                                >
+                                  Downloaded{c.internalFilesDownloadedBy ? ` · ${c.internalFilesDownloadedBy}` : ""}
+                                </span>
+                              )}
                               {shouldShowChatIcon(c, currentUser) && (hasUnreadChat || (c.todayMessagesCount || 0) > 0) && (
                                 <span className="relative inline-flex items-center shrink-0" title={hasUnreadChat ? "New Messages" : `${c.todayMessagesCount} messages today`}>
                                   <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${hasUnreadChat ? "text-emerald-500" : "text-slate-400"}`} />
@@ -2269,6 +2284,7 @@ export default function CasesPage() {
         scope="internal_files"
         caseIds={Array.from(dl.selected)}
         onStarted={dl.exit}
+        canReset={activeUserRole === "admin"}
       />
 
       <BulkOutputUploadModal

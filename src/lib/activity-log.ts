@@ -97,6 +97,7 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
   if (action === 'case.bulk_download_completed') return 'Bulk download completed'
   if (action === 'case.bulk_download_failed') return 'Bulk download failed'
   if (action === 'bulk_download.rejected') return 'Bulk download rejected'
+  if (action === 'case.bulk_download_reset') return 'Bulk download status reset'
 
   if (action === 'case.updated') {
     const changes = (details?.changes as Record<string, unknown> | undefined) || {}

@@ -365,6 +365,13 @@
       "when": 1789000400000,
       "tag": "0056_lock_down_postgrest_access",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1789000500000,
+      "tag": "0057_case_bulk_downloads",
+      "breakpoints": true
     }
   ]
 }

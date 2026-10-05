@@ -46,4 +46,14 @@ export function timelineForClient(timeline: unknown): CaseTimelineEvent[] {
     .map(({ clientLabel: _cl, clientHidden: _ch, ...rest }) => rest as CaseTimelineEvent)
 }
 
+/**
+ * Bulk-download tracking: the lab may see ITS download flag, but never that/when Iconic staff downloaded its
+ * files. Strip the staff-only field from every lab-role case payload.
+ */
+export function stripStaffOnlyCaseFields<T extends Record<string, unknown>>(row: T, role: string): T {
+  if (role !== 'client' && role !== 'subuser') return row
+  const { internalFilesDownloadedAt: _internal, internalFilesDownloadedBy: _by, ...rest } = row as Record<string, unknown>
+  return rest as T
+}
+
 export const isLabRole = (role: string) => role === 'client' || role === 'subuser'
