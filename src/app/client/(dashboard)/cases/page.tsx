@@ -10,6 +10,8 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { ToothChart } from "@/src/components/ToothChart";
 import { ThreeShapeImport } from "@/src/components/ThreeShapeImport/ThreeShapeImport";
 import { type CaseStatus } from "@/src/data/demoData";
+import { BulkDownloadDialog } from "@/src/components/bulk-download/BulkDownloadDialog";
+import { useBulkSelection } from "@/src/components/bulk-download/useBulkSelection";
 import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle, Factory, Ban } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
@@ -195,6 +197,10 @@ export default function CasesPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
 
   const [cases, setCases] = useState<any[]>([]);
+  // Bulk download of design outputs — only cases in client review / approved qualify.
+  const bulk = useBulkSelection();
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const isOutputDownloadable = (c: any) => c.status === "submitted_to_client" || c.status === "approved";
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -1029,6 +1035,18 @@ export default function CasesPage() {
             >
               <Download className="h-3.5 w-3.5" /> Export
             </Button>
+            {bulk.selectMode ? (
+              <>
+                <Button size="sm" className="h-8 text-xs gap-1.5" disabled={bulk.selected.size === 0} onClick={() => setBulkDialogOpen(true)}>
+                  <FileArchive className="h-3.5 w-3.5" /> Download ({bulk.selected.size})
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={bulk.exit}>Cancel</Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => bulk.setSelectMode(true)}>
+                <FileArchive className="h-3.5 w-3.5" /> Download outputs
+              </Button>
+            )}
             <Dialog open={uploadOpen} onOpenChange={(val) => {
               if (isSubmitting || isUploading || isLibraryUploading) return;
               setUploadOpen(val);
@@ -2018,6 +2036,16 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
+                    {bulk.selectMode && (
+                      <th className="px-3.5 py-2 w-8">
+                        <input
+                          type="checkbox"
+                          title="Select all loaded cases ready for download"
+                          checked={filtered.filter(isOutputDownloadable).length > 0 && filtered.filter(isOutputDownloadable).every((c) => bulk.selected.has(c.id))}
+                          onChange={(e) => bulk.setAll(e.target.checked ? filtered.filter(isOutputDownloadable).map((c) => c.id) : [])}
+                        />
+                      </th>
+                    )}
                     {["Case ID", "Case Name", "Type", "Case Sub Type", "Teeth", "Status", "Designer", "CreatedAt", "Actions"].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-3.5 py-2">{h}</th>
                     ))}
@@ -2059,6 +2087,17 @@ export default function CasesPage() {
                           className={`cursor-pointer transition-colors border-l-2 ${c.status === "on_hold" ? "bg-red-50 hover:bg-red-100/80 border-l-red-500" : c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "hover:bg-muted/10 border-l-transparent"}`}
                           onClick={() => router.push(`/client/cases/${c.id}`)}
                         >
+                          {bulk.selectMode && (
+                            <td className="px-3.5 py-2 w-8" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                disabled={!isOutputDownloadable(c)}
+                                title={isOutputDownloadable(c) ? undefined : "Output not available yet"}
+                                checked={bulk.selected.has(c.id)}
+                                onChange={() => bulk.toggle(c.id)}
+                              />
+                            </td>
+                          )}
                           <td className="px-3.5 py-2">
                             <div className="flex items-center gap-1.5">
                               <Link
@@ -2151,7 +2190,7 @@ export default function CasesPage() {
                     })
                   )}
                   {!isLoading && !isFetching && filtered.length === 0 && (
-                    <tr><td colSpan={9} className="px-3.5 py-8 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
+                    <tr><td colSpan={bulk.selectMode ? 10 : 9} className="px-3.5 py-8 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
@@ -2260,6 +2299,13 @@ export default function CasesPage() {
             </div>
           </DialogContent>
         </Dialog>
+        <BulkDownloadDialog
+          open={bulkDialogOpen}
+          onOpenChange={setBulkDialogOpen}
+          scope="client_output"
+          caseIds={Array.from(bulk.selected)}
+          onStarted={bulk.exit}
+        />
       </div>
 
   );

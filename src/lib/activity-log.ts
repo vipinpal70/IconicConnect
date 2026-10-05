@@ -93,6 +93,10 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
   }
   if (action === 'case.milling_shipment_recorded') return 'Shipment recorded by milling centre'
   if (action === 'case.milling_file_uploaded') return 'Milling centre uploaded a file'
+  if (action === 'case.bulk_download_started') return 'Bulk download started'
+  if (action === 'case.bulk_download_completed') return 'Bulk download completed'
+  if (action === 'case.bulk_download_failed') return 'Bulk download failed'
+  if (action === 'bulk_download.rejected') return 'Bulk download rejected'
 
   if (action === 'case.updated') {
     const changes = (details?.changes as Record<string, unknown> | undefined) || {}
@@ -156,6 +160,11 @@ function getClientTimelineOverride(
   }
   if (action === 'case.milling_shipment_recorded') return { clientHidden: true }
   if (action === 'case.milling_file_uploaded') return { clientHidden: true }
+  // Internal-team downloads of the lab's files are an internal audit trail only;
+  // the client sees just their own output downloads.
+  if (action.startsWith('case.bulk_download_') && details?.scope !== 'client_output') {
+    return { clientHidden: true }
+  }
   return null
 }
 

@@ -43,7 +43,10 @@ import { AddCaseDialog } from "@/src/components/AddCaseDialog";
 import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
 import { AssignDesignPartnerDialog } from "@/src/components/AssignDesignPartnerDialog";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
+import { BulkDownloadDialog } from "@/src/components/bulk-download/BulkDownloadDialog";
+import { useBulkSelection } from "@/src/components/bulk-download/useBulkSelection";
 import {
+	FileArchive,
 	Search,
 	ShieldCheck,
 	UserPlus,
@@ -292,6 +295,9 @@ function buildCasesQuery(f: AppliedCaseFilters, limit: number, page: number): st
 }
 
 export default function AdminCasesPage() {
+	// Bulk download of the client/lab's case files (internal side).
+	const dl = useBulkSelection();
+	const [dlDialogOpen, setDlDialogOpen] = useState(false);
 	const [isAddOpen, setIsAddOpen] = useState(false);
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("All");
@@ -924,6 +930,33 @@ export default function AdminCasesPage() {
 						</p>
 					</div>
 					<div className="flex items-center gap-2">
+						{dl.selectMode ? (
+							<>
+								<span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+									{dl.selected.size} selected
+								</span>
+								<Button
+									size="sm"
+									className="h-8 text-xs gap-1.5"
+									disabled={dl.selected.size === 0}
+									onClick={() => setDlDialogOpen(true)}
+								>
+									<FileArchive className="h-3.5 w-3.5" /> Download
+								</Button>
+								<Button size="sm" variant="ghost" className="h-8 text-xs" onClick={dl.exit}>
+									Cancel
+								</Button>
+							</>
+						) : (
+							<Button
+								variant="outline"
+								size="sm"
+								className="h-8 text-xs gap-1.5"
+								onClick={() => dl.setSelectMode(true)}
+							>
+								<FileArchive className="h-3.5 w-3.5" /> Download files
+							</Button>
+						)}
 						<Button
 							variant="outline"
 							size="sm"
@@ -1179,6 +1212,17 @@ export default function AdminCasesPage() {
 							<table className="w-full text-xs">
 								<thead>
 									<tr className="border-b border-border bg-muted/30">
+										{dl.selectMode && (
+											<th className="w-8 px-3.5 py-2">
+												<input
+													type="checkbox"
+													aria-label="Select all loaded cases"
+													checked={filtered.length > 0 && filtered.slice(0, dl.max).every((c) => dl.selected.has(c.id))}
+													onChange={(e) => dl.setAll(e.target.checked ? filtered.map((c) => c.id) : [])}
+													className="h-4 w-4 rounded border-border cursor-pointer"
+												/>
+											</th>
+										)}
 										{[
 											"Case",
 											"Client",
@@ -1227,7 +1271,7 @@ export default function AdminCasesPage() {
 									) : error ? (
 										<tr>
 											<td
-												colSpan={7}
+												colSpan={dl.selectMode ? 8 : 7}
 												className="px-3.5 py-8 text-center text-xs text-red-500"
 											>
 												{(error as Error).message}
@@ -1236,7 +1280,7 @@ export default function AdminCasesPage() {
 									) : filtered.length === 0 ? (
 										<tr>
 											<td
-												colSpan={7}
+												colSpan={dl.selectMode ? 8 : 7}
 												className="px-3.5 py-8 text-center text-xs text-muted-foreground"
 											>
 												No cases found.
@@ -1265,6 +1309,17 @@ export default function AdminCasesPage() {
 													key={caseItem.id}
 													className={`transition-colors border-l-2 ${caseItem.status === "on_hold" ? "bg-red-50 hover:bg-red-100/80 border-l-red-500" : caseItem.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-medium" : "hover:bg-muted/10 border-l-transparent"}`}
 												>
+													{dl.selectMode && (
+														<td className="w-8 px-3.5 py-2">
+															<input
+																type="checkbox"
+																aria-label={`Select case ${caseItem.caseNumber || caseItem.id}`}
+																checked={dl.selected.has(caseItem.id)}
+																onChange={() => dl.toggle(caseItem.id)}
+																className="h-4 w-4 rounded border-border cursor-pointer"
+															/>
+														</td>
+													)}
 													<td className="px-3.5 py-2">
 														<div className="flex items-center gap-1.5">
 															<Link
@@ -2534,6 +2589,13 @@ export default function AdminCasesPage() {
 					}}
 				/>
 			)}
+			<BulkDownloadDialog
+				open={dlDialogOpen}
+				onOpenChange={setDlDialogOpen}
+				scope="internal_files"
+				caseIds={Array.from(dl.selected)}
+				onStarted={dl.exit}
+			/>
 		</>
 	);
 }

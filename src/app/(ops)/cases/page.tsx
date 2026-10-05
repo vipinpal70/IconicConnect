@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
-import { Plus, Search, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory, PauseCircle, Undo2, Ban } from "lucide-react";
+import { Plus, Search, FileArchive, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory, PauseCircle, Undo2, Ban } from "lucide-react";
 import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
@@ -21,6 +21,8 @@ import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { BulkOutputUploadModal } from "@/src/components/BulkOutputUploadModal";
+import { BulkDownloadDialog } from "@/src/components/bulk-download/BulkDownloadDialog";
+import { useBulkSelection } from "@/src/components/bulk-download/useBulkSelection";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 
 interface BulkRow {
@@ -468,6 +470,9 @@ export default function CasesPage() {
   const [isUploadingHoldImages, setIsUploadingHoldImages] = useState(false);
   const [approveChecklist, setApproveChecklist] = useState<Record<string, boolean>>({});
   const [approveSelectMode, setApproveSelectMode] = useState(false);
+  // Bulk download of the client/lab's case files — separate from approve mode; the two are mutually exclusive.
+  const dl = useBulkSelection();
+  const [dlDialogOpen, setDlDialogOpen] = useState(false);
   const [selectedApproveIds, setSelectedApproveIds] = useState<Set<string>>(new Set());
   const [showApproveAllModal, setShowApproveAllModal] = useState(false);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
@@ -1175,7 +1180,22 @@ export default function CasesPage() {
             <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} shown{hasMore ? " · more available" : ""}</p>
           </div>
           <div className="flex gap-2 items-center">
-            {canBulkApprove && (approvableCases.length > 0 || approveSelectMode) && (
+            {!approveSelectMode && (
+              dl.selectMode ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{dl.selected.size} selected</span>
+                  <Button size="sm" className="h-8 text-xs gap-1.5" disabled={dl.selected.size === 0} onClick={() => setDlDialogOpen(true)}>
+                    <FileArchive className="h-3.5 w-3.5" /> Download
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={dl.exit}>Cancel</Button>
+                </div>
+              ) : (
+                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={() => dl.setSelectMode(true)}>
+                  <FileArchive className="h-3.5 w-3.5" /> Download files
+                </Button>
+              )
+            )}
+            {canBulkApprove && !dl.selectMode && (approvableCases.length > 0 || approveSelectMode) && (
               approveSelectMode ? (
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
@@ -1321,6 +1341,17 @@ export default function CasesPage() {
               <table className="w-full">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
+                    {dl.selectMode && (
+                      <th className="w-8 px-3.5 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all loaded cases"
+                          checked={filtered.length > 0 && filtered.slice(0, dl.max).every((c) => dl.selected.has(c.id))}
+                          onChange={(e) => dl.setAll(e.target.checked ? filtered.map((c) => c.id) : [])}
+                          className="h-4 w-4 rounded border-border cursor-pointer"
+                        />
+                      </th>
+                    )}
                     {approveSelectMode && (
                       <th className="w-8 px-3.5 py-2">
                         <input
@@ -1341,7 +1372,7 @@ export default function CasesPage() {
                   {isLoading ? (
                     Array.from({ length: 5 }).map((_, idx) => (
                       <tr key={idx} className="animate-pulse">
-                        {Array.from({ length: approveSelectMode ? 10 : 9 }).map((__, col) => (
+                        {Array.from({ length: approveSelectMode || dl.selectMode ? 10 : 9 }).map((__, col) => (
                           <td key={col} className="px-3.5 py-2"><div className="h-3 bg-muted rounded w-16" /></td>
                         ))}
                       </tr>
@@ -1402,6 +1433,17 @@ export default function CasesPage() {
                           className={`cursor-pointer transition-colors border-l-2 ${c.status === "on_hold" ? "bg-red-50 hover:bg-red-100/80 border-l-red-500" : c.status === "submitted_to_client" ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] border-l-amber-500 font-[10px]" : "hover:bg-muted/10 border-l-transparent"}`}
                           onClick={() => router.push(`/cases/${c.id}`)}
                         >
+                          {dl.selectMode && (
+                            <td className="w-8 px-3.5 py-1.5" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                aria-label={`Select case ${c.caseNumber || c.id}`}
+                                checked={dl.selected.has(c.id)}
+                                onChange={() => dl.toggle(c.id)}
+                                className="h-4 w-4 rounded border-border cursor-pointer"
+                              />
+                            </td>
+                          )}
                           {approveSelectMode && (
                             <td className="w-8 px-3.5 py-1.5" onClick={(e) => e.stopPropagation()}>
                               {approvableIdSet.has(c.id) ? (
@@ -1850,7 +1892,7 @@ export default function CasesPage() {
                     })
                   )}
                   {!isLoading && !isFetching && filtered.length === 0 && (
-                    <tr><td colSpan={approveSelectMode ? 10 : 9} className="px-3.5 py-6 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
+                    <tr><td colSpan={approveSelectMode || dl.selectMode ? 10 : 9} className="px-3.5 py-6 text-center text-xs text-muted-foreground">No cases match your filters</td></tr>
                   )}
                 </tbody>
               </table>
@@ -2220,6 +2262,14 @@ export default function CasesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <BulkDownloadDialog
+        open={dlDialogOpen}
+        onOpenChange={setDlDialogOpen}
+        scope="internal_files"
+        caseIds={Array.from(dl.selected)}
+        onStarted={dl.exit}
+      />
 
       <BulkOutputUploadModal
         open={bulkUploadOpen}
