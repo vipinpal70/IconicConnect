@@ -46,7 +46,6 @@ export async function GET(
   const isAdmin = currentProfile?.role === 'admin';
   const isSelf = user.id === id;
 
-  console.log(`[api/member/GET] Request by ${user.email}. isAdmin: ${isAdmin}, isSelf: ${isSelf}, targetId: ${id}`);
 
   if (!isAdmin && !isSelf) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -83,7 +82,6 @@ export async function PATCH(
   const isAdmin = currentProfile?.role === 'admin';
   const isSelf = user.id === id;
 
-  console.log(`[api/member/PATCH] Request by ${user.email}. isAdmin: ${isAdmin}, isSelf: ${isSelf}, targetId: ${id}`);
 
   if (!isAdmin && !isSelf) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

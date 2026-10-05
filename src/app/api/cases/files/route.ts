@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
     const labName = searchParams.get('labName');
     const fileName = searchParams.get('fileName');
 
-    if (!labName || !fileName) {
-      return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    if (!labName || !fileName || labName.length > 300 || fileName.length > 600 || /[\u0000-\u001f]/.test(labName + fileName)) {
+      return NextResponse.json({ error: 'Missing or invalid parameters' }, { status: 400 });
     }
 
     // Role-based security check
@@ -90,11 +90,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    // Detect content type for proper browser rendering
-    const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+    // User-uploaded content is untrusted. It must never run with this app's origin (session cookies,
+    // same-origin APIs), so:
+    //  - everything except HTML is a forced download with nosniff
+    //  - HTML (3D/preview viewers) is shown in a CSP sandbox WITHOUT allow-same-origin: scripts can run
+    //    but get an opaque origin, so an uploaded page can't read cookies or call our API as the viewer
+    const ext = fileName.lastIndexOf('.') >= 0 ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : '';
     const isHtml = ext === '.html' || ext === '.htm';
+    const safeName = encodeURIComponent(fileName);
     const contentType = isHtml ? 'text/html; charset=utf-8' : 'application/octet-stream';
-    const disposition = isHtml ? `inline; filename="${encodeURIComponent(fileName)}"` : `attachment; filename="${encodeURIComponent(fileName)}"`;
+    const disposition = isHtml ? `inline; filename="${safeName}"` : `attachment; filename="${safeName}"`;
 
     // Stream the R2 object body straight through to the client
     const webStream = (object.Body as any).transformToWebStream() as ReadableStream;
@@ -102,15 +107,18 @@ export async function GET(req: NextRequest) {
     const headers: Record<string, string> = {
       'Content-Type': contentType,
       'Content-Disposition': disposition,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, no-store',
+      'Cross-Origin-Resource-Policy': 'same-origin',
     };
     if (typeof object.ContentLength === 'number') {
       headers['Content-Length'] = object.ContentLength.toString();
     }
 
-    // Allow HTML files to be embedded in iframes
     if (isHtml) {
-      headers['X-Frame-Options'] = 'SAMEORIGIN';
-      headers['Content-Security-Policy'] = "frame-ancestors 'self'";
+      headers['Content-Security-Policy'] = "sandbox allow-scripts; frame-ancestors 'self'";
+    } else {
+      headers['Content-Security-Policy'] = "default-src 'none'; sandbox";
     }
 
     return new Response(webStream, { headers });
@@ -140,8 +148,8 @@ export async function DELETE(req: NextRequest) {
     const labName = searchParams.get('labName');
     const fileName = searchParams.get('fileName');
 
-    if (!labName || !fileName) {
-      return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    if (!labName || !fileName || labName.length > 300 || fileName.length > 600 || /[\u0000-\u001f]/.test(labName + fileName)) {
+      return NextResponse.json({ error: 'Missing or invalid parameters' }, { status: 400 });
     }
 
     // Role-based security check
@@ -150,8 +158,7 @@ export async function DELETE(req: NextRequest) {
     if (
       isValidRoleForType('admin_portal', profile.role) ||
       profile.role === 'qc' ||
-      profile.role === 'designer' ||
-      profile.role === 'account_manager'
+      profile.role === 'designer'
     ) {
       allowed = true;
     } else if (profile.role === 'client') {

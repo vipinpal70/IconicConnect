@@ -358,6 +358,13 @@
       "when": 1789000300000,
       "tag": "0055_case_hold_files",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1789000400000,
+      "tag": "0056_lock_down_postgrest_access",
+      "breakpoints": true
     }
   ]
 }

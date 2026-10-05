@@ -59,8 +59,8 @@ export function ResetPasswordModal({ client, open, onOpenChange }: ResetPassword
   })
 
   const handleReset = () => {
-    if (newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters")
+    if (newPassword.length < 10) {
+      toast.error("Password must be at least 10 characters")
       return
     }
     mutation.mutate(newPassword)

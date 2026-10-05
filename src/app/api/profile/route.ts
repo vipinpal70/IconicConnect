@@ -28,11 +28,14 @@ export async function GET() {
       .where(eq(profiles.id, user.id))
       .limit(1)
 
-    const profile = results[0]
+    const row = results[0]
 
-    if (!profile) {
+    if (!row) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
+
+    // Never expose the legacy plaintext `password` column (and don't cache it in Redis).
+    const { password: _legacyPassword, ...profile } = row
 
     await setCachedData(key, profile, PROFILE_TTL)
     return NextResponse.json(profile)

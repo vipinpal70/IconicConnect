@@ -58,7 +58,7 @@ async function updateOffer(req: NextRequest) {
     return NextResponse.json({ error: "Profile not found" }, { status: 404 })
   }
 
-  if (!isValidRoleForType("admin_portal", userContext.profile.role)) {
+  if (userContext.profile.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
     }
 
-    if (!isValidRoleForType("admin_portal", userContext.profile.role)) {
+    if (userContext.profile.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -259,7 +259,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })
     }
 
-    if (!isValidRoleForType("admin_portal", userContext.profile.role)) {
+    if (userContext.profile.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

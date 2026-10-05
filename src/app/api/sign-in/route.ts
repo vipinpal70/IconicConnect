@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { email, password } = body
 
-    if (!email || !password) {
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password || email.length > 254 || password.length > 256) {
       return NextResponse.json(
         { error: 'Email and password are required' },
         { status: 400 }
@@ -21,8 +21,9 @@ export async function POST(req: NextRequest) {
     })
 
     if (error) {
+      // Same message for every failure so responses don't distinguish unknown email / wrong password / etc.
       return NextResponse.json(
-        { error: error.message },
+        { error: 'Invalid email or password' },
         { status: 401 }
       )
     }
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (profile && profile.user_status !== 'active') {
+      // Don't leave a live session behind for a pending/suspended account.
+      await supabase.auth.signOut().catch(() => {})
       return NextResponse.json(
         {
           success: false,
@@ -75,8 +78,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        user: data.user,
-        session: data.session,
+        // The session is carried by the Supabase auth cookies set above; tokens are deliberately not echoed in the body.
         redirectUrl,
       },
       { status: 200 }

@@ -1,3 +1,4 @@
+import { isValidUploadFileName } from '@/src/lib/security/file-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, casePreviewFiles } from '@/src/db/schema/case';
@@ -95,8 +96,15 @@ export async function POST(req: NextRequest) {
         if (!item.caseId || !item.storageKey || !item.fileName) {
           throw new Error('Missing caseId, storageKey or fileName');
         }
-        if (!item.storageKey.startsWith(`${STAGING_PREFIX}/`)) {
+        if (!item.storageKey.startsWith(`${STAGING_PREFIX}/`) || item.storageKey.includes('..')) {
           throw new Error('Invalid storageKey');
+        }
+        // Only confirm objects this user staged (admins may confirm any staged object).
+        if (profile.role !== 'admin' && !item.storageKey.startsWith(`${STAGING_PREFIX}/${profile.id}/`)) {
+          throw new Error('Forbidden: staged file belongs to another user');
+        }
+        if (!isValidUploadFileName(item.fileName)) {
+          throw new Error('Invalid file name');
         }
 
         const caseRecord = await db.select().from(cases).where(eq(cases.id, item.caseId)).limit(1).then(r => r[0]);
@@ -126,8 +134,14 @@ export async function POST(req: NextRequest) {
             if (!preview.storageKey || !preview.fileName) {
               throw new Error('Missing storageKey or fileName on a preview file');
             }
-            if (!preview.storageKey.startsWith(`${STAGING_PREFIX}/`)) {
+            if (!preview.storageKey.startsWith(`${STAGING_PREFIX}/`) || preview.storageKey.includes('..')) {
               throw new Error('Invalid previewStorageKey');
+            }
+            if (profile.role !== 'admin' && !preview.storageKey.startsWith(`${STAGING_PREFIX}/${profile.id}/`)) {
+              throw new Error('Forbidden: staged file belongs to another user');
+            }
+            if (!isValidUploadFileName(preview.fileName)) {
+              throw new Error('Invalid file name');
             }
             if (typeof preview.fileSize === 'number' && preview.fileSize > MAX_PREVIEW_FILE_SIZE) {
               throw new Error(`Preview file "${preview.fileName}" exceeds the 1GB limit`);

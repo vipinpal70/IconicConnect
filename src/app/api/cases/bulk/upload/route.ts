@@ -1,3 +1,4 @@
+import { isValidUploadFileName } from '@/src/lib/security/file-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { db } from '@/src/db';
@@ -60,6 +61,16 @@ function stagingOwnerPrefix(uploaderId: string) {
   return `${STAGING_PREFIX}/${uploaderId}/`;
 }
 
+/** sign/complete/abort may only touch the caller's own staging area (admins: any staging object). */
+function assertStagingKey(profile: AuthedProfile, storageKey: unknown): NextResponse | null {
+  if (typeof storageKey !== 'string' || !storageKey || storageKey.length > 1024 || storageKey.includes('..')) {
+    return NextResponse.json({ error: 'Invalid storageKey' }, { status: 400 });
+  }
+  const owned = storageKey.startsWith(stagingOwnerPrefix(profile.id));
+  const adminStaged = profile.role === 'admin' && storageKey.startsWith(`${STAGING_PREFIX}/`);
+  return owned || adminStaged ? null : NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+}
+
 // ── Step 1: initialise the multipart upload into staging ─────────────────────
 async function handleInit(req: NextRequest, profile: AuthedProfile) {
   const { searchParams } = new URL(req.url);
@@ -69,6 +80,9 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
 
   if (!fileName) {
     return NextResponse.json({ error: 'File Name is required' }, { status: 400 });
+  }
+  if (!isValidUploadFileName(fileName)) {
+    return NextResponse.json({ error: 'Invalid file name' }, { status: 400 });
   }
   if (fileSize > MAX_FILE_SIZE) {
     return NextResponse.json({ error: 'File size exceeds the 5GB limit' }, { status: 400 });
@@ -95,7 +109,7 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
 }
 
 // ── Step 2: hand the browser presigned UploadPart URLs ───────────────────────
-async function handleSign(req: NextRequest) {
+async function handleSign(req: NextRequest, profile: AuthedProfile) {
   const { storageKey, uploadId, totalParts } = await req.json() as {
     storageKey: string;
     uploadId: string;
@@ -105,6 +119,11 @@ async function handleSign(req: NextRequest) {
   if (!storageKey || !uploadId || !totalParts || totalParts < 1) {
     return NextResponse.json({ error: 'Missing storageKey, uploadId or totalParts' }, { status: 400 });
   }
+  if (!Number.isInteger(totalParts) || totalParts > 10000) {
+    return NextResponse.json({ error: 'Invalid totalParts' }, { status: 400 });
+  }
+  const denied = assertStagingKey(profile, storageKey);
+  if (denied) return denied;
 
   const urls = await Promise.all(
     Array.from({ length: totalParts }, (_, i) => {
@@ -121,7 +140,7 @@ async function handleSign(req: NextRequest) {
 }
 
 // ── Step 3: assemble the object from the uploaded parts ──────────────────────
-async function handleComplete(req: NextRequest) {
+async function handleComplete(req: NextRequest, profile: AuthedProfile) {
   const body = await req.json();
   const { storageKey, uploadId, fileName, fileSize, fileType, parts } = body as {
     storageKey: string;
@@ -135,6 +154,8 @@ async function handleComplete(req: NextRequest) {
   if (!storageKey || !uploadId || !Array.isArray(parts) || parts.length === 0) {
     return NextResponse.json({ error: 'Missing storageKey, uploadId or parts' }, { status: 400 });
   }
+  const denied = assertStagingKey(profile, storageKey);
+  if (denied) return denied;
 
   const orderedParts = [...parts].sort((a, b) => a.PartNumber - b.PartNumber);
 
@@ -155,11 +176,13 @@ async function handleComplete(req: NextRequest) {
 }
 
 // ── Cleanup: abort a partially uploaded object ───────────────────────────────
-async function handleAbort(req: NextRequest) {
+async function handleAbort(req: NextRequest, profile: AuthedProfile) {
   const { storageKey, uploadId } = await req.json();
   if (!storageKey || !uploadId) {
     return NextResponse.json({ error: 'Missing storageKey or uploadId' }, { status: 400 });
   }
+  const denied = assertStagingKey(profile, storageKey);
+  if (denied) return denied;
   await r2.send(new AbortMultipartUploadCommand({
     Bucket: R2_BUCKET,
     Key: storageKey,
@@ -179,11 +202,11 @@ export async function POST(req: NextRequest) {
       case 'init':
         return await handleInit(req, auth.profile);
       case 'sign':
-        return await handleSign(req);
+        return await handleSign(req, auth.profile);
       case 'complete':
-        return await handleComplete(req);
+        return await handleComplete(req, auth.profile);
       case 'abort':
-        return await handleAbort(req);
+        return await handleAbort(req, auth.profile);
       default:
         return NextResponse.json({ error: 'Unknown or missing action' }, { status: 400 });
     }

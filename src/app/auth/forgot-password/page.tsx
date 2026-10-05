@@ -27,7 +27,7 @@ export default function ForgotPasswordPage() {
     },
     onSuccess: () => {
       setSubmitted(true)
-      toast.success('Password reset link sent to your email')
+      toast.success('If an account exists for that email, a reset link has been sent')
     },
     onError: (error: Error) => {
       toast.error(error.message)

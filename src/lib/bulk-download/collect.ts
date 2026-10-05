@@ -1,3 +1,4 @@
+import { isOurSupabaseStorageUrl } from '@/src/lib/security/safe-url'
 import { and, asc, eq, inArray, notInArray } from 'drizzle-orm'
 import { db } from '@/src/db'
 import {
@@ -22,7 +23,9 @@ export function resolveSource(url: string | null | undefined): SourceRef | null 
   if (!url) return null
   const key = keyFromProxyUrl(url)
   if (key) return { kind: 'r2', key }
-  if (/^https?:\/\//i.test(url)) return { kind: 'http', url }
+  // Legacy uploads only: our own Supabase Storage host. Any other absolute URL is refused — the value is
+  // client-controllable, so fetching it server-side would be an SSRF.
+  if (isOurSupabaseStorageUrl(url)) return { kind: 'http', url }
   return null
 }
 

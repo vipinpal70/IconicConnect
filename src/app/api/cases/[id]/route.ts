@@ -1,3 +1,4 @@
+import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, EDITABLE_STATUSES, caseMessages, caseFiles, caseHoldFiles } from '@/src/db/schema/case';
@@ -14,6 +15,7 @@ import { canTransitionCaseStatus } from '@/src/lib/case-status-transitions';
 import { canCancelCase } from '@/src/lib/case-utils';
 import type { CaseStatus, ServiceType } from '@/src/lib/case-status-mapping';
 import { millingCaseAssignments } from '@/src/db/schema/milling';
+import { denyUnlessMillingAssigned, timelineForClient, isLabRole } from '@/src/lib/case-access';
 
 const CASE_DETAIL_TTL = 300 // 5 minutes
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat';
@@ -92,6 +94,9 @@ export async function GET(
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
+    const millingDenied = await denyUnlessMillingAssigned(profile, id);
+    if (millingDenied) return millingDenied;
+
     const detailCacheKey = `case:detail:${id}`
     const cachedDetail = await getCachedData<Record<string, unknown>>(detailCacheKey)
     if (cachedDetail) {
@@ -100,7 +105,9 @@ export async function GET(
       if ((profile.role === 'client' || profile.role === 'subuser') && cachedDetail.clientId !== effectiveClientIdCheck) {
         return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 });
       }
-      return NextResponse.json({ data: cachedDetail });
+      return NextResponse.json({
+        data: isLabRole(profile.role) ? { ...cachedDetail, timeline: timelineForClient(cachedDetail.timeline) } : cachedDetail,
+      });
     }
 
     const caseRecord = await db.select().from(cases).where(eq(cases.id, id)).limit(1).then(res => res[0]);
@@ -135,7 +142,9 @@ export async function GET(
 
     const detailPayload = { ...caseRecord, designerName, qcName, accountManagerName }
     await setCachedData(detailCacheKey, detailPayload, CASE_DETAIL_TTL)
-    return NextResponse.json({ data: detailPayload });
+    return NextResponse.json({
+      data: isLabRole(profile.role) ? { ...detailPayload, timeline: timelineForClient(detailPayload.timeline) } : detailPayload,
+    });
   } catch (error: unknown) {
     console.error('Get case error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
@@ -173,6 +182,17 @@ export async function PUT(
     }
 
     const body = await req.json();
+
+    // File references written onto a case are later rendered into links/iframes and fetched
+    // server-side, so only our own proxy/storage URLs are accepted.
+    const fileRefs: unknown[] = [
+      ...(typeof body.outputFile === 'string' && body.outputFile ? [body.outputFile] : []),
+      ...(typeof body.previewFile === 'string' && body.previewFile ? [body.previewFile] : []),
+      ...(Array.isArray(body.holdImages) ? body.holdImages.map((h: { fileUrl?: unknown }) => h?.fileUrl) : []),
+    ];
+    if (fileRefs.some((u) => !isSafeStoredFileUrl(u))) {
+      return NextResponse.json({ error: 'Bad Request: Invalid file reference' }, { status: 400 });
+    }
     const updateData: CaseUpdateData = {};
 
     // Flow-aware guard, layered on top of the detailed per-role logic below

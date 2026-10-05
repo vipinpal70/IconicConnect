@@ -37,7 +37,7 @@ async function getAdminProfile() {
     return { user, profile: null, error: "Profile not found" as const }
   }
 
-  if (!isValidRoleForType("admin_portal", profile.role)) {
+  if (profile.role !== "admin") {
     return { user, profile, error: "Forbidden" as const }
   }
 

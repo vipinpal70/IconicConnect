@@ -1,3 +1,6 @@
+import { validatePasswordStrength } from '@/src/lib/security/password'
+import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link'
+import { escapeHtml } from '@/src/lib/security/html'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
@@ -21,8 +24,9 @@ export async function POST(
     const body = await req.json()
     const { password } = body
 
-    if (!password || typeof password !== 'string') {
-      return NextResponse.json({ error: 'Password is required' }, { status: 400 })
+    const passwordError = validatePasswordStrength(password)
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 })
     }
 
     const [user] = await db.select().from(profiles).where(eq(profiles.id, id)).limit(1)
@@ -42,6 +46,7 @@ export async function POST(
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const setLink = await createSetPasswordLink(user.email)
     const { queued: emailQueued, error: emailError } = await queueEmailSafely({
       to: user.email,
       subject: 'Your IconicConnect Milling Portal Password has been Reset',
@@ -49,14 +54,14 @@ export async function POST(
       html: `
         <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px;">
           <h2 style="color:#065f46;margin-bottom:4px;">Password Reset</h2>
-          <p style="color:#111827;">Hello ${user.fullName || user.email},</p>
+          <p style="color:#111827;">Hello ${escapeHtml(user.fullName || user.email)},</p>
           <p style="color:#374151;">Your Milling Portal password has been reset by an administrator.</p>
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0;">
             <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Login URL:</strong> <a href="${appUrl}/auth/sign-in" style="color:#059669;">${appUrl}/auth/sign-in</a></p>
-            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${user.email}</p>
-            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>New Password:</strong> <code style="background:#e5e7eb;padding:2px 6px;border-radius:4px;">${password}</code></p>
+            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${escapeHtml(user.email)}</p>
+            ${setPasswordBlock(setLink, appUrl)}
           </div>
-          <p style="color:#6b7280;font-size:13px;">Please change your password after logging in.</p>
+          
         </div>
       `,
     })

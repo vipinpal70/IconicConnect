@@ -1,3 +1,4 @@
+import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, caseFiles, caseReferenceFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum, serviceTypeEnum } from '@/src/db/schema/case';
@@ -252,6 +253,9 @@ export async function POST(req: NextRequest) {
 
     // Fetch client profile to get lab name for folder structure
     const clientProfile = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1).then(res => res[0]);
+    if (!clientProfile || clientProfile.role !== 'client') {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
     const labName = getProfileLabName(clientProfile);
     const enabledServiceTypes = clientProfile?.enabledServiceTypes ?? ['design_only'];
     const modelOnlyLab = clientProfile?.modelOnlyLab ?? false;
@@ -296,6 +300,18 @@ export async function POST(req: NextRequest) {
         || Boolean(file);
       if (!hasFile) {
         return NextResponse.json({ error: 'At least one case file is required.' }, { status: 400 });
+      }
+
+      // Stored file URLs are rendered into links/iframes and fetched server-side later — only accept our own
+      // proxy URLs for THIS client's lab (or our Supabase storage), never arbitrary schemes/hosts/labs.
+      const submittedUrls: unknown[] = [
+        caseData.uploadedFile?.fileUrl,
+        ...(Array.isArray(caseData.uploadedFiles) ? caseData.uploadedFiles.map((f) => f?.fileUrl) : []),
+        ...(Array.isArray(caseData.referenceImages) ? caseData.referenceImages.map((f) => f?.fileUrl) : []),
+        ...(caseData.teethLibraryFileUrl ? [caseData.teethLibraryFileUrl] : []),
+      ].filter((u) => u !== undefined);
+      if (submittedUrls.some((u) => !isSafeStoredFileUrl(u, { expectedLabName: labName }))) {
+        return NextResponse.json({ error: 'Invalid file reference. Please re-upload the file.' }, { status: 400 });
       }
       const subTypeDataForCheck = (caseData.subTypeData as { caseType?: unknown; caseType1?: unknown; teeth?: unknown; die?: unknown; modelRequired?: unknown } | undefined) || {};
       // The primary "Case Type" selector — every category's hierarchy names it

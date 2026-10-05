@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
 import { supabaseAdmin } from '@/src/lib/supabase/admin';
+import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link';
+import { escapeHtml } from '@/src/lib/security/html';
+import { validatePasswordStrength } from '@/src/lib/security/password';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, desc } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
@@ -54,7 +57,6 @@ export async function GET(req: NextRequest) {
       ? members.filter(m => m.status === status)
       : members;
 
-    console.log("GET /api/admin/members - returning members:", filteredMembers.map(m => ({ id: m.id, role: m.role, status: m.status, fullName: m.fullName })));
     return NextResponse.json(filteredMembers);
   } catch (error) {
     console.error('Error fetching members:', error);
@@ -84,8 +86,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { email, password, fullName, role, userType, phone } = body;
 
+    const passwordError = validatePasswordStrength(password);
     if (!email || !password || !role || !userType) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
     // 1. Create user in Supabase Auth
@@ -143,6 +149,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Send credentials email
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const setLink = await createSetPasswordLink(email);
     const { queued: emailQueued, error: emailError } = await queueEmailSafely({
       to: email,
       subject: 'Your IconicConnect Login Credentials',
@@ -151,12 +158,12 @@ export async function POST(req: NextRequest) {
         <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px;">
           <h2 style="color:#065f46;margin-bottom:4px;">Your Account is Ready</h2>
           <p style="color:#6b7280;font-size:14px;margin-top:0;">Welcome to IconicConnect</p>
-          <p style="color:#111827;">Hello <strong>${fullName || email}</strong>,</p>
-          <p style="color:#374151;">An account has been created for you on IconicConnect as <strong>${role.replace(/_/g, ' ')}</strong>. Use the credentials below to sign in.</p>
+          <p style="color:#111827;">Hello <strong>${escapeHtml(fullName || email)}</strong>,</p>
+          <p style="color:#374151;">An account has been created for you on IconicConnect as <strong>${role.replace(/_/g, ' ')}</strong>. Use the details below to get started.</p>
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0;">
             <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Login URL:</strong> <a href="${appUrl}/auth/sign-in" style="color:#059669;">${appUrl}/auth/sign-in</a></p>
-            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${email}</p>
-            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Password:</strong> <code style="background:#e5e7eb;padding:2px 6px;border-radius:4px;">${password}</code></p>
+            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${escapeHtml(email)}</p>
+            ${setPasswordBlock(setLink, appUrl)}
           </div>
           <p style="color:#6b7280;font-size:13px;">Please change your password after your first login.</p>
         </div>

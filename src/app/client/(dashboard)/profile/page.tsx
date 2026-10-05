@@ -375,7 +375,7 @@ export default function ProfilePage() {
                       </div>
                     </div>
                     <div className="space-y-2"><Label>Email</Label><Input type="email" value={userDraft.email ?? ""} onChange={(e) => setUserDraft({ ...userDraft, email: e.target.value })} /></div>
-                    <div className="space-y-2"><Label>Password</Label><Input type="password" minLength={6} placeholder="Minimum 6 characters" value={userDraft.password ?? ""} onChange={(e) => setUserDraft({ ...userDraft, password: e.target.value })} /></div>
+                    <div className="space-y-2"><Label>Password</Label><Input type="password" minLength={10} placeholder="Minimum 10 characters" value={userDraft.password ?? ""} onChange={(e) => setUserDraft({ ...userDraft, password: e.target.value })} /></div>
                   </div>
                   <DialogFooter className="mt-6">
                     <Button onClick={addUser} className="w-full sm:w-auto">Create user</Button>
@@ -403,15 +403,7 @@ export default function ProfilePage() {
                           <Badge variant="outline" className="font-normal border-border text-muted-foreground scale-90 origin-left text-[10px] px-1.5 py-0.5">{u.role}</Badge>
                         </td>
                         <td className="px-3.5 py-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <KeyRound className="h-3 w-3 text-muted-foreground shrink-0" />
-                            <code className="text-[10px] bg-muted/40 px-1.5 py-0.5 rounded text-foreground font-mono leading-none">
-                              {showPwd[u.id] ? u.password : "••••••••"}
-                            </code>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowPwd((s) => ({ ...s, [u.id]: !s[u.id] }))}>
-                              {showPwd[u.id] ? <EyeOff className="h-3 w-3 text-muted-foreground" /> : <Eye className="h-3 w-3 text-muted-foreground" />}
-                            </Button>
-                          </div>
+                          <span className="text-[10px] text-muted-foreground">Password set by the user via emailed link</span>
                         </td>
                         <td className="px-3.5 py-1.5 text-right">
                           {u.role !== "Owner" && (

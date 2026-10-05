@@ -14,6 +14,7 @@ type FormData = {
 	phone: string;
 	password: string;
 	confirmPassword: string;
+	setupKey: string;
 };
 
 
@@ -23,6 +24,7 @@ const initial: FormData = {
 	phone: "",
 	password: "",
 	confirmPassword: "",
+	setupKey: "",
 };
 
 
@@ -47,7 +49,7 @@ export default function AdminSignUp() {
 				headers: {
 					"Content-Type": "application/json",
 					"Authorization": `Bearer ${session?.access_token}`,
-					"x-admin-secret": process.env.NEXT_PUBLIC_ADMIN_SIGNUP_SECRET || "",
+					"x-admin-secret": formData.setupKey,
 				},
 				body: JSON.stringify({
 					email: formData.email,
@@ -85,7 +87,7 @@ export default function AdminSignUp() {
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (form.password !== form.confirmPassword) return;
-		if (form.password.length < 8) return;
+		if (form.password.length < 10) return;
 		signupMutation.mutate(form);
 	};
 
@@ -130,6 +132,11 @@ export default function AdminSignUp() {
 
 					<hr className="border-gray-100" />
 
+					<div className="text-black">
+						<Field label="Admin setup key" name="setupKey" type="password" value={form.setupKey} onChange={handleChange} required />
+						<p className="text-xs text-gray-400 mt-1">Provided by the platform owner. Not stored in the browser.</p>
+					</div>
+
 					<div>
 						<p className="text-[11px] font-medium text-teal-600 tracking-widest uppercase mb-3">
 							Security
@@ -137,7 +144,7 @@ export default function AdminSignUp() {
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-black">
 							<div>
 								<Field label="Password" name="password" type="password" value={form.password} onChange={handleChange} placeholder="••••••••" required />
-								<p className="text-xs text-gray-400 mt-1">Min. 8 characters</p>
+								<p className="text-xs text-gray-400 mt-1">Min. 10 characters, 3 of: lower, upper, number, symbol</p>
 							</div>
 							<Field label="Confirm password" name="confirmPassword" type="password" value={form.confirmPassword} onChange={handleChange} placeholder="••••••••" required />
 						</div>

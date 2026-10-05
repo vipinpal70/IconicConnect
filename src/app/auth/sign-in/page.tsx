@@ -42,10 +42,9 @@ function SignInForm() {
         return;
       }
 
-      if (data.session) {
-        // Set manual auth-token cookie
-        document.cookie = `auth-token=${data.session.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-
+      if (data.success) {
+        // The session is carried by the Supabase auth cookies set by /api/sign-in — never mirror a token
+        // into a JS-readable cookie.
         router.push(data.redirectUrl || '/dashboard')
         router.refresh()
       }

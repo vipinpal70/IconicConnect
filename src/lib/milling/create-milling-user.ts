@@ -1,4 +1,7 @@
 import { eq } from 'drizzle-orm'
+import { validatePasswordStrength } from '@/src/lib/security/password'
+import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link'
+import { escapeHtml } from '@/src/lib/security/html'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { supabaseAdmin } from '@/src/lib/supabase/admin'
@@ -27,6 +30,9 @@ export interface CreateMillingUserInput {
  */
 export async function createMillingUser(input: CreateMillingUserInput) {
   const { email, password, fullName, role, millingCenterId, centerName, phone, actor } = input
+
+  const passwordError = validatePasswordStrength(password)
+  if (passwordError) throw new Error(passwordError)
 
   // Email is unique across every profile (client, admin, milling, etc.) —
   // check up front so a duplicate produces one clear message instead of a
@@ -73,6 +79,7 @@ export async function createMillingUser(input: CreateMillingUserInput) {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const setLink = await createSetPasswordLink(email)
   const { queued: emailQueued, error: emailError } = await queueEmailSafely({
     to: email,
     subject: 'Your IconicConnect Milling Portal Credentials',
@@ -81,12 +88,12 @@ export async function createMillingUser(input: CreateMillingUserInput) {
       <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px;">
         <h2 style="color:#065f46;margin-bottom:4px;">Your Account is Ready</h2>
         <p style="color:#6b7280;font-size:14px;margin-top:0;">Welcome to the IconicConnect Milling Portal</p>
-        <p style="color:#111827;">Hello <strong>${fullName || email}</strong>,</p>
-        <p style="color:#374151;">An account has been created for you at <strong>${centerName}</strong> as <strong>${role.replace(/_/g, ' ')}</strong>. Use the credentials below to sign in.</p>
+        <p style="color:#111827;">Hello <strong>${escapeHtml(fullName || email)}</strong>,</p>
+        <p style="color:#374151;">An account has been created for you at <strong>${escapeHtml(centerName)}</strong> as <strong>${role.replace(/_/g, ' ')}</strong>. Use the details below to get started.</p>
         <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0;">
           <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Login URL:</strong> <a href="${appUrl}/auth/sign-in" style="color:#059669;">${appUrl}/auth/sign-in</a></p>
-          <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${email}</p>
-          <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Password:</strong> <code style="background:#e5e7eb;padding:2px 6px;border-radius:4px;">${password}</code></p>
+          <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${escapeHtml(email)}</p>
+          ${setPasswordBlock(setLink, appUrl)}
         </div>
         <p style="color:#6b7280;font-size:13px;">Please change your password after your first login.</p>
       </div>

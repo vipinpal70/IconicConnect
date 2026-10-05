@@ -60,8 +60,8 @@ export default function ResetPasswordPage() {
       return
     }
 
-    if (passwords.password.length < 6) {
-      toast.error('Password must be at least 6 characters long')
+    if (passwords.password.length < 10) {
+      toast.error('Password must be at least 10 characters long')
       return
     }
 

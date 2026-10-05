@@ -4,26 +4,11 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 
-// Simple in-memory rate limiter (Fixed window)
-// Note: This is instance-specific. For distributed rate limiting, use Redis.
-const rateLimitMap = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT = 300
-const WINDOW_SIZE = 60 * 1000 // 1 minute
+import { getClientIp } from '@/src/lib/security/client-ip'
+import { rateLimit, SENSITIVE_PATH_LIMITS } from '@/src/lib/security/rate-limit'
 
-function isRateLimited(key: string): boolean {
-  const now = Date.now()
-  const record = rateLimitMap.get(key) || { count: 0, lastReset: now }
-
-  if (now - record.lastReset > WINDOW_SIZE) {
-    record.count = 1
-    record.lastReset = now
-  } else {
-    record.count++
-  }
-
-  rateLimitMap.set(key, record)
-  return record.count > RATE_LIMIT
-}
+const GLOBAL_RATE_LIMIT = 300
+const GLOBAL_WINDOW_SECONDS = 60
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -49,20 +34,50 @@ export async function proxy(request: NextRequest) {
     }
   )
 
+  // CSRF defence in depth (on top of SameSite cookies): a browser-initiated state-changing API call must
+  // come from this site. Requests without an Origin header (server-to-server, curl) are unaffected.
+  if (request.nextUrl.pathname.startsWith('/api') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+    const origin = request.headers.get('origin')
+    if (origin) {
+      let originHost: string | null = null
+      try { originHost = new URL(origin).host } catch { /* invalid */ }
+      const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host')
+      if (!originHost || originHost !== host) {
+        return NextResponse.json({ error: 'Cross-site request blocked' }, { status: 403 })
+      }
+    }
+  }
+
   // Inside middleware function
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Construct a unique key: use UserID if logged in, otherwise fallback to IP
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 'anonymous'
+  // Rate-limit key: user id when logged in, otherwise the real client IP (never the
+  // client-controlled first X-Forwarded-For hop). Redis-backed, shared across processes.
+  const ip = getClientIp(request.headers)
   const rateLimitKey = user ? `u:${user.id}` : `ip:${ip}`
 
-  if (isRateLimited(rateLimitKey)) {
+  const globalLimit = await rateLimit(`global:${rateLimitKey}`, GLOBAL_RATE_LIMIT, GLOBAL_WINDOW_SECONDS)
+  if (globalLimit.limited) {
     return new NextResponse('Too Many Requests', {
       status: 429,
-      headers: { 'Retry-After': '60' }
+      headers: { 'Retry-After': String(globalLimit.retryAfterSeconds) },
     })
   }
 
+  // Tight per-IP budgets on credential / account-creation endpoints (always by IP so an
+  // attacker can't dodge them by rotating accounts).
+  const sensitive = request.method !== 'GET' && request.method !== 'HEAD'
+    ? SENSITIVE_PATH_LIMITS.find((r) => r.match(request.nextUrl.pathname))
+    : undefined
+  if (sensitive) {
+    const hit = await rateLimit(`${sensitive.name}:ip:${ip}`, sensitive.limit, sensitive.windowSeconds)
+    if (hit.limited) {
+      return NextResponse.json(
+        { error: 'Too many attempts. Please wait and try again.' },
+        { status: 429, headers: { 'Retry-After': String(hit.retryAfterSeconds) } },
+      )
+    }
+  }
 
   const pathname = request.nextUrl.pathname
   const isAuthPage = pathname.startsWith('/auth')
@@ -159,7 +174,30 @@ function getHomeRoute(role: string | undefined, createdBy: string | null | undef
   }
 }
 
+// Milling-centre accounts are third-party partners: they get their own portal and a narrow set of
+// shared endpoints — NOT the general /api/cases surface, support, offers, tutorials or preference forms.
+// (The one case endpoint they use is /api/cases/<uuid>; the handler additionally checks assignment.)
+const MILLING_SHARED_PATHS = [
+  '/auth/verify', '/auth/reset-password', '/auth/forgot-password',
+  '/profile', '/api/profile', '/notifications', '/api/notifications',
+  '/api/notification-preferences', '/api/sidebar-badges',
+]
+const CASE_DETAIL_PATH = /^\/api\/cases\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isAllowedMillingPath(pathname: string): boolean {
+  return (
+    pathname.startsWith('/milling') ||
+    pathname.startsWith('/api/milling') ||
+    CASE_DETAIL_PATH.test(pathname) ||
+    MILLING_SHARED_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
+  )
+}
+
 function isAllowedPath(role: string | undefined, pathname: string, createdBy: string | null | undefined): boolean {
+  if (role === 'milling_admin' || role === 'milling_production' || role === 'milling_support') {
+    return isAllowedMillingPath(pathname)
+  }
+
   // Publicly accessible paths for logged in users (must be checked before role check)
   if (
     pathname === '/auth/verify' ||
@@ -179,7 +217,6 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     pathname.startsWith('/admin/notifications') ||
     pathname.startsWith('/api/notifications') ||
     pathname.startsWith('/api/notification-preferences') ||
-    pathname.startsWith('/api/cases') ||
     pathname.startsWith('/api/sidebar-badges')
   )
     return true
@@ -236,10 +273,6 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/api/tutorials') ||
         pathname.startsWith('/api/offers')
       )
-    case 'milling_admin':
-    case 'milling_production':
-    case 'milling_support':
-      return pathname.startsWith('/milling') || pathname.startsWith('/api/milling')
     default:
       return false
   }

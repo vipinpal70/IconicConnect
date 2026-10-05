@@ -3,13 +3,15 @@ import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, ilike } from 'drizzle-orm';
+import { escapeHtml } from '@/src/lib/security/html';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const email = body.email?.trim().toLowerCase();
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const GENERIC_OK = { success: true, message: 'If an account exists for that email, a password reset link has been sent.' };
 
-    if (!email) {
+    if (!email || email.length > 254) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
@@ -18,9 +20,8 @@ export async function POST(req: NextRequest) {
     const profile = results[0];
 
     if (!profile) {
-      // For security, you might want to return success even if email doesn't exist
-      // to prevent email enumeration. But user specifically asked for this check.
-      return NextResponse.json({ error: 'User with this email does not exist' }, { status: 404 });
+      // Identical response whether or not the account exists — no email enumeration.
+      return NextResponse.json(GENERIC_OK);
     }
 
     // 2. Generate a recovery link using the Service Role Key
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
       html: `
         <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto;">
           <h2>Reset Password</h2>
-          <p>Hello ${profile.fullName || 'there'},</p>
+          <p>Hello ${escapeHtml(profile.fullName || 'there')},</p>
           <p>We received a request to reset the password for your IconicConnect account. If you didn't make this request, you can safely ignore this email.</p>
           <br/>
           <a href="${customResetUrl}" style="display: inline-block; background-color: #00786f; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to send the reset email — please try again in a moment.' }, { status: 502 });
     }
 
-    return NextResponse.json({ success: true, message: 'Password reset link sent to your email' });
+    return NextResponse.json(GENERIC_OK);
   } catch (error) {
     console.error('Forgot password error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

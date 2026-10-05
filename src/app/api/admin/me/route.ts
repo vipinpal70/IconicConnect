@@ -5,7 +5,6 @@ import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
 
 export async function GET() {
-  console.log('[api/admin/me] GET request received');
   try {
     const supabase = await createClient();
     const { data: { user }, error } = await supabase.auth.getUser();

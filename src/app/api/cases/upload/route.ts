@@ -1,3 +1,4 @@
+import { isValidUploadFileName } from '@/src/lib/security/file-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles, subUsers } from '@/src/db/schema/profile';
@@ -79,6 +80,27 @@ function buildFileUrl(labName: string, fileName: string) {
   return `/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`;
 }
 
+/**
+ * sign / complete / abort take a client-supplied `key`. Without this check any logged-in user could act
+ * on (or, in `complete`, claim a file URL under) another lab's folder. Lab users may only use keys inside
+ * their own lab folder; staff may use any lab folder but never the bulk-upload staging area.
+ */
+async function assertKeyAllowed(profile: AuthedProfile, key: unknown): Promise<NextResponse | null> {
+  if (typeof key !== 'string' || !key || key.length > 1024 || key.includes('..') || key.startsWith('/')) {
+    return NextResponse.json({ error: 'Invalid key' }, { status: 400 });
+  }
+  if (key.startsWith('bulk-staging/')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (isValidRoleForType('admin_portal', profile.role)) return null;
+  const ctx = await resolveClientContext(profile, null);
+  if ('error' in ctx) return ctx.error ?? NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!key.startsWith(`${ctx.labName}/`)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  return null;
+}
+
 // ── Step 1: initialise the multipart upload ──────────────────────────────────
 async function handleInit(req: NextRequest, profile: AuthedProfile) {
   const { searchParams } = new URL(req.url);
@@ -89,6 +111,9 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
 
   if (!fileName) {
     return NextResponse.json({ error: 'File Name is required' }, { status: 400 });
+  }
+  if (!isValidUploadFileName(fileName)) {
+    return NextResponse.json({ error: 'Invalid file name' }, { status: 400 });
   }
   if (fileSize > MAX_FILE_SIZE) {
     return NextResponse.json({ error: 'File size exceeds the 5GB limit' }, { status: 400 });
@@ -124,7 +149,7 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
 // upload bandwidth isn't doubled and parallel parts can saturate the client's uplink.
 const PART_URL_TTL = 6 * 60 * 60; // 6h — long enough for a multi-GB upload
 
-async function handleSign(req: NextRequest) {
+async function handleSign(req: NextRequest, profile: AuthedProfile) {
   const { key, uploadId, totalParts } = await req.json() as {
     key: string;
     uploadId: string;
@@ -134,6 +159,11 @@ async function handleSign(req: NextRequest) {
   if (!key || !uploadId || !totalParts || totalParts < 1) {
     return NextResponse.json({ error: 'Missing key, uploadId or totalParts' }, { status: 400 });
   }
+  if (!Number.isInteger(totalParts) || totalParts > 10000) {
+    return NextResponse.json({ error: 'Invalid totalParts' }, { status: 400 });
+  }
+  const denied = await assertKeyAllowed(profile, key);
+  if (denied) return denied;
 
   const urls = await Promise.all(
     Array.from({ length: totalParts }, (_, i) => {
@@ -150,7 +180,7 @@ async function handleSign(req: NextRequest) {
 }
 
 // ── Step 3: assemble the object from the uploaded parts ──────────────────────
-async function handleComplete(req: NextRequest) {
+async function handleComplete(req: NextRequest, profile: AuthedProfile) {
   const body = await req.json();
   const { key, uploadId, labName, fileName, fileSize, fileType, parts } = body as {
     key: string;
@@ -164,6 +194,13 @@ async function handleComplete(req: NextRequest) {
 
   if (!key || !uploadId || !Array.isArray(parts) || parts.length === 0) {
     return NextResponse.json({ error: 'Missing key, uploadId or parts' }, { status: 400 });
+  }
+  const denied = await assertKeyAllowed(profile, key);
+  if (denied) return denied;
+  // The URL we hand back (and the client then stores) must point at exactly the object that was
+  // just assembled — reject a labName/fileName that doesn't match the verified key.
+  if (typeof labName !== 'string' || typeof fileName !== 'string' || objectKey(labName, fileName) !== key) {
+    return NextResponse.json({ error: 'labName/fileName do not match the upload key' }, { status: 400 });
   }
 
   const orderedParts = [...parts].sort((a, b) => a.PartNumber - b.PartNumber);
@@ -187,11 +224,13 @@ async function handleComplete(req: NextRequest) {
 }
 
 // ── Cleanup: abort a partially uploaded object ───────────────────────────────
-async function handleAbort(req: NextRequest) {
+async function handleAbort(req: NextRequest, profile: AuthedProfile) {
   const { key, uploadId } = await req.json();
   if (!key || !uploadId) {
     return NextResponse.json({ error: 'Missing key or uploadId' }, { status: 400 });
   }
+  const denied = await assertKeyAllowed(profile, key);
+  if (denied) return denied;
   await r2.send(new AbortMultipartUploadCommand({
     Bucket: R2_BUCKET,
     Key: key,
@@ -211,11 +250,11 @@ export async function POST(req: NextRequest) {
       case 'init':
         return await handleInit(req, auth.profile);
       case 'sign':
-        return await handleSign(req);
+        return await handleSign(req, auth.profile);
       case 'complete':
-        return await handleComplete(req);
+        return await handleComplete(req, auth.profile);
       case 'abort':
-        return await handleAbort(req);
+        return await handleAbort(req, auth.profile);
       default:
         return NextResponse.json({ error: 'Unknown or missing action' }, { status: 400 });
     }

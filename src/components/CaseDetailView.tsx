@@ -1543,6 +1543,7 @@ export function CaseDetailView({
 																				/>
 																			) : (
 																				<iframe
+																					sandbox="allow-scripts"
 																					src={activeFile.fileUrl}
 																					className="w-full h-[500px] border-none bg-white"
 																					title={activeFile.fileName}

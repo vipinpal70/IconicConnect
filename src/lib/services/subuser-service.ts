@@ -1,3 +1,5 @@
+import { validatePasswordStrength } from '@/src/lib/security/password'
+import { randomBytes } from 'node:crypto'
 import { type ISubUserRepository } from '../repositories/subuser-repository'
 import { supabaseAdmin } from '@/src/lib/supabase/admin'
 import { type Profile } from '@/src/db/schema/profile'
@@ -29,7 +31,13 @@ export class SubUserService {
     }
 
     // 1. Generate password if not provided
-    const mainPassword = password || `Welcome@${Math.floor(1000 + Math.random() * 9000)}`
+    // Never a guessable default (the old `Welcome@NNNN` had only 9,000 possibilities): a random
+    // password nobody knows, replaced by the user through the emailed set-password link.
+    if (password) {
+      const passwordError = validatePasswordStrength(password)
+      if (passwordError) throw new Error(passwordError)
+    }
+    const mainPassword = password || randomBytes(18).toString('base64url') + 'aA1!'
 
     // 2. Create user in Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -56,7 +64,7 @@ export class SubUserService {
           title: role, // Store the sub-role (e.g. Manager) in the title field
           email,
           createdBy: clientId,
-          password: mainPassword,
+          // Plaintext passwords are never stored (previously shown to the parent client in a reveal UI).
         },
         clientId
       )

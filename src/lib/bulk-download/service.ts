@@ -157,7 +157,7 @@ async function openSource(e: ZipEntryPlan): Promise<Readable | Buffer> {
     if (!obj.Body) throw new Error('empty body')
     return obj.Body as Readable
   }
-  const res = await fetch(e.source.url)
+  const res = await fetch(e.source.url, { redirect: 'error' })
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
   return Readable.fromWeb(res.body as never)
 }

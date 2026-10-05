@@ -1,3 +1,6 @@
+import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link'
+import { escapeHtml } from '@/src/lib/security/html'
+import { validatePasswordStrength } from '@/src/lib/security/password'
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
@@ -33,8 +36,9 @@ export async function POST(
     const body = await req.json();
     const { password } = body;
 
-    if (!password) {
-      return NextResponse.json({ error: 'Password is required' }, { status: 400 });
+    const passwordError = validatePasswordStrength(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
     // 1. Get member email and name
@@ -58,18 +62,18 @@ export async function POST(
     // throws, so a queue/Redis failure here can't 500 a request whose primary
     // action (the password change above) already succeeded.
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const setLink = await createSetPasswordLink(profile.email);
     const { queued: emailQueued, error: emailError } = await queueEmailSafely({
       to: profile.email,
       subject: 'Your IconicConnect Password has been Reset',
       type: 'credentials',
       html: `
         <h1>New Password Generated</h1>
-        <p>Hello ${profile.fullName || profile.email},</p>
+        <p>Hello ${escapeHtml(profile.fullName || profile.email)},</p>
         <p>Your password for IconicConnect has been reset by an administrator.</p>
         <p><strong>Login URL:</strong> ${appUrl}/auth/sign-in</p>
-        <p><strong>Email:</strong> ${profile.email}</p>
-        <p><strong>New Password:</strong> ${password}</p>
-        <p>Please change your password after logging in.</p>
+        <p><strong>Email:</strong> ${escapeHtml(profile.email)}</p>
+        ${setPasswordBlock(setLink, appUrl)}
       `
     });
     if (!emailQueued) {

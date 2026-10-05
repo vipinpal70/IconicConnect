@@ -81,8 +81,8 @@ export default function SignUpPage() {
 			setError("Passwords do not match.");
 			return;
 		}
-		if (form.password.length < 8) {
-			setError("Password must be at least 8 characters.");
+		if (form.password.length < 10) {
+			setError("Password must be at least 10 characters.");
 			return;
 		}
 		const phoneError = validateNationalPhone(countryCode, form.phone);
@@ -354,7 +354,7 @@ export default function SignUpPage() {
 									placeholder="••••••••"
 									required
 								/>
-								<p className="text-xs text-gray-400 mt-1">Min. 8 characters</p>
+								<p className="text-xs text-gray-400 mt-1">Min. 10 characters</p>
 							</div>
 							<Field
 								label="Confirm password"

@@ -1,3 +1,4 @@
+import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, casePreviewFiles } from '@/src/db/schema/case';
@@ -126,6 +127,9 @@ export async function POST(
 
     if (!body?.fileUrl || !body?.fileName) {
       return NextResponse.json({ error: 'Missing fileUrl or fileName' }, { status: 400 });
+    }
+    if (!isSafeStoredFileUrl(body.fileUrl)) {
+      return NextResponse.json({ error: 'Invalid file reference' }, { status: 400 });
     }
 
     if (typeof body.fileSize === 'number' && body.fileSize > MAX_PREVIEW_FILE_SIZE) {

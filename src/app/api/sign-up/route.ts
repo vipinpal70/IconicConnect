@@ -7,25 +7,75 @@ import { deleteCachedData } from '@/src/lib/redis-cache'
 import { logActivity } from '@/src/lib/activity-log'
 import { supabaseAdmin } from '@/src/lib/supabase/admin'
 import type { ServiceType } from '@/src/lib/case-status-mapping'
+import { escapeHtml } from '@/src/lib/security/html'
+import { eq, sql } from 'drizzle-orm'
 
 const VALID_SERVICE_TYPES: ServiceType[] = ['design_only', 'design_milling', 'milling_only']
 
-export async function POST(req: NextRequest) {
-  const body = await req.json()
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// The browser creates the Auth user first, then calls this route — so the user must be brand new.
+const MAX_AUTH_USER_AGE_MS = 30 * 60 * 1000
 
-  // The browser already created this Supabase Auth user (supabase.auth.signUp)
-  // before calling this route. Every error path below must delete it — otherwise
-  // a failed profile save (e.g. a duplicate email) leaves an orphaned Auth user
-  // with no matching profile.
+const clip = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  }
+
+  // ── Verify the claimed identity before touching anything ──────────────────
+  // `body.id` is client-supplied. Without this, anyone could post an existing user's id and (via the
+  // failure cleanup below) get that user's Auth account deleted, or attach a profile to a stranger's id.
+  if (typeof body.id !== 'string' || !UUID_RE.test(body.id) || typeof body.email !== 'string') {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  }
+  const { data: authLookup, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(body.id)
+  const authUser = authLookup?.user
+  const createdAtMs = authUser?.created_at ? new Date(authUser.created_at).getTime() : 0
+  if (
+    authLookupError ||
+    !authUser ||
+    authUser.email?.toLowerCase() !== body.email.trim().toLowerCase() ||
+    Date.now() - createdAtMs > MAX_AUTH_USER_AGE_MS
+  ) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  }
+  const [existingProfile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.id, body.id)).limit(1)
+  if (existingProfile) {
+    // Never delete an Auth user that already has a profile — it isn't ours to clean up.
+    return NextResponse.json({ error: 'An account with this email already exists. Please sign in instead.' }, { status: 409 })
+  }
+  // From here on this request owns a brand-new, profile-less Auth user.
+  body.email = authUser.email
+
+  // Every error path below must delete it — otherwise a failed profile save leaves an orphaned Auth user.
   const cleanupOrphanedAuthUser = async () => {
-    if (body.id) {
-      await supabaseAdmin.auth.admin.deleteUser(body.id).catch((delErr) =>
-        console.error('[sign-up] failed to clean up orphaned auth user', delErr)
-      )
-    }
+    await supabaseAdmin.auth.admin.deleteUser(body.id).catch((delErr) =>
+      console.error('[sign-up] failed to clean up orphaned auth user', delErr)
+    )
   }
 
   try {
+    body.fullName = clip(body.fullName, 150)
+    body.labName = clip(body.labName, 150)
+    body.title = clip(body.title, 100)
+    body.postalCode = clip(body.postalCode, 20)
+    body.city = clip(body.city, 100)
+    body.state = clip(body.state, 100)
+    body.country = clip(body.country, 100)
+
+    // Lab name doubles as the storage folder (labName/fileName in R2) — two labs sharing one name would
+    // share files. Reject a name that's already taken (case-insensitive, same fallback chain as the folder).
+    const folderName = body.labName || body.fullName || String(body.email)
+    const [nameTaken] = await db.select({ id: profiles.id }).from(profiles).where(
+      sql`lower(coalesce(nullif(trim(${profiles.labName}), ''), nullif(trim(${profiles.fullName}), ''), ${profiles.email})) = lower(${folderName})`
+    ).limit(1)
+    if (nameTaken) {
+      await cleanupOrphanedAuthUser()
+      return NextResponse.json({ error: 'A lab with this name is already registered. Please use a more specific lab name.' }, { status: 409 })
+    }
+
     const parsedPhone = parseStoredPhone(body.phone)
     const phoneError = validateNationalPhone(parsedPhone.countryCode, parsedPhone.nationalNumber)
 
@@ -117,7 +167,7 @@ export async function POST(req: NextRequest) {
         subject: 'Welcome to IconicConnect!',
         type: 'welcome',
         html: `
-          <h1>Welcome, ${body.fullName || body.email}!</h1>
+          <h1>Welcome, ${escapeHtml(body.fullName || body.email)}!</h1>
           <p>Thank you for signing up with IconicConnect. Your account is currently <strong>pending approval</strong>.</p>
           <p>We will notify you as soon as your account is activated.</p>
         `

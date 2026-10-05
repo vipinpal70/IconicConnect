@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
+import { denyUnlessMillingAssigned, timelineForClient, isLabRole } from '@/src/lib/case-access'
 import { createClient } from '@/src/lib/supabase/server'
 
 export async function GET(
@@ -24,21 +25,24 @@ export async function GET(
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
+    const millingDenied = await denyUnlessMillingAssigned(profile, id)
+    if (millingDenied) return millingDenied
+
     const [caseRecord] = await db.select().from(cases).where(eq(cases.id, id)).limit(1)
 
     if (!caseRecord) {
       return NextResponse.json({ error: 'Case not found' }, { status: 404 })
     }
 
-    if (profile.role === 'subuser' && caseRecord.subuserId !== profile.id) {
-      return NextResponse.json({ error: 'Forbidden: You can only view your own cases' }, { status: 403 })
-    }
-
-    if (profile.role === 'client' && caseRecord.clientId !== profile.id) {
+    // Sub-users share their parent client's cases (same rule as every other case route).
+    const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id
+    if (isLabRole(profile.role) && caseRecord.clientId !== effectiveClientId) {
       return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 })
     }
 
-    return NextResponse.json({ data: caseRecord.timeline ?? [] })
+    return NextResponse.json({
+      data: isLabRole(profile.role) ? timelineForClient(caseRecord.timeline) : (caseRecord.timeline ?? []),
+    })
   } catch (error) {
     console.error('Get case activity error:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

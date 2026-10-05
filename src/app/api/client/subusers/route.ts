@@ -35,7 +35,6 @@ export async function GET(_req: NextRequest) {
       username: u.email.split('@')[0],
       email: u.email,
       role: u.title || 'Coordinator',
-      password: u.password || '••••••••',
     }))
 
     return NextResponse.json({ data: formatted })

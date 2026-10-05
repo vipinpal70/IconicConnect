@@ -1,3 +1,4 @@
+import { validatePasswordStrength } from '@/src/lib/security/password'
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
@@ -61,6 +62,11 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password || !role || !millingCenterId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const passwordError = validatePasswordStrength(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
     if (!MILLING_ROLES.includes(role)) {
