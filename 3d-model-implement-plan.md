@@ -21,7 +21,7 @@ subCategory='3D Model'`, currently $4.00/case) is used today as an add-on on _ot
    same default price, same invoice/billing behavior. The new "3D Model" category is
    billed through **brand-new, separate catalog rows** (category `'3D Model'`), so the two
    systems never share a price or a code path beyond structural pattern-matching.
-3. **Lab restriction**: admin can flag a client/lab profile as "3D Model only." When set,
+3. **Lab restriction** *(REMOVED — the "3D Model only" lab restriction no longer exists in the app; ignore every `modelOnlyLab` reference below)*: admin can flag a client/lab profile as "3D Model only." When set,
    that lab's case-creation UI and the `POST /api/cases` API only accept category
    `"3D Model"` — every other category is hidden/rejected for that lab. Labs without the
    flag are unaffected and keep full category access.

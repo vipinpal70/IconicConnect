@@ -29,7 +29,6 @@ type ClientProfile = {
   postalCode: string | null
   status: string
   plan: string | null
-  modelOnlyLab: boolean
   userType: string
   role: string
   title: string | null
@@ -108,28 +107,6 @@ export default function ClientProfilePage() {
     },
     onError: (error: unknown) => {
       toast.error(error instanceof Error ? error.message : "Failed to update status")
-    },
-  })
-
-  const modelOnlyLabMutation = useMutation({
-    mutationFn: async (modelOnlyLab: boolean) => {
-      const res = await fetch(`/api/admin/clients/${clientId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelOnlyLab }),
-      })
-      if (!res.ok) {
-        const payload = await res.json().catch(() => ({}))
-        throw new Error(payload.error || "Failed to update restriction")
-      }
-      return res.json()
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-client", clientId] })
-      toast.success("Restriction updated")
-    },
-    onError: (error: unknown) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update restriction")
     },
   })
 
@@ -329,29 +306,6 @@ export default function ClientProfilePage() {
             </CardContent>
           </Card>
 
-          {/* 3D Model Only Restriction */}
-          <Card className="shadow-card">
-            <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                3D Model only
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                When on, this lab can only create &quot;3D Model&quot; category cases — every other category is hidden for them.
-              </p>
-            </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 w-fit">
-                <Switch
-                  checked={client?.modelOnlyLab ?? false}
-                  disabled={modelOnlyLabMutation.isPending || clientQuery.isLoading}
-                  onCheckedChange={(checked) => modelOnlyLabMutation.mutate(checked)}
-                />
-                <span className="text-xs font-semibold text-foreground">Restrict to 3D Model cases only</span>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Price List Editor */}
           <Card className="shadow-card">
             <CardHeader className="pb-2 pt-3 px-4">
@@ -485,6 +439,23 @@ function PrefFormCard({ form }: { form: PreferenceFormRecord }) {
             <Summary label="Distal-most Crown" value={form.payload.distalMostCrownContact.defaultValues || "-"} />
             <Summary label="Anatomy" value={form.payload.anatomy.option || "-"} />
             <Summary label="Smile Library" value={form.payload.smileLibrary.option || "-"} />
+            <Summary
+              label="Library File"
+              value={
+                form.payload.smileLibrary.libraryFile ? (
+                  <a
+                    href={form.payload.smileLibrary.libraryFile.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-bold"
+                  >
+                    {form.payload.smileLibrary.libraryFile.fileName}
+                  </a>
+                ) : (
+                  "-"
+                )
+              }
+            />
             <Summary label="Pontic Type" value={form.payload.ponticType.option || "-"} />
             <Summary label="Pontic Distance" value={form.payload.ponticDistanceFromTissue.option || "-"} />
             <Summary label="Match Marginal Ridge" value={form.payload.matchMarginalRidge.option || "-"} />
@@ -505,6 +476,28 @@ function PrefFormCard({ form }: { form: PreferenceFormRecord }) {
             />
             <Summary label="Collar Type" value={form.payload.copingCollarType?.option || "-"} />
             <Summary label="Create Island" value={form.payload.copingCreateIsland?.option || "-"} />
+            <Summary
+              label="Gingiva Levels (Anterior)"
+              value={
+                form.payload.gingivaLevels
+                  ? `B ${form.payload.gingivaLevels.anteriorBuccal || "-"} · L ${form.payload.gingivaLevels.anteriorLingual || "-"} · M&D ${form.payload.gingivaLevels.anteriorMesialDistal || "-"}`
+                  : "-"
+              }
+            />
+            <Summary
+              label="Gingiva Levels (Posterior)"
+              value={
+                form.payload.gingivaLevels
+                  ? `B ${form.payload.gingivaLevels.posteriorBuccal || "-"} · L ${form.payload.gingivaLevels.posteriorLingual || "-"} · M&D ${form.payload.gingivaLevels.posteriorMesialDistal || "-"}`
+                  : "-"
+              }
+            />
+            <Summary label="Distance to Antagonist" value={form.payload.distanceToAntagonist?.option || "-"} />
+            <Summary label="Identification Dots" value={form.payload.identificationDots?.option || "-"} />
+            <Summary label="Internal Retention Groove" value={form.payload.internalRetentionGroove?.option || "-"} />
+            <Summary label="Taper Angle" value={form.payload.taperAngle?.option || "-"} />
+            <Summary label="Emergence Profile" value={form.payload.emergenceProfile?.option || "-"} />
+            <Summary label="Screw-retained Crown" value={form.payload.screwRetainedCrown?.option || "-"} />
             <Summary label="Preferred Software" value={form.payload.preferredSoftware?.option || "-"} />
             <Summary
               label="Image 1"

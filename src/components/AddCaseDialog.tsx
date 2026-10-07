@@ -22,7 +22,6 @@ interface ClientRecord {
   fullName: string | null
   email: string
   labName: string | null
-  modelOnlyLab?: boolean
 }
 
 interface AddCaseDialogProps {
@@ -40,7 +39,6 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
 
   // Form State
   const [priceList, setPriceList] = useState<PriceListEntryFull[] | null>(null)
-  const [modelOnlyLab, setModelOnlyLab] = useState(false)
   const [category, setCategory] = useState<string>("Crown & Bridge")
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({})
   // No default — the lab must actively pick Yes/No; see handleSubmit's guard.
@@ -245,50 +243,24 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   // currently exercised in production (this dialog is only ever mounted with
   // role="admin"), so it's left defaulting to false rather than adding an
   // unused profile fetch.
-  useEffect(() => {
-    if (!open || role !== "admin") return
-
-    if (!selectedClientId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets a derived selector to its default before an async fetch can run, same pattern as the reset-on-open effect above
-      setModelOnlyLab(false)
-      return
-    }
-    fetch(`/api/admin/clients/${selectedClientId}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => setModelOnlyLab(json?.data?.modelOnlyLab ?? false))
-      .catch(() => setModelOnlyLab(false))
-  }, [open, role, selectedClientId])
-
-  // Force category to "3D Model" (and reset its fields) whenever the
-  // selected client is restricted, and keep it there while restricted.
-  useEffect(() => {
-    if (modelOnlyLab && category !== "3D Model") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from a prop-like fetch result (modelOnlyLab), not local render state
-      setCategory("3D Model")
-      setSubTypeData({})
-    }
-  }, [modelOnlyLab, category])
-
   const availableCategories = React.useMemo(
     () =>
-      modelOnlyLab
-        ? ["3D Model"]
-        : priceListLoading
-          ? Object.keys(CASE_HIERARCHY)
-          : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys)),
-    [modelOnlyLab, priceListLoading, enabledKeys]
+      priceListLoading
+        ? Object.keys(CASE_HIERARCHY)
+        : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys)),
+    [priceListLoading, enabledKeys]
   )
 
   // Keep the selected category valid once we know what's actually enabled —
   // e.g. admin just disabled every Denture service for this client.
   useEffect(() => {
-    if (modelOnlyLab || priceListLoading || availableCategories.length === 0) return
+    if (priceListLoading || availableCategories.length === 0) return
     if (!availableCategories.includes(category)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from a prop-like fetch result (priceList), not local render state
       setCategory(availableCategories[0])
       setSubTypeData({})
     }
-  }, [availableCategories, category, modelOnlyLab, priceListLoading])
+  }, [availableCategories, category, priceListLoading])
 
   const validateFile = (file: File): { isValid: boolean; error?: string } => {
     const maxLimit = 5 * 1024 * 1024 * 1024 // 5GB

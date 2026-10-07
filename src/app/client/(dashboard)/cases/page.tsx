@@ -386,7 +386,6 @@ export default function CasesPage() {
   // Which individual services (category/sub-type) this client has enabled —
   // admin can disable one independently. null means "not fetched yet, don't filter".
   const [priceList, setPriceList] = useState<PriceListEntryFull[] | null>(null);
-  const [modelOnlyLab, setModelOnlyLab] = useState(false);
   const [category, setCategory] = useState<string>("Crown & Bridge");
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({});
   // No default — the lab must actively pick Yes/No; see handleSubmit's guard.
@@ -481,21 +480,7 @@ export default function CasesPage() {
       }
     }
     fetchProfile();
-
-    fetch("/api/client/model-only")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => setModelOnlyLab(json?.data?.modelOnlyLab ?? false))
-      .catch(() => setModelOnlyLab(false));
   }, []);
-
-  // Force category to "3D Model" (and reset its fields) whenever this lab is
-  // restricted, and keep it there while restricted (3d-model-implement-plan.md §3).
-  useEffect(() => {
-    if (modelOnlyLab && category !== "3D Model") {
-      setCategory("3D Model");
-      setSubTypeData({});
-    }
-  }, [modelOnlyLab, category]);
 
   // Fetch the enabled-services price list once; form options are filtered against it.
   useEffect(() => {
@@ -508,21 +493,19 @@ export default function CasesPage() {
   const enabledKeys = buildEnabledKeySet(priceList ?? []);
   const priceListLoading = priceList === null;
 
-  const availableCategories = modelOnlyLab
-    ? ["3D Model"]
-    : priceListLoading
-      ? Object.keys(CASE_HIERARCHY)
-      : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys));
+  const availableCategories = priceListLoading
+    ? Object.keys(CASE_HIERARCHY)
+    : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys));
 
   // Keep the selected category valid once we know what's actually enabled.
   useEffect(() => {
-    if (modelOnlyLab || priceListLoading || availableCategories.length === 0) return;
+    if (priceListLoading || availableCategories.length === 0) return;
     if (!availableCategories.includes(category)) {
       setCategory(availableCategories[0]);
       setSubTypeData({});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- availableCategories is derived each render from priceList, already covered
-  }, [availableCategories, category, modelOnlyLab]);
+  }, [availableCategories, category]);
 
   const handleDeleteUploadedFile = async (fileName: string) => {
     try {
@@ -848,7 +831,7 @@ export default function CasesPage() {
       return {
         fileName: f.name,
         file: f,
-        category: modelOnlyLab ? "3D Model" : "Crown & Bridge",
+        category: "Crown & Bridge",
         subTypeData: {},
         modelRequired: null,
         teeth: [],
@@ -1730,11 +1713,9 @@ export default function CasesPage() {
                                     <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: initialSubTypeData(v) })}>
                                       <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                                       <SelectContent className="bg-emerald-800 text-white">
-                                        {(modelOnlyLab
-                                          ? ["3D Model"]
-                                          : priceListLoading
-                                            ? Object.keys(CASE_HIERARCHY)
-                                            : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys))
+                                        {(priceListLoading
+                                          ? Object.keys(CASE_HIERARCHY)
+                                          : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys))
                                         ).map((cat) => (
                                           <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
                                             {cat}

@@ -261,7 +261,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
     const labName = getProfileLabName(clientProfile);
-    const modelOnlyLab = clientProfile?.modelOnlyLab ?? false;
 
     const results = [];
 
@@ -275,13 +274,6 @@ export async function POST(req: NextRequest) {
       const caseData = casesArray[i];
       const file = files[i];
 
-
-      if (modelOnlyLab && caseData.category !== '3D Model') {
-        return NextResponse.json(
-          { error: 'This lab is restricted to 3D Model cases only' },
-          { status: 400 }
-        );
-      }
 
       // Server-side enforcement of case-modification-plan.md §1 & §3 — the
       // authoritative guard, since it also protects the raw JSON/mobile-client

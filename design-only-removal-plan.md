@@ -187,7 +187,7 @@ New `scripts/convert-to-design-only.ts` (dry run by default, `--apply`), followi
 ### Phase 7 — Destructive DB migration (separate PR, after Phases 1–6 have run in prod for a release)
 New migration `0058_remove_milling.sql` (+ journal entry; the runner in `scripts/migrate.mjs` batches migrations in one transaction, so **recreate-type** approaches must avoid `ALTER TYPE ADD VALUE` patterns — see the note in `0047`):
 1. `DROP TABLE case_center_assignment_history, milling_case_assignments, milling_routing_rules, milling_service_catalog, milling_centers CASCADE`; drop `milling_status`, `assignment_scope`, `assignment_role`, `assignment_action` types.
-2. `profiles`: drop `milling_center_id` (+ index), `enabled_service_types`.
+2. `profiles`: drop `milling_center_id` (+ index), `enabled_service_types`, `model_only_lab` (the "3D Model only" lab restriction was removed from the app; the `3D Model` category itself stays).
 3. `cases`: drop `design_source`; drop `service_type` (or keep column with a default — see §2.3); drop `design_source` type.
 4. `service_catalog`: drop `service_type`, restore unique `(category, sub_category)` (dedupe first — the milling rows are already deleted in Phase 2).
 5. Recreate `case_status` without the five milling values: create `case_status_new`, `ALTER TABLE cases ALTER COLUMN status TYPE case_status_new USING status::text::case_status_new`, same for any other table/column using the enum, drop old, rename. Needs a pre-check that **no row** still uses a removed value.
@@ -203,7 +203,7 @@ New migration `0058_remove_milling.sql` (+ journal entry; the runner in `scripts
 - **Historical invoices** store `serviceType` in JSON line items; keep the optional field so old invoices render.
 - **Historical `activity_logs`** with `case.milling_*` actions: keep a fallback label; never throw on unknown action.
 - **Notifications table** may hold links to `/milling/cases/:id` — delete those rows in Phase 2 or the link 404s.
-- **`3D Model` / Model-only labs** (`profiles.model_only_lab`, `/api/client/model-only`) are **not** milling features — leave untouched.
+- **`3D Model` category** is not a milling feature — it stays. The separate "3D Model only" lab restriction was removed from the app (column dropped in Phase 7).
 - **Client-approval timing:** design_milling had no client approval; after removal every case uses client review. No behaviour change for design_only clients.
 - **Browser caches:** price-list session/local storage keys — handled by prefix bump.
 - **Admin sidebar badge counters** (`/api/sidebar-badges`) — verify no milling counter.
