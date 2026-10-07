@@ -25,7 +25,8 @@ export const caseStatusEnum = pgEnum('case_status', [
   'on_hold',                 // 8. Hold / failed
   'client_feedback',         // 9. Client feedback / rejected
   'approved',                // 10. Approved
-  // Design + Milling only — design approved, now with a milling centre
+  // Legacy milling-pipeline values — no longer used by the app; dropped from the
+  // Postgres enum in design-only-removal-plan.md Phase 7.
   'ready_for_milling',       // 10a. Package sent to milling centre
   'milling_in_progress',     // 10b. Milling centre has started manufacturing
   'milling_qc',              // 10c. QC at milling centre
@@ -39,12 +40,7 @@ export const caseStatusEnum = pgEnum('case_status', [
 
 export const serviceTypeEnum = pgEnum('service_type', ['design_only', 'design_milling', 'milling_only'])
 
-// Who is doing the design work on this case — 'internal' (a designer/qc
-// profile, via cases.designerId) or 'partner' (a Design-capable Milling
-// Centre, via milling_case_assignments.designCenterId). A denormalized
-// read-optimization, not a second source of truth — see
-// case-flow-update-plan.md §5.2. Always 'internal' for milling_only cases,
-// which have no design phase at all.
+// Legacy: always 'internal' now. Dropped in design-only-removal-plan.md Phase 7.
 export const designSourceEnum = pgEnum('design_source', ['internal', 'partner'])
 
 export const CASE_LIFECYCLE_STEPS = [
@@ -54,11 +50,16 @@ export const CASE_LIFECYCLE_STEPS = [
   'Internal QC',
   'Pending Client Approval',
   'Completed',
-  'In Production',   // Design + Milling only — milling centre stages through delivery
 ] as const
 
-export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
+// Statuses the app still uses (every enum value except the legacy milling ones).
+export type ActiveCaseStatus = Exclude<
   typeof caseStatusEnum.enumValues[number],
+  'ready_for_milling' | 'milling_in_progress' | 'milling_qc' | 'packaging' | 'dispatched'
+>
+
+export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
+  ActiveCaseStatus,
   (typeof CASE_LIFECYCLE_STEPS)[number]
 > = {
   scan_received: 'Submitted',
@@ -71,18 +72,13 @@ export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
   client_feedback: 'In Design',
   on_hold: 'In Validation',
   approved: 'Completed',
-  ready_for_milling: 'In Production',
-  milling_in_progress: 'In Production',
-  milling_qc: 'In Production',
-  packaging: 'In Production',
-  dispatched: 'In Production',
   delivered: 'Completed',
   cancelled: 'Completed',
   change_requested: 'Pending Client Approval',
   client_reject: 'Completed',
 }
 
-export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
+export const CLIENT_STATUS_LABELS: Record<ActiveCaseStatus, string> = {
   scan_received: 'Case Submitted',
   scan_not_verified: 'In Validation',
   scan_verified: 'Validated',
@@ -93,18 +89,13 @@ export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[numbe
   client_feedback: 'Feedback',
   on_hold: 'On Hold',
   approved: 'Case Approved',
-  ready_for_milling: 'In Production',
-  milling_in_progress: 'In Production',
-  milling_qc: 'In Production',
-  packaging: 'In Production',
-  dispatched: 'Shipped',
   delivered: 'Completed',
   cancelled: 'Cancelled',
   change_requested: 'Change Requested',
   client_reject: 'Rejected',
 }
 
-export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
+export const INTERNAL_STATUS_LABELS: Record<ActiveCaseStatus, string> = {
   scan_received: 'Scan Received',
   scan_not_verified: 'Scan Rejected',
   scan_verified: 'Scan Verified',
@@ -115,11 +106,6 @@ export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[num
   client_feedback: 'Client Feedback',
   on_hold: 'On Hold',
   approved: 'Approved',
-  ready_for_milling: 'Ready for Milling',
-  milling_in_progress: 'Milling in Progress',
-  milling_qc: 'Milling QC',
-  packaging: 'In Production',
-  dispatched: 'Dispatched',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
   change_requested: 'Change Requested',
@@ -144,9 +130,8 @@ export type CaseTimelineEvent = {
   actor: string
   actionAt: string
   actionTime?: string
-  // Optional client-facing override — some internal events (e.g. milling
-  // centre assignment/shipment) must never surface milling terminology or
-  // shipment detail to the dental lab. Defaults to `label` when absent.
+  // Optional client-facing override — some internal events are staff-only or
+  // worded differently for the dental lab. Defaults to `label` when absent.
   clientLabel?: string
   clientHidden?: boolean
 }

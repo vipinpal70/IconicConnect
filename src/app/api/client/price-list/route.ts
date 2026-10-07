@@ -3,12 +3,12 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
 import { eq } from 'drizzle-orm'
-import { resolveClientIdFromProfile, getPriceListForClient, parseCatalogServiceType } from '@/src/lib/price-list'
+import { resolveClientIdFromProfile, getPriceListForClient } from '@/src/lib/price-list'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 import type { PriceListEntryFull } from '@/src/lib/price-list'
 
 const PRICE_LIST_TTL = 3600 // 1 hour
-const cacheKey = (clientId: string, serviceType: string) => `price-list:client:${clientId}:${serviceType}`
+const cacheKey = (clientId: string) => `price-list:client:${clientId}:design_only`
 
 async function requireClient() {
   const supabase = await createClient()
@@ -37,10 +37,9 @@ export async function GET(req: NextRequest) {
     if ('error' in auth) return auth.error
 
     const { searchParams } = new URL(req.url)
-    const serviceType = parseCatalogServiceType(searchParams.get('serviceType'))
     const forceRefresh = searchParams.get('refresh') === 'true'
 
-    const key = cacheKey(auth.clientId, serviceType)
+    const key = cacheKey(auth.clientId)
 
     if (!forceRefresh) {
       const cached = await getCachedData<PriceListEntryFull[]>(key)
@@ -49,7 +48,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const data = await getPriceListForClient(auth.clientId, serviceType)
+    const data = await getPriceListForClient(auth.clientId)
     await setCachedData(key, data, PRICE_LIST_TTL)
     return NextResponse.json({ data })
   } catch (error) {

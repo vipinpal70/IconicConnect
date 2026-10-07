@@ -66,33 +66,9 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
   if (action === 'subuser.created') return 'Sub-user created'
   if (action === 'subuser.updated') return 'Sub-user updated'
   if (action === 'subuser.deleted') return 'Sub-user deleted'
-  if (action === 'milling_center.created') return 'Milling centre onboarded'
-  if (action === 'milling_center.updated') return 'Milling centre updated'
-  if (action === 'milling_center.deactivated') return 'Milling centre deactivated'
-  if (action === 'milling_user.created') return 'Milling portal user created'
-  if (action === 'milling_user.password_reset') return 'Milling portal user password reset'
-  if (action === 'milling_user.deleted') return 'Milling portal user deleted'
-  if (action === 'milling_routing_rule.created') return 'Milling routing rule created'
-  if (action === 'milling_routing_rule.updated') return 'Milling routing rule updated'
-  if (action === 'milling_routing_rule.deleted') return 'Milling routing rule deleted'
-  if (action === 'case.milling_assigned') return 'Assigned to milling centre'
-  if (action === 'case.milling_status_updated') {
-    const status = typeof details?.status === 'string' ? details.status : null
-    switch (status) {
-      case 'milling_in_progress':
-        return 'Milling started'
-      case 'milling_qc':
-        return 'Milling QC passed'
-      case 'dispatched':
-        return 'Dispatched by milling centre'
-      case 'delivered':
-        return 'Delivered by milling centre'
-      default:
-        return 'Milling status updated'
-    }
-  }
-  if (action === 'case.milling_shipment_recorded') return 'Shipment recorded by milling centre'
-  if (action === 'case.milling_file_uploaded') return 'Milling centre uploaded a file'
+  if (action === 'case.converted_to_design_only') return 'Converted to Design Only'
+  // Events recorded before the milling flow was removed stay readable in old timelines.
+  if (/^(case\.)?milling_/.test(action)) return 'Legacy milling event'
   if (action === 'case.bulk_download_started') return 'Bulk download started'
   if (action === 'case.bulk_download_completed') return 'Bulk download completed'
   if (action === 'case.bulk_download_failed') return 'Bulk download failed'
@@ -137,30 +113,15 @@ export function formatActivityLabel(action: string, details: ActivityDetails, ac
 }
 
 /**
- * Milling-stage events must never surface milling terminology, centre names,
- * or shipment/tracking detail to the dental lab — see the milling
- * implementation plan's client visibility rules. Returns the client-facing
- * override for a given internal action, or null if the event is safe to show as-is.
+ * Client-facing override for a given internal action, or null if the event is
+ * safe to show as-is.
  */
 function getClientTimelineOverride(
   action: string,
   details: ActivityDetails
 ): { clientLabel?: string; clientHidden?: boolean } | null {
-  if (action === 'case.milling_assigned') return { clientLabel: 'Sent to production' }
-  if (action === 'case.milling_status_updated') {
-    const status = typeof details?.status === 'string' ? details.status : null
-    switch (status) {
-      case 'dispatched':
-        return { clientLabel: 'Shipped by Iconic' }
-      default:
-        // ready_for_milling / milling_in_progress / milling_qc / delivered all
-        // collapse into the coarse "In Production" status client-side already —
-        // no extra timeline line needed for these intermediate transitions.
-        return { clientHidden: true }
-    }
-  }
-  if (action === 'case.milling_shipment_recorded') return { clientHidden: true }
-  if (action === 'case.milling_file_uploaded') return { clientHidden: true }
+  // Legacy milling events (recorded before the flow was removed) are never shown to labs.
+  if (/^(case\.)?milling_/.test(action)) return { clientHidden: true }
   // Internal-team downloads of the lab's files are an internal audit trail only;
   // the client sees just their own output downloads.
   if (action.startsWith('case.bulk_download_') && details?.scope !== 'client_output') {

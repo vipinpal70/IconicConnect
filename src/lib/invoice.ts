@@ -67,19 +67,12 @@ function extractUnitCount(unitType: 'per_tooth' | 'per_arch', subTypeData: any):
   return 1
 }
 
-function serviceTypeSuffix(serviceType: 'design_only' | 'design_milling' | 'milling_only'): string {
-  if (serviceType === 'design_milling') return ' (Design + Milling)'
-  if (serviceType === 'milling_only') return ' (Milling Only)'
-  return ''
-}
-
 // ── Client price lookup ─────────────────────────────────────────────────────
 
 export async function getUnitPrice(
   clientId: string,
   category: string,
-  subCategory: string,
-  serviceType: 'design_only' | 'design_milling' | 'milling_only' = 'design_only'
+  subCategory: string
 ): Promise<number> {
   // Try client-specific price first
   const [row] = await db
@@ -96,7 +89,8 @@ export async function getUnitPrice(
       and(
         eq(serviceCatalog.category, category),
         eq(serviceCatalog.subCategory, subCategory),
-        eq(serviceCatalog.serviceType, serviceType)
+        // service_type is a legacy column (Design-only product) — see lib/price-list.ts
+        eq(serviceCatalog.serviceType, 'design_only')
       )
     )
     .limit(1)
@@ -118,19 +112,11 @@ export async function buildInvoiceItems(
     .from(cases)
     .where(inArray(cases.id, caseIds))
 
-  // Group cases by normalized category + subCategory + serviceType — a
-  // Design Only and a Design + Milling case of the same restoration price
-  // differently, so they can never share a line item.
-  type CaseServiceType = 'design_only' | 'design_milling' | 'milling_only'
-
-  const resolveServiceType = (raw: string): CaseServiceType =>
-    raw === 'design_milling' || raw === 'milling_only' ? raw : 'design_only'
-
+  // Group cases by normalized category + subCategory.
   type Group = {
     category: string
     subCategory: string
     unitType: 'per_tooth' | 'per_arch'
-    serviceType: CaseServiceType
     totalUnits: number
   }
   const groupMap = new Map<string, Group>()
@@ -139,39 +125,36 @@ export async function buildInvoiceItems(
   // above (it mixes per_case and per_tooth lines) and from the legacy
   // "Model Required?" add-on below (different catalog rows, never both on
   // the same case). See 3d-model-implement-plan.md §7/§11.
-  const modelCaseTypeCounts = new Map<string, { subCategory: string; serviceType: CaseServiceType; count: number }>()
-  const modelDieUnitsByServiceType = new Map<CaseServiceType, number>()
-  const modelArticulatorCountByServiceType = new Map<CaseServiceType, number>()
-  const modelDrainHolesCountByServiceType = new Map<CaseServiceType, number>()
+  const modelCaseTypeCounts = new Map<string, { subCategory: string; count: number }>()
+  let modelDieUnits = 0
+  let modelArticulatorCount = 0
+  let modelDrainHolesCount = 0
 
   for (const c of selectedCases) {
     // Implant Bars: priced like Implants (per tooth) from its own catalog row,
     // plus the optional Crown / Bridge attachment from the Crown & Bridge catalog.
     if ((c.category || '').trim() === 'Implant Bars') {
       const data = (c.subTypeData as Record<string, any>) || {}
-      const serviceType = resolveServiceType(c.serviceType)
       const barCount = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
       if (barCount > 0) {
-        const key = `Implant Bars:Implant Bars:${serviceType}`
+        const key = `Implant Bars:Implant Bars`
         const g = groupMap.get(key)
         if (g) g.totalUnits += barCount
-        else groupMap.set(key, { category: 'Implant Bars', subCategory: 'Implant Bars', unitType: 'per_tooth', serviceType, totalUnits: barCount })
+        else groupMap.set(key, { category: 'Implant Bars', subCategory: 'Implant Bars', unitType: 'per_tooth', totalUnits: barCount })
       }
       const cbType = data.caseType2 as string | undefined
       const cbCount = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
       if (cbType && cbType !== 'None' && cbCount > 0) {
-        const key = `Crown & Bridge:${cbType}:${serviceType}`
+        const key = `Crown & Bridge:${cbType}`
         const g = groupMap.get(key)
         if (g) g.totalUnits += cbCount
-        else groupMap.set(key, { category: 'Crown & Bridge', subCategory: cbType, unitType: 'per_tooth', serviceType, totalUnits: cbCount })
+        else groupMap.set(key, { category: 'Crown & Bridge', subCategory: cbType, unitType: 'per_tooth', totalUnits: cbCount })
       }
       continue
     }
 
     const input = mapCaseToPricingInput(c.category || '', c.subTypeData)
     if (!input) continue
-
-    const serviceType = resolveServiceType(c.serviceType)
 
     // Implants are handled separately because they can produce two distinct
     // line items: one for the implant device component (Robotic/Ti-Base/Custom)
@@ -183,10 +166,10 @@ export async function buildInvoiceItems(
       // 1. Implant device component (Robotic / Ti-Base / Custom)
       const implantCount = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
       if (implantCount > 0) {
-        const key = `Implants:${input.subCategory}:${serviceType}`
+        const key = `Implants:${input.subCategory}`
         const g = groupMap.get(key)
         if (g) g.totalUnits += implantCount
-        else groupMap.set(key, { category: 'Implants', subCategory: input.subCategory, unitType: 'per_tooth', serviceType, totalUnits: implantCount })
+        else groupMap.set(key, { category: 'Implants', subCategory: input.subCategory, unitType: 'per_tooth', totalUnits: implantCount })
       }
 
       // 2. Optional Crown / Bridge component — priced from Crown & Bridge catalog
@@ -194,10 +177,10 @@ export async function buildInvoiceItems(
       if (cbType && cbType !== 'None' && input.type) {
         const cbCount = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
         if (cbCount > 0) {
-          const key = `Crown & Bridge:${input.type}:${serviceType}`
+          const key = `Crown & Bridge:${input.type}`
           const g = groupMap.get(key)
           if (g) g.totalUnits += cbCount
-          else groupMap.set(key, { category: 'Crown & Bridge', subCategory: input.type, unitType: 'per_tooth', serviceType, totalUnits: cbCount })
+          else groupMap.set(key, { category: 'Crown & Bridge', subCategory: input.type, unitType: 'per_tooth', totalUnits: cbCount })
         }
       }
 
@@ -207,20 +190,19 @@ export async function buildInvoiceItems(
     if (input.category === '3D Model') {
       const data = (c.subTypeData as Record<string, any>) || {}
 
-      const caseTypeKey = `${input.subCategory}:${serviceType}`
-      const existing = modelCaseTypeCounts.get(caseTypeKey)
+      const existing = modelCaseTypeCounts.get(input.subCategory)
       if (existing) existing.count += 1
-      else modelCaseTypeCounts.set(caseTypeKey, { subCategory: input.subCategory, serviceType, count: 1 })
+      else modelCaseTypeCounts.set(input.subCategory, { subCategory: input.subCategory, count: 1 })
 
       if (input.die) {
         const teethCount = Array.isArray(data.teeth) ? data.teeth.length : 0
-        modelDieUnitsByServiceType.set(serviceType, (modelDieUnitsByServiceType.get(serviceType) ?? 0) + teethCount)
+        modelDieUnits += teethCount
       }
       if (input.articulator) {
-        modelArticulatorCountByServiceType.set(serviceType, (modelArticulatorCountByServiceType.get(serviceType) ?? 0) + 1)
+        modelArticulatorCount += 1
       }
       if (input.drainHoles) {
-        modelDrainHolesCountByServiceType.set(serviceType, (modelDrainHolesCountByServiceType.get(serviceType) ?? 0) + 1)
+        modelDrainHolesCount += 1
       }
 
       continue // skip generic processing below
@@ -246,14 +228,14 @@ export async function buildInvoiceItems(
       continue
     }
 
-    const key = `${category}:${subCategory}:${serviceType}`
+    const key = `${category}:${subCategory}`
     const existing = groupMap.get(key)
     const units = extractUnitCount(unitType, c.subTypeData)
 
     if (existing) {
       existing.totalUnits += units
     } else {
-      groupMap.set(key, { category, subCategory, unitType, serviceType, totalUnits: units })
+      groupMap.set(key, { category, subCategory, unitType, totalUnits: units })
     }
   }
 
@@ -263,19 +245,18 @@ export async function buildInvoiceItems(
   let sno = 1
 
   for (const group of groupMap.values()) {
-    const unitPrice = await getUnitPrice(clientId, group.category, group.subCategory, group.serviceType)
+    const unitPrice = await getUnitPrice(clientId, group.category, group.subCategory)
     const totalPrice = parseFloat((group.totalUnits * unitPrice).toFixed(2))
     subtotal += totalPrice
 
     items.push({
       sno: sno++,
-      description: `${group.category} - ${group.subCategory}${serviceTypeSuffix(group.serviceType)}`,
+      description: `${group.category} - ${group.subCategory}`,
       qty: group.totalUnits,
       unitPrice,
       totalPrice,
       category: group.category,
       subCategory: group.subCategory,
-      serviceType: group.serviceType,
     })
   }
 
@@ -283,94 +264,85 @@ export async function buildInvoiceItems(
   // Die (per_tooth, only if Die = Yes), Articulator and Drain Holes (flat
   // per_case, only if set). Never mixed with the legacy "Model Required?"
   // add-on below — a '3D Model'-category case never sets modelRequired.
-  for (const { subCategory, serviceType, count } of modelCaseTypeCounts.values()) {
-    const unitPrice = await getUnitPrice(clientId, '3D Model', subCategory, serviceType)
+  for (const { subCategory, count } of modelCaseTypeCounts.values()) {
+    const unitPrice = await getUnitPrice(clientId, '3D Model', subCategory)
     const totalPrice = parseFloat((count * unitPrice).toFixed(2))
     subtotal += totalPrice
     items.push({
       sno: sno++,
-      description: `3D Model - ${subCategory}${serviceTypeSuffix(serviceType)}`,
+      description: `3D Model - ${subCategory}`,
       qty: count,
       unitPrice,
       totalPrice,
       category: '3D Model',
       subCategory,
-      serviceType,
     })
   }
 
-  for (const [serviceType, teethCount] of modelDieUnitsByServiceType) {
-    if (teethCount <= 0) continue
-    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Die', serviceType)
-    const totalPrice = parseFloat((teethCount * unitPrice).toFixed(2))
+  if (modelDieUnits > 0) {
+    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Die')
+    const totalPrice = parseFloat((modelDieUnits * unitPrice).toFixed(2))
     subtotal += totalPrice
     items.push({
       sno: sno++,
-      description: `3D Model - Die${serviceTypeSuffix(serviceType)}`,
-      qty: teethCount,
+      description: `3D Model - Die`,
+      qty: modelDieUnits,
       unitPrice,
       totalPrice,
       category: '3D Model',
       subCategory: 'Die',
-      serviceType,
     })
   }
 
-  for (const [serviceType, count] of modelArticulatorCountByServiceType) {
-    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Articulator', serviceType)
-    const totalPrice = parseFloat((count * unitPrice).toFixed(2))
+  if (modelArticulatorCount > 0) {
+    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Articulator')
+    const totalPrice = parseFloat((modelArticulatorCount * unitPrice).toFixed(2))
     subtotal += totalPrice
     items.push({
       sno: sno++,
-      description: `3D Model - Articulator${serviceTypeSuffix(serviceType)}`,
-      qty: count,
+      description: `3D Model - Articulator`,
+      qty: modelArticulatorCount,
       unitPrice,
       totalPrice,
       category: '3D Model',
       subCategory: 'Articulator',
-      serviceType,
     })
   }
 
-  for (const [serviceType, count] of modelDrainHolesCountByServiceType) {
-    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Drain Holes', serviceType)
-    const totalPrice = parseFloat((count * unitPrice).toFixed(2))
+  if (modelDrainHolesCount > 0) {
+    const unitPrice = await getUnitPrice(clientId, '3D Model', 'Drain Holes')
+    const totalPrice = parseFloat((modelDrainHolesCount * unitPrice).toFixed(2))
     subtotal += totalPrice
     items.push({
       sno: sno++,
-      description: `3D Model - Drain Holes${serviceTypeSuffix(serviceType)}`,
-      qty: count,
+      description: `3D Model - Drain Holes`,
+      qty: modelDrainHolesCount,
       unitPrice,
       totalPrice,
       category: '3D Model',
       subCategory: 'Drain Holes',
-      serviceType,
     })
   }
 
-  // Model billing — count cases where modelRequired = "yes" (per_case charge),
-  // split by serviceType since each flow prices models differently too.
-  const modelCountByServiceType = new Map<CaseServiceType, number>()
+  // Model billing — count cases where modelRequired = "yes" (per_case charge).
+  let modelCount = 0
   for (const c of selectedCases) {
     const data = (c.subTypeData as Record<string, any>) || {}
-    if (data.modelRequired !== 'yes') continue
-    const serviceType = resolveServiceType(c.serviceType)
-    modelCountByServiceType.set(serviceType, (modelCountByServiceType.get(serviceType) ?? 0) + 1)
+    if (data.modelRequired === 'yes') modelCount += 1
   }
 
-  for (const [serviceType, modelCount] of modelCountByServiceType) {
-    const modelUnitPrice = await getUnitPrice(clientId, 'Model', '3D Model', serviceType)
+  if (modelCount > 0) {
+    const modelUnitPrice = await getUnitPrice(clientId, 'Model', '3D Model')
     const modelTotalPrice = parseFloat((modelCount * modelUnitPrice).toFixed(2))
     subtotal += modelTotalPrice
     items.push({
       sno: sno++,
-      description: `Model - 3D Model${serviceTypeSuffix(serviceType)}`,
+      description: `Model - 3D Model`,
       qty: modelCount,
       unitPrice: modelUnitPrice,
       totalPrice: modelTotalPrice,
       category: 'Model',
       subCategory: '3D Model',
-      serviceType,
     })
   }
 

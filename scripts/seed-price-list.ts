@@ -8,21 +8,16 @@ import { serviceCatalog } from '../src/db/schema'
 /**
  * Feeds the system-level DEFAULT price list (service_catalog) — the one
  * behind the admin "Edit Default Price List" modal — from a single editable
- * JSON file covering all three flows (Design Only / Design + Milling /
- * Milling Only). Never touches client_price_list: a client's own prices are
+ * JSON file (Design flow). Never touches client_price_list: a client's own prices are
  * untouched no matter what this writes to the default catalog, exactly like
  * the admin UI's own PUT already behaves.
  *
- * For each row in the file, matched by (category, subCategory, serviceType):
+ * For each row in the file, matched by (category, subCategory):
  *   - if it already exists in service_catalog, its unitType/defaultPrice/
  *     isActive/sortOrder are OVERRIDDEN with whatever the file says
  *   - if it doesn't exist yet, it's created
  *
- * This is why design_milling and milling_only having zero rows today (no
- * seed script ever wrote design_milling; milling_only's dedicated seed
- * script only creates missing rows and was never re-run after a full DB
- * reset) isn't a schema problem — it's just missing data, which this fixes
- * for all three flows in one place, re-runnable any time prices change.
+ * Re-runnable any time prices change.
  *
  * Usage:
  *   npx tsx scripts/seed-price-list.ts                      (dry run — no writes)
@@ -37,7 +32,8 @@ const filePath =
     ? path.resolve(process.cwd(), process.argv[fileFlagIndex + 1])
     : path.join(process.cwd(), 'scripts', 'price-list-seed.json')
 
-type ServiceType = 'design_only' | 'design_milling' | 'milling_only'
+// service_catalog.service_type is a legacy column — the product is Design-only.
+type ServiceType = 'design_only'
 type UnitType = 'per_tooth' | 'per_arch' | 'per_case'
 
 interface SeedRow {
@@ -49,7 +45,7 @@ interface SeedRow {
   sortOrder?: number
 }
 
-const SERVICE_TYPES: ServiceType[] = ['design_only', 'design_milling', 'milling_only']
+const SERVICE_TYPES: ServiceType[] = ['design_only']
 const UNIT_TYPES: UnitType[] = ['per_tooth', 'per_arch', 'per_case']
 
 function loadFile(): Record<string, unknown> {

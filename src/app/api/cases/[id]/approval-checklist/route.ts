@@ -8,7 +8,6 @@ import { logActivity } from '@/src/lib/activity-log'
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher'
 import { CASE_APPROVAL_CHECKLIST, normalizeCaseApprovalChecklist } from '@/src/lib/case-approval'
 import { invalidateCasesCache, deleteCachedData } from '@/src/lib/redis-cache'
-import { autoAdvanceIfCommitted } from '@/src/lib/milling/assignment'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error'
@@ -95,23 +94,13 @@ export async function POST(
       return NextResponse.json({ error: 'Please complete all QC checklist items before approving.' }, { status: 400 })
     }
 
-    // Design + Milling skips client approval entirely — QC's checklist is
-    // still recorded as the internal quality gate, but the case stays at
-    // Internal QC so it can go straight to milling-centre assignment instead
-    // of being submitted for client review.
-    const skipsClientReview = caseRecord.serviceType === 'design_milling'
-
     const [updatedCase] = await db
       .update(cases)
-      .set(
-        skipsClientReview
-          ? { approvalChecklist: normalizedChecklist }
-          : {
-              approvalChecklist: normalizedChecklist,
-              status: 'submitted_to_client',
-              submittedToClientAt: new Date(),
-            }
-      )
+      .set({
+        approvalChecklist: normalizedChecklist,
+        status: 'submitted_to_client',
+        submittedToClientAt: new Date(),
+      })
       .where(eq(cases.id, id))
       .returning()
 
@@ -122,35 +111,20 @@ export async function POST(
     const caseUrl = `/cases/${id}`
     const caseNumber = updatedCase.caseNumber ?? caseRecord.caseNumber ?? ''
 
-    // Flow 3 (case-flow-update-plan.md §7.3): if this case's design was
-    // committed up front to also mill with the same centre, send it straight
-    // into production now — no separate "Assign to Milling Centre" click.
-    // Falls back to leaving the case at Internal QC (today's behavior) if
-    // the committed centre is no longer usable or this isn't a Flow-3 case.
-    let finalCase = updatedCase
-    if (skipsClientReview) {
-      const advanced = await autoAdvanceIfCommitted({ caseId: id, actorId: profile.id })
-      if (advanced) {
-        const [refetched] = await db.select().from(cases).where(eq(cases.id, id)).limit(1)
-        if (refetched) finalCase = refetched
-      }
-    }
+    const finalCase = updatedCase
 
     await Promise.all([
       invalidateCasesCache(caseRecord.clientId),
       deleteCachedData(`case:detail:${id}`),
     ])
 
-    if (!skipsClientReview) {
-      await notifyCaseStatusChanged({
-        actorUserId: profile.id,
-        targetUserId: caseRecord.clientId,
-        caseId: id,
-        caseNumber,
-        status: 'submitted_to_client',
-        serviceType: caseRecord.serviceType,
-      }).catch((err) => console.error('[ApprovalChecklistNotification] Failed to dispatch approval notification:', err))
-    }
+    await notifyCaseStatusChanged({
+      actorUserId: profile.id,
+      targetUserId: caseRecord.clientId,
+      caseId: id,
+      caseNumber,
+      status: 'submitted_to_client',
+    }).catch((err) => console.error('[ApprovalChecklistNotification] Failed to dispatch approval notification:', err))
 
     await logActivity({
       actor: profile,

@@ -28,8 +28,7 @@ export interface DeleteClientResult {
  * database and from Supabase Auth. Everything that isn't already covered by
  * an `onDelete: 'cascade'` FK (notifications, notification_preferences,
  * sidebar_seen_at, client_price_list, preference_forms, offer_claims — all
- * cascade on profiles.id; chat_messages/chat_read_states/milling_case_assignments/
- * case_center_assignment_history all cascade on cases.id) is deleted here
+ * cascade on profiles.id; chat_messages/chat_read_states cascade on cases.id) is deleted here
  * explicitly, in dependency order, inside one transaction — so a client is
  * either fully gone or the delete fails with nothing changed. Supabase Auth
  * accounts are only removed after that transaction commits, so a failed

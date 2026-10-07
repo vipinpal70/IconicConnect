@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 vi.mock('@/src/db', () => ({ db: {} }))
-vi.mock('@/src/db/schema/milling', () => ({ millingCaseAssignments: {} }))
 import { stripStaffOnlyCaseFields } from '../case-access'
 
 describe('stripStaffOnlyCaseFields', () => {

@@ -210,39 +210,12 @@ function getHomeRoute(role: string | undefined, createdBy: string | null | undef
     case 'account_manager':
     case 'consultant':
       return '/dashboard'
-    case 'milling_admin':
-    case 'milling_production':
-    case 'milling_support':
-      return '/milling/dashboard'
     default:
       return '/dashboard'
   }
 }
 
-// Milling-centre accounts are third-party partners: they get their own portal and a narrow set of
-// shared endpoints — NOT the general /api/cases surface, support, offers, tutorials or preference forms.
-// (The one case endpoint they use is /api/cases/<uuid>; the handler additionally checks assignment.)
-const MILLING_SHARED_PATHS = [
-  '/auth/verify', '/auth/reset-password', '/auth/forgot-password',
-  '/profile', '/api/profile', '/notifications', '/api/notifications',
-  '/api/notification-preferences', '/api/sidebar-badges',
-]
-const CASE_DETAIL_PATH = /^\/api\/cases\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-function isAllowedMillingPath(pathname: string): boolean {
-  return (
-    pathname.startsWith('/milling') ||
-    pathname.startsWith('/api/milling') ||
-    CASE_DETAIL_PATH.test(pathname) ||
-    MILLING_SHARED_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
-  )
-}
-
 function isAllowedPath(role: string | undefined, pathname: string, createdBy: string | null | undefined): boolean {
-  if (role === 'milling_admin' || role === 'milling_production' || role === 'milling_support') {
-    return isAllowedMillingPath(pathname)
-  }
-
   // Publicly accessible paths for logged in users (must be checked before role check)
   if (
     pathname === '/auth/verify' ||
@@ -302,7 +275,6 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/api/admin/support') ||
         pathname.startsWith('/api/admin/members') ||
         pathname === '/api/admin/clients/options' ||
-        pathname.startsWith('/api/admin/milling') ||
         pathname.startsWith('/api/tutorials') ||
         pathname.startsWith('/api/offers')
       )

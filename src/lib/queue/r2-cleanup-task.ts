@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { db } from '../../db';
 import { caseFiles, casePreviewFiles, caseReferenceFiles, caseHoldFiles, cases } from '../../db/schema/case';
 import { chatMessages } from '../../db/schema/chat';
-import { millingCenters } from '../../db/schema/milling';
 import { isNotNull } from 'drizzle-orm';
 import { R2_BUCKET } from '../r2';
 import { listAllR2Objects, deleteKeys, keyFromProxyUrl } from '../r2-objects';
@@ -29,11 +28,9 @@ import { listAllR2Objects, deleteKeys, keyFromProxyUrl } from '../r2-objects';
  *   - POST /api/cases/bulk/upload       → staged under `bulk-staging/`, never referenced
  *                                          directly — bulk/confirm COPYs it to a proxy-URL
  *                                          key above (or it's abandoned and SHOULD be reaped)
- *   - POST /api/admin/milling/centers/[id]/contract → RAW key (no proxy URL) in
- *                                          milling_centers.contract_doc_key
  * If you add a new upload route, add its reference column to the `protect*` calls below
- * in the same commit — this file has already had two silent, live gaps found this way
- * (hold images, then milling contract docs) before this comment existed.
+ * in the same commit — this file has already had silent, live gaps found this way
+ * (hold images, then contract docs) before this comment existed.
  *
  * Run directly:   npx tsx src/lib/queue/r2-cleanup-task.ts
  *   --dry-run     list what would be deleted without deleting
@@ -59,7 +56,7 @@ export async function runR2Cleanup(
   );
 
   // 1. Collect every R2 key referenced anywhere in the database.
-  const [attachmentRows, previewFileRows, referenceImageRows, holdFileRows, caseRows, chatRows, millingCenterRows] = await Promise.all([
+  const [attachmentRows, previewFileRows, referenceImageRows, holdFileRows, caseRows, chatRows] = await Promise.all([
     db.select({ fileUrl: caseFiles.fileUrl }).from(caseFiles),
     db.select({ fileUrl: casePreviewFiles.fileUrl }).from(casePreviewFiles),
     db.select({ fileUrl: caseReferenceFiles.fileUrl }).from(caseReferenceFiles),
@@ -75,20 +72,11 @@ export async function runR2Cleanup(
       .select({ fileUrl: chatMessages.fileUrl })
       .from(chatMessages)
       .where(isNotNull(chatMessages.fileUrl)),
-    db
-      .select({ contractDocKey: millingCenters.contractDocKey })
-      .from(millingCenters)
-      .where(isNotNull(millingCenters.contractDocKey)),
   ]);
 
   const referencedKeys = new Set<string>();
   const protect = (url: string | null | undefined) => {
     const key = keyFromProxyUrl(url);
-    if (key) referencedKeys.add(key);
-  };
-  // For columns that store the raw R2 key directly (not a `/api/cases/files`
-  // proxy URL) — currently just milling_centers.contract_doc_key.
-  const protectRawKey = (key: string | null | undefined) => {
     if (key) referencedKeys.add(key);
   };
 
@@ -102,7 +90,6 @@ export async function runR2Cleanup(
     protect(r.teethLibraryFileUrl);
   });
   chatRows.forEach((r) => protect(r.fileUrl));
-  millingCenterRows.forEach((r) => protectRawKey(r.contractDocKey));
 
   console.log(`[R2 Cleanup] ${referencedKeys.size} R2 keys are referenced by the database.`);
 

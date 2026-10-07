@@ -12,10 +12,10 @@ import { fileNameFromUrl, sanitizeSegment } from './names'
 import type { CaseRow } from './access'
 import type { InternalInclude, SkippedItem, SourceRef, ZipEntryPlan } from './types'
 
-// Uploaders whose case_files are NOT "client/lab" files: design-side notes/attachments
-// and milling-centre production photos. Admin is kept — admins create cases on behalf of clients.
+// Uploaders whose case_files are NOT "client/lab" files: design-side notes/attachments.
+// Admin is kept — admins create cases on behalf of clients.
 const NON_LAB_UPLOADER_ROLES = [
-  'designer', 'qc', 'milling_admin', 'milling_production', 'milling_support',
+  'designer', 'qc',
 ] as const
 
 /** Stored URL → source. Proxy URL → R2 key; absolute URL (legacy Supabase) → http; else null. */

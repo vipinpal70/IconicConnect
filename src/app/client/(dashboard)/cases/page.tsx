@@ -12,7 +12,7 @@ import { ThreeShapeImport } from "@/src/components/ThreeShapeImport/ThreeShapeIm
 import { type CaseStatus } from "@/src/data/demoData";
 import { BulkDownloadDialog } from "@/src/components/bulk-download/BulkDownloadDialog";
 import { useBulkSelection } from "@/src/components/bulk-download/useBulkSelection";
-import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle, Factory, Ban } from "lucide-react";
+import { Plus, Search, Download, Upload, X, FileArchive, RefreshCw, MessageSquare, Loader2, PauseCircle, Ban } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -24,23 +24,15 @@ import { Textarea } from "@/src/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/src/components/ui/radio-group";
 import { toast } from "sonner";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
-import type { ServiceType } from "@/src/lib/case-status-mapping";
 import { HOLD_REASONS, canClientCancelCase } from "@/src/lib/case-utils";
 import { CASE_HIERARCHY, isImplantFamily, initialSubTypeData, buildEnabledKeySet, isCategoryAvailable, isFieldOptionEnabled } from "@/src/lib/case-hierarchy";
 import type { PriceListEntryFull } from "@/src/lib/price-list-shared";
 
 const HOLDABLE_STATUSES = ["scan_received", "scan_not_verified", "scan_verified"];
 
-const SERVICE_TYPE_COPY: Record<ServiceType, { label: string; description: string }> = {
-  design_only: { label: "Design Only", description: "Iconic delivers design files digitally" },
-  design_milling: { label: "Design + Milling", description: "Iconic designs, then mills and ships the physical product" },
-  milling_only: { label: "Milling Only", description: "Upload your finished design file — we mill and ship the physical product, no design work included" },
-};
-
 interface BulkRow {
   fileName: string;
   file: File;
-  serviceType: ServiceType;
   category: string;
   subTypeData: Record<string, any>;
   modelRequired: "yes" | "no" | null;
@@ -391,13 +383,9 @@ export default function CasesPage() {
     return () => { window.clearTimeout(timeoutId); window.clearInterval(intervalId); };
   }, []);
 
-  const [serviceType, setServiceType] = useState<ServiceType>("design_only");
-  const [enabledServiceTypes, setEnabledServiceTypes] = useState<ServiceType[]>(["design_only"]);
-  // Which individual services (category/sub-type) this client has enabled,
-  // per flow — admin can disable one independently of the flow toggle.
-  // Keyed lazily since single-case and bulk rows can each be on a different
-  // flow; undefined for a flow means "not fetched yet, don't filter".
-  const [priceListsByFlow, setPriceListsByFlow] = useState<Partial<Record<ServiceType, PriceListEntryFull[]>>>({});
+  // Which individual services (category/sub-type) this client has enabled —
+  // admin can disable one independently. null means "not fetched yet, don't filter".
+  const [priceList, setPriceList] = useState<PriceListEntryFull[] | null>(null);
   const [modelOnlyLab, setModelOnlyLab] = useState(false);
   const [category, setCategory] = useState<string>("Crown & Bridge");
   const [subTypeData, setSubTypeData] = useState<Record<string, any>>({});
@@ -494,11 +482,6 @@ export default function CasesPage() {
     }
     fetchProfile();
 
-    fetch("/api/client/service-types")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => setEnabledServiceTypes(json?.data?.enabledServiceTypes ?? ["design_only"]))
-      .catch(() => setEnabledServiceTypes(["design_only"]));
-
     fetch("/api/client/model-only")
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => setModelOnlyLab(json?.data?.modelOnlyLab ?? false))
@@ -514,53 +497,32 @@ export default function CasesPage() {
     }
   }, [modelOnlyLab, category]);
 
-  // Fetch (once each) the enabled-services price list for the single-case
-  // form's flow and every distinct flow used by a bulk row — each row can
-  // be on a different flow, so options are filtered per-row against its own.
+  // Fetch the enabled-services price list once; form options are filtered against it.
   useEffect(() => {
-    if (priceListsByFlow[serviceType]) return;
-    fetch(`/api/client/price-list?serviceType=${serviceType}`)
+    fetch("/api/client/price-list")
       .then((res) => (res.ok ? res.json() : null))
-      .then((json) => setPriceListsByFlow((prev) => ({ ...prev, [serviceType]: json?.data ?? [] })))
-      .catch(() => setPriceListsByFlow((prev) => ({ ...prev, [serviceType]: [] })));
-  }, [serviceType, priceListsByFlow]);
+      .then((json) => setPriceList(json?.data ?? []))
+      .catch(() => setPriceList([]));
+  }, []);
 
-  useEffect(() => {
-    const missingFlows = Array.from(new Set(bulkRows.map((r) => r.serviceType))).filter((flow) => !priceListsByFlow[flow]);
-    missingFlows.forEach((flow) => {
-      fetch(`/api/client/price-list?serviceType=${flow}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((json) => setPriceListsByFlow((prev) => ({ ...prev, [flow]: json?.data ?? [] })))
-        .catch(() => setPriceListsByFlow((prev) => ({ ...prev, [flow]: [] })));
-    });
-  }, [bulkRows, priceListsByFlow]);
-
-  const enabledKeysForFlow = (flow: ServiceType) => buildEnabledKeySet(priceListsByFlow[flow] ?? []);
-  const priceListLoadingForFlow = (flow: ServiceType) => !priceListsByFlow[flow];
+  const enabledKeys = buildEnabledKeySet(priceList ?? []);
+  const priceListLoading = priceList === null;
 
   const availableCategories = modelOnlyLab
     ? ["3D Model"]
-    : priceListLoadingForFlow(serviceType)
+    : priceListLoading
       ? Object.keys(CASE_HIERARCHY)
-      : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeysForFlow(serviceType)));
+      : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys));
 
   // Keep the selected category valid once we know what's actually enabled.
   useEffect(() => {
-    if (modelOnlyLab || priceListLoadingForFlow(serviceType) || availableCategories.length === 0) return;
+    if (modelOnlyLab || priceListLoading || availableCategories.length === 0) return;
     if (!availableCategories.includes(category)) {
       setCategory(availableCategories[0]);
       setSubTypeData({});
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- availableCategories is derived each render from priceListsByFlow/serviceType, already covered
-  }, [availableCategories, category, modelOnlyLab, serviceType]);
-
-  // Keep the selected serviceType valid as the enabled-flow set loads/changes
-  useEffect(() => {
-    if (!enabledServiceTypes.includes(serviceType)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from a fetch result (enabledServiceTypes), not local render state
-      setServiceType(enabledServiceTypes[0] ?? "design_only");
-    }
-  }, [enabledServiceTypes, serviceType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- availableCategories is derived each render from priceList, already covered
+  }, [availableCategories, category, modelOnlyLab]);
 
   const handleDeleteUploadedFile = async (fileName: string) => {
     try {
@@ -811,7 +773,6 @@ export default function CasesPage() {
 
     const formData = new FormData();
     const caseData = {
-      serviceType,
       category,
       subTypeData: {
         ...subTypeData,
@@ -844,7 +805,6 @@ export default function CasesPage() {
         setCrownBridgeTeeth([]);
         setModelRequired(null);
         setShowErrors(false);
-        setServiceType("design_only");
         setCategory("Crown & Bridge");
         setSubTypeData({});
         setSingleFile(null);
@@ -888,7 +848,6 @@ export default function CasesPage() {
       return {
         fileName: f.name,
         file: f,
-        serviceType: enabledServiceTypes[0] ?? "design_only",
         category: modelOnlyLab ? "3D Model" : "Crown & Bridge",
         subTypeData: {},
         modelRequired: null,
@@ -953,7 +912,6 @@ export default function CasesPage() {
     const formData = new FormData();
 
     const casesData = bulkRows.map(row => ({
-      serviceType: row.serviceType,
       category: row.category,
       subTypeData: {
         ...row.subTypeData,
@@ -1187,9 +1145,7 @@ export default function CasesPage() {
                             <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
                             <p className="text-sm font-medium text-foreground">Drop file here or click to upload</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {serviceType === "milling_only"
-                                ? "Upload your manufacture-ready design file, not a raw scan — this goes straight to milling (Max 2GB)"
-                                : "PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)"}
+                              PNG, JPG, MP4, PDF, ZIP, DOC, DOCX, TXT (Max 2GB)
                             </p>
                           </div>
                         </label>
@@ -1253,32 +1209,6 @@ export default function CasesPage() {
                       ) : null}
                     </div>
 
-                    {enabledServiceTypes.length > 1 && (
-                      <div className="space-y-2">
-                        <Label>Service Type</Label>
-                        <RadioGroup
-                          value={serviceType}
-                          onValueChange={(v) => setServiceType(v as ServiceType)}
-                          className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
-                        >
-                          {enabledServiceTypes.map((flow) => (
-                            <label
-                              key={flow}
-                              htmlFor={`client-service-${flow}`}
-                              className={`flex items-start gap-2 rounded-md border p-2.5 cursor-pointer transition-colors ${serviceType === flow ? "border-emerald-600 bg-emerald-50" : "border-border"
-                                }`}
-                            >
-                              <RadioGroupItem value={flow} id={`client-service-${flow}`} className="mt-0.5" />
-                              <span>
-                                <span className="block text-xs font-semibold text-foreground">{SERVICE_TYPE_COPY[flow].label}</span>
-                                <span className="block text-[11px] text-muted-foreground">{SERVICE_TYPE_COPY[flow].description}</span>
-                              </span>
-                            </label>
-                          ))}
-                        </RadioGroup>
-                      </div>
-                    )}
-
                     {isImplantFamily(category) ? (
                       <>
                         <div className="space-y-2">
@@ -1305,7 +1235,7 @@ export default function CasesPage() {
                             <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Sub Type 1" /></SelectTrigger>
                             <SelectContent className="bg-emerald-800 text-white">
                               {CASE_HIERARCHY["Implants"].fields[0].options
-                                .filter((opt) => priceListLoadingForFlow(serviceType) || isFieldOptionEnabled("Implants", "caseType1", opt, enabledKeysForFlow(serviceType)))
+                                .filter((opt) => priceListLoading || isFieldOptionEnabled("Implants", "caseType1", opt, enabledKeys))
                                 .map((opt) => (
                                   <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
                                     {opt}
@@ -1461,7 +1391,7 @@ export default function CasesPage() {
                             <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Crown & Bridge type" /></SelectTrigger>
                             <SelectContent className="bg-emerald-800 text-white">
                               {CASE_HIERARCHY["Implants"].fields[1].options
-                                .filter((opt) => priceListLoadingForFlow(serviceType) || isFieldOptionEnabled("Implants", "caseType2", opt, enabledKeysForFlow(serviceType)))
+                                .filter((opt) => priceListLoading || isFieldOptionEnabled("Implants", "caseType2", opt, enabledKeys))
                                 .map((opt) => (
                                   <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
                                     {opt}
@@ -1519,7 +1449,7 @@ export default function CasesPage() {
                                 <input
                                   type="checkbox"
                                   id="client-case-die-checkbox"
-                                  disabled={isSubmitting || (!priceListLoadingForFlow(serviceType) && !isFieldOptionEnabled(category, "die", "Yes", enabledKeysForFlow(serviceType)))}
+                                  disabled={isSubmitting || (!priceListLoading && !isFieldOptionEnabled(category, "die", "Yes", enabledKeys))}
                                   checked={subTypeData.die === "Yes"}
                                   onChange={(e) => {
                                     const isChecked = e.target.checked
@@ -1546,7 +1476,7 @@ export default function CasesPage() {
                                 <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                                 <SelectContent className="bg-emerald-800 text-white">
                                   {field.options
-                                    .filter((opt) => priceListLoadingForFlow(serviceType) || isFieldOptionEnabled(category, field.name, opt, enabledKeysForFlow(serviceType)))
+                                    .filter((opt) => priceListLoading || isFieldOptionEnabled(category, field.name, opt, enabledKeys))
                                     .map((opt) => (
                                       <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
                                         {opt}
@@ -1794,19 +1724,6 @@ export default function CasesPage() {
                                     <p className="text-[10px] text-muted-foreground text-right">Uploading... {row.uploadProgress}%</p>
                                   </div>
                                 )}
-                                <div className="space-y-1">
-                                  <Label className="text-xs">Service Type</Label>
-                                  <Select value={row.serviceType} onValueChange={(v) => updateBulkRow(i, { serviceType: v as ServiceType })}>
-                                    <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
-                                    <SelectContent className="bg-emerald-800 text-white">
-                                      {enabledServiceTypes.map((flow) => (
-                                        <SelectItem key={flow} value={flow} className="focus:bg-emerald-700 focus:text-white">
-                                          {SERVICE_TYPE_COPY[flow].label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1">
                                     <Label className="text-xs">Category <Req /></Label>
@@ -1815,9 +1732,9 @@ export default function CasesPage() {
                                       <SelectContent className="bg-emerald-800 text-white">
                                         {(modelOnlyLab
                                           ? ["3D Model"]
-                                          : priceListLoadingForFlow(row.serviceType)
+                                          : priceListLoading
                                             ? Object.keys(CASE_HIERARCHY)
-                                            : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeysForFlow(row.serviceType)))
+                                            : Object.keys(CASE_HIERARCHY).filter((cat) => isCategoryAvailable(cat, enabledKeys))
                                         ).map((cat) => (
                                           <SelectItem key={cat} value={cat} className="focus:bg-emerald-700 focus:text-white">
                                             {cat}
@@ -1850,7 +1767,7 @@ export default function CasesPage() {
                                         <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Sub Type 1" /></SelectTrigger>
                                         <SelectContent className="bg-emerald-800 text-white">
                                           {CASE_HIERARCHY["Implants"].fields[0].options
-                                            .filter((opt) => priceListLoadingForFlow(row.serviceType) || isFieldOptionEnabled("Implants", "caseType1", opt, enabledKeysForFlow(row.serviceType)))
+                                            .filter((opt) => priceListLoading || isFieldOptionEnabled("Implants", "caseType1", opt, enabledKeys))
                                             .map((opt) => (
                                               <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
                                                 {opt}
@@ -1893,7 +1810,7 @@ export default function CasesPage() {
                                         <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Crown & Bridge type" /></SelectTrigger>
                                         <SelectContent className="bg-emerald-800 text-white">
                                           {CASE_HIERARCHY["Implants"].fields[1].options
-                                            .filter((opt) => priceListLoadingForFlow(row.serviceType) || isFieldOptionEnabled("Implants", "caseType2", opt, enabledKeysForFlow(row.serviceType)))
+                                            .filter((opt) => priceListLoading || isFieldOptionEnabled("Implants", "caseType2", opt, enabledKeys))
                                             .map((opt) => (
                                               <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
                                                 {opt}
@@ -1929,7 +1846,7 @@ export default function CasesPage() {
                                             <input
                                               type="checkbox"
                                               id={`bulk-die-checkbox-${i}`}
-                                              disabled={isSubmitting || (!priceListLoadingForFlow(row.serviceType) && !isFieldOptionEnabled(row.category, "die", "Yes", enabledKeysForFlow(row.serviceType)))}
+                                              disabled={isSubmitting || (!priceListLoading && !isFieldOptionEnabled(row.category, "die", "Yes", enabledKeys))}
                                               checked={row.subTypeData.die === "Yes"}
                                               onChange={(e) => {
                                                 const isChecked = e.target.checked
@@ -1960,7 +1877,7 @@ export default function CasesPage() {
                                             <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder={`Select ${field.label}`} /></SelectTrigger>
                                             <SelectContent className="bg-emerald-800 text-white">
                                               {field.options
-                                                .filter((opt) => priceListLoadingForFlow(row.serviceType) || isFieldOptionEnabled(row.category, field.name, opt, enabledKeysForFlow(row.serviceType)))
+                                                .filter((opt) => priceListLoading || isFieldOptionEnabled(row.category, field.name, opt, enabledKeys))
                                                 .map((opt) => (
                                                   <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">
                                                     {opt}
@@ -2212,12 +2129,7 @@ export default function CasesPage() {
                           </td>
                           <td className="px-3.5 py-2">
                             <div className="scale-90 origin-left flex items-center gap-1.5">
-                              <StatusBadge status={c.status} serviceType={c.serviceType ?? "design_only"} />
-                              {(c.serviceType === "design_milling" || c.serviceType === "milling_only") && (
-                                <span title={c.serviceType === "milling_only" ? "Milling Only" : "Design + Milling"} className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary/10 text-primary shrink-0">
-                                  <Factory className="h-2.5 w-2.5" />
-                                </span>
-                              )}
+                              <StatusBadge status={c.status} />
                             </div>
                           </td>
                           <td className="px-3.5 py-2 text-[11px] text-muted-foreground whitespace-nowrap">{c.designerName || "—"}</td>

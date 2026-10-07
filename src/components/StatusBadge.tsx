@@ -1,17 +1,12 @@
 import { cn } from "@/src/lib/utils";
-import { CLIENT_STATUS_LABELS, INTERNAL_STATUS_LABELS } from "@/src/db/schema/case";
-import { getStatusLabel, type ServiceType, type CaseStatus } from "@/src/lib/case-status-mapping";
+import { getStatusLabel, type CaseStatus } from "@/src/lib/case-status-mapping";
 
 export function StatusBadge({
   status,
   role = "client",
-  serviceType,
 }: {
   status: string;
   role?: "client" | "internal";
-  // When provided, labels come from the flow-aware mapping module instead of
-  // the global status-label maps (which don't vary by service flow).
-  serviceType?: ServiceType;
 }) {
   // Map of statuses to aesthetic tailwind color styles
   const statusColors: Record<string, string> = {
@@ -43,14 +38,7 @@ export function StatusBadge({
   };
 
   // Resolve display label
-  let label = status;
-  if (serviceType) {
-    label = getStatusLabel(serviceType, status as CaseStatus, role === "internal" ? "admin" : "client");
-  } else if (role === "internal") {
-    label = INTERNAL_STATUS_LABELS[status as keyof typeof INTERNAL_STATUS_LABELS] || status;
-  } else {
-    label = CLIENT_STATUS_LABELS[status as keyof typeof CLIENT_STATUS_LABELS] || status;
-  }
+  const label = getStatusLabel(status as CaseStatus, role === "internal" ? "admin" : "client");
 
   const className = statusColors[status] || "bg-gray-100 text-gray-700";
 

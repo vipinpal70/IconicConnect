@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
-import { denyUnlessMillingAssigned, timelineForClient, isLabRole } from '@/src/lib/case-access'
+import { timelineForClient, isLabRole } from '@/src/lib/case-access'
 import { createClient } from '@/src/lib/supabase/server'
 
 export async function GET(
@@ -25,8 +25,6 @@ export async function GET(
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    const millingDenied = await denyUnlessMillingAssigned(profile, id)
-    if (millingDenied) return millingDenied
 
     const [caseRecord] = await db.select().from(cases).where(eq(cases.id, id)).limit(1)
 

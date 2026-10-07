@@ -143,9 +143,7 @@ that UI already supports editing `defaultPrice` per row and per-client overrides
 
 Both `master`'s `ensureServiceCatalogSeeded()` (23 items today) and `phase2`'s equivalent
 (also seeds a `serviceType` column) need the 8 new rows appended with the next
-`sortOrder` values. On phase2, set `serviceType: 'design_only'` on all 8 new rows — "3D
-Model" is a standalone category, not part of the Design/Milling routing, so it doesn't
-need `design_milling`/`milling_only` variants.
+`sortOrder` values. The 8 new rows take the default (legacy `service_type` column = `design_only`).
 
 ## 5. Type extension
 
@@ -189,12 +187,12 @@ pattern already used for Model/modelRequired:
 ```ts
 if (cat === "3d model") {
 	const caseType1 = String(data.caseType1 || "Full Arch Model");
-	let price = getPrice("3D Model", caseType1, serviceType /* phase2 only */);
-	if (data.die === "yes") price += getPrice("3D Model", "Die", serviceType);
+	let price = getPrice("3D Model", caseType1);
+	if (data.die === "yes") price += getPrice("3D Model", "Die");
 	if (data.articulator === "yes")
-		price += getPrice("3D Model", "Articulator", serviceType);
+		price += getPrice("3D Model", "Articulator");
 	if (data.drainHoles === "yes")
-		price += getPrice("3D Model", "Drain Holes", serviceType);
+		price += getPrice("3D Model", "Drain Holes");
 	return parseFloat(price.toFixed(2));
 }
 ```
@@ -227,7 +225,7 @@ Apply to:
 2. `src/lib/invoice.ts` → `buildInvoiceItems()`: after the existing Implant special-case
    block, add a `'3D Model'` special-case block that emits up to 4 line items per case
    (base case-type + Die + Articulator + Drain Holes, each only if applicable), mirroring
-   the existing Implant device+CB split. Group/key by `serviceType` on phase2 same as
+   the existing Implant device+CB split. Group/key by `category:subCategory` like
    everything else in that function.
 3. `src/app/api/billing/clients/[clientId]/route.ts` → `computeCasePrice()`: add the `cat
 === '3d model'` branch shown above, using the file's existing `getPrice` closure.
@@ -366,13 +364,13 @@ if (cat === "3d model") {
 	const caseType1 = String(data.caseType1 || "Full Arch Model");
 	const teethCount = Array.isArray(data.teeth) ? data.teeth.length : 0;
 
-	let price = getPrice("3D Model", caseType1, serviceType);
+	let price = getPrice("3D Model", caseType1);
 	if (data.die === "yes")
-		price += teethCount * getPrice("3D Model", "Die", serviceType);
+		price += teethCount * getPrice("3D Model", "Die");
 	if (data.articulator === "yes")
-		price += getPrice("3D Model", "Articulator", serviceType);
+		price += getPrice("3D Model", "Articulator");
 	if (data.drainHoles === "yes")
-		price += getPrice("3D Model", "Drain Holes", serviceType);
+		price += getPrice("3D Model", "Drain Holes");
 	return parseFloat(price.toFixed(2));
 }
 ```
@@ -389,7 +387,7 @@ than a single total, a 3D Model case produces up to 4 grouped line items instead
 
 Aggregate across cases the same way the rest of the function already does: sum
 `teethCount` for the Die line across every selected case sharing the same
-`category:subCategory:serviceType` key (exactly like the existing Crown & Bridge / Implant
+`category:subCategory` key (exactly like the existing Crown & Bridge / Implant
 `per_tooth` lines); for the Articulator and Drain Holes lines, count the number of
 _cases_ with that flag set (exactly like the existing `modelRequired` per-case counting
 block already in `buildInvoiceItems`), then multiply once by the unit price.

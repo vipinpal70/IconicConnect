@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
-import { getPriceListForClient, updateClientPriceList, parseCatalogServiceType } from '@/src/lib/price-list'
+import { getPriceListForClient, updateClientPriceList } from '@/src/lib/price-list'
 import { logActivity } from '@/src/lib/activity-log'
 import { deleteCachedData } from '@/src/lib/redis-cache'
 
@@ -48,10 +48,9 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url)
-    const serviceType = parseCatalogServiceType(searchParams.get('serviceType'))
     const includeInactive = searchParams.get('includeInactive') === 'true'
 
-    const data = await getPriceListForClient(id, serviceType, includeInactive)
+    const data = await getPriceListForClient(id, includeInactive)
     return NextResponse.json({ data }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -96,17 +95,9 @@ export async function PUT(
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
     await updateClientPriceList(id, validated, auth.profile.id)
-    await Promise.all([
-      deleteCachedData(`price-list:client:${id}:design_only`),
-      deleteCachedData(`price-list:client:${id}:design_milling`),
-      deleteCachedData(`price-list:client:${id}:milling_only`),
-    ])
+    await deleteCachedData(`price-list:client:${id}:design_only`)
 
-    const [designOnly, designMilling, millingOnly] = await Promise.all([
-      getPriceListForClient(id, 'design_only', true),
-      getPriceListForClient(id, 'design_milling', true),
-      getPriceListForClient(id, 'milling_only', true),
-    ])
+    const data = await getPriceListForClient(id, true)
 
     await logActivity({
       actor: auth.profile,
@@ -114,7 +105,7 @@ export async function PUT(
       details: { clientId: id, itemCount: validated.length },
     }).catch((err) => console.error('[price_list.updated logActivity]', err))
 
-    return NextResponse.json({ data: designOnly, designMillingData: designMilling, millingOnlyData: millingOnly })
+    return NextResponse.json({ data })
   } catch (error) {
     console.error('[admin/clients/[id]/price-list PUT]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 })

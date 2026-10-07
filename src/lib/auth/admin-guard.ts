@@ -9,9 +9,7 @@ export async function requireAdmin() {
 }
 
 // Same shape as requireAdmin, but for routes that non-admin internal staff
-// (qc, designer) also need — e.g. assigning a Design+Milling case to a
-// centre from the case list, which they can already action every other
-// step of.
+// (qc, designer) also need.
 export async function requireStaffRole(allowedRoles: string[]) {
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()

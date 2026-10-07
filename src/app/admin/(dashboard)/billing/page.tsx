@@ -27,7 +27,6 @@ import {
   CircleCheck,
   CircleX,
   BadgeCheck,
-  Factory,
   Pencil,
   Trash2,
   AlertTriangle,
@@ -52,7 +51,6 @@ interface CandidateCase {
   status: string
   createdAt: string
   price: number
-  serviceType?: "design_only" | "design_milling"
   scanFileName: string | null
 }
 
@@ -538,11 +536,6 @@ export default function BillingPage() {
                                 <td className="p-2.5 text-muted-foreground">
                                   <div className="flex items-center gap-1.5">
                                     {getCaseLabel(c)}
-                                    {c.serviceType === "design_milling" && (
-                                      <span title="Design + Milling" className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary/10 text-primary shrink-0">
-                                        <Factory className="h-2.5 w-2.5" />
-                                      </span>
-                                    )}
                                   </div>
                                 </td>
                                 <td className="p-2.5 text-muted-foreground whitespace-nowrap">{unitsLabel}</td>

@@ -41,7 +41,7 @@ rest take their schema defaults.
 | `category` | `caseData.category` verbatim | One of the 6 canonical strings (§4). Stored as free `varchar(100)` — historical rows may hold legacy spellings. |
 | `subTypeData` | `caseData.subTypeData` verbatim (jsonb) | The whole sub-type blob — §3. |
 | `status` | default `'scan_received'` | Not settable at creation. |
-| `serviceType` | `parseCatalogServiceType(caseData.serviceType)` → `design_only` \| `design_milling` \| `milling_only` | Must be in the client's `profiles.enabledServiceTypes` or the whole request 400s. Default `design_only`. |
+| `serviceType` | not sent / ignored — the column keeps its default `design_only` (legacy column; the product is Design-only) | Dropped from the schema in design-only-removal-plan.md Phase 7. |
 | `preferredTeethLibrary` | `caseData.preferredTeethLibrary \|\| 'default'` | `'default'` \| `'other'`. |
 | `teethLibraryFileUrl` / `teethLibraryFileName` | from an uploaded `.dme`/`.zip` when `preferredTeethLibrary === 'other'` | proxy URL + name. |
 | `dueDate` | `caseData.dueDate` if present, else `null` | client forms don't send it today. |
@@ -83,7 +83,7 @@ field (except `die`, rendered as a checkbox in the newer forms); the chosen valu
 
 ### 3.3 What is NOT in `subTypeData`
 
-`clientId`, `serviceType`, `caseNumber`, `category`, `preferredTeethLibrary`,
+`clientId`, `caseNumber`, `category`, `preferredTeethLibrary`,
 `teethLibraryFile*`, `dueDate`, `uploadedFile(s)` — those are **top-level** payload keys, not
 inside `subTypeData`.
 
@@ -269,27 +269,22 @@ anything else → `1 case`.
 
 ---
 
-## 7. Service flow & catalog enforcement
+## 7. Catalog enforcement
 
-### 7.1 `serviceType` (flow)
+There is a single case flow (Design Only — `src/lib/case-status-mapping.ts`: Submitted → Validation →
+Design → Internal QC → Client Review → Approved). Iconic and its clients deliver design only; there
+is no milling flow, milling-centre portal or partner-designer flow in this repo.
 
-`design_only` | `design_milling` | `milling_only` (`serviceTypeEnum`). Column
-`cases.serviceType`, default `design_only`. The form only shows the radio when the client
-has **>1** enabled flow (`profiles.enabledServiceTypes`, fetched from
-`/api/client/service-types` or `/api/admin/clients/[id]/service-types`). `POST /api/cases`
-rejects (400) any case whose `serviceType` isn't in that list. The flow drives the whole
-downstream status machine (`src/lib/case-status-mapping.ts` — `design_only` ends at client
-approval; `design_milling` / `milling_only` route through milling-centre statuses).
+### 7.1 Per-service enable/disable
 
-### 7.2 Per-service enable/disable
-
-`service_catalog (category, subCategory, serviceType)` has `isActive`; per-client
+`service_catalog (category, subCategory)` has `isActive` (the legacy `service_type` column is pinned to
+`design_only`); per-client
 `client_price_list.isEnabled` overrides it (both must be true). The form filters options via
 `isCategoryAvailable` / `isFieldOptionEnabled` / `buildEnabledKeySet` against a fetched
 price list. `POST /api/cases` re-checks server-side: `getRequiredServiceSelections(category,
 subTypeData)` returns the `{category, subCategory}[]` a submission touches (1 for simple
 categories; up to 4 for 3D Model; 2 for Implants with a C&B attachment), and any selection
-not present-and-`isEnabled` in `getPriceListForClient(clientId, serviceType)` → 400.
+not present-and-`isEnabled` in `getPriceListForClient(clientId)` → 400.
 
 ---
 
@@ -300,7 +295,6 @@ not present-and-`isEnabled` in `getPriceListForClient(clientId, serviceType)` �
 ```jsonc
 {
   "clientId": "<uuid>",              // admin only; ignored for client/subuser
-  "serviceType": "design_only",
   "category": "Crown & Bridge",
   "subTypeData": {
     "caseType": "Bridge",
@@ -329,13 +323,12 @@ Sent as `multipart/form-data` with a single field `cases` = `JSON.stringify(payl
    exists on a `case_files` row for one of this client's cases in an **active** status
    (`ACTIVE_CASE_STATUSES` = every status whose lifecycle step ≠ `Completed`) → **409, whole
    request rejected**.
-3. Load client profile → `labName`, `enabledServiceTypes`, `modelOnlyLab`.
+3. Load client profile → `labName`, `modelOnlyLab`.
 4. Per case in the array:
-   a. `serviceType` in `enabledServiceTypes`? else 400.
-   b. `modelOnlyLab` and `category !== "3D Model"`? → 400.
-   c. `getRequiredServiceSelections` all enabled in the flow's price list? else 400.
-   d. `caseNumber = formatCaseNumber(getCasePrefix(category), nextval(seq))`.
-   e. insert `cases` row; insert `case_files` rows; `notifyCaseSubmitted`; `logActivity('case.created')`.
+   a. `modelOnlyLab` and `category !== "3D Model"`? → 400.
+   b. `getRequiredServiceSelections` all enabled in the client's price list? else 400.
+   c. `caseNumber = formatCaseNumber(getCasePrefix(category), nextval(seq))`.
+   d. insert `cases` row; insert `case_files` rows; `notifyCaseSubmitted`; `logActivity('case.created')`.
 5. `invalidateCasesCache(clientId)`; return `{ data: <case | case[]> }`, 201.
 
 There is **no per-item isolation** — the first failing case 400s the whole batch (bulk
@@ -352,8 +345,6 @@ submit is all-or-nothing).
   `allocated_to_designer`, `scan_verified`, `scan_not_verified`. After work starts → 403
   "Cannot edit case details after work has started".
 - `qc` / `designer` **cannot** touch `category` / `subTypeData` / assignments — 403.
-- `serviceType` is **not** editable via PUT (set once at creation; PUT only *reads* it for
-  flow-aware status transitions).
 - There is no dedicated "edit case" dialog in the UI today — the client's realistic path
   for a wrong sub-type is delete-and-resubmit while still editable, or ask an admin.
 
@@ -417,7 +408,6 @@ To land a case identically to the manual form (`xml-work-plan.md` §3/§6):
 - Anything not confidently derivable → leave the field blank and flag it; the carousel form
   makes the client complete it before `POST /api/cases`.
 - Provenance goes under `subTypeData.threeShape` (object) so §10's summary/CSV logic skips it.
-- Don't send `caseNumber`; don't send `serviceType` unless the client picked one (default
-  `design_only`); the zip is the `uploadedFile`.
+- Don't send `caseNumber` or `serviceType`; the zip is the `uploadedFile`.
 - Expect `POST /api/cases` to still enforce the service-catalog check — a client whose
   price list has, say, `In-Lay` disabled cannot be handed an `In-Lay` draft that submits.

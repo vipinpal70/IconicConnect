@@ -8,7 +8,6 @@ import {
 	MessageSquare,
 	Paperclip,
 	Download,
-	Factory,
 	Truck,
 	RefreshCw,
 } from "lucide-react";
@@ -25,7 +24,6 @@ import { INTERNAL_STATUS_LABELS } from "@/src/db/schema/case";
 import {
 	getLifecycleSteps,
 	getLifecycleStep,
-	type ServiceType,
 	type CaseStatus,
 } from "@/src/lib/case-status-mapping";
 import React, { useState, useRef, useEffect } from "react";
@@ -52,7 +50,6 @@ import {
 } from "@/src/lib/case-utils";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { Upload, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
-import type { RoutingResult } from "@/src/lib/milling/routing-engine";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 
@@ -193,7 +190,6 @@ type CaseRecord = {
 	category: string | null;
 	subTypeData: Record<string, unknown> | null;
 	status: string;
-	serviceType?: ServiceType;
 	designerId: string | null;
 	qcId: string | null;
 	accountManagerId: string | null;
@@ -334,16 +330,13 @@ const DetailRow = React.memo(function DetailRow({
 
 const LifecycleStrip = React.memo(function LifecycleStrip({
 	status,
-	serviceType,
 }: {
 	status: string;
-	serviceType: ServiceType;
 }) {
-	const steps = getLifecycleSteps(serviceType);
-	const currentStep = getLifecycleStep(serviceType, status as CaseStatus);
+	const steps = getLifecycleSteps();
+	const currentStep = getLifecycleStep(status as CaseStatus);
 	const currentIndex = Math.max(steps.indexOf(currentStep ?? "Submitted"), 0);
-	// Final success state for the flow — design_only completes at "approved",
-	// the other two flows ship physical product and complete at "delivered".
+	// Final success state for the flow.
 	const isSuccessTerminal = status === "approved" || status === "delivered";
 
 	return (
@@ -441,7 +434,6 @@ export function CaseDetailView({
 	const [rejectNotes, setRejectNotes] = useState("");
 	const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
 	const [cancelNotes, setCancelNotes] = useState("");
-	const [activeTab, setActiveTab] = useState<"details" | "milling">("details");
 
 	// `chatSide === "admin"` covers every internal portal (admin, QC, designer),
 	// but cancelling at any stage is an admin-only power — so the actual role
@@ -874,12 +866,6 @@ export function CaseDetailView({
 		);
 	}
 
-	const serviceType: ServiceType = caseRecord.serviceType ?? "design_only";
-	// Milling Only cases skip design entirely, so they reach the milling stage
-	// right after file verification instead of after design approval — but
-	// once there, they use the same Milling tab as Design + Milling.
-	const hasMillingTab =
-		serviceType === "design_milling" || serviceType === "milling_only";
 
 	const subTypeData = caseRecord.subTypeData || {};
 	const teeth = Array.isArray(subTypeData.teeth)
@@ -945,40 +931,11 @@ export function CaseDetailView({
 					<StatusBadge
 						status={caseRecord.status}
 						role={chatSide === "admin" ? "internal" : "client"}
-						serviceType={serviceType}
 					/>
 				</div>
 			</div>
 
-			{chatSide === "admin" && hasMillingTab && (
-				<div className="flex gap-1.5 border-b border-border">
-					<button
-						onClick={() => setActiveTab("details")}
-						className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-							activeTab === "details"
-								? "border-primary text-primary"
-								: "border-transparent text-muted-foreground hover:text-foreground"
-						}`}
-					>
-						Details
-					</button>
-					<button
-						onClick={() => setActiveTab("milling")}
-						className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
-							activeTab === "milling"
-								? "border-primary text-primary"
-								: "border-transparent text-muted-foreground hover:text-foreground"
-						}`}
-					>
-						<Factory className="h-3.5 w-3.5" /> Milling
-					</button>
-				</div>
-			)}
-
-			{activeTab === "milling" && chatSide === "admin" && hasMillingTab ? (
-				<MillingTab caseId={caseRecord.id} timeline={activities} />
-			) : (
-				<>
+			<>
 					{caseRecord.clientMassage && (
 						<div
 							className={`p-4 rounded-lg border text-xs font-medium flex flex-col gap-1 ${
@@ -1044,7 +1001,6 @@ export function CaseDetailView({
 
 					<LifecycleStrip
 						status={caseRecord.status}
-						serviceType={serviceType}
 					/>
 
 					{/* Upper Grid: Details & Timeline side-by-side on lg screen */}
@@ -1715,7 +1671,6 @@ export function CaseDetailView({
 						</div>
 					</div>
 				</>
-			)}
 
 			{/* Hold Reason Dropdown Dialog */}
 			<Dialog
@@ -2105,307 +2060,5 @@ export function CaseDetailView({
 				</DialogContent>
 			</Dialog>
 		</div>,
-	);
-}
-
-interface MillingAssignmentView {
-	id: string;
-	designCenterId: string | null;
-	productionCenterId: string;
-	productionCenterName: string | null;
-	millingStatus: string;
-	carrier: string | null;
-	trackingNumber: string | null;
-	shipmentEta: string | null;
-	notes: string | null;
-	autoAdvanceToMilling: boolean;
-	productionAssignedAt: string;
-}
-
-function MillingTab({
-	caseId,
-	timeline,
-}: {
-	caseId: string;
-	timeline: CaseActivity[];
-}) {
-	const queryClient = useQueryClient();
-	const [selectedCenterId, setSelectedCenterId] = useState("");
-	const [designNotes, setDesignNotes] = useState("");
-	const [reassigning, setReassigning] = useState(false);
-
-	const { data, isLoading } = useQuery<{
-		assignment: MillingAssignmentView | null;
-		recommendation: RoutingResult | null;
-		eligibleCenters: {
-			id: string;
-			name: string;
-			partnerRate: string;
-			unitType: string;
-			turnaroundDays: number | null;
-		}[];
-	}>({
-		queryKey: ["case-milling-assign", caseId],
-		queryFn: async () => {
-			const res = await fetch(`/api/cases/${caseId}/milling-assign`);
-			if (!res.ok)
-				throw new Error(
-					(await res.json().catch(() => ({}))).error ||
-						"Failed to load milling assignment",
-				);
-			return (await res.json()).data;
-		},
-	});
-
-	const assignMutation = useMutation({
-		mutationFn: async (centerId: string) => {
-			const res = await fetch(`/api/cases/${caseId}/milling-assign`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					millingCenterId: centerId,
-					notes: designNotes || undefined,
-				}),
-			});
-			if (!res.ok)
-				throw new Error(
-					(await res.json().catch(() => ({}))).error || "Failed to assign",
-				);
-			return res.json();
-		},
-		onSuccess: () => {
-			toast.success("Case assigned to milling centre");
-			setReassigning(false);
-			setSelectedCenterId("");
-			queryClient.invalidateQueries({
-				queryKey: ["case-milling-assign", caseId],
-			});
-			queryClient.invalidateQueries({ queryKey: ["case", caseId] });
-		},
-		onError: (err: Error) => toast.error(err.message),
-	});
-
-	if (isLoading) {
-		return (
-			<div className="p-10 text-center text-muted-foreground text-xs">
-				Loading milling info…
-			</div>
-		);
-	}
-
-	const assignment = data?.assignment ?? null;
-	const recommendation = data?.recommendation ?? null;
-	const eligibleCenters = data?.eligibleCenters ?? [];
-	const millingActivities = timeline.filter((t) =>
-		t.action.startsWith("case.milling"),
-	);
-
-	return (
-		<div className="space-y-4">
-			{!assignment || reassigning ? (
-				<Card className="shadow-card">
-					<CardHeader className="py-2.5 px-4 border-b border-border/50">
-						<CardTitle className="text-sm font-semibold flex items-center gap-2">
-							<Factory className="h-4 w-4" />
-							{reassigning
-								? "Re-assign to a different centre"
-								: "Assign to Milling Centre"}
-						</CardTitle>
-					</CardHeader>
-					<CardContent className="p-4 space-y-4">
-						{recommendation?.primary && (
-							<div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
-								<p className="font-semibold text-foreground">
-									Recommended: {recommendation.primary.center.name}
-								</p>
-								<p className="text-muted-foreground mt-0.5">
-									Current load: {recommendation.primary.currentLoad} active case
-									{recommendation.primary.currentLoad === 1 ? "" : "s"}
-									{recommendation.matchedRule
-										? ` · matched rule "${recommendation.matchedRule.name}"`
-										: ""}
-								</p>
-								{recommendation.fallback && (
-									<p className="text-muted-foreground mt-0.5">
-										Fallback: {recommendation.fallback.center.name}
-									</p>
-								)}
-								<Button
-									size="sm"
-									className="mt-2"
-									disabled={assignMutation.isPending}
-									onClick={() =>
-										assignMutation.mutate(recommendation.primary!.center.id)
-									}
-								>
-									Accept recommendation
-								</Button>
-							</div>
-						)}
-
-						<div className="space-y-2">
-							<Label className="text-xs">
-								{recommendation?.primary
-									? "Or pick a different centre"
-									: "Pick a milling centre"}
-							</Label>
-							<Select
-								value={selectedCenterId}
-								onValueChange={setSelectedCenterId}
-							>
-								<SelectTrigger className="h-9">
-									<SelectValue placeholder="Select an eligible centre" />
-								</SelectTrigger>
-								<SelectContent>
-									{eligibleCenters.map((c) => (
-										<SelectItem key={c.id} value={c.id}>
-											{c.name} · {c.partnerRate}/{c.unitType.replace("per_", "")}
-										</SelectItem>
-									))}
-									{eligibleCenters.length === 0 && (
-										<p className="text-xs p-2 text-muted-foreground">
-											No centre has this restoration enabled and priced under this flow yet.
-										</p>
-									)}
-								</SelectContent>
-							</Select>
-						</div>
-
-						<div className="space-y-2">
-							<Label className="text-xs">
-								Design notes for the milling centre (no client info)
-							</Label>
-							<Textarea
-								rows={3}
-								value={designNotes}
-								onChange={(e) => setDesignNotes(e.target.value)}
-								placeholder="Manufacturing instructions, material, shade, etc."
-							/>
-						</div>
-
-						<div className="flex gap-2">
-							<Button
-								size="sm"
-								disabled={!selectedCenterId || assignMutation.isPending}
-								onClick={() => assignMutation.mutate(selectedCenterId)}
-							>
-								{assignMutation.isPending ? "Assigning…" : "Assign"}
-							</Button>
-							{reassigning && (
-								<Button
-									size="sm"
-									variant="ghost"
-									onClick={() => setReassigning(false)}
-								>
-									Cancel
-								</Button>
-							)}
-						</div>
-					</CardContent>
-				</Card>
-			) : (
-				<>
-					<Card className="shadow-card">
-						<CardHeader className="py-2.5 px-4 border-b border-border/50">
-							<CardTitle className="text-sm font-semibold">
-								Milling Assignment
-							</CardTitle>
-						</CardHeader>
-						<CardContent className="p-4 space-y-2 text-sm">
-							<DetailRow
-								label="Assigned centre"
-								value={assignment.productionCenterName ?? "—"}
-							/>
-							<DetailRow
-								label="Milling status"
-								value={
-									INTERNAL_STATUS_LABELS[
-										assignment.millingStatus as keyof typeof INTERNAL_STATUS_LABELS
-									] ?? assignment.millingStatus
-								}
-							/>
-							<DetailRow
-								label="Assigned"
-								value={new Date(assignment.productionAssignedAt).toLocaleString()}
-							/>
-							{assignment.autoAdvanceToMilling && (
-								<DetailRow
-									label="Commitment"
-									value="Same centre committed to design + milling (Flow 3)"
-								/>
-							)}
-							{assignment.notes && (
-								<DetailRow label="Design notes" value={assignment.notes} />
-							)}
-							<Button
-								size="sm"
-								variant="outline"
-								className="mt-2 gap-1.5"
-								onClick={() => setReassigning(true)}
-							>
-								<RefreshCw className="h-3.5 w-3.5" /> Re-assign to a different
-								centre
-							</Button>
-						</CardContent>
-					</Card>
-
-					<Card className="shadow-card">
-						<CardHeader className="py-2.5 px-4 border-b border-border/50">
-							<CardTitle className="text-sm font-semibold flex items-center gap-2">
-								<Truck className="h-4 w-4" />
-								Shipment
-							</CardTitle>
-						</CardHeader>
-						<CardContent className="p-4 space-y-2 text-sm">
-							<DetailRow label="Carrier" value={assignment.carrier ?? "—"} />
-							<DetailRow
-								label="Tracking number"
-								value={assignment.trackingNumber ?? "—"}
-							/>
-							<DetailRow
-								label="ETA"
-								value={
-									assignment.shipmentEta
-										? new Date(assignment.shipmentEta).toLocaleDateString()
-										: "—"
-								}
-							/>
-						</CardContent>
-					</Card>
-				</>
-			)}
-
-			<Card className="shadow-card">
-				<CardHeader className="py-2.5 px-4 border-b border-border/50">
-					<CardTitle className="text-sm font-semibold">
-						Milling-stage timeline
-					</CardTitle>
-				</CardHeader>
-				<CardContent className="p-4">
-					{millingActivities.length === 0 ? (
-						<p className="text-xs text-muted-foreground">
-							No milling activity recorded yet.
-						</p>
-					) : (
-						<div className="space-y-3">
-							{millingActivities.map((activity) => (
-								<div key={activity.id} className="flex gap-3">
-									<div className="mt-1 h-2 w-2 rounded-full bg-primary ring-4 ring-primary/10 shrink-0" />
-									<div>
-										<p className="text-xs font-semibold text-foreground">
-											{activity.label}
-										</p>
-										<p className="text-[10px] text-muted-foreground mt-0.5">
-											{formatActivityTimestamp(activity.actionAt)} ·{" "}
-											{activity.actor}
-										</p>
-									</div>
-								</div>
-							))}
-						</div>
-					)}
-				</CardContent>
-			</Card>
-		</div>
 	);
 }

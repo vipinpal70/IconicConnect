@@ -15,7 +15,7 @@ XML contains* — the job here is to turn that analysis into a production path i
 
 > `scripts/case-xml-extract/` is git-ignored (`.gitignore:56`), so the runtime code
 > deliberately does **not** live there — it goes in `src/lib/three-shape/` (§2). This plan
-> sits at the repo root next to `milling-implementation-plan.md` so it is tracked on the
+> sits at the repo root so it is tracked on the
 > branch.
 
 ---
@@ -596,9 +596,7 @@ that zip* for reference and future extraction. A production `fileUrl` is always 
 ### 6.1 Adjustments to the toolkit's mapper
 
 - **`clientId`** is the session client (or a subuser's parent). Drop it from review.
-- **`serviceType`** — a real column (`design_only` / `design_milling` / `milling_only`).
-  Leave it to the carousel: default `design_only`, show the radio only if the client has
-  >1 enabled flow (mirror `AddCaseDialog`). The importer's own guess doesn't belong here.
+- **`serviceType`** — a legacy column pinned to `design_only` (Design-only product). Don't emit it.
 - **`createdBy`** — set by `POST /api/cases` from the session profile. Never `OperatorName`.
 - **`dueDate`** — stays null unless the client sets it. `DeliveryDate` is the lab's
   requested date, not a due date and not proof of delivery (spec §44); it lives in
@@ -647,8 +645,7 @@ consolidation. See `case-architecture-plan.md` for the full current model. Concr
 - `POST /api/cases` already validates `(category, subCategory)` against the client's price
   list via `getRequiredServiceSelections` — the importer's drafts are subject to the same
   check (a client with a sub-type disabled can't submit a draft for it).
-- `cases.serviceType` **is** a real column (`design_only` / `design_milling` /
-  `milling_only`), default `design_only`.
+- `cases.serviceType` is a legacy column (always `design_only`); not sent by the importer.
 - **`3D Model` is a real category** with its own fields (`caseType1`, `caseType2`
   Hollow/Solid, `die`, `articulator`, `drainHoles`) and prefix `3DM` — no longer an open
   question.
@@ -955,10 +952,7 @@ Sample (spec §63):
     the carousel must fully validate every kept draft before submit.
 14. **Duplicate rule is opt-in** (`skipIfDuplicate`). Existing callers keep today's 409.
     `skipped[]` is additive.
-15. **`serviceType` exists** — it's a real column (`design_only`/`design_milling`/
-    `milling_only`, default `design_only`) and must be in the client's `enabledServiceTypes`
-    or `POST /api/cases` 400s. Only send it if the client picked one; else omit and take the
-    default. `dueDate` null unless the client sets it; `status` = `scan_received`.
+15. **`serviceType` is legacy** — always `design_only`; omit it. `dueDate` null unless the client sets it; `status` = `scan_received`.
     **The service-catalog check still applies** — a client with, e.g., `In-Lay` disabled
     can't submit an `In-Lay` draft (`getRequiredServiceSelections`).
 16. **Timestamps are epoch *seconds*** (spec §43) — `unixToIso` in the toolkit already

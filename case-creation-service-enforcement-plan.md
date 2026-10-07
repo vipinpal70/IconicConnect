@@ -2,10 +2,12 @@
 
 ## 0. The bug (recap, already confirmed by code read)
 
-Admin can disable a client's access to a service two ways:
+> Updated for the Design-only product (design-only-removal-plan.md): the per-flow toggle
+> (`profiles.enabledServiceTypes`) no longer exists; only the per-service toggle below remains.
 
-1. **Flow toggle** (Design / Design+Milling / Milling Only) → `profiles.enabledServiceTypes`. **Enforced correctly** server-side in `POST /api/cases` (`src/app/api/cases/route.ts:183, 195-201`).
-2. **Individual service** toggle (e.g. "Crown" under Crown & Bridge) → `service_catalog.isActive` (system-wide) + `client_price_list.isEnabled` (per-client). **Never checked anywhere.** `cases.category`/`cases.subTypeData` are inserted straight from the request body (`route.ts:216-228`) with no lookup against the catalog at all. The UI dropdowns aren't filtered either — both case-creation forms use a hardcoded, static list of categories/sub-types, never fetched from the price list.
+Admin can disable a client's access to a service:
+
+1. **Individual service** toggle (e.g. "Crown" under Crown & Bridge) → `service_catalog.isActive` (system-wide) + `client_price_list.isEnabled` (per-client). **Never checked anywhere.** `cases.category`/`cases.subTypeData` are inserted straight from the request body (`route.ts:216-228`) with no lookup against the catalog at all. The UI dropdowns aren't filtered either — both case-creation forms use a hardcoded, static list of categories/sub-types, never fetched from the price list.
 
 That part was already confirmed. The rest of this plan is what digging into *how* to fix it turned up.
 
@@ -41,13 +43,13 @@ Also update `case-utils.ts`'s `CATEGORY_PREFIXES` map to the same canonical keys
 
 ### Stage 2 — Server-side enforcement in `POST /api/cases`
 
-After the existing flow check (`route.ts:195-201`), for each submitted case: call `getPriceListForClient(clientId, serviceType)` (already exists, `src/lib/price-list.ts:31-73`, already does the `isActive && isEnabled` merge) and look up the row(s) matching the submitted category/sub-category (see §3 for what "matching row(s)" means per category — it's not always exactly one). Reject with a 400 naming the specific disabled service if any matched row has `isActive === false` or `isEnabled === false`.
+For each submitted case: call `getPriceListForClient(clientId)` (already exists, `src/lib/price-list.ts:31-73`, already does the `isActive && isEnabled` merge) and look up the row(s) matching the submitted category/sub-category (see §3 for what "matching row(s)" means per category — it's not always exactly one). Reject with a 400 naming the specific disabled service if any matched row has `isActive === false` or `isEnabled === false`.
 
 This is the actual fix for the reported bug — everything else in this plan exists to make this step safe to add.
 
 ### Stage 3 — UI filtering
 
-Both forms already fetch `enabledServiceTypes` and filter the flow radio buttons. Extend that: fetch the client's price list too (`/api/client/price-list` for the client-role form, `/api/admin/clients/[id]/price-list` for the admin-role `AddCaseDialog`, both already exist and already return `isActive`/`isEnabled` per row) and filter out disabled categories/sub-type options from the dropdowns, same pattern already used at `client/(dashboard)/profile/page.tsx:74` (`rows.filter(r => r.isEnabled)`). This means a client never even sees a disabled option, rather than picking it and getting a 400 from Stage 2.
+Fetch the client's price list too (`/api/client/price-list` for the client-role form, `/api/admin/clients/[id]/price-list` for the admin-role `AddCaseDialog`, both already exist and already return `isActive`/`isEnabled` per row) and filter out disabled categories/sub-type options from the dropdowns, same pattern already used at `client/(dashboard)/profile/page.tsx:74` (`rows.filter(r => r.isEnabled)`). This means a client never even sees a disabled option, rather than picking it and getting a 400 from Stage 2.
 
 ### Stage 4 — Data typo fixes (needs your confirmation, see §1)
 
@@ -77,7 +79,7 @@ Everything else (Crown & Bridge, Dentures, Cosmetics, Appliances) is a simple si
 - `src/components/AddCaseDialog.tsx` — import shared hierarchy, add price-list fetch + option filtering (Stages 1, 3)
 - `src/app/client/(dashboard)/cases/page.tsx` — same (Stages 1, 3)
 - `src/lib/case-utils.ts` — `CATEGORY_PREFIXES` keys aligned to canonical names (Stage 1)
-- `src/app/api/cases/route.ts` — per-service enforcement check added after the existing flow check (Stage 2)
+- `src/app/api/cases/route.ts` — per-service enforcement check (Stage 2)
 - `src/db/migrations/00XX_fix_catalog_typos.sql` (only if you confirm §4.1) — `Spot Guards`→`Sport Guards`, `Vineers`→`Veneers` (Stage 4)
 
 ## 6. Out of scope

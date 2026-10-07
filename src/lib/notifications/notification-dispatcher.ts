@@ -4,7 +4,7 @@ import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { NotificationType } from './notification-events'
 import { NotificationService } from './notification-service'
-import { getStatusLabel, type ServiceType, type CaseStatus } from '@/src/lib/case-status-mapping'
+import { getStatusLabel, type CaseStatus } from '@/src/lib/case-status-mapping'
 
 type PortalRole = 'admin' | 'qc' | 'account_manager' | 'client' | 'subuser' | 'consultant'
 
@@ -101,11 +101,9 @@ export async function notifyCaseStatusChanged(input: {
   caseNumber: string
   status: string
   clientName?: string
-  serviceType?: ServiceType
 }) {
-  // Client-safe, flow-aware label — e.g. milling_only's "scan_received" reads
-  // as "File Submitted" here, not the design-flow "Case Submitted"/raw status.
-  const statusLabel = getStatusLabel(input.serviceType ?? 'design_only', input.status as CaseStatus, 'client')
+  // Client-safe label (not the raw status string).
+  const statusLabel = getStatusLabel(input.status as CaseStatus, 'client')
   const statusKey = input.status.toLowerCase()
   let type = NotificationType.CASE_STATUS_CHANGED
   let title = `Case ${input.caseNumber} status updated`
@@ -282,62 +280,6 @@ export async function notifyTutorialCreated(input: {
       description: input.description,
       targetUserId,
     },
-  }))
-}
-
-/**
- * Notifies a Design+Milling centre's own staff (milling_admin/milling_production
- * at that centre) about a design-leg assignment event — case-flow-update-plan.md
- * §6.2/§12.1. There is no single "targetUserId" for a centre — every active
- * user at it gets the notification, the same fan-out pattern
- * resolveActiveProfileIds already uses for role-wide notifications, just
- * additionally scoped to millingCenterId.
- */
-export async function notifyDesignCentre(
-  millingCenterId: string,
-  caseId: string,
-  event: 'assigned' | 'withdrawn' | 'revision_requested',
-  actorUserId: string
-) {
-  const [caseRecord] = await db.select().from(cases).where(eq(cases.id, caseId)).limit(1)
-  if (!caseRecord) return
-
-  const centreUserIds = await db
-    .select({ id: profiles.id })
-    .from(profiles)
-    .where(
-      and(
-        eq(profiles.status, 'active'),
-        eq(profiles.userType, 'milling_portal'),
-        eq(profiles.millingCenterId, millingCenterId),
-        inArray(profiles.role, ['milling_admin', 'milling_production'])
-      )
-    )
-    .then((rows) => rows.map((r) => r.id))
-
-  const copy = {
-    assigned: {
-      type: NotificationType.CASE_ASSIGNED,
-      title: `New design assignment: ${caseRecord.caseNumber}`,
-      message: `Case ${caseRecord.caseNumber} has been assigned to your centre for design.`,
-    },
-    withdrawn: {
-      type: NotificationType.CASE_STATUS_CHANGED,
-      title: `Design assignment withdrawn: ${caseRecord.caseNumber}`,
-      message: `Case ${caseRecord.caseNumber} has been reassigned and removed from your queue.`,
-    },
-    revision_requested: {
-      type: NotificationType.CASE_REJECTED,
-      title: `Revision requested: ${caseRecord.caseNumber}`,
-      message: `Case ${caseRecord.caseNumber} was sent back by Internal QC — please review and resubmit.`,
-    },
-  }[event]
-
-  return dispatchToUserIds(centreUserIds, () => ({
-    ...copy,
-    actorUserId,
-    link: `/milling/cases/${caseId}`,
-    metadata: { caseId, caseNumber: caseRecord.caseNumber },
   }))
 }
 

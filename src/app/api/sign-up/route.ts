@@ -6,11 +6,9 @@ import { handleProfileCreated } from '@/src/lib/price-list'
 import { deleteCachedData } from '@/src/lib/redis-cache'
 import { logActivity } from '@/src/lib/activity-log'
 import { supabaseAdmin } from '@/src/lib/supabase/admin'
-import type { ServiceType } from '@/src/lib/case-status-mapping'
 import { escapeHtml } from '@/src/lib/security/html'
 import { eq, sql } from 'drizzle-orm'
 
-const VALID_SERVICE_TYPES: ServiceType[] = ['design_only', 'design_milling', 'milling_only']
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // The browser creates the Auth user first, then calls this route — so the user must be brand new.
@@ -84,14 +82,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: phoneError }, { status: 400 })
     }
 
-    const rawServiceTypes: unknown[] = Array.isArray(body.enabledServiceTypes) ? body.enabledServiceTypes : []
-    const enabledServiceTypes = rawServiceTypes.filter((t): t is ServiceType => VALID_SERVICE_TYPES.includes(t as ServiceType))
-
-    if (enabledServiceTypes.length === 0) {
-      await cleanupOrphanedAuthUser()
-      return NextResponse.json({ error: 'Please select at least one service you need (Design, Design + Milling, or Milling).' }, { status: 400 })
-    }
-
     try {
       await db.insert(profiles).values({
         id: body.id,
@@ -107,7 +97,6 @@ export async function POST(req: NextRequest) {
         city: body.city || null,
         state: body.state || null,
         country: body.country || null,
-        enabledServiceTypes,
       })
     } catch (dbError: any) {
       console.error('[sign-up] profile insert failed', dbError)
@@ -142,7 +131,6 @@ export async function POST(req: NextRequest) {
         city: body.city || null,
         state: body.state || null,
         country: body.country || null,
-        enabledServiceTypes,
       },
     }).catch((err) => console.error('[sign-up logActivity]', err))
 

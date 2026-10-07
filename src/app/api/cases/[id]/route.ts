@@ -10,13 +10,12 @@ import { isValidRoleForType } from '@/src/lib/auth/role';
 import { logActivity } from '@/src/lib/activity-log';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
-import { notifyCaseStatusChanged, notifyDesignCentre } from '@/src/lib/notifications/notification-dispatcher';
+import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
 import { invalidateCasesCache, getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache';
 import { canTransitionCaseStatus } from '@/src/lib/case-status-transitions';
 import { canCancelCase } from '@/src/lib/case-utils';
-import type { CaseStatus, ServiceType } from '@/src/lib/case-status-mapping';
-import { millingCaseAssignments } from '@/src/db/schema/milling';
-import { denyUnlessMillingAssigned, timelineForClient, isLabRole, stripStaffOnlyCaseFields } from '@/src/lib/case-access';
+import type { CaseStatus } from '@/src/lib/case-status-mapping';
+import { timelineForClient, isLabRole, stripStaffOnlyCaseFields } from '@/src/lib/case-access';
 
 const CASE_DETAIL_TTL = 300 // 5 minutes
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat';
@@ -95,8 +94,6 @@ export async function GET(
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
-    const millingDenied = await denyUnlessMillingAssigned(profile, id);
-    if (millingDenied) return millingDenied;
 
     const detailCacheKey = `case:detail:${id}`
     const cachedDetail = await getCachedData<Record<string, unknown>>(detailCacheKey)
@@ -196,14 +193,10 @@ export async function PUT(
     }
     const updateData: CaseUpdateData = {};
 
-    // Flow-aware guard, layered on top of the detailed per-role logic below
-    // (not a replacement for it) — catches cross-cutting rules the per-role
-    // branches don't check, e.g. a milling_only case being forced into a
-    // design-stage status, or a design_only case into a production status.
+    // Status guard, layered on top of the detailed per-role logic below
+    // (not a replacement for it) — rejects statuses outside the Design flow.
     if (body.status) {
       const check = canTransitionCaseStatus({
-        serviceType: (caseRecord.serviceType ?? 'design_only') as ServiceType,
-        role: profile.role,
         currentStatus: caseRecord.status as CaseStatus,
         targetStatus: body.status as CaseStatus,
       })
@@ -213,7 +206,7 @@ export async function PUT(
     }
 
     // Cancellation is authorized by role + current status in one place, so
-    // every interface (client, admin, ops/QC/designer, milling) is held to
+    // every interface (client, admin, ops/QC/designer) is held to
     // the same rule rather than relying on each portal hiding its button.
     if (body.status === 'cancelled') {
       const cancelCheck = canCancelCase(profile.role, caseRecord.status);
@@ -475,52 +468,6 @@ export async function PUT(
       } else {
         return NextResponse.json({ error: 'Forbidden: Unauthorized operational role action' }, { status: 403 });
       }
-    } else if (profile.userType === 'milling_portal' && profile.millingCenterId) {
-      // Design-partner actions (case-flow-update-plan.md §6.2) — a Design+
-      // Milling centre driving the design leg of a case it's been assigned,
-      // scoped by designCenterId instead of the internal designerId branch
-      // above. milling_support is read-only here; only milling_admin/
-      // milling_production may act.
-      if (!['milling_admin', 'milling_production'].includes(profile.role)) {
-        return NextResponse.json({ error: 'Forbidden: Only milling_admin/milling_production can act on a design assignment' }, { status: 403 });
-      }
-
-      const [assignment] = await db
-        .select()
-        .from(millingCaseAssignments)
-        .where(eq(millingCaseAssignments.caseId, id))
-        .limit(1);
-
-      if (!assignment || assignment.designCenterId !== profile.millingCenterId) {
-        return NextResponse.json({ error: 'Forbidden: This case is not assigned to your centre for design' }, { status: 403 });
-      }
-
-      if (body.caseNumber || body.dueDate || body.category || body.subTypeData || body.designerId !== undefined || body.qcId !== undefined || body.accountManagerId !== undefined) {
-        return NextResponse.json({ error: 'Forbidden: Design partners cannot modify case properties or assignments' }, { status: 403 });
-      }
-
-      if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
-      if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
-      if (body.outputNote !== undefined) updateData.outputNote = body.outputNote;
-
-      const current = caseRecord.status;
-      const target = body.status;
-      if (target) {
-        if (target === 'in_progress' && (current === 'allocated_to_designer' || current === 'client_feedback')) {
-          updateData.status = target;
-        } else if (target === 'internal_qc' && current === 'in_progress') {
-          if (!caseRecord.qcId) {
-            return NextResponse.json({ error: 'Bad Request: Cannot send to QC — no QC Lead assigned to this case' }, { status: 400 });
-          }
-          const hasOutputFile = Boolean(body.outputFile || updateData.outputFile || caseRecord.outputFile);
-          if (!hasOutputFile) {
-            return NextResponse.json({ error: 'Bad Request: Cannot send to QC without uploading a design output file first' }, { status: 400 });
-          }
-          updateData.status = target;
-        } else {
-          return NextResponse.json({ error: `Forbidden: Design partners cannot transition status from ${current} to ${target}` }, { status: 403 });
-        }
-      }
     } else {
       return NextResponse.json({ error: 'Forbidden: Unauthorized role' }, { status: 403 });
     }
@@ -744,7 +691,6 @@ export async function PUT(
             caseId: id,
             caseNumber: uCase.caseNumber ?? '',
             status: status as string,
-            serviceType: caseRecord.serviceType,
           }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case status notification:', err));
 
           // Also notify QC if the status is transitioned to internal_qc
@@ -757,23 +703,6 @@ export async function PUT(
             );
           }
 
-          // QC/admin rejected a partner-designed case back to in_progress —
-          // notify the design centre (case-flow-update-plan.md §7.2/§13.2 #7:
-          // a rejection always returns to the SAME centre). A null
-          // designerId on a case leaving internal_qc means design was done
-          // by a partner, not internally.
-          if (status === 'in_progress' && caseRecord.status === 'internal_qc' && !caseRecord.designerId) {
-            const [assignmentForReject] = await db
-              .select({ designCenterId: millingCaseAssignments.designCenterId })
-              .from(millingCaseAssignments)
-              .where(eq(millingCaseAssignments.caseId, id))
-              .limit(1);
-            if (assignmentForReject?.designCenterId) {
-              notifyDesignCentre(assignmentForReject.designCenterId, id, 'revision_requested', actorUserId).catch((err) =>
-                console.error('[CaseNotificationTrigger] Failed to notify design centre of revision:', err)
-              );
-            }
-          }
         }
       }
     }

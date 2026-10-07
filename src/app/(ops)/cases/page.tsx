@@ -7,8 +7,7 @@ import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { StatusBadge } from "@/src/components/StatusBadge";
-import { Plus, Search, FileArchive, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, Factory, PauseCircle, Undo2, Ban } from "lucide-react";
-import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
+import { Plus, Search, FileArchive, Download, Upload, X, FileBox, UserPlus, ClipboardCheck, ShieldCheck, RefreshCw, MessageSquare, PauseCircle, Undo2, Ban } from "lucide-react";
 import { downloadCSV, extractCaseTeethInfo } from "@/src/lib/export-csv";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/src/components/ui/dialog";
@@ -68,7 +67,6 @@ type OpsCase = {
   caseNumber?: string | null;
   category?: string | null;
   status: string;
-  serviceType?: "design_only" | "design_milling" | "milling_only";
   createdAt?: string | Date | null;
   designerId?: string | null;
   designerName?: string | null;
@@ -470,7 +468,6 @@ export default function CasesPage() {
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
-  const [assignMillingCase, setAssignMillingCase] = useState<OpsCase | null>(null);
   const [selectedQcId, setSelectedQcId] = useState<string>("");
   const [pendingCaseAction, setPendingCaseAction] = useState<CaseActionDialogState>(null);
   const [caseActionReason, setCaseActionReason] = useState("");
@@ -621,19 +618,9 @@ export default function CasesPage() {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || "Failed to approve case");
         }
-        const { data: updatedCase } = await res.json();
-        const skipsClientReview = updatedCase?.serviceType === "design_milling";
-
-        toast.success(
-          skipsClientReview
-            ? "QC checklist complete — select a milling centre to continue"
-            : actionConfig.successMessage
-        );
+        toast.success(actionConfig.successMessage);
         fetchCases();
         closeCaseActionDialog();
-        if (skipsClientReview && updatedCase) {
-          setAssignMillingCase(updatedCase);
-        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Failed to approve case";
         toast.error(msg);
@@ -1189,13 +1176,6 @@ export default function CasesPage() {
     }
   };
 
-  // Design + Milling has no client-approval step, so the Approve dialog's
-  // copy needs to say "select a milling centre" instead of "sending to
-  // the client" when it's this pending case.
-  const pendingApproveIsMilling =
-    pendingCaseAction?.action === "approve" &&
-    cases.find((c) => c.id === pendingCaseAction.caseId)?.serviceType === "design_milling";
-
   return (
     <>
       <div className="space-y-4 animate-fade-in">
@@ -1552,7 +1532,7 @@ export default function CasesPage() {
                           </td>
                           <td className="px-3.5 py-1.5">
                             <div className="flex items-center gap-1.5">
-                              <StatusBadge status={c.status} role="internal" serviceType={c.serviceType ?? "design_only"} />
+                              <StatusBadge status={c.status} role="internal" />
                               {c.autoApproved && (
                                 <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 whitespace-nowrap">⏱ Auto</span>
                               )}
@@ -1916,18 +1896,6 @@ export default function CasesPage() {
                                 <span className="text-[11px] text-green-600 font-semibold px-1">Completed</span>
                               )}
 
-                              {c.status === "internal_qc" && c.serviceType === "design_milling" && (isAdmin || isQc || isDesigner) && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={(e) => { e.stopPropagation(); setAssignMillingCase(c); }}
-                                  className="h-7 text-[10px] px-2.5 gap-1"
-                                >
-                                  <Factory className="h-3 w-3" />
-                                  Select Milling Centre
-                                </Button>
-                              )}
-
                               {activeUser && !["admin", "qc", "designer"].includes(activeUserRole) && (
                                 <span className="text-[11px] text-muted-foreground italic">Read-only</span>
                               )}
@@ -1973,9 +1941,7 @@ export default function CasesPage() {
             </DialogTitle>
             <p className="text-xs text-zinc-300">
               {pendingCaseAction
-                ? pendingApproveIsMilling
-                  ? "Complete the QC checklist, then select a milling centre to send this case into production. No client approval is needed for Design + Milling."
-                  : CASE_ACTIONS[pendingCaseAction.action].description
+                ? CASE_ACTIONS[pendingCaseAction.action].description
                 : ""}
               {pendingCaseAction?.caseNumber ? ` Case ${pendingCaseAction.caseNumber}.` : ""}
             </p>
@@ -2326,15 +2292,6 @@ export default function CasesPage() {
         onCompleted={() => fetchCases()}
       />
 
-      {assignMillingCase && (
-        <AssignMillingCenterDialog
-          caseId={assignMillingCase.id}
-          caseNumber={assignMillingCase.caseNumber}
-          open={!!assignMillingCase}
-          onOpenChange={(o) => !o && setAssignMillingCase(null)}
-          onAssigned={() => fetchCases(false)}
-        />
-      )}
     </>
   );
 }

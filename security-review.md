@@ -11,7 +11,7 @@
 | H2 | Uploaded HTML served on app origin | **Fixed** — forced download + `nosniff`; HTML only inside `CSP: sandbox allow-scripts` (opaque origin); iframe sandboxed | `api/cases/files`, `CaseDetailView` |
 | H3 | Weak / spoofable rate limiting | **Fixed** — Redis-backed, real client IP, per-endpoint budgets | `proxy.ts`, `lib/security/rate-limit.ts` |
 | H4 | Enumeration, plaintext passwords, weak policy | **Fixed** — neutral forgot-password reply; credential emails carry a set-password link instead of a password; policy ≥10 chars/3 classes; random subuser passwords; plaintext `profiles.password` no longer stored/returned and wiped by the migration | many (see diff) |
-| H5 | Milling partners could read any case | **Fixed** — path allow-list in proxy + assignment check in handlers; client timeline filtered server-side | `proxy.ts`, `lib/case-access.ts` |
+| H5 | Milling partners could read any case | **Fixed** (later made moot: the milling portal was removed in design-only-removal-plan.md) — path allow-list in proxy + assignment check in handlers; client timeline filtered server-side | `proxy.ts`, `lib/case-access.ts` |
 | M1 | Shared lab-name storage folders | **Partly fixed** — new sign-ups must have a unique name; existing duplicates and the `labName/fileName` key scheme still need a data migration (see below) | `api/sign-up` |
 | M2 | Unvalidated file URLs / SSRF | **Fixed** — only our proxy URL for the right lab, or our Supabase host; bulk-download no longer fetches arbitrary URLs | `lib/security/safe-url.ts` + callers |
 | M3 | Upload endpoints not scoped | **Fixed** — keys bound to caller's lab/staging prefix, URL must match key, file names validated | `api/cases/upload`, `bulk/*` |
@@ -22,7 +22,7 @@
 | M8 | Dependencies | **Fixed** for production deps (dev-only advisories remain) | |
 | M9 | Sensitive logs | **Fixed** (member list / emails / bodies) | |
 | New | Tutorials/offers create/delete open to every internal role | **Fixed** — admin only | `api/tutorials`, `api/offers` |
-| New | Case timeline leaked milling/internal events to clients | **Fixed** | `lib/case-access.ts` |
+| New | Case timeline leaked internal events to clients | **Fixed** | `lib/case-access.ts` |
 | New | CSRF | **Added** Origin check on state-changing `/api` calls | `proxy.ts` |
 
 ### Actions only you can do (not code)
@@ -91,6 +91,8 @@ Also: `console.log(body)` writes the plaintext password to logs; and `src/app/ad
 **Fix:** neutral response; send set-password/invite links; raise the minimum and check breached lists.
 
 ### H5. Milling-portal users can reach case APIs
+> Historical finding — the milling portal and `milling_*` roles have since been removed from the app.
+
 `proxy.ts` allows `/api/cases/*` for every authenticated role. `GET /api/cases/[id]` and `/activity` only restrict `client`/`subuser`, so `milling_*` accounts (third-party partners) can read **any** case, including lab data. Staff roles also reach `/api/cases/files` DELETE for any lab file.
 **Fix:** enforce an assignment check for milling roles in these handlers and limit file deletion to the owning lab or admin.
 

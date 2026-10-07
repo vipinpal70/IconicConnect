@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '@/src/lib/milling/admin-guard'
+import { requireAdmin } from '@/src/lib/auth/admin-guard'
 import { resetCaseDownloads } from '@/src/lib/bulk-download/tracking'
 import { logActivity } from '@/src/lib/activity-log'
 

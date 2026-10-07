@@ -17,27 +17,26 @@ import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 const BILLING_TTL = 1800 // 30 minutes
 
 // ── Price map helpers ──────────────────────────────────────────────────────────
-// Keyed by category:subCategory:serviceType — service_catalog has one row per
-// serviceType for the same category/subCategory (Design vs Design+Milling),
-// so a plain category:subCategory key would collide between the two.
+// Keyed by category:subCategory. service_catalog.service_type is a legacy column
+// (Design-only product), so the queries below read only its 'design_only' rows.
 
 function buildPriceMap(
-  catalogItems: { category: string; subCategory: string; serviceType: string; defaultPrice: string }[],
-  clientPrices: { category: string; subCategory: string; serviceType: string; price: string }[]
+  catalogItems: { category: string; subCategory: string; defaultPrice: string }[],
+  clientPrices: { category: string; subCategory: string; price: string }[]
 ) {
   const defaultMap = new Map<string, number>()
   for (const item of catalogItems) {
-    defaultMap.set(`${item.category}:${item.subCategory}:${item.serviceType}`, parseFloat(item.defaultPrice))
+    defaultMap.set(`${item.category}:${item.subCategory}`, parseFloat(item.defaultPrice))
   }
 
   const clientMap = new Map<string, number>()
   for (const cp of clientPrices) {
-    clientMap.set(`${cp.category}:${cp.subCategory}:${cp.serviceType}`, parseFloat(cp.price))
+    clientMap.set(`${cp.category}:${cp.subCategory}`, parseFloat(cp.price))
   }
 
-  return (category: string, subCategory: string, serviceType: string): number =>
-    clientMap.get(`${category}:${subCategory}:${serviceType}`) ??
-    defaultMap.get(`${category}:${subCategory}:${serviceType}`) ??
+  return (category: string, subCategory: string): number =>
+    clientMap.get(`${category}:${subCategory}`) ??
+    defaultMap.get(`${category}:${subCategory}`) ??
     0
 }
 
@@ -46,8 +45,7 @@ function buildPriceMap(
 function computeCasePrice(
   category: string | null,
   subTypeData: unknown,
-  serviceType: 'design_only' | 'design_milling' | 'milling_only',
-  getPrice: (cat: string, sub: string, serviceType: string) => number
+  getPrice: (cat: string, sub: string) => number
 ): number {
   const data = (subTypeData as Record<string, unknown>) || {}
   const cat = (category || '').toLowerCase().trim()
@@ -61,10 +59,10 @@ function computeCasePrice(
   if (cat === 'crown & bridge' || cat === 'crown & bridges') {
     const subCat = String(data.sub_category || data.subCategory || data.caseType || 'Crown')
     const teeth = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
-    let price = teeth * getPrice('Crown & Bridge', subCat, serviceType)
+    let price = teeth * getPrice('Crown & Bridge', subCat)
 
     // Model
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
     return parseFloat(price.toFixed(2))
   }
 
@@ -76,12 +74,12 @@ function computeCasePrice(
     const implantTeeth = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
     const cbTeeth = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
 
-    let price = implantTeeth * getPrice('Implants', implantSubCat, serviceType)
+    let price = implantTeeth * getPrice('Implants', implantSubCat)
     if (cbTeeth > 0 && cbType && cbType !== 'None') {
-      price += cbTeeth * getPrice('Crown & Bridge', cbType, serviceType)
+      price += cbTeeth * getPrice('Crown & Bridge', cbType)
     }
 
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
     return parseFloat(price.toFixed(2))
   }
 
@@ -91,35 +89,35 @@ function computeCasePrice(
     const barTeeth = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
     const cbTeeth = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
 
-    let price = barTeeth * getPrice('Implant Bars', 'Implant Bars', serviceType)
+    let price = barTeeth * getPrice('Implant Bars', 'Implant Bars')
     if (cbTeeth > 0 && cbType && cbType !== 'None') {
-      price += cbTeeth * getPrice('Crown & Bridge', cbType, serviceType)
+      price += cbTeeth * getPrice('Crown & Bridge', cbType)
     }
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
     return parseFloat(price.toFixed(2))
   }
 
   // Appliances
   if (cat === 'appliances' || cat === 'appliance') {
     const appType = String(data.appliance_type || data.applianceType || data.caseType1 || 'Night Guards')
-    let price = archCount * getPrice('Appliances', appType, serviceType)
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
+    let price = archCount * getPrice('Appliances', appType)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
     return parseFloat(price.toFixed(2))
   }
 
   // Dentures
   if (cat === 'denture' || cat === 'dentures') {
     const subCat = String(data.sub_category || data.subCategory || data.caseType1 || 'Full Denture')
-    let price = archCount * getPrice('Dentures', subCat, serviceType)
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
+    let price = archCount * getPrice('Dentures', subCat)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
     return parseFloat(price.toFixed(2))
   }
 
   // Cosmetics
   if (cat === 'cosmetics' || cat === 'cosmetic') {
     const subCat = String(data.sub_category || data.subCategory || data.caseType || data.caseType1 || 'Veneers')
-    let price = archCount * getPrice('Cosmetics', subCat, serviceType)
-    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
+    let price = archCount * getPrice('Cosmetics', subCat)
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model')
     return parseFloat(price.toFixed(2))
   }
 
@@ -130,10 +128,10 @@ function computeCasePrice(
     const caseType1 = String(data.caseType1 || 'Full Arch Model')
     const teethCount = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
 
-    let price = getPrice('3D Model', caseType1, serviceType)
-    if (String(data.die).toLowerCase() === 'yes') price += teethCount * getPrice('3D Model', 'Die', serviceType)
-    if (String(data.articulator).toLowerCase() === 'yes') price += getPrice('3D Model', 'Articulator', serviceType)
-    if (String(data.drainHoles).toLowerCase() === 'yes') price += getPrice('3D Model', 'Drain Holes', serviceType)
+    let price = getPrice('3D Model', caseType1)
+    if (String(data.die).toLowerCase() === 'yes') price += teethCount * getPrice('3D Model', 'Die')
+    if (String(data.articulator).toLowerCase() === 'yes') price += getPrice('3D Model', 'Articulator')
+    if (String(data.drainHoles).toLowerCase() === 'yes') price += getPrice('3D Model', 'Drain Holes')
     return parseFloat(price.toFixed(2))
   }
 
@@ -200,20 +198,18 @@ export async function GET(
       db.select({
         category: serviceCatalog.category,
         subCategory: serviceCatalog.subCategory,
-        serviceType: serviceCatalog.serviceType,
         defaultPrice: serviceCatalog.defaultPrice,
-      }).from(serviceCatalog).where(eq(serviceCatalog.isActive, true)),
+      }).from(serviceCatalog).where(and(eq(serviceCatalog.isActive, true), eq(serviceCatalog.serviceType, 'design_only'))),
 
       clientId !== 'all'
         ? db.select({
             category: serviceCatalog.category,
             subCategory: serviceCatalog.subCategory,
-            serviceType: serviceCatalog.serviceType,
-            price: clientPriceList.price,
+                price: clientPriceList.price,
           })
           .from(clientPriceList)
           .innerJoin(serviceCatalog, eq(clientPriceList.catalogItemId, serviceCatalog.id))
-          .where(eq(clientPriceList.clientId, clientId))
+          .where(and(eq(clientPriceList.clientId, clientId), eq(serviceCatalog.serviceType, 'design_only')))
         : Promise.resolve([]),
     ])
 
@@ -237,8 +233,7 @@ export async function GET(
 
     let totalPrice = 0
     const detailedCases = clientCases.map(c => {
-      const serviceType = c.serviceType === 'design_milling' || c.serviceType === 'milling_only' ? c.serviceType : 'design_only'
-      const price = computeCasePrice(c.category, c.subTypeData, serviceType, getPrice)
+      const price = computeCasePrice(c.category, c.subTypeData, getPrice)
       totalPrice += price
       return {
         id: c.id,
@@ -249,7 +244,6 @@ export async function GET(
         createdAt: c.createdAt,
         dueDate: c.dueDate,
         price,
-        serviceType,
         scanFileName: scanFileMap.get(c.id) ?? null,
       }
     })

@@ -4,13 +4,11 @@ import IORedis from 'ioredis'
 
 // Backfills the "Implant Bars" category into an already-provisioned database.
 //
-//   1. service_catalog: one "Implant Bars / Implant Bars" row per flow
-//      (design_only, design_milling, milling_only). Price and active state are
-//      mirrored from that flow's "Implants / Ti-Base" row so Implant Bars starts
-//      "same as Implants"; falls back to 4.00 / active (milling_only: inactive)
-//      when the Ti-Base row is missing.
-//   2. client_price_list: a row for every client (lab) for each flow they have
-//      enabled. Price and isEnabled are copied from that client's own
+//   1. service_catalog: one "Implant Bars / Implant Bars" row (design_only).
+//      Price and active state are mirrored from the "Implants / Ti-Base" row so
+//      Implant Bars starts "same as Implants"; falls back to 4.00 / active when
+//      the Ti-Base row is missing.
+//   2. client_price_list: a row for every client (lab). Price and isEnabled are copied from that client's own
 //      "Implants / Ti-Base" row (so a lab with Implants switched off doesn't
 //      silently get Implant Bars), falling back to the catalog price / enabled.
 //   3. Redis: drops the cached client price lists (1h TTL) so labs see the new
@@ -23,7 +21,7 @@ import IORedis from 'ioredis'
 const APPLY = process.argv.includes('--apply')
 const CATEGORY = 'Implant Bars'
 const SUB_CATEGORY = 'Implant Bars'
-const FLOWS = ['design_only', 'design_milling', 'milling_only']
+const FLOWS = ['design_only'] // legacy service_type column — Design-only product
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set')
@@ -49,7 +47,7 @@ try {
       catalogToAdd.push({
         flow,
         price: ref?.default_price ?? '4.00',
-        active: ref?.is_active ?? flow !== 'milling_only',
+        active: ref?.is_active ?? true,
       })
     }
     for (const r of catalogToAdd) {
@@ -74,7 +72,7 @@ try {
         FROM profiles p
         JOIN service_catalog bars
           ON bars.category = ${CATEGORY} AND bars.sub_category = ${SUB_CATEGORY}
-         AND bars.service_type::text = ANY (COALESCE(p.enabled_service_types::text[], ARRAY['design_only']))
+         AND bars.service_type = 'design_only'
         LEFT JOIN service_catalog ref
           ON ref.category = 'Implants' AND ref.sub_category = 'Ti-Base' AND ref.service_type = bars.service_type
         LEFT JOIN client_price_list ref_cpl
@@ -85,7 +83,7 @@ try {
       console.log(`  client price lists: + ${inserted.length} row(s)`)
     } else {
       const [{ n }] = await tx`SELECT count(*)::int AS n FROM profiles WHERE user_role = 'client'`
-      console.log(`  client price lists: would add rows for up to ${n} client(s) (per enabled flow)`)
+      console.log(`  client price lists: would add rows for up to ${n} client(s)`)
     }
   })
 

@@ -40,8 +40,6 @@ import type {
 import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval";
 import { toast } from "sonner";
 import { AddCaseDialog } from "@/src/components/AddCaseDialog";
-import { AssignMillingCenterDialog } from "@/src/components/AssignMillingCenterDialog";
-import { AssignDesignPartnerDialog } from "@/src/components/AssignDesignPartnerDialog";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 import { BulkDownloadDialog } from "@/src/components/bulk-download/BulkDownloadDialog";
 import { useBulkSelection } from "@/src/components/bulk-download/useBulkSelection";
@@ -58,7 +56,6 @@ import {
 	Plus,
 	Download,
 	Trash2,
-	Factory,
 	PauseCircle,
 	Undo2,
 	Ban,
@@ -73,8 +70,6 @@ type CaseRecord = {
 	category: string | null;
 	subTypeData: Record<string, unknown> | null;
 	status: string;
-	serviceType?: "design_only" | "design_milling" | "milling_only";
-	designSource?: "internal" | "partner";
 	designerId: string | null;
 	qcId: string | null;
 	accountManagerId: string | null;
@@ -276,21 +271,19 @@ const removeExtensionFromString = (str: string) => {
 type AppliedCaseFilters = {
 	search: string;
 	statuses: string[];
-	serviceType: string;
 	clientId: string;
 	assignedTo: string; // "", "mine", or a user id
 	from: string;
 	to: string;
 };
 const EMPTY_CASE_FILTERS: AppliedCaseFilters = {
-	search: "", statuses: [], serviceType: "", clientId: "", assignedTo: "", from: "", to: "",
+	search: "", statuses: [], clientId: "", assignedTo: "", from: "", to: "",
 };
 
 function buildCasesQuery(f: AppliedCaseFilters, limit: number, page: number): string {
 	const p = new URLSearchParams({ limit: String(limit), page: String(page) });
 	if (f.search) p.set("search", f.search);
 	if (f.statuses.length) p.set("statuses", f.statuses.join(","));
-	if (f.serviceType) p.set("serviceType", f.serviceType);
 	if (f.clientId) p.set("clientId", f.clientId);
 	if (f.assignedTo) p.set("assignedTo", f.assignedTo);
 	if (f.from) p.set("from", f.from);
@@ -306,7 +299,6 @@ export default function AdminCasesPage() {
 	const [isAddOpen, setIsAddOpen] = useState(false);
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("All");
-	const [serviceTypeFilter, setServiceTypeFilter] = useState("All");
 	const [clientFilter, setClientFilter] = useState("All");
 	const [assignedFilter, setAssignedFilter] = useState("All");
 	const [from, setFrom] = useState("");
@@ -314,8 +306,6 @@ export default function AdminCasesPage() {
 	const [openCase, setOpenCase] = useState<CaseRecord | null>(null);
 	const [updatingId, setUpdatingId] = useState<string | null>(null);
 	const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
-	const [assignMillingCase, setAssignMillingCase] = useState<CaseRecord | null>(null);
-	const [assignDesignPartnerCase, setAssignDesignPartnerCase] = useState<CaseRecord | null>(null);
 	const [selectedQcId, setSelectedQcId] = useState<string>("");
 	const [pendingCaseAction, setPendingCaseAction] =
 		useState<CaseActionDialogState>(null);
@@ -344,7 +334,6 @@ export default function AdminCasesPage() {
 			Boolean(
 				fetchFilters.search ||
 					fetchFilters.statuses.length ||
-					fetchFilters.serviceType ||
 					fetchFilters.clientId ||
 					fetchFilters.assignedTo ||
 					fetchFilters.from ||
@@ -356,7 +345,6 @@ export default function AdminCasesPage() {
 	const snapshotFilters = (): AppliedCaseFilters => ({
 		search: search.trim(),
 		statuses: statusFilter === "All" ? [] : [statusFilter],
-		serviceType: serviceTypeFilter === "All" ? "" : serviceTypeFilter,
 		clientId: clientFilter === "All" ? "" : clientFilter,
 		assignedTo: assignedFilter === "All" ? "" : assignedFilter,
 		from,
@@ -379,7 +367,6 @@ export default function AdminCasesPage() {
 	const clearFilters = () => {
 		setSearch("");
 		setStatusFilter("All");
-		setServiceTypeFilter("All");
 		setClientFilter("All");
 		setAssignedFilter("All");
 		setFrom("");
@@ -504,44 +491,6 @@ export default function AdminCasesPage() {
 		staleTime: 5 * 60_000, // team roster rarely changes
 	});
 
-	// Fetch Design+Milling assignment info (design/production centre + milling status per case)
-	const { data: millingCasesData } = useQuery<
-		Array<{
-			id: string;
-			designCenterId: string | null;
-			designCenterName: string | null;
-			productionCenterId: string | null;
-			millingCenterName: string | null;
-			millingStatus: string | null;
-			autoAdvanceToMilling: boolean | null;
-		}>
-	>({
-		queryKey: ["admin-milling-cases-list"],
-		queryFn: async () => {
-			const res = await fetch("/api/admin/milling/cases");
-			if (!res.ok) return [];
-			const json = await res.json();
-			return json.data ?? [];
-		},
-		staleTime: 60_000,
-	});
-
-	const millingByCaseId = useMemo(() => {
-		const map = new Map<
-			string,
-			{ designCenterName: string | null; millingCenterName: string | null; millingStatus: string | null; autoAdvanceToMilling: boolean | null }
-		>();
-		for (const row of millingCasesData ?? []) {
-			map.set(row.id, {
-				designCenterName: row.designCenterName,
-				millingCenterName: row.millingCenterName,
-				millingStatus: row.millingStatus,
-				autoAdvanceToMilling: row.autoAdvanceToMilling,
-			});
-		}
-		return map;
-	}, [millingCasesData]);
-
 	// Fetch current logged in user
 	const { data: currentUser } = useQuery<{
 		id: string;
@@ -629,9 +578,6 @@ export default function AdminCasesPage() {
 				clientName.includes(s);
 			const matchesStatus =
 				f.statuses.length === 0 || f.statuses.includes(caseItem.status);
-			const matchesServiceType =
-				!f.serviceType ||
-				(caseItem.serviceType ?? "design_only") === f.serviceType;
 			const matchesClient = !f.clientId || caseItem.clientId === f.clientId;
 			const matchesAssigned =
 				!f.assignedTo ||
@@ -647,7 +593,6 @@ export default function AdminCasesPage() {
 			return (
 				matchesSearch &&
 				matchesStatus &&
-				matchesServiceType &&
 				matchesClient &&
 				matchesAssigned &&
 				matchesFrom &&
@@ -684,39 +629,6 @@ export default function AdminCasesPage() {
 					.then((r) => r.data);
 				if (updated) setOpenCase(updated);
 			}
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Something went wrong";
-			toast.error(msg);
-		} finally {
-			setUpdatingId(null);
-		}
-	};
-
-	// Switches a partner-designed case to an internal designer. Unlike a plain
-	// handleUpdate({designerId}), this also clears the still-live design
-	// centre assignment atomically server-side (case-flow-update-plan.md
-	// §13.2 #8) — using handleUpdate here instead would leave the old
-	// design partner's assignment row dangling.
-	const handleWithdrawToInternal = async (
-		caseId: string,
-		designerId: string,
-		status: "allocated_to_designer" | "in_progress" | undefined,
-		successMessage: string,
-	) => {
-		setUpdatingId(caseId);
-		try {
-			const res = await fetch(`/api/cases/${caseId}/design-assign`, {
-				method: "DELETE",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ designerId, ...(status ? { status } : {}) }),
-			});
-			if (!res.ok) {
-				const err = await res.json().catch(() => ({}));
-				throw new Error(err.error || "Failed to reassign case internally");
-			}
-			toast.success(successMessage);
-			refetch();
-			queryClient.invalidateQueries({ queryKey: ["admin-milling-cases-list"] });
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : "Something went wrong";
 			toast.error(msg);
@@ -821,30 +733,12 @@ export default function AdminCasesPage() {
 				}
 
 				const { data: updatedCase } = await res.json();
-				const skipsClientReview =
-					updatedCase?.serviceType === "design_milling";
-				// Flow 3 (case-flow-update-plan.md §7.3) auto-advances the case
-				// straight to ready_for_milling server-side when its design was
-				// committed up front to the same centre — status is no longer
-				// internal_qc in that case, so there's nothing left to pick here.
-				const needsMillingCentrePick =
-					skipsClientReview && updatedCase?.status === "internal_qc";
-
-				toast.success(
-					needsMillingCentrePick
-						? "QC checklist complete — select a milling centre to continue"
-						: skipsClientReview
-							? "QC checklist complete — sent to the assigned centre for milling"
-							: actionConfig.successMessage,
-				);
+				toast.success(actionConfig.successMessage);
 				refetch();
 				if (updatedCase && openCase && openCase.id === pendingCaseAction.caseId) {
 					setOpenCase(updatedCase);
 				}
 				closeCaseActionDialog();
-				if (needsMillingCentrePick && updatedCase) {
-					setAssignMillingCase(updatedCase);
-				}
 			} catch (err: unknown) {
 				const msg = err instanceof Error ? err.message : "Something went wrong";
 				toast.error(msg);
@@ -913,14 +807,6 @@ export default function AdminCasesPage() {
 		staleTime: 30_000,
 	});
 	const clientPreferenceForms = prefFormsData?.data ?? [];
-
-	// Design + Milling has no client-approval step, so the Approve dialog's
-	// copy needs to say "select a milling centre" instead of "sending to
-	// the client" when it's this pending case.
-	const pendingApproveIsMilling =
-		pendingCaseAction?.action === "approve" &&
-		data.data.find((c) => c.id === pendingCaseAction.caseId)?.serviceType ===
-			"design_milling";
 
 	return (
 		<>
@@ -1138,25 +1024,6 @@ export default function AdminCasesPage() {
 											: STATUS_LABELS[status] || status}
 									</SelectItem>
 								))}
-							</SelectContent>
-						</Select>
-						<Select value={serviceTypeFilter} onValueChange={setServiceTypeFilter}>
-							<SelectTrigger className="w-full lg:w-48 h-8 text-xs">
-								<SelectValue placeholder="All services" />
-							</SelectTrigger>
-							<SelectContent className="bg-primary border-primary/50 text-white">
-								<SelectItem value="All" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
-									All Services
-								</SelectItem>
-								<SelectItem value="design_only" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
-									Design Only
-								</SelectItem>
-								<SelectItem value="design_milling" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
-									Design + Milling
-								</SelectItem>
-								<SelectItem value="milling_only" className="bg-primary text-white focus:bg-emerald-600 focus:text-white cursor-pointer text-xs">
-									Milling Only
-								</SelectItem>
 							</SelectContent>
 						</Select>
 						</div>
@@ -1394,19 +1261,8 @@ export default function AdminCasesPage() {
 															<StatusBadge
 																status={caseItem.status}
 																role="internal"
-																serviceType={caseItem.serviceType ?? "design_only"}
 															/>
-															{(caseItem.serviceType === "design_milling" || caseItem.serviceType === "milling_only") && (
-																<span title={caseItem.serviceType === "milling_only" ? "Milling Only" : "Design + Milling"} className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-primary/10 text-primary shrink-0">
-																	<Factory className="h-2.5 w-2.5" />
-																</span>
-															)}
 														</div>
-														{(caseItem.serviceType === "design_milling" || caseItem.serviceType === "milling_only") && millingByCaseId.get(caseItem.id)?.millingCenterName && (
-															<p className="text-[10px] text-muted-foreground mt-1">
-																→ {millingByCaseId.get(caseItem.id)?.millingCenterName}
-															</p>
-														)}
 													</td>
 													<td className="px-3.5 py-2 text-[11px] text-muted-foreground">
 														{designerName}
@@ -1439,8 +1295,7 @@ export default function AdminCasesPage() {
 																				<ShieldCheck className="h-3 w-3 mr-0.5" />
 																				Validate
 																			</Button>
-																			{caseItem.serviceType !== "milling_only" &&
-																				caseItem.designSource !== "partner" && (
+																			{(
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
@@ -1454,19 +1309,11 @@ export default function AdminCasesPage() {
 																					}
 																				/>
 																			)}
-																			{caseItem.designSource === "partner" && (
-																				<span className="inline-flex items-center gap-1 h-7 px-2 text-[10px] rounded-md bg-violet-50 text-violet-700 border border-violet-200 font-semibold">
-																					<Factory className="h-3 w-3" />
-																					{millingByCaseId.get(caseItem.id)
-																						?.designCenterName ?? "Design Partner"}
-																				</span>
-																			)}
 																		</>
 																	)}
 
 																	{caseItem.status === "scan_not_verified" &&
-																		caseItem.serviceType !== "milling_only" &&
-																		caseItem.designSource !== "partner" && (
+																		(
 																		<AllocateMenu
 																			designers={designers}
 																			qcs={qcs}
@@ -1485,15 +1332,9 @@ export default function AdminCasesPage() {
 																		caseItem.status ===
 																			"allocated_to_designer" ||
 																		caseItem.status === "in_progress") &&
-																		caseItem.serviceType !== "milling_only" && (
+																		(
 																		<>
-																			{caseItem.designSource === "partner" ? (
-																				<span className="inline-flex items-center gap-1 h-7 px-2 text-[10px] rounded-md bg-violet-50 text-violet-700 border border-violet-200 font-semibold">
-																					<Factory className="h-3 w-3" />
-																					{millingByCaseId.get(caseItem.id)
-																						?.designCenterName ?? "Design Partner"}
-																				</span>
-																			) : !caseItem.designerId ? (
+																			{!caseItem.designerId ? (
 																				<>
 																					<AllocateMenu
 																						designers={designers}
@@ -1507,22 +1348,6 @@ export default function AdminCasesPage() {
 																							)
 																						}
 																					/>
-																					{caseItem.status === "scan_verified" &&
-																						(currentUser?.role === "admin" ||
-																							currentUser?.role === "qc") && (
-																							<Button
-																								size="sm"
-																								variant="outline"
-																								disabled={isMutating}
-																								onClick={() =>
-																									setAssignDesignPartnerCase(caseItem)
-																								}
-																								className="h-7 text-[10px] px-2.5"
-																							>
-																								<Factory className="h-3 w-3 mr-0.5" />
-																								Design Partner
-																							</Button>
-																						)}
 																				</>
 																			) : (
 																				<>
@@ -1640,12 +1465,7 @@ export default function AdminCasesPage() {
 																			>
 																				Back to designer
 																			</Button>
-																			{/* No "Re-assign Design Partner" here — a rejected/feedback
-																				case always goes back to the SAME centre (they get their
-																				own "Resume Design"/"Apply Feedback" action in their
-																				portal); admin/QC may still switch it to an internal
-																				designer, which needs the withdraw-aware handler below. */}
-																			{caseItem.serviceType !== "milling_only" && (
+																			{(
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
@@ -1654,8 +1474,6 @@ export default function AdminCasesPage() {
 																					onPick={(mId, role) => {
 																						if (role === "qc") {
 																							handleUpdate(caseItem.id, { qcId: mId }, `Re-allocated QC lead to case`);
-																						} else if (caseItem.designSource === "partner") {
-																							handleWithdrawToInternal(caseItem.id, mId, "in_progress", "Reassigned to internal designer");
 																						} else {
 																							handleUpdate(caseItem.id, { designerId: mId, status: "in_progress" }, `Re-allocated designer to case`);
 																						}
@@ -1666,7 +1484,7 @@ export default function AdminCasesPage() {
 																	)}
 																	{caseItem.status === "client_reject" && (
 																		<>
-																			{caseItem.serviceType !== "milling_only" && (
+																			{(
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
@@ -1675,8 +1493,6 @@ export default function AdminCasesPage() {
 																					onPick={(mId, role) => {
 																						if (role === "qc") {
 																							handleUpdate(caseItem.id, { qcId: mId }, `Re-allocated QC lead to rejected case`);
-																						} else if (caseItem.designSource === "partner") {
-																							handleWithdrawToInternal(caseItem.id, mId, "allocated_to_designer", "Reassigned to internal designer");
 																						} else {
 																							handleUpdate(caseItem.id, { designerId: mId, status: "allocated_to_designer" }, `Re-allocated designer to rejected case`);
 																						}
@@ -1702,10 +1518,7 @@ export default function AdminCasesPage() {
 																				<RefreshCw className="h-3 w-3 mr-0.5" />{" "}
 																				Resume Case
 																			</Button>
-																			{/* On Hold is a deliberate pause, so - unlike client_reject/
-																			   client_feedback - admin/QC may freely pick a different design
-																			   partner here too, not just switch to internal. */}
-																			{caseItem.serviceType !== "milling_only" && (
+																			{(
 																				<AllocateMenu
 																					designers={designers}
 																					qcs={qcs}
@@ -1714,30 +1527,12 @@ export default function AdminCasesPage() {
 																					onPick={(mId, role) => {
 																						if (role === "qc") {
 																							handleUpdate(caseItem.id, { qcId: mId }, `Re-allocated QC lead to on-hold case`);
-																						} else if (caseItem.designSource === "partner") {
-																							handleWithdrawToInternal(caseItem.id, mId, undefined, "Reassigned to internal designer");
 																						} else {
 																							handleUpdate(caseItem.id, { designerId: mId }, `Allocated designer to on-hold case`);
 																						}
 																					}}
 																				/>
 																			)}
-																			{caseItem.serviceType !== "milling_only" &&
-																				(currentUser?.role === "admin" ||
-																					currentUser?.role === "qc") && (
-																					<Button
-																						size="sm"
-																						variant="outline"
-																						disabled={isMutating}
-																						onClick={() => setAssignDesignPartnerCase(caseItem)}
-																						className="h-7 text-[10px] px-2.5"
-																					>
-																						<Factory className="h-3 w-3 mr-0.5" />
-																						{caseItem.designSource === "partner"
-																							? "Re-assign Design Partner"
-																							: "Design Partner"}
-																					</Button>
-																				)}
 																		</>
 																	)}
 																</>
@@ -2059,25 +1854,6 @@ export default function AdminCasesPage() {
 																	</span>
 																)}
 
-															{((caseItem.status === "internal_qc" && caseItem.serviceType === "design_milling") ||
-																(caseItem.status === "scan_verified" && caseItem.serviceType === "milling_only")) &&
-																(currentUser?.role === "admin" ||
-																	currentUser?.role === "qc" ||
-																	currentUser?.role === "designer") && (
-																	<Button
-																		size="sm"
-																		variant="outline"
-																		onClick={(e) => {
-																			e.stopPropagation();
-																			setAssignMillingCase(caseItem);
-																		}}
-																		className="h-7 text-[10px] px-2.5 gap-1"
-																	>
-																		<Factory className="h-3 w-3" />
-																		Select Milling Centre
-																	</Button>
-																)}
-
 															{shouldShowChatIcon(caseItem, currentUser) &&
 																(hasUnreadChat ||
 																	(caseItem.todayMessagesCount || 0) > 0) && (
@@ -2176,7 +1952,7 @@ export default function AdminCasesPage() {
 									{openCase.caseNumber || openCase.id} ·{" "}
 									{renderSubTypeSummary(openCase.subTypeData)}
 									<div className="scale-90 origin-left">
-										<StatusBadge status={openCase.status} role="internal" serviceType={openCase.serviceType ?? "design_only"} />
+										<StatusBadge status={openCase.status} role="internal" />
 									</div>
 								</DialogTitle>
 								<p className="text-[11px] text-muted-foreground">
@@ -2342,9 +2118,7 @@ export default function AdminCasesPage() {
 						</DialogTitle>
 						<p className="text-xs text-gray-700 mt-0.5">
 							{pendingCaseAction
-								? pendingApproveIsMilling
-									? "Complete the QC checklist, then select a milling centre to send this case into production. No client approval is needed for Design + Milling."
-									: CASE_ACTIONS[pendingCaseAction.action].description
+								? CASE_ACTIONS[pendingCaseAction.action].description
 								: ""}
 							{pendingCaseAction?.caseNumber
 								? ` Case ${pendingCaseAction.caseNumber}.`
@@ -2585,29 +2359,6 @@ export default function AdminCasesPage() {
 				}}
 			/>
 
-			{assignMillingCase && (
-				<AssignMillingCenterDialog
-					caseId={assignMillingCase.id}
-					caseNumber={assignMillingCase.caseNumber}
-					open={!!assignMillingCase}
-					onOpenChange={(o) => !o && setAssignMillingCase(null)}
-				/>
-			)}
-
-			{assignDesignPartnerCase && (
-				<AssignDesignPartnerDialog
-					caseId={assignDesignPartnerCase.id}
-					caseNumber={assignDesignPartnerCase.caseNumber}
-					serviceType={assignDesignPartnerCase.serviceType ?? "design_only"}
-					qcs={qcs}
-					open={!!assignDesignPartnerCase}
-					onOpenChange={(o) => !o && setAssignDesignPartnerCase(null)}
-					onAssigned={() => {
-						refetch();
-						setAssignDesignPartnerCase(null);
-					}}
-				/>
-			)}
 			<BulkDownloadDialog
 				open={dlDialogOpen}
 				onOpenChange={setDlDialogOpen}

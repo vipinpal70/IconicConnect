@@ -4,8 +4,7 @@ import { r2, R2_BUCKET } from './r2';
 /**
  * Rebuild the R2 object key from a stored proxy URL (`/api/cases/files?labName=&fileName=`).
  * Returns null for anything that isn't that shape (e.g. legacy Supabase public URLs, which
- * don't live in R2, or a raw key already — some columns, like milling_centers.contract_doc_key,
- * store the bucket key directly instead of a proxy URL and don't go through this).
+ * don't live in R2, or a raw key already).
  *
  * Shared by r2-cleanup-task.ts and r2-retention-task.ts — both need to resolve exactly the
  * same DB-reference → R2-key mapping, so this lives in one place rather than two copies that

@@ -12,12 +12,10 @@ import { Badge } from "@/src/components/ui/badge"
 import { toast } from "sonner"
 import { Switch } from "@/src/components/ui/switch"
 import { ArrowLeft, Building2, Save, Mail, Phone, MapPin, CalendarDays, User, ShieldCheck, FileText, ChevronDown, ChevronUp, RefreshCw, KeyRound } from "lucide-react"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/src/components/ui/tabs"
 import { PriceListTable } from "@/src/components/PriceListTable"
 import { ResetPasswordModal } from "../_components/ResetPasswordModal"
 import type { PreferenceFormRecord } from "@/src/lib/preference-forms"
 import type { PriceListEntryFull } from "@/src/lib/price-list-shared"
-import type { ServiceType } from "@/src/lib/case-status-mapping"
 
 type ClientProfile = {
   id: string
@@ -41,20 +39,11 @@ type ClientProfile = {
   onBoardedAt: string | null
 }
 
-const FLOWS: ServiceType[] = ["design_only", "design_milling", "milling_only"]
-
-const FLOW_LABELS: Record<ServiceType, string> = {
-  design_only: "Design Only",
-  design_milling: "Design + Milling",
-  milling_only: "Milling Only",
-}
-
 async function fetchClientPriceList(
   clientId: string,
-  serviceType: ServiceType,
   refresh = false
 ): Promise<PriceListEntryFull[]> {
-  const url = `/api/admin/clients/${clientId}/price-list?serviceType=${serviceType}&includeInactive=true${refresh ? "&refresh=true" : ""}`
+  const url = `/api/admin/clients/${clientId}/price-list?includeInactive=true${refresh ? "&refresh=true" : ""}`
   const res = await fetch(url, { cache: "no-store" })
   if (!res.ok) throw new Error("Failed to load price list")
   const json = await res.json()
@@ -70,7 +59,6 @@ export default function ClientProfilePage() {
   const [overrides, setOverrides] = useState<Record<string, number>>({})
   const [enabledOverrides, setEnabledOverrides] = useState<Record<string, boolean>>({})
   const [refreshingPrices, setRefreshingPrices] = useState(false)
-  const [activeTab, setActiveTab] = useState<ServiceType>("design_only")
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
 
   const clientQuery = useQuery<ClientProfile>({
@@ -81,39 +69,6 @@ export default function ClientProfilePage() {
       if (!res.ok) throw new Error("Failed to load client")
       const json = await res.json()
       return json.data
-    },
-  })
-
-  const serviceTypesQuery = useQuery<ServiceType[]>({
-    queryKey: ["admin-client-service-types", clientId],
-    enabled: !!clientId,
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/clients/${clientId}/service-types`, { cache: "no-store" })
-      if (!res.ok) throw new Error("Failed to load enabled flows")
-      const json = await res.json()
-      return json.data?.enabledServiceTypes ?? ["design_only"]
-    },
-  })
-
-  const serviceTypesMutation = useMutation({
-    mutationFn: async (next: ServiceType[]) => {
-      const res = await fetch(`/api/admin/clients/${clientId}/service-types`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabledServiceTypes: next }),
-      })
-      if (!res.ok) {
-        const payload = await res.json().catch(() => ({}))
-        throw new Error(payload.error || "Failed to update enabled flows")
-      }
-      return res.json()
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-client-service-types", clientId] })
-      toast.success("Enabled flows updated")
-    },
-    onError: (error: unknown) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update enabled flows")
     },
   })
 
@@ -178,33 +133,11 @@ export default function ClientProfilePage() {
     },
   })
 
-  const toggleFlow = (flow: ServiceType, checked: boolean) => {
-    const current = serviceTypesQuery.data ?? ["design_only"]
-    const next = checked ? [...current, flow] : current.filter((f) => f !== flow)
-    if (next.length === 0) {
-      toast.error("A client must have at least one enabled service flow")
-      return
-    }
-    serviceTypesMutation.mutate(next)
-  }
-
-  const priceListQueries: Record<ServiceType, ReturnType<typeof useQuery<PriceListEntryFull[]>>> = {
-    design_only: useQuery<PriceListEntryFull[]>({
-      queryKey: ["admin-client-price-list", clientId, "design_only"],
-      enabled: !!clientId,
-      queryFn: () => fetchClientPriceList(clientId!, "design_only"),
-    }),
-    design_milling: useQuery<PriceListEntryFull[]>({
-      queryKey: ["admin-client-price-list", clientId, "design_milling"],
-      enabled: !!clientId,
-      queryFn: () => fetchClientPriceList(clientId!, "design_milling"),
-    }),
-    milling_only: useQuery<PriceListEntryFull[]>({
-      queryKey: ["admin-client-price-list", clientId, "milling_only"],
-      enabled: !!clientId,
-      queryFn: () => fetchClientPriceList(clientId!, "milling_only"),
-    }),
-  }
+  const priceListQuery = useQuery<PriceListEntryFull[]>({
+    queryKey: ["admin-client-price-list", clientId],
+    enabled: !!clientId,
+    queryFn: () => fetchClientPriceList(clientId!),
+  })
 
   // Reset unsaved edits when navigating between client profiles
   useEffect(() => {
@@ -212,22 +145,21 @@ export default function ClientProfilePage() {
     setEnabledOverrides({})
   }, [clientId])
 
-  const rowsWithOverrides = (flow: ServiceType) =>
-    (priceListQueries[flow].data ?? []).map((row) => ({
+  const rowsWithOverrides = () =>
+    (priceListQuery.data ?? []).map((row) => ({
       ...row,
       price: row.catalogItemId in overrides ? overrides[row.catalogItemId] : row.price,
       isEnabled: row.catalogItemId in enabledOverrides ? enabledOverrides[row.catalogItemId] : row.isEnabled,
     }))
 
   const findNotes = (catalogItemId: string): string | null => {
-    const all = FLOWS.flatMap((flow) => priceListQueries[flow].data ?? [])
-    return all.find((r) => r.catalogItemId === catalogItemId)?.notes ?? null
+    return (priceListQuery.data ?? []).find((r) => r.catalogItemId === catalogItemId)?.notes ?? null
   }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const ids = new Set([...Object.keys(overrides), ...Object.keys(enabledOverrides)])
-      const allRows = FLOWS.flatMap((flow) => priceListQueries[flow].data ?? [])
+      const allRows = priceListQuery.data ?? []
       const items = Array.from(ids).map((catalogItemId) => {
         const row = allRows.find((r) => r.catalogItemId === catalogItemId)
         return {
@@ -270,8 +202,7 @@ export default function ClientProfilePage() {
   const handleRefreshPrices = async () => {
     setRefreshingPrices(true)
     try {
-      const results = await Promise.all(FLOWS.map((flow) => fetchClientPriceList(clientId!, flow, true)))
-      FLOWS.forEach((flow, i) => queryClient.setQueryData(["admin-client-price-list", clientId, flow], results[i]))
+      queryClient.setQueryData(["admin-client-price-list", clientId], await fetchClientPriceList(clientId!, true))
       toast.success("Refreshed directly from the database")
     } catch {
       toast.error("Failed to refresh")
@@ -293,8 +224,7 @@ export default function ClientProfilePage() {
 
   const client = clientQuery.data
   const location = [client?.city, client?.state, client?.country].filter(Boolean).join(", ")
-  const priceListLoading = FLOWS.some((flow) => priceListQueries[flow].isLoading)
-  const enabledFlows = serviceTypesQuery.data ?? ["design_only"]
+  const priceListLoading = priceListQuery.isLoading
 
   return (
     
@@ -348,7 +278,6 @@ export default function ClientProfilePage() {
             </CardHeader>
             <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-2 px-4 pb-4">
               <Info label="Lab Name" value={client?.labName || "-"} />
-              <Info label="Services" value={enabledFlows.map((f) => FLOW_LABELS[f]).join(", ") || "-"} />
               <Info label="Primary Contact" value={client?.fullName || "-"} />
               <Info label="Email" value={client?.email || "-"} icon={<Mail className="h-3 w-3" />} />
               <Info label="Phone" value={client?.phone || "-"} icon={<Phone className="h-3 w-3" />} />
@@ -400,31 +329,6 @@ export default function ClientProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Enabled Flows */}
-          <Card className="shadow-card">
-            <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                Enabled flows
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Which case-submission flows this client can use. Changing this immediately affects what they can submit and see priced.
-              </p>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 flex flex-wrap gap-4">
-              {FLOWS.map((flow) => (
-                <div key={flow} className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-                  <Switch
-                    checked={enabledFlows.includes(flow)}
-                    disabled={serviceTypesMutation.isPending || serviceTypesQuery.isLoading}
-                    onCheckedChange={(checked) => toggleFlow(flow, checked)}
-                  />
-                  <span className="text-xs font-semibold text-foreground">{FLOW_LABELS[flow]}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
           {/* 3D Model Only Restriction */}
           <Card className="shadow-card">
             <CardHeader className="pb-2 pt-3 px-4">
@@ -458,7 +362,7 @@ export default function ClientProfilePage() {
                     Allocated price list
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Edit client-specific prices per flow. Changes are reflected in the client portal immediately after save.
+                    Edit client-specific prices. Changes are reflected in the client portal immediately after save.
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
@@ -488,30 +392,12 @@ export default function ClientProfilePage() {
               {priceListLoading ? (
                 <p className="text-xs text-muted-foreground py-6 text-center">Loading...</p>
               ) : (
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ServiceType)}>
-                  <TabsList>
-                    {FLOWS.map((flow) => (
-                      <TabsTrigger key={flow} value={flow} className="text-xs">
-                        {FLOW_LABELS[flow]}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  {FLOWS.map((flow) => (
-                    <TabsContent key={flow} value={flow} className="space-y-2">
-                      {!enabledFlows.includes(flow) && (
-                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-                          This flow is not enabled for this client — they won&apos;t see it until you enable it above.
-                        </div>
-                      )}
-                      <PriceListTable
-                        rows={rowsWithOverrides(flow)}
-                        mode="client"
-                        onChangePrice={updatePrice}
-                        onToggleEnabled={updateEnabled}
-                      />
-                    </TabsContent>
-                  ))}
-                </Tabs>
+                <PriceListTable
+                  rows={rowsWithOverrides()}
+                  mode="client"
+                  onChangePrice={updatePrice}
+                  onToggleEnabled={updateEnabled}
+                />
               )}
             </CardContent>
           </Card>

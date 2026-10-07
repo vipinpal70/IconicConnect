@@ -33,7 +33,6 @@ bugs I'd hit in production, found by reading the systems this feature touches
 | `admin` | Unrestricted — [line 286](src/app/api/cases/[id]/route.ts#L286) |
 | `qc` | From any non-terminal status, **only if** `caseRecord.qcId === profile.id \|\| caseRecord.designerId === profile.id` — [line 352](src/app/api/cases/[id]/route.ts#L352) |
 | `designer` | From any non-terminal status, self-scoped to their own case — [line 429](src/app/api/cases/[id]/route.ts#L429) |
-| milling portal roles | **Cannot** set `on_hold` at all — [case-status-transitions.ts](src/lib/case-status-transitions.ts) |
 
 Note the QC/designer rule isn't just "any QC" — it's *the QC or designer assigned
 to this specific case* (or admin). That ownership scoping matters later (§4.3).

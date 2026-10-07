@@ -5,6 +5,7 @@ import {
   caseFiles,
   caseStatusEnum,
   CASE_STATUS_TO_LIFECYCLE_STEP,
+  type ActiveCaseStatus,
 } from '@/src/db/schema/case'
 import { profiles, subUsers } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
@@ -30,7 +31,7 @@ export const maxDuration = 60
 // Everything not yet 'Completed' on the client-facing lifecycle — mirrors the
 // (unexported) constant in `src/app/api/cases/route.ts`. Duplicate suppression
 // only considers cases in one of these (Q2 — active only).
-const ACTIVE_CASE_STATUSES = caseStatusEnum.enumValues.filter(
+const ACTIVE_CASE_STATUSES = (Object.keys(CASE_STATUS_TO_LIFECYCLE_STEP) as ActiveCaseStatus[]).filter(
   (status) => CASE_STATUS_TO_LIFECYCLE_STEP[status] !== 'Completed',
 )
 

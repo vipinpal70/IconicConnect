@@ -8,7 +8,7 @@ import { MAX_CASES_PER_DOWNLOAD, CLIENT_OUTPUT_VISIBLE_STATUSES } from './limits
 import type { AuthedProfile, DownloadScope, SkippedItem } from './types'
 
 const CLIENT_ROLES = new Set(['client', 'subuser'])
-// Same internal allow-list as /api/cases/files (milling roles excluded).
+// Same internal allow-list as /api/cases/files.
 const INTERNAL_ROLES = new Set(['admin', 'qc', 'designer', 'account_manager'])
 
 export type CaseRow = typeof cases.$inferSelect

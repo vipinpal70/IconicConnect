@@ -9,17 +9,8 @@ import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";
 
 const IN_PROGRESS_STATUSES = new Set(["scan_received", "scan_verified", "scan_not_verified", "allocated_to_designer", "in_progress", "internal_qc", "change_requested"]);
 
-// Flow-aware bucketing: `approved` means "done" for design_only (nothing
-// ships), but for design_milling/milling_only it just means design/file
-// verification cleared and the case is about to enter production — so it
-// must not be counted the same as a truly completed case. The milling
-// pipeline statuses (ready_for_milling..dispatched) previously had no
-// bucket at all and were silently dropped from every total.
-function bucketFor(status: string, serviceType: string): string {
-  if (status === "delivered") return "Completed";
-  if (status === "approved") return serviceType === "design_only" ? "Completed" : "In Production";
-  if (["ready_for_milling", "milling_in_progress", "milling_qc", "packaging"].includes(status)) return "In Production";
-  if (status === "dispatched") return "Dispatched";
+function bucketFor(status: string): string {
+  if (status === "delivered" || status === "approved") return "Completed";
   if (status === "submitted_to_client") return "Awaiting Client";
   if (status === "client_feedback") return "Feedback";
   if (status === "on_hold") return "On Hold";
@@ -45,14 +36,14 @@ export async function GET(req: NextRequest) {
     const { fromDate, toDate } = getAnalyticsDateRange(from, to);
 
     const rows = await db
-      .select({ status: cases.status, serviceType: cases.serviceType, cnt: count() })
+      .select({ status: cases.status, cnt: count() })
       .from(cases)
       .where(and(gte(cases.createdAt, fromDate), lte(cases.createdAt, toDate)))
-      .groupBy(cases.status, cases.serviceType);
+      .groupBy(cases.status);
 
     const bucketCounts = new Map<string, number>();
     for (const row of rows) {
-      const bucket = bucketFor(row.status, row.serviceType);
+      const bucket = bucketFor(row.status);
       bucketCounts.set(bucket, (bucketCounts.get(bucket) ?? 0) + Number(row.cnt));
     }
 

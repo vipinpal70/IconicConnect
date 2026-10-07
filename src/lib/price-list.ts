@@ -1,11 +1,10 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { profiles, subUsers } from '@/src/db/schema/profile'
+import { subUsers } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
-import type { ServiceType } from './case-status-mapping'
 
 // Server-only module (imports '@/src/db'). Client-safe types/helpers
-// (PriceListEntryFull, MergedPriceRow, mergeByServiceType) live in
+// (PriceListEntryFull) live in
 // './price-list-shared' and are re-exported here for server-side
 // convenience — "use client" components must import them directly from
 // './price-list-shared' instead, never from this file, or the bundler
@@ -22,15 +21,12 @@ export async function resolveClientIdFromProfile(profileId: string, role: string
   return null
 }
 
-export type CatalogServiceType = 'design_only' | 'design_milling' | 'milling_only'
-
-export function parseCatalogServiceType(value: string | null): CatalogServiceType {
-  return value === 'design_milling' || value === 'milling_only' ? value : 'design_only'
-}
+// service_catalog.service_type is a legacy column (dropped in design-only-removal-plan.md
+// Phase 7): the product is Design-only, so every read/write below is pinned to this value.
+const DESIGN_ONLY = 'design_only' as const
 
 export async function getPriceListForClient(
   clientId: string,
-  serviceType: CatalogServiceType = 'design_only',
   includeInactive = false
 ): Promise<PriceListEntryFull[]> {
   // Always ensure every active catalog item has a row for this client.
@@ -59,7 +55,7 @@ export async function getPriceListForClient(
     .where(
       and(
         eq(clientPriceList.clientId, clientId),
-        eq(serviceCatalog.serviceType, serviceType),
+        eq(serviceCatalog.serviceType, DESIGN_ONLY),
         includeInactive ? undefined : eq(serviceCatalog.isActive, true)
       )
     )
@@ -73,7 +69,6 @@ export async function getPriceListForClient(
 }
 
 export async function getServiceCatalog(
-  serviceType: CatalogServiceType = 'design_only',
   includeInactive = false
 ): Promise<PriceListEntryFull[]> {
   // Reconcile any catalog items added to defaultItems since this DB was last
@@ -86,7 +81,7 @@ export async function getServiceCatalog(
     .from(serviceCatalog)
     .where(
       and(
-        eq(serviceCatalog.serviceType, serviceType),
+        eq(serviceCatalog.serviceType, DESIGN_ONLY),
         includeInactive ? undefined : eq(serviceCatalog.isActive, true)
       )
     )
@@ -110,27 +105,10 @@ export async function getServiceCatalog(
 export async function seedClientPriceList(clientId: string, createdById?: string | null) {
   await ensureServiceCatalogSeeded()
 
-  // Only seed rows for the flows this client actually has enabled — this
-  // used to select every active catalog row across all three service types
-  // regardless of profiles.enabledServiceTypes, so e.g. a Design Only client
-  // would silently also get Design + Milling / Milling Only rows seeded into
-  // their price list the moment those flows had any active default pricing.
-  // Read fresh on every call (not cached) so this also picks up a flow an
-  // admin enables for the client *after* signup, the next time this runs —
-  // see setClientEnabledServiceTypes below, which now calls this directly.
-  const [client] = await db
-    .select({ enabledServiceTypes: profiles.enabledServiceTypes })
-    .from(profiles)
-    .where(eq(profiles.id, clientId))
-    .limit(1)
-  const enabledServiceTypes = (
-    client?.enabledServiceTypes?.length ? client.enabledServiceTypes : ['design_only']
-  ) as CatalogServiceType[]
-
   const catalog = await db
     .select()
     .from(serviceCatalog)
-    .where(and(eq(serviceCatalog.isActive, true), inArray(serviceCatalog.serviceType, enabledServiceTypes)))
+    .where(and(eq(serviceCatalog.isActive, true), eq(serviceCatalog.serviceType, DESIGN_ONLY)))
     .orderBy(serviceCatalog.sortOrder)
 
   if (catalog.length === 0) return
@@ -224,38 +202,10 @@ export async function updateClientPriceList(
   })
 }
 
-export async function getClientEnabledServiceTypes(clientId: string): Promise<ServiceType[]> {
-  const [row] = await db
-    .select({ enabledServiceTypes: profiles.enabledServiceTypes })
-    .from(profiles)
-    .where(eq(profiles.id, clientId))
-    .limit(1)
-
-  return (row?.enabledServiceTypes ?? ['design_only']) as ServiceType[]
-}
-
-export async function setClientEnabledServiceTypes(clientId: string, types: ServiceType[]) {
-  if (types.length === 0) {
-    throw new Error('A client must have at least one enabled service type')
-  }
-
-  await db
-    .update(profiles)
-    .set({ enabledServiceTypes: types, updatedAt: new Date() })
-    .where(eq(profiles.id, clientId))
-
-  // Seed price-list rows for any newly-enabled flow immediately, rather than
-  // waiting for this client to happen to open that flow's price list page
-  // (getPriceListForClient's lazy seedClientPriceList call would eventually
-  // catch it, but there's no reason to make it wait).
-  await seedClientPriceList(clientId).catch((err) =>
-    console.error('[setClientEnabledServiceTypes] Failed to seed price list for newly enabled flow(s):', err)
-  )
-}
-
 // Reconciles the service_catalog table against `defaultItems` below — safe to
 // call on every request, not just once from empty. Uses onConflictDoNothing
-// keyed on (category, subCategory, serviceType), so existing rows (including
+// keyed on (category, subCategory, serviceType) — new rows take the
+// column default 'design_only' — so existing rows (including
 // admin-edited prices) are never touched; only rows for *new* items added to
 // this list in a later release get inserted. This is what makes adding a new
 // category/sub-category here alone enough — no separate one-off backfill

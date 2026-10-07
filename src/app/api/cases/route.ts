@@ -4,7 +4,7 @@ import { getLatestCompleted } from '@/src/lib/bulk-download/tracking';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles, caseReferenceFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum, serviceTypeEnum } from '@/src/db/schema/case';
+import { cases, caseFiles, caseReferenceFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, type ActiveCaseStatus, caseStatusEnum } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and, or, inArray, ilike, gte, lte, sql, asc, desc, type SQL } from 'drizzle-orm';
@@ -14,7 +14,7 @@ import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
 import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
-import { parseCatalogServiceType, getPriceListForClient, type CatalogServiceType, type PriceListEntryFull } from '@/src/lib/price-list';
+import { getPriceListForClient, type PriceListEntryFull } from '@/src/lib/price-list';
 import { getRequiredServiceSelections } from '@/src/lib/case-hierarchy';
 import { getProfileLabName } from '@/src/lib/profile-utils';
 import { resolveDuplicates, normalizeCaseFileName, type ActiveCaseKey } from '@/src/lib/case-duplicate';
@@ -25,7 +25,7 @@ const CASES_LIST_TTL = 300 // 5 minutes
 // dead end (Cancelled/Client Rejected) — i.e. everything not yet 'Completed'
 // on the client-facing lifecycle. Re-uploading the same file while an
 // earlier case is still in one of these is blocked as a likely duplicate.
-const ACTIVE_CASE_STATUSES = caseStatusEnum.enumValues.filter(
+const ACTIVE_CASE_STATUSES = (Object.keys(CASE_STATUS_TO_LIFECYCLE_STEP) as ActiveCaseStatus[]).filter(
   (status) => CASE_STATUS_TO_LIFECYCLE_STEP[status] !== 'Completed'
 );
 
@@ -37,7 +37,6 @@ const caseListSelection = {
   category: cases.category,
   subTypeData: cases.subTypeData,
   status: cases.status,
-  serviceType: cases.serviceType,
   designSource: cases.designSource,
   holdReason: cases.holdReason,
   cancelReason: cases.cancelReason,
@@ -202,7 +201,7 @@ export async function POST(req: NextRequest) {
 
         if (duplicate) {
           return NextResponse.json({
-            error: `The file "${duplicate.fileName}" was already uploaded in case ${duplicate.caseNumber || ''} (${CLIENT_STATUS_LABELS[duplicate.status]}). Please wait for that case to finish before resubmitting the same file.`
+            error: `The file "${duplicate.fileName}" was already uploaded in case ${duplicate.caseNumber || ''} (${(CLIENT_STATUS_LABELS[duplicate.status as ActiveCaseStatus] ?? duplicate.status)}). Please wait for that case to finish before resubmitting the same file.`
           }, { status: 409 });
         }
       }
@@ -262,29 +261,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
     const labName = getProfileLabName(clientProfile);
-    const enabledServiceTypes = clientProfile?.enabledServiceTypes ?? ['design_only'];
     const modelOnlyLab = clientProfile?.modelOnlyLab ?? false;
 
     const results = [];
 
     // cases_number_seq is created by migration 0037 — no per-request DDL round trip.
 
-    // Per (flow) price list, fetched at most once per distinct serviceType in
-    // this batch rather than once per case.
-    const priceListByServiceType = new Map<CatalogServiceType, PriceListEntryFull[]>();
+    // Price list, fetched at most once per batch rather than once per case.
+    let priceListCache: PriceListEntryFull[] | null = null;
 
     for (let i = 0; i < casesArray.length; i++) {
       if (skipIndices.has(i)) continue;
       const caseData = casesArray[i];
       const file = files[i];
 
-      const serviceType = parseCatalogServiceType(typeof caseData.serviceType === 'string' ? caseData.serviceType : null)
-      if (!enabledServiceTypes.includes(serviceType)) {
-        return NextResponse.json(
-          { error: `The ${serviceType} flow is not enabled for this client` },
-          { status: 400 }
-        );
-      }
 
       if (modelOnlyLab && caseData.category !== '3D Model') {
         return NextResponse.json(
@@ -357,10 +347,8 @@ export async function POST(req: NextRequest) {
       // checked above.
       const requiredSelections = getRequiredServiceSelections(caseData.category ?? '', caseData.subTypeData);
       if (requiredSelections.length > 0) {
-        if (!priceListByServiceType.has(serviceType)) {
-          priceListByServiceType.set(serviceType, await getPriceListForClient(clientId, serviceType));
-        }
-        const priceList = priceListByServiceType.get(serviceType)!;
+        if (!priceListCache) priceListCache = await getPriceListForClient(clientId);
+        const priceList = priceListCache;
         const hasDisabledSelection = requiredSelections.some(
           (sel) => !priceList.some((row) => row.category === sel.category && row.subCategory === sel.subCategory && row.isEnabled)
         );
@@ -389,7 +377,6 @@ export async function POST(req: NextRequest) {
         preferredTeethLibrary: caseData.preferredTeethLibrary || 'default',
         teethLibraryFileUrl: caseData.teethLibraryFileUrl || null,
         teethLibraryFileName: caseData.teethLibraryFileName || null,
-        serviceType,
         createdBy: profile.fullName || profile.email || 'System',
       };
 
@@ -537,7 +524,6 @@ export async function GET(req: NextRequest) {
     // filtered view spans every case. All are optional and AND-ed together.
     //   search      — case #, category, sub-type, client/lab name, file name
     //   statuses    — CSV of case_status enum values (pages send the mapped set)
-    //   serviceType — design_only | design_milling | milling_only
     //   category    — exact case category
     //   clientId    — exact owning client (admin only; others are auto-scoped)
     //   assignedTo  — "me"/"mine" or a user id; matches designer OR qc
@@ -550,11 +536,6 @@ export async function GET(req: NextRequest) {
       .map((s) => s.trim())
       .filter((s): s is typeof caseStatusEnum.enumValues[number] =>
         (caseStatusEnum.enumValues as readonly string[]).includes(s));
-
-    const serviceTypeParam = searchParams.get('serviceType');
-    const serviceType = (serviceTypeEnum.enumValues as readonly string[]).includes(serviceTypeParam ?? '')
-      ? (serviceTypeParam as typeof serviceTypeEnum.enumValues[number])
-      : null;
 
     const categoryParam = (searchParams.get('category') || '').trim() || null;
     const clientIdParam = (searchParams.get('clientId') || '').trim() || null;
@@ -574,7 +555,7 @@ export async function GET(req: NextRequest) {
     const toDate = parseBoundary(searchParams.get('to'), true);
 
     const hasFilters =
-      hasSearch || statuses.length > 0 || !!serviceType || !!categoryParam ||
+      hasSearch || statuses.length > 0 || !!categoryParam ||
       !!clientIdParam || !!assignedUserId || !!fromDate || !!toDate;
 
     // Cache key (role + page + resolved limit)
@@ -633,7 +614,6 @@ export async function GET(req: NextRequest) {
     const filterParts: (SQL | undefined)[] = [
       searchCondition,
       statuses.length > 0 ? inArray(cases.status, statuses) : undefined,
-      serviceType ? eq(cases.serviceType, serviceType) : undefined,
       categoryParam ? eq(cases.category, categoryParam) : undefined,
       clientIdParam ? eq(cases.clientId, clientIdParam) : undefined,
       assignedUserId

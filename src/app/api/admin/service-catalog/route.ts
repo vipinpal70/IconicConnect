@@ -3,7 +3,7 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
 import { eq } from 'drizzle-orm'
-import { getServiceCatalog, updateCatalogDefaultPrices, updateCatalogActiveStatus, parseCatalogServiceType } from '@/src/lib/price-list'
+import { getServiceCatalog, updateCatalogDefaultPrices, updateCatalogActiveStatus } from '@/src/lib/price-list'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -27,10 +27,9 @@ export async function GET(req: NextRequest) {
     if ('error' in auth) return auth.error
 
     const { searchParams } = new URL(req.url)
-    const serviceType = parseCatalogServiceType(searchParams.get('serviceType'))
     const includeInactive = searchParams.get('includeInactive') === 'true'
 
-    const data = await getServiceCatalog(serviceType, includeInactive)
+    const data = await getServiceCatalog(includeInactive)
     return NextResponse.json({ data })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -65,9 +64,7 @@ export async function PUT(req: NextRequest) {
       .map(({ id, isActive }) => ({ id, isActive }))
     await updateCatalogActiveStatus(activeStatusItems)
 
-    const { searchParams } = new URL(req.url)
-    const serviceType = parseCatalogServiceType(searchParams.get('serviceType'))
-    const data = await getServiceCatalog(serviceType, true)
+    const data = await getServiceCatalog(true)
     return NextResponse.json({ data })
   } catch (error) {
     console.error('[admin/service-catalog PUT]', error)
