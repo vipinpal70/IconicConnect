@@ -27,6 +27,34 @@ export const preferredSoftwareOptions = [
   "Exocad",
 ] as const
 
+export const distanceToAntagonistOptions = [
+  "1.0–1.5 mm",
+  "1.5–2.0 mm",
+  "2.0–2.5 mm",
+  "Lab Preference",
+] as const
+
+export const taperAngleOptions = [
+  "0°",
+  "3°",
+  "6°",
+  "Lab Preference",
+] as const
+
+export const emergenceProfileOptions = [
+  "Concave",
+  "Straight",
+  "Convex",
+  "Lab Preference",
+] as const
+
+export const screwRetainedCrownOptions = [
+  "2.0 mm",
+  "2.5 mm",
+  "3.0 mm",
+  "Lab Preference",
+] as const
+
 export type AnatomyOption = (typeof anatomyOptions)[number]
 export type SmileLibraryOption = (typeof smileLibraryOptions)[number]
 export type PonticTypeOption = (typeof ponticTypeOptions)[number]
@@ -36,6 +64,10 @@ export type PosteriorCutbackOption = (typeof posteriorCutbackOptions)[number]
 export type AnteriorCutbackOption = (typeof anteriorCutbackOptions)[number]
 export type CollarTypeOption = (typeof collarTypeOptions)[number]
 export type PreferredSoftwareOption = (typeof preferredSoftwareOptions)[number]
+export type DistanceToAntagonistOption = (typeof distanceToAntagonistOptions)[number]
+export type TaperAngleOption = (typeof taperAngleOptions)[number]
+export type EmergenceProfileOption = (typeof emergenceProfileOptions)[number]
+export type ScrewRetainedCrownOption = (typeof screwRetainedCrownOptions)[number]
 
 export type PreferenceFormPayload = {
   formType?: "full_contour" | "facial_cutback_coping"
@@ -59,6 +91,10 @@ export type PreferenceFormPayload = {
     option: SmileLibraryOption | ""
     libraryName: string
     comments: string
+    libraryFile?: {
+      fileUrl: string
+      fileName: string
+    } | null
   }
   ponticType: {
     option: PonticTypeOption | ""
@@ -94,6 +130,39 @@ export type PreferenceFormPayload = {
     option: YesNoOption | ""
     comments: string
   }
+  gingivaLevels?: {
+    anteriorBuccal: string
+    anteriorLingual: string
+    anteriorMesialDistal: string
+    posteriorBuccal: string
+    posteriorLingual: string
+    posteriorMesialDistal: string
+    comments: string
+  }
+  distanceToAntagonist?: {
+    option: DistanceToAntagonistOption | ""
+    comments: string
+  }
+  identificationDots?: {
+    option: YesNoOption | ""
+    comments: string
+  }
+  internalRetentionGroove?: {
+    option: YesNoOption | ""
+    comments: string
+  }
+  taperAngle?: {
+    option: TaperAngleOption | ""
+    comments: string
+  }
+  emergenceProfile?: {
+    option: EmergenceProfileOption | ""
+    comments: string
+  }
+  screwRetainedCrown?: {
+    option: ScrewRetainedCrownOption | ""
+    comments: string
+  }
   preferredSoftware?: {
     option: PreferredSoftwareOption | ""
   }
@@ -119,11 +188,11 @@ export type PreferenceFormRecord = {
 export const createPreferenceFormDefaults = (): PreferenceFormPayload => ({
   formType: "full_contour",
   occlusion: {
-    defaultValues: "",
+    defaultValues: "0.4",
     comments: "",
   },
   proximalContacts: {
-    defaultValues: "",
+    defaultValues: "0.02",
     comments: "",
   },
   distalMostCrownContact: {
@@ -131,33 +200,34 @@ export const createPreferenceFormDefaults = (): PreferenceFormPayload => ({
     comments: "",
   },
   anatomy: {
-    option: "",
+    option: "Match Adjacent",
     comments: "",
   },
   smileLibrary: {
     option: "",
     libraryName: "",
     comments: "",
+    libraryFile: null,
   },
   ponticType: {
-    option: "",
+    option: "Modified Ridge Lap",
     comments: "",
   },
   ponticDistanceFromTissue: {
-    option: "",
+    option: "Into",
     comments: "",
-    distanceMm: "",
+    distanceMm: "0.15",
   },
   matchMarginalRidge: {
-    option: "",
+    option: "Yes",
     comments: "",
   },
   posteriorCutback: {
-    option: "",
+    option: "Buccal Surface Only",
     comments: "",
   },
   anteriorCutback: {
-    option: "",
+    option: "With Mamelons",
     comments: "",
   },
   copingPonticDistanceFromTissue: {
@@ -171,6 +241,39 @@ export const createPreferenceFormDefaults = (): PreferenceFormPayload => ({
   },
   copingCreateIsland: {
     option: "",
+    comments: "",
+  },
+  gingivaLevels: {
+    anteriorBuccal: "1.0",
+    anteriorLingual: "0.5",
+    anteriorMesialDistal: "0.5",
+    posteriorBuccal: "1.0",
+    posteriorLingual: "0.5",
+    posteriorMesialDistal: "0.5",
+    comments: "",
+  },
+  distanceToAntagonist: {
+    option: "2.0–2.5 mm",
+    comments: "",
+  },
+  identificationDots: {
+    option: "",
+    comments: "",
+  },
+  internalRetentionGroove: {
+    option: "",
+    comments: "",
+  },
+  taperAngle: {
+    option: "3°",
+    comments: "",
+  },
+  emergenceProfile: {
+    option: "Concave",
+    comments: "",
+  },
+  screwRetainedCrown: {
+    option: "2.5 mm",
     comments: "",
   },
   preferredSoftware: {
@@ -207,6 +310,10 @@ export function clonePreferenceFormPayload(payload?: Partial<PreferenceFormPaylo
       option: payload.smileLibrary?.option ?? "",
       libraryName: payload.smileLibrary?.libraryName ?? "",
       comments: payload.smileLibrary?.comments ?? "",
+      libraryFile: payload.smileLibrary?.libraryFile ? {
+        fileUrl: payload.smileLibrary.libraryFile.fileUrl ?? "",
+        fileName: payload.smileLibrary.libraryFile.fileName ?? "",
+      } : null,
     },
     ponticType: {
       option: payload.ponticType?.option ?? "",
@@ -241,6 +348,39 @@ export function clonePreferenceFormPayload(payload?: Partial<PreferenceFormPaylo
     copingCreateIsland: {
       option: payload.copingCreateIsland?.option ?? "",
       comments: payload.copingCreateIsland?.comments ?? "",
+    },
+    gingivaLevels: {
+      anteriorBuccal: payload.gingivaLevels?.anteriorBuccal ?? defaults.gingivaLevels!.anteriorBuccal,
+      anteriorLingual: payload.gingivaLevels?.anteriorLingual ?? defaults.gingivaLevels!.anteriorLingual,
+      anteriorMesialDistal: payload.gingivaLevels?.anteriorMesialDistal ?? defaults.gingivaLevels!.anteriorMesialDistal,
+      posteriorBuccal: payload.gingivaLevels?.posteriorBuccal ?? defaults.gingivaLevels!.posteriorBuccal,
+      posteriorLingual: payload.gingivaLevels?.posteriorLingual ?? defaults.gingivaLevels!.posteriorLingual,
+      posteriorMesialDistal: payload.gingivaLevels?.posteriorMesialDistal ?? defaults.gingivaLevels!.posteriorMesialDistal,
+      comments: payload.gingivaLevels?.comments ?? "",
+    },
+    distanceToAntagonist: {
+      option: payload.distanceToAntagonist?.option ?? "",
+      comments: payload.distanceToAntagonist?.comments ?? "",
+    },
+    identificationDots: {
+      option: payload.identificationDots?.option ?? "",
+      comments: payload.identificationDots?.comments ?? "",
+    },
+    internalRetentionGroove: {
+      option: payload.internalRetentionGroove?.option ?? "",
+      comments: payload.internalRetentionGroove?.comments ?? "",
+    },
+    taperAngle: {
+      option: payload.taperAngle?.option ?? "",
+      comments: payload.taperAngle?.comments ?? "",
+    },
+    emergenceProfile: {
+      option: payload.emergenceProfile?.option ?? "",
+      comments: payload.emergenceProfile?.comments ?? "",
+    },
+    screwRetainedCrown: {
+      option: payload.screwRetainedCrown?.option ?? "",
+      comments: payload.screwRetainedCrown?.comments ?? "",
     },
     preferredSoftware: {
       option: payload.preferredSoftware?.option ?? "",
