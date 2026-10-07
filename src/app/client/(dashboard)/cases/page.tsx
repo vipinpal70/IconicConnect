@@ -26,7 +26,7 @@ import { toast } from "sonner";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import type { ServiceType } from "@/src/lib/case-status-mapping";
 import { HOLD_REASONS, canClientCancelCase } from "@/src/lib/case-utils";
-import { CASE_HIERARCHY, buildEnabledKeySet, isCategoryAvailable, isFieldOptionEnabled } from "@/src/lib/case-hierarchy";
+import { CASE_HIERARCHY, isImplantFamily, initialSubTypeData, buildEnabledKeySet, isCategoryAvailable, isFieldOptionEnabled } from "@/src/lib/case-hierarchy";
 import type { PriceListEntryFull } from "@/src/lib/price-list-shared";
 
 const HOLDABLE_STATUSES = ["scan_received", "scan_not_verified", "scan_verified"];
@@ -186,6 +186,10 @@ const hasAllRequiredCaseFields = (
     modelRequiredValid
   );
 }
+
+const Req = () => <span className="text-red-600 font-bold ml-0.5" aria-hidden="true">*</span>
+const Missing = ({ show, children }: { show: boolean; children: React.ReactNode }) =>
+  show ? <p className="text-xs text-red-600 font-medium">{children}</p> : null
 
 export default function CasesPage() {
   const router = useRouter();
@@ -400,6 +404,7 @@ export default function CasesPage() {
   // No default — the lab must actively pick Yes/No; see handleSubmit's guard.
   // 3D Model never uses this field at all.
   const [modelRequired, setModelRequired] = useState<"yes" | "no" | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
   const [teeth, setTeeth] = useState<number[]>([]);
   const [crownBridgeTeeth, setCrownBridgeTeeth] = useState<number[]>([]);
   const [toothSystem, setToothSystem] = useState<"USA" | "FDI">("USA");
@@ -784,6 +789,7 @@ export default function CasesPage() {
     if (isSubmittingLockRef.current || submitCooldown || isSubmitting) return;
 
     if (!hasAllRequiredCaseFields(category, subTypeData, notes, teeth, uploadedFile, crownBridgeTeeth, modelRequired)) {
+      setShowErrors(true);
       toast.error("Please complete all required fields, select teeth, upload a file, and specify whether a model is required.");
       return;
     }
@@ -813,7 +819,7 @@ export default function CasesPage() {
         teeth,
         toothSystem,
         notes,
-        ...(category === "Implants" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
+        ...(isImplantFamily(category) && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
       },
       uploadedFile,
       referenceImages,
@@ -837,6 +843,7 @@ export default function CasesPage() {
         setTeeth([]);
         setCrownBridgeTeeth([]);
         setModelRequired(null);
+        setShowErrors(false);
         setServiceType("design_only");
         setCategory("Crown & Bridge");
         setSubTypeData({});
@@ -1078,13 +1085,13 @@ export default function CasesPage() {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="single">Single Case</TabsTrigger>
                     <TabsTrigger value="bulk">Bulk Upload</TabsTrigger>
-                    <TabsTrigger value="xml">3Shape Import</TabsTrigger>
+                    <TabsTrigger value="xml">3Shape Auto Upload</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="single" className="space-y-5 mt-4">
                     {/* Drag and Drop / Fast Upload Area */}
                     <div className="space-y-2">
-                      <Label>Case File</Label>
+                      <Label>Case File <Req /></Label>
                       <input
                         ref={singleFileRef}
                         type="file"
@@ -1189,6 +1196,8 @@ export default function CasesPage() {
                       )}
                     </div>
 
+                    <Missing show={showErrors && !uploadedFile}>Missing: please upload a case file.</Missing>
+
                     {/* Reference Images (optional, up to 5) */}
                     <div className="space-y-2">
                       <Label>
@@ -1270,11 +1279,11 @@ export default function CasesPage() {
                       </div>
                     )}
 
-                    {category === "Implants" ? (
+                    {isImplantFamily(category) ? (
                       <>
                         <div className="space-y-2">
-                          <Label>Category</Label>
-                          <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implants" ? { caseType2: "None" } : {}); }}>
+                          <Label>Category <Req /></Label>
+                          <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(initialSubTypeData(v)); }}>
                             <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                             <SelectContent className="bg-emerald-800 text-white">
                               {availableCategories.map((cat) => (
@@ -1286,6 +1295,7 @@ export default function CasesPage() {
                           </Select>
                         </div>
 
+                        {category !== "Implant Bars" ? (
                         <div className="space-y-2">
                           <Label>Sub Type 1</Label>
                           <Select
@@ -1304,18 +1314,34 @@ export default function CasesPage() {
                             </SelectContent>
                           </Select>
                         </div>
+                        ) : (
+                        <div className="space-y-2">
+                          <Label>Arch <Req /></Label>
+                          <Select value={subTypeData["arch"] || ""} onValueChange={(v) => setSubTypeData({ ...subTypeData, arch: v })}>
+                            <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Arch" /></SelectTrigger>
+                            <SelectContent className="bg-emerald-800 text-white">
+                              {CASE_HIERARCHY["Implant Bars"].fields[1].options.map((opt) => (
+                                <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Missing show={showErrors && !subTypeData["arch"]}>Missing: please select an arch.</Missing>
+                        </div>
+                        )}
 
                         <div className="space-y-2">
                           <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
                           <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                          <Missing show={showErrors && teeth.length === 0}>Missing: please select at least one tooth.</Missing>
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Model Required? *</Label>
+                          <Label>Model Required? <Req /></Label>
                           <RadioGroup value={modelRequired ?? undefined} onValueChange={(v) => setModelRequired(v as "yes" | "no")} className="flex gap-6 pt-2">
                             <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes" /><Label htmlFor="m-yes" className="font-normal">Yes</Label></div>
                             <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no" /><Label htmlFor="m-no" className="font-normal">No</Label></div>
                           </RadioGroup>
+                          <Missing show={showErrors && !modelRequired}>Missing: please choose whether a model is required.</Missing>
                         </div>
 
                         <div className="space-y-2">
@@ -1461,8 +1487,8 @@ export default function CasesPage() {
                       <>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label>Category</Label>
-                            <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implants" ? { caseType2: "None" } : {}); }}>
+                            <Label>Category <Req /></Label>
+                            <Select value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(initialSubTypeData(v)); }}>
                               <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                               <SelectContent className="bg-emerald-800 text-white">
                                 {availableCategories.map((cat) => (
@@ -1475,11 +1501,12 @@ export default function CasesPage() {
                           </div>
                           {category !== "3D Model" && (
                             <div className="space-y-2">
-                              <Label>Model Required? *</Label>
+                              <Label>Model Required? <Req /></Label>
                               <RadioGroup value={modelRequired ?? undefined} onValueChange={(v) => setModelRequired(v as "yes" | "no")} className="flex gap-6 pt-2">
                                 <div className="flex items-center gap-2"><RadioGroupItem value="yes" id="m-yes" /><Label htmlFor="m-yes" className="font-normal">Yes</Label></div>
                                 <div className="flex items-center gap-2"><RadioGroupItem value="no" id="m-no" /><Label htmlFor="m-no" className="font-normal">No</Label></div>
                               </RadioGroup>
+                              <Missing show={showErrors && !modelRequired}>Missing: please choose whether a model is required.</Missing>
                             </div>
                           )}
                         </div>
@@ -1508,7 +1535,7 @@ export default function CasesPage() {
                             </div>
                           ) : (
                             <div className="space-y-2" key={field.name}>
-                              <Label>{field.label}{!(field as { optional?: boolean }).optional && " *"}</Label>
+                              <Label>{field.label}{!(field as { optional?: boolean }).optional && <Req />}</Label>
                               <Select
                                 value={subTypeData[field.name] || ""}
                                 onValueChange={(v) => {
@@ -1527,6 +1554,7 @@ export default function CasesPage() {
                                     ))}
                                 </SelectContent>
                               </Select>
+                              <Missing show={showErrors && !(field as { optional?: boolean }).optional && !subTypeData[field.name]}>Missing: please select {field.label}.</Missing>
                             </div>
                           )
                         ))}
@@ -1542,6 +1570,7 @@ export default function CasesPage() {
                           <div className="space-y-2">
                             <Label>Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
                             <ToothChart selected={teeth} onChange={setTeeth} system={toothSystem} onChangeSystem={setToothSystem} />
+                            <Missing show={showErrors && teeth.length === 0}>Missing: please select at least one tooth.</Missing>
                           </div>
                         )}
 
@@ -1780,8 +1809,8 @@ export default function CasesPage() {
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1">
-                                    <Label className="text-xs">Category</Label>
-                                    <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: v === "Implants" ? { caseType2: "None" } : {} })}>
+                                    <Label className="text-xs">Category <Req /></Label>
+                                    <Select value={row.category} onValueChange={(v) => updateBulkRow(i, { category: v, subTypeData: initialSubTypeData(v) })}>
                                       <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue /></SelectTrigger>
                                       <SelectContent className="bg-emerald-800 text-white">
                                         {(modelOnlyLab
@@ -1799,7 +1828,7 @@ export default function CasesPage() {
                                   </div>
                                   {row.category !== "3D Model" && (
                                     <div className="space-y-1">
-                                      <Label className="text-xs">Model Required? *</Label>
+                                      <Label className="text-xs">Model Required? <Req /></Label>
                                       <RadioGroup value={row.modelRequired ?? undefined} onValueChange={(v) => updateBulkRow(i, { modelRequired: v as "yes" | "no" })} className="flex gap-4 items-center pt-1">
                                         <div className="flex items-center gap-1.5"><RadioGroupItem value="yes" id={`bm-yes-${i}`} /><Label htmlFor={`bm-yes-${i}`} className="text-xs">Yes</Label></div>
                                         <div className="flex items-center gap-1.5"><RadioGroupItem value="no" id={`bm-no-${i}`} /><Label htmlFor={`bm-no-${i}`} className="text-xs">No</Label></div>
@@ -1809,8 +1838,9 @@ export default function CasesPage() {
                                 </div>
 
                                 {/* Dynamic Fields */}
-                                {row.category === "Implants" ? (
+                                {isImplantFamily(row.category) ? (
                                   <>
+                                    {row.category !== "Implant Bars" ? (
                                     <div className="space-y-1">
                                       <Label className="text-xs">Sub Type 1</Label>
                                       <Select
@@ -1829,6 +1859,19 @@ export default function CasesPage() {
                                         </SelectContent>
                                       </Select>
                                     </div>
+                                    ) : (
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Arch <Req /></Label>
+                                      <Select value={row.subTypeData["arch"] || ""} onValueChange={(v) => updateBulkRow(i, { subTypeData: { ...row.subTypeData, arch: v } })}>
+                                        <SelectTrigger className="h-9 bg-emerald-800 text-white hover:bg-emerald-900"><SelectValue placeholder="Select Arch" /></SelectTrigger>
+                                        <SelectContent className="bg-emerald-800 text-white">
+                                          {CASE_HIERARCHY["Implant Bars"].fields[1].options.map((opt) => (
+                                            <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white">{opt}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    )}
 
                                     <div className="space-y-1">
                                       <Label className="text-xs">Teeth for Implant ({row.toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
@@ -1904,7 +1947,7 @@ export default function CasesPage() {
                                         </div>
                                       ) : (
                                         <div className="space-y-1" key={field.name}>
-                                          <Label className="text-xs">{field.label}{!(field as { optional?: boolean }).optional && " *"}</Label>
+                                          <Label className="text-xs">{field.label}{!(field as { optional?: boolean }).optional && <Req />}</Label>
                                           <Select
                                             value={row.subTypeData[field.name] || ""}
                                             onValueChange={(v) => {

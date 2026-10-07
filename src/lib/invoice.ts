@@ -145,6 +145,29 @@ export async function buildInvoiceItems(
   const modelDrainHolesCountByServiceType = new Map<CaseServiceType, number>()
 
   for (const c of selectedCases) {
+    // Implant Bars: priced like Implants (per tooth) from its own catalog row,
+    // plus the optional Crown / Bridge attachment from the Crown & Bridge catalog.
+    if ((c.category || '').trim() === 'Implant Bars') {
+      const data = (c.subTypeData as Record<string, any>) || {}
+      const serviceType = resolveServiceType(c.serviceType)
+      const barCount = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
+      if (barCount > 0) {
+        const key = `Implant Bars:Implant Bars:${serviceType}`
+        const g = groupMap.get(key)
+        if (g) g.totalUnits += barCount
+        else groupMap.set(key, { category: 'Implant Bars', subCategory: 'Implant Bars', unitType: 'per_tooth', serviceType, totalUnits: barCount })
+      }
+      const cbType = data.caseType2 as string | undefined
+      const cbCount = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
+      if (cbType && cbType !== 'None' && cbCount > 0) {
+        const key = `Crown & Bridge:${cbType}:${serviceType}`
+        const g = groupMap.get(key)
+        if (g) g.totalUnits += cbCount
+        else groupMap.set(key, { category: 'Crown & Bridge', subCategory: cbType, unitType: 'per_tooth', serviceType, totalUnits: cbCount })
+      }
+      continue
+    }
+
     const input = mapCaseToPricingInput(c.category || '', c.subTypeData)
     if (!input) continue
 

@@ -60,6 +60,17 @@ function extractCaseRow(
     const impP = impTeeth.length * getPrice('Implants', implantSub)
     const cbP = cbTeeth.length > 0 && cbType && cbType !== 'None' ? cbTeeth.length * getPrice('Crown & Bridge', cbType) : 0
     unitPrice = units > 0 ? parseFloat(((impP + cbP) / units).toFixed(2)) : 0
+  } else if (cat === 'implant bars') {
+    const cbType = String(d.caseType2 || '')
+    const arch = String(d.arch || '')
+    subType = [arch, cbType && cbType !== 'None' ? cbType : ''].filter(Boolean).join(' - ') || 'Implant Bars'
+    const barTeeth = Array.isArray(d.teeth) ? (d.teeth as number[]) : []
+    const cbTeeth = Array.isArray(d.crownBridgeTeeth) ? (d.crownBridgeTeeth as number[]) : []
+    selection = [...barTeeth.map((t) => `Bar:#${t}`), ...cbTeeth.map((t) => `CB:#${t}`)].join(', ') || '—'
+    units = barTeeth.length + cbTeeth.length
+    const barP = barTeeth.length * getPrice('Implant Bars', 'Implant Bars')
+    const cbP = cbTeeth.length > 0 && cbType && cbType !== 'None' ? cbTeeth.length * getPrice('Crown & Bridge', cbType) : 0
+    unitPrice = units > 0 ? parseFloat(((barP + cbP) / units).toFixed(2)) : 0
   } else if (cat === 'appliances' || cat === 'appliance') {
     subType = String(d.appliance_type || d.applianceType || d.caseType1 || 'Night Guards')
     selection = String(d.arch || d.caseType2 || 'Upper')

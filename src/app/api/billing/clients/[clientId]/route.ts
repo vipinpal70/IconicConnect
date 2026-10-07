@@ -85,6 +85,20 @@ function computeCasePrice(
     return parseFloat(price.toFixed(2))
   }
 
+  // Implant Bars — per tooth, plus optional Crown & Bridge attachment
+  if (cat === 'implant bars') {
+    const cbType = String(data.caseType2 || '')
+    const barTeeth = Array.isArray(data.teeth) ? (data.teeth as unknown[]).length : 0
+    const cbTeeth = Array.isArray(data.crownBridgeTeeth) ? (data.crownBridgeTeeth as unknown[]).length : 0
+
+    let price = barTeeth * getPrice('Implant Bars', 'Implant Bars', serviceType)
+    if (cbTeeth > 0 && cbType && cbType !== 'None') {
+      price += cbTeeth * getPrice('Crown & Bridge', cbType, serviceType)
+    }
+    if (data.modelRequired === 'yes') price += getPrice('Model', '3D Model', serviceType)
+    return parseFloat(price.toFixed(2))
+  }
+
   // Appliances
   if (cat === 'appliances' || cat === 'appliance') {
     const appType = String(data.appliance_type || data.applianceType || data.caseType1 || 'Night Guards')

@@ -15,7 +15,7 @@ import { ToothChart } from "@/src/components/ToothChart"
 import { generateCaseId } from "@/src/lib/case-utils"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
 import type { ServiceType } from "@/src/lib/case-status-mapping"
-import { CASE_HIERARCHY, buildEnabledKeySet, isCategoryAvailable, isFieldOptionEnabled } from "@/src/lib/case-hierarchy"
+import { CASE_HIERARCHY, isImplantFamily, initialSubTypeData, buildEnabledKeySet, isCategoryAvailable, isFieldOptionEnabled } from "@/src/lib/case-hierarchy"
 import type { PriceListEntryFull } from "@/src/lib/price-list-shared"
 
 const SERVICE_TYPE_COPY: Record<ServiceType, { label: string; description: string }> = {
@@ -605,7 +605,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
         notes,
         teeth,
         toothSystem,
-        ...(category === "Implants" && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
+        ...(isImplantFamily(category) && subTypeData.caseType2 !== "None" ? { crownBridgeTeeth } : {}),
       },
       caseNumber: generatedCaseId,
       uploadedFile: uploadedFilesList[0] || null,
@@ -886,11 +886,11 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
           </div>
 
           {/* Form Fields */}
-          {category === "Implants" ? (
+          {isImplantFamily(category) ? (
             <>
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Category</Label>
-                <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implants" ? { caseType2: "None" } : {}); }}>
+                <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(initialSubTypeData(v)); }}>
                   <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-emerald-800 text-white">
                     {availableCategories.map((cat) => (
@@ -902,6 +902,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 </Select>
               </div>
 
+              {category !== "Implant Bars" ? (
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Sub Type 1 *</Label>
                 <Select
@@ -921,6 +922,19 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                   </SelectContent>
                 </Select>
               </div>
+              ) : (
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-gray-700">Arch *</Label>
+                <Select disabled={isSubmitting} value={subTypeData["arch"] || ""} onValueChange={(v) => setSubTypeData({ ...subTypeData, arch: v })}>
+                  <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue placeholder="Select Arch" /></SelectTrigger>
+                  <SelectContent className="bg-emerald-800 text-white">
+                    {CASE_HIERARCHY["Implant Bars"].fields[1].options.map((opt) => (
+                      <SelectItem key={opt} value={opt} className="focus:bg-emerald-700 focus:text-white text-xs cursor-pointer">{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-700">Tooth Selection ({toothSystem === "USA" ? "USA Universal Numbering" : "FDI Numbering System"})</Label>
@@ -1094,7 +1108,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-gray-700">Category</Label>
-                  <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(v === "Implants" ? { caseType2: "None" } : {}); }}>
+                  <Select disabled={isSubmitting} value={category} onValueChange={(v) => { setCategory(v); setSubTypeData(initialSubTypeData(v)); }}>
                     <SelectTrigger className="bg-emerald-800 text-white hover:bg-emerald-900 h-9 rounded-md"><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-emerald-800 text-white">
                       {availableCategories.map((cat) => (

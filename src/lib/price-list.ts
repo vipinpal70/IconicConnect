@@ -297,6 +297,7 @@ export async function ensureServiceCatalogSeeded() {
     { category: '3D Model', subCategory: 'Die', unitType: 'per_tooth' as const, defaultPrice: '0.50', sortOrder: 29 },
     { category: '3D Model', subCategory: 'Articulator', unitType: 'per_case' as const, defaultPrice: '0.50', sortOrder: 30 },
     { category: '3D Model', subCategory: 'Drain Holes', unitType: 'per_case' as const, defaultPrice: '0.00', sortOrder: 31 },
+    { category: 'Implant Bars', subCategory: 'Implant Bars', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 32 },
   ]
 
   await db

@@ -59,6 +59,16 @@ export const CASE_HIERARCHY: Record<string, CaseHierarchyCategory> = {
       { name: 'caseType2', label: 'Crown & Bridge type', type: 'select', options: ['None', 'Crown', 'Bridge'], optional: true },
     ],
   },
+  // Same as Implants but with no sub type: caseType1 is a fixed single value
+  // (set automatically by the forms, never shown as a dropdown) so the
+  // server's primary-case-type check and the price-list lookup keep working.
+  'Implant Bars': {
+    fields: [
+      { name: 'caseType1', label: 'Sub Type', type: 'select', options: ['Implant Bars'] },
+      { name: 'arch', label: 'Arch', type: 'select', options: [...ARCH_OPTIONS] },
+      { name: 'caseType2', label: 'Crown & Bridge type', type: 'select', options: ['None', 'Crown', 'Bridge'], optional: true },
+    ],
+  },
   '3D Model': {
     fields: [
       { name: 'caseType1', label: 'Case Type', type: 'select', options: ['Full Arch Model', 'Quad Model', 'Contact Model', 'Horse Shoe Model', 'Implant Model'] },
@@ -102,7 +112,8 @@ export function getRequiredServiceSelections(
       if (caseType1) selections.push({ category, subCategory: caseType1 })
       break
     }
-    case 'Implants': {
+    case 'Implants':
+    case 'Implant Bars': {
       const caseType1 = str(data.caseType1)
       if (caseType1) selections.push({ category, subCategory: caseType1 })
       const caseType2 = str(data.caseType2)
@@ -168,7 +179,7 @@ export function isFieldOptionEnabled(
     return enabledKeys.has(`${category}::${subCategory}`)
   }
 
-  if (category === 'Implants' && fieldName === 'caseType2') {
+  if ((category === 'Implants' || category === 'Implant Bars') && fieldName === 'caseType2') {
     if (option === 'None') return true
     return enabledKeys.has(`Crown & Bridge::${option}`)
   }
@@ -186,4 +197,17 @@ export function isCategoryAvailable(category: string, enabledKeys: Set<string>):
   const primaryField = def.fields.find((f) => f.name === 'caseType' || f.name === 'caseType1')
   if (!primaryField) return true
   return primaryField.options.some((opt) => isFieldOptionEnabled(category, primaryField.name, opt, enabledKeys))
+}
+
+/** Implants and Implant Bars share one form layout (teeth, Model Required?,
+ * optional Crown & Bridge attachment); Implant Bars just has no sub type. */
+export function isImplantFamily(category: string | null | undefined): boolean {
+  return category === 'Implants' || category === 'Implant Bars'
+}
+
+/** subTypeData a form starts from when a category is picked. */
+export function initialSubTypeData(category: string): Record<string, string> {
+  if (category === 'Implants') return { caseType2: 'None' }
+  if (category === 'Implant Bars') return { caseType1: 'Implant Bars', caseType2: 'None' }
+  return {}
 }

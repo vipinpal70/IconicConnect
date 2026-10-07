@@ -38,7 +38,7 @@ export function extractCaseTeethInfo(
   const cat = (category ?? "").toLowerCase().trim()
   const toothSystem = String(d.toothSystem ?? "USA")
   const numberingLabel =
-    cat === "crown & bridge" || cat === "crown & bridges" || cat === "implant" || cat === "implants"
+    cat === "crown & bridge" || cat === "crown & bridges" || cat === "implant" || cat === "implants" || cat === "implant bars"
       ? toothSystem === "FDI" ? "FDI" : "Universal (USA)"
       : "—"
 
@@ -51,7 +51,7 @@ export function extractCaseTeethInfo(
     }
   }
 
-  if (cat === "implant" || cat === "implants") {
+  if (cat === "implant" || cat === "implants" || cat === "implant bars") {
     const impTeeth = Array.isArray(d.teeth) ? (d.teeth as number[]) : []
     const cbTeeth = Array.isArray(d.crownBridgeTeeth) ? (d.crownBridgeTeeth as number[]) : []
     const parts: string[] = [

@@ -29,7 +29,7 @@ export type ModelCaseType =
   | 'Horse Shoe Model'
   | 'Implant Model'
 
-export type ServiceCategory = 'Crown & Bridge' | 'Implants' | 'Appliances' | 'Dentures' | 'Cosmetics' | '3D Model'
+export type ServiceCategory = 'Crown & Bridge' | 'Implants' | 'Implant Bars' | 'Appliances' | 'Dentures' | 'Cosmetics' | '3D Model'
 
 // Discriminated union — one type per category
 export type CasePricingInput =
