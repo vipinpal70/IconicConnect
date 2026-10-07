@@ -1,5 +1,6 @@
 'use client'
 
+import { resetPrefetchFlag } from '@/src/components/SequentialPrefetcher'
 import React, { useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -45,6 +46,7 @@ function SignInForm() {
       if (data.success) {
         // The session is carried by the Supabase auth cookies set by /api/sign-in — never mirror a token
         // into a JS-readable cookie.
+        resetPrefetchFlag() // new login -> run the ordered prefetch again
         router.push(data.redirectUrl || '/dashboard')
         router.refresh()
       }

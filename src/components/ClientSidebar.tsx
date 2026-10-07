@@ -36,6 +36,8 @@ import { useEffect, useState } from "react";
 import logo from "@/public/IconicConnectLogo.png"
 import Image from "next/image"
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges"
+import { useQuery } from "@tanstack/react-query"
+import { fetchProfileWithCache } from "@/src/lib/profile-cache"
 
 const NAV_ITEMS = [
   { title: "Dashboard",        url: "/client/dashboard",   icon: LayoutDashboard },
@@ -50,35 +52,19 @@ const NAV_ITEMS = [
   { title: "Profile",          url: "/client/profile",     icon: UserCircle },
 ]
 
-type Profile = {
-  full_name: string;
-  lab_name: string;
-  user_role: string;
-}
-
-async function getProfileData(): Promise<Profile | null> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-  return profile;
-}
-
 export function ClientSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  // Same query key/fn as the dashboard page: one cached /api/profile call instead of a browser->Supabase
+  // auth round trip plus a PostgREST select on every mount.
+  const { data: profile } = useQuery<{ fullName: string | null; labName: string | null; role: string } | null>({
+    queryKey: ["my-profile"],
+    queryFn: async () => (await fetchProfileWithCache()) as { fullName: string | null; labName: string | null; role: string } | null,
+    staleTime: 10 * 60 * 1000,
+  });
   const [loggingOut, setLoggingOut] = useState(false);
   const { badges, markSeen } = useSidebarBadges()
-
-  useEffect(() => {
-    const fetchData = async () => {
-      const user = await getProfileData();
-      setProfile(user);
-    };
-    fetchData();
-  }, []);
 
   // Mark the current page as seen whenever the route changes
   useEffect(() => {
@@ -133,7 +119,7 @@ export function ClientSidebar() {
             <SidebarMenu>
               {NAV_ITEMS
                 .filter((item) => {
-                  if (profile?.user_role === "subuser") {
+                  if (profile?.role === "subuser") {
                     return item.title !== "Billing" && item.title !== "Analytics";
                   }
                   return true;
@@ -167,12 +153,12 @@ export function ClientSidebar() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white text-xs font-semibold">
-              {profile?.lab_name?.charAt(0)}
+              {profile?.labName?.charAt(0)}
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <p className="text-xs font-medium text-foreground truncate">{profile?.lab_name}</p>
-                <p className="text-xs text-muted-foreground">{profile?.full_name}</p>
+                <p className="text-xs font-medium text-foreground truncate">{profile?.labName}</p>
+                <p className="text-xs text-muted-foreground">{profile?.fullName}</p>
               </div>
             )}
           </div>

@@ -1,3 +1,4 @@
+import { getRequestUser } from '@/src/lib/auth/request-user'
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { notifications } from '@/src/db/schema/notification';
@@ -10,7 +11,7 @@ const UNREAD_TTL = 60 // 1 minute
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getRequestUser(supabase);
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

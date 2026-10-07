@@ -5,24 +5,33 @@ import { ClientSidebar } from "@/src/components/ClientSidebar";
 import { Bell } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useSidebarBadges } from "@/src/hooks/useSidebarBadges";
+import { SequentialPrefetcher, type PrefetchTask } from "@/src/components/SequentialPrefetcher";
+
+const getJson = async (url: string, signal: AbortSignal) => {
+  const res = await fetch(url, { signal })
+  if (!res.ok) throw new Error(url)
+  return res.json()
+}
+
+// Everything the landing page needs is already fetched by the page/layout itself (dashboard, profile,
+// badges), so the only background warm-up kept is the page users open next: the cases list (server cache).
+function clientPrefetchTasks(): PrefetchTask[] {
+  return [
+    { name: "cases", run: (_qc, signal) => getJson("/api/cases?limit=100&page=1", signal) },
+  ]
+}
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
-  const { data: unreadData } = useQuery({
-    queryKey: ['notifications-unread-count'],
-    queryFn: async () => {
-      const res = await fetch('/api/notifications/unread-count')
-      if (!res.ok) return { count: 0 }
-      return res.json()
-    },
-    refetchInterval: 30000,
-    staleTime: 25000, // skip refetch on navigation if data is <25s old
-  });
-
-  const hasUnread = unreadData?.count ? unreadData.count > 0 : false;
+  // Shares the sidebar's single /api/sidebar-badges poll instead of running a second one.
+  const { badges } = useSidebarBadges();
+  const hasUnread = Boolean(badges.notifications);
+  const prefetchTasks = useState(clientPrefetchTasks)[0];
 
   return (
     <SidebarProvider>
+      <SequentialPrefetcher tasks={prefetchTasks} />
       <div className="min-h-screen flex w-full">
         <ClientSidebar />
         <div className="flex-1 flex flex-col min-w-0">

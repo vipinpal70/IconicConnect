@@ -184,6 +184,7 @@ export default function NotificationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['sidebar-badges'] });
     },
     onError: (err: unknown) => {
       toast.error(err instanceof Error ? err.message : 'Failed to update notification');
@@ -202,6 +203,7 @@ export default function NotificationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['sidebar-badges'] });
       toast.success('All notifications marked as read');
     },
     onError: (err: unknown) => {

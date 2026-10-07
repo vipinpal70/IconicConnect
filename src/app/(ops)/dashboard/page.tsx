@@ -23,106 +23,69 @@ const ACTIVE_STATUSES = ["scan_received", "scan_verified", "allocated_to_designe
 export default function Dashboard() {
   const router = useRouter();
 
-  const { data: casesData } = useQuery<{ data: any[] }>({
-    queryKey: ["dashboard-cases"],
-    queryFn: async () => {
-      const res = await fetch("/api/cases");
-      if (!res.ok) throw new Error("Failed to fetch cases");
-      return res.json();
-    },
-    refetchInterval: 30_000,
-    staleTime: 20_000,
+  // One request per dashboard section (each renders as its own data arrives). KPIs go first; the lower
+  // sections start once they settle so the first paint isn't competing with five queries at once.
+  const getSection = <T,>(url: string) => async (): Promise<T> => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+    return res.json();
+  };
+  const sectionOpts = { refetchInterval: 60_000, staleTime: 50_000 };
+
+  const kpisQuery = useQuery<{ active: number; delivered: number; pending: number; hold: number; cancelled: number }>({
+    queryKey: ["ops-dashboard-kpis"],
+    queryFn: getSection("/api/cases/dashboard/kpis"),
+    ...sectionOpts,
   });
+  const lowerEnabled = !kpisQuery.isPending;
 
   const { data: profile } = useQuery<{ fullName: string | null; role: string | null; labName: string | null }>({
     queryKey: ["my-profile"],
     queryFn: fetchProfileWithCache as any,
   });
 
-  const cases = casesData?.data ?? [];
-
-  // KPI counts
-  const activeCount = cases.filter((c: any) => ACTIVE_STATUSES.includes(c.status)).length;
-  const deliveredCount = cases.filter((c: any) => ["approved", "delivered"].includes(c.status)).length;
-  const pendingCount = cases.filter((c: any) => c.status === "submitted_to_client").length;
-  const holdCount = cases.filter((c: any) => ["on_hold", "scan_not_verified"].includes(c.status)).length;
-  const cancelledCount = cases.filter((c: any) => c.status === "cancelled").length;
-
-  const dynamicKpis = [
-    { label: "Active / In Progress", value: activeCount, icon: FolderOpen, color: "text-primary", bg: "bg-primary/10" },
-    { label: "Delivered", value: deliveredCount, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-100" },
-    { label: "Pending Approval", value: pendingCount, icon: ClipboardCheck, color: "text-yellow-600", bg: "bg-yellow-100" },
-    { label: "On Hold", value: holdCount, icon: PauseCircle, color: "text-red-600", bg: "bg-red-100", isHoldAlert: holdCount > 0 },
-    { label: "Cancelled", value: cancelledCount, icon: XCircle, color: "text-gray-600", bg: "bg-gray-100" },
-  ];
-
-  // Monthly volume (last 6 months) from real data
-  const monthlyVolume = useMemo(() => {
-    const now = new Date();
-    const map = new Map<string, number>();
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
-      map.set(`${d.getFullYear()}-${d.getMonth()}`, 0);
-    }
-    cases.forEach((c: any) => {
-      const d = new Date(c.createdAt);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      if (map.has(key)) map.set(key, (map.get(key) ?? 0) + 1);
-    });
-    return Array.from(map.entries()).map(([key, count]) => {
-      const [year, month] = key.split("-").map(Number);
-      return { month: MONTH_NAMES[month], cases: count, _year: year, _month: month };
-    });
-  }, [cases]);
-
-  // Category breakdown from real data
-  const breakdown = useMemo(() => {
-    const counts: Record<string, number> = {};
-    cases.forEach((c: any) => {
-      const cat = c.category || "Other";
-      counts[cat] = (counts[cat] ?? 0) + 1;
-    });
-    const total = cases.length;
-    return Object.entries(counts)
-      .map(([name, count], i) => ({
-        name,
-        value: total > 0 ? Math.round((count / total) * 100) : 0,
-        color: CHART_COLORS[i % CHART_COLORS.length],
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [cases]);
-
+  const { data: volumeData } = useQuery<{ month: string; cases: number }[]>({
+    queryKey: ["ops-dashboard-volume"],
+    queryFn: getSection("/api/cases/dashboard/volume"),
+    enabled: lowerEnabled,
+    ...sectionOpts,
+  });
+  const { data: breakdownData } = useQuery<{ name: string; value: number }[]>({
+    queryKey: ["ops-dashboard-breakdown"],
+    queryFn: getSection("/api/cases/dashboard/breakdown"),
+    enabled: lowerEnabled,
+    ...sectionOpts,
+  });
+  const { data: recentData } = useQuery<{ id: string; restoration: string; status: string; caseType: string }[]>({
+    queryKey: ["ops-dashboard-recent"],
+    queryFn: getSection("/api/cases/dashboard/recent"),
+    enabled: lowerEnabled,
+    ...sectionOpts,
+  });
   const { data: tatData } = useQuery<{ avgTatDays: number | null }>({
     queryKey: ["dashboard-tat"],
-    queryFn: async () => {
-      const res = await fetch("/api/cases/tat");
-      if (!res.ok) throw new Error("Failed to fetch TAT analytics");
-      return res.json();
-    },
-    refetchInterval: 30_000,
-    staleTime: 20_000,
+    queryFn: getSection("/api/cases/tat"),
+    enabled: lowerEnabled,
+    ...sectionOpts,
   });
+
+  const kpis = kpisQuery.data;
+  const dynamicKpis = [
+    { label: "Active / In Progress", value: kpis?.active ?? 0, icon: FolderOpen, color: "text-primary", bg: "bg-primary/10" },
+    { label: "Delivered", value: kpis?.delivered ?? 0, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-100" },
+    { label: "Pending Approval", value: kpis?.pending ?? 0, icon: ClipboardCheck, color: "text-yellow-600", bg: "bg-yellow-100" },
+    { label: "On Hold", value: kpis?.hold ?? 0, icon: PauseCircle, color: "text-red-600", bg: "bg-red-100", isHoldAlert: (kpis?.hold ?? 0) > 0 },
+    { label: "Cancelled", value: kpis?.cancelled ?? 0, icon: XCircle, color: "text-gray-600", bg: "bg-gray-100" },
+  ];
+
+  const monthlyVolume = volumeData ?? [];
+  const holdCount = kpis?.hold ?? 0;
+  const breakdown = (breakdownData ?? []).map((d, i) => ({ ...d, color: CHART_COLORS[i % CHART_COLORS.length] }));
+  const recentCases = recentData ?? [];
 
   const avgTat = tatData?.avgTatDays !== null && tatData?.avgTatDays !== undefined
     ? tatData.avgTatDays.toFixed(1)
     : null;
-
-  // Recent 5 cases sorted by updatedAt
-  const recentCases = useMemo(() => {
-    return [...cases]
-      .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .slice(0, 5)
-      .map((c: any) => {
-        const d = c.subTypeData as Record<string, any> | null;
-        const restoration = d?.caseType || d?.caseType1 || c.category || "Case";
-        return {
-          id: c.caseNumber || c.id.slice(0, 8),
-          restoration,
-          status: c.status,
-          caseType: c.category || "General",
-        };
-      });
-  }, [cases]);
 
   const OPS_ROLES = ["qc", "designer", "account_manager", "consultant"];
   const greetingName = !profile

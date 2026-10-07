@@ -5,21 +5,12 @@ import { OpsSidebar } from "@/src/components/OpsSidebar";
 import { Bell } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useSidebarBadges } from "@/src/hooks/useSidebarBadges";
 
 export function OpsLayout({ children }: { children: React.ReactNode }) {
-  const { data: unreadData } = useQuery({
-    queryKey: ['notifications-unread-count'],
-    queryFn: async () => {
-      const res = await fetch('/api/notifications/unread-count')
-      if (!res.ok) return { count: 0 }
-      return res.json()
-    },
-    refetchInterval: 30000,
-    staleTime: 25000,
-  });
-
-  const hasUnread = unreadData?.count ? unreadData.count > 0 : false;
+  // Shares the sidebar's single /api/sidebar-badges poll instead of running a second one.
+  const { badges } = useSidebarBadges();
+  const hasUnread = Boolean(badges.notifications);
 
   return (
     <SidebarProvider>

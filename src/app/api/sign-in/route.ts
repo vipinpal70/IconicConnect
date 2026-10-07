@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/src/lib/supabase/server'
+import { LOGIN_STAMP_COOKIE, SESSION_MAX_AGE_SECONDS, createLoginStamp } from '@/src/lib/auth/session-limit'
 
 export async function POST(req: NextRequest) {
   try {
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: true,
         // The session is carried by the Supabase auth cookies set above; tokens are deliberately not echoed in the body.
@@ -83,6 +84,16 @@ export async function POST(req: NextRequest) {
       },
       { status: 200 }
     )
+
+    // Start of the 7-hour login window enforced by src/proxy.ts.
+    response.cookies.set(LOGIN_STAMP_COOKIE, createLoginStamp(), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    })
+    return response
   } catch (err) {
     console.error('[sign-in POST]', err)
     return NextResponse.json(

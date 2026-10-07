@@ -1,3 +1,4 @@
+import { getRequestUser } from '@/src/lib/auth/request-user'
 import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
@@ -10,9 +11,9 @@ const PROFILE_TTL = 3600 // 1 hour
 export async function GET() {
   try {
     const supabase = await createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const user = await getRequestUser(supabase)
 
-    if (error || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

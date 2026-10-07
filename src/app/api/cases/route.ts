@@ -1,3 +1,4 @@
+import { getRequestUser } from '@/src/lib/auth/request-user';
 import { stripStaffOnlyCaseFields } from '@/src/lib/case-access';
 import { getLatestCompleted } from '@/src/lib/bulk-download/tracking';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
@@ -266,8 +267,7 @@ export async function POST(req: NextRequest) {
 
     const results = [];
 
-    // Ensure sequence exists once before generating next values
-    await db.execute(sql`CREATE SEQUENCE IF NOT EXISTS cases_number_seq START 1`);
+    // cases_number_seq is created by migration 0037 — no per-request DDL round trip.
 
     // Per (flow) price list, fetched at most once per distinct serviceType in
     // this batch rather than once per case.
@@ -404,15 +404,15 @@ export async function POST(req: NextRequest) {
       }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case submission notification:', err));
 
       if (caseData.uploadedFiles && Array.isArray(caseData.uploadedFiles)) {
-        for (const uf of caseData.uploadedFiles) {
-          await db.insert(caseFiles).values({
+        if (caseData.uploadedFiles.length > 0) {
+          await db.insert(caseFiles).values(caseData.uploadedFiles.map((uf) => ({
             caseId: insertedCase.id,
             uploadedBy: user.id,
             fileName: uf.fileName,
             fileUrl: uf.fileUrl,
             fileType: uf.fileType ?? null,
             fileSize: uf.fileSize ? Number(uf.fileSize) : null,
-          });
+          })));
         }
       } else if (caseData.uploadedFile) {
         // Already uploaded immediately by client (fallback single file)
@@ -453,15 +453,15 @@ export async function POST(req: NextRequest) {
       }
 
       if (Array.isArray(caseData.referenceImages)) {
-        for (const img of caseData.referenceImages) {
-          await db.insert(caseReferenceFiles).values({
+        if (caseData.referenceImages.length > 0) {
+          await db.insert(caseReferenceFiles).values(caseData.referenceImages.map((img) => ({
             caseId: insertedCase.id,
             uploadedBy: user.id,
             fileName: img.fileName,
             fileUrl: img.fileUrl,
             fileType: img.fileType ?? null,
             fileSize: img.fileSize ? Number(img.fileSize) : null,
-          });
+          })));
         }
       }
 
@@ -505,7 +505,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getRequestUser(supabase);
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

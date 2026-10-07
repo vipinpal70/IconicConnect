@@ -53,8 +53,10 @@ export async function rateLimit(key: string, limit: number, windowSeconds: numbe
   const client = getRedis()
   if (client && client.status === 'ready') {
     try {
-      const count = await client.incr(fullKey)
-      if (count === 1) await client.expire(fullKey, windowSeconds)
+      // One pipelined round trip (INCR + EXPIRE NX) instead of INCR then a second EXPIRE on first hit.
+      const res = await client.multi().incr(fullKey).expire(fullKey, windowSeconds, 'NX').exec()
+      const count = Number(res?.[0]?.[1])
+      if (!Number.isFinite(count)) throw new Error('bad rate-limit reply')
       return { limited: count > limit, count, retryAfterSeconds: windowSeconds }
     } catch {
       // fall through to memory

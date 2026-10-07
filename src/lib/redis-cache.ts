@@ -1,4 +1,5 @@
 import { connection } from './queue/client';
+import { OPS_DASHBOARD_CACHE_KEYS } from './ops-dashboard-keys';
 
 const DEFAULT_TTL = 3600; // 1 hour default cache time
 
@@ -92,7 +93,14 @@ export async function invalidateInvoiceCache(clientId: string, invoiceId?: strin
 export async function invalidateNotificationCache(userId: string): Promise<void> {
   if (connection.status !== 'ready') return
   try {
-    await deleteKeysByPattern(`notifications:${userId}:*`)
+    // Direct DEL of the keys the UI actually uses — no keyspace SCAN (slow on managed Redis). Any other
+    // list page/limit (API clients only) ages out via its 60s TTL.
+    await connection.del(
+      `notifications:${userId}:unread`,
+      `notifications:${userId}:list:20:0`,
+      `notifications:${userId}:list:5:0`,
+      `sidebar-badges:${userId}`,
+    )
   } catch (error) {
     console.error('[invalidateNotificationCache]', error)
   }
@@ -107,7 +115,7 @@ export async function invalidateCasesCache(clientId?: string | null): Promise<vo
     return;
   }
   try {
-    const keysToDelete: string[] = ['cases:base:admin', 'dashboard:admin:v2', 'analytics:admin'];
+    const keysToDelete: string[] = ['cases:base:admin', 'dashboard:admin:v2', 'analytics:admin', ...OPS_DASHBOARD_CACHE_KEYS];
 
     if (clientId) {
       keysToDelete.push(`cases:base:client:${clientId}`);

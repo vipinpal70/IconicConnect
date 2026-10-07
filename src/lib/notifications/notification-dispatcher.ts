@@ -31,20 +31,14 @@ async function dispatchToUserIds(
   targetUserIds: string[],
   buildPayload: (targetUserId: string) => DispatchPayload & { type: NotificationType | string }
 ) {
-  const results = await Promise.allSettled(
-    targetUserIds.map(async (targetUserId) => {
-      const payload = buildPayload(targetUserId)
-      await NotificationService.dispatch({
-        ...payload,
-        targetUserId,
-      })
-    })
-  )
-
-  return {
-    attempted: targetUserIds.length,
-    succeeded: results.filter((result) => result.status === 'fulfilled').length,
-    failed: results.filter((result) => result.status === 'rejected').length,
+  const payloads = targetUserIds.map((targetUserId) => ({ ...buildPayload(targetUserId), targetUserId }))
+  try {
+    const results = await NotificationService.dispatchMany(payloads)
+    const succeeded = results.filter((r) => r.success).length
+    return { attempted: targetUserIds.length, succeeded, failed: targetUserIds.length - succeeded }
+  } catch (err) {
+    console.error('[NotificationDispatcher] Fan-out failed:', err)
+    return { attempted: targetUserIds.length, succeeded: 0, failed: targetUserIds.length }
   }
 }
 

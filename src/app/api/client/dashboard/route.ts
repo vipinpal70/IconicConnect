@@ -1,17 +1,18 @@
+import { getRequestUser } from '@/src/lib/auth/request-user'
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { activityLogs } from "@/src/db/schema/activity-log";
 import { createClient } from "@/src/lib/supabase/server";
-import { eq, inArray, desc, and, isNotNull, gte, sql } from "drizzle-orm";
+import { eq, notInArray, desc, and, isNotNull, gte, sql } from "drizzle-orm";
 import { formatActivityLabel } from "@/src/lib/activity-log";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";
 
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getRequestUser(supabase);
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -47,15 +48,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(cachedData);
     }
 
-    // Fetch all cases for this client
-    let clientCases = await db
-      .select()
-      .from(cases)
-      .where(eq(cases.clientId, clientId))
-      .orderBy(desc(cases.updatedAt));
-
-    // 1. KPI Counts
-    // Active design: status in validation, in design, internal qc, client feedback, scan received, etc.
+    // All aggregation happens in Postgres; the old code pulled every case row (select *) into Node.
     const activeStatuses = [
       "scan_received",
       "scan_verified",
@@ -65,55 +58,64 @@ export async function GET(req: NextRequest) {
       "internal_qc",
       "client_feedback"
     ];
-
-    const activeCount = clientCases.filter((c) => activeStatuses.includes(c.status)).length;
-    const deliveredCount = clientCases.filter((c) => ["approved", "delivered"].includes(c.status)).length;
-    const awaitingActionCount = clientCases.filter((c) => c.status === "submitted_to_client").length;
-    const holdCount = clientCases.filter((c) => c.status === "on_hold").length;
-
-    // Avg Turnaround Time Calculation using DB tat column for the last 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const tatResult = await db
-      .select({
-        avgTat: sql<number>`AVG(${cases.tat})`
-      })
-      .from(cases)
-      .where(
-        and(
-          eq(cases.clientId, clientId),
-          isNotNull(cases.tat),
-          gte(cases.deliveredTime, thirtyDaysAgo)
-        )
-      );
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(new Date().getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const [statusRows, categoryRows, monthRows, queueRows, tatResult] = await Promise.all([
+      db.select({ status: cases.status, n: sql<number>`count(*)::int` })
+        .from(cases).where(eq(cases.clientId, clientId)).groupBy(cases.status),
+      db.select({ category: cases.category, n: sql<number>`count(*)::int` })
+        .from(cases).where(eq(cases.clientId, clientId)).groupBy(cases.category),
+      db.select({ m: sql<number>`extract(month from ${cases.createdAt})::int`, n: sql<number>`count(*)::int` })
+        .from(cases)
+        .where(and(eq(cases.clientId, clientId), gte(cases.createdAt, sixMonthsAgo)))
+        .groupBy(sql`extract(month from ${cases.createdAt})`),
+      db.select({
+          id: cases.id,
+          caseNumber: cases.caseNumber,
+          category: cases.category,
+          subTypeData: cases.subTypeData,
+          status: cases.status,
+          dueDate: cases.dueDate,
+          updatedAt: cases.updatedAt,
+        })
+        .from(cases)
+        .where(and(eq(cases.clientId, clientId), notInArray(cases.status, ["approved", "delivered"])))
+        .orderBy(desc(cases.updatedAt))
+        .limit(10),
+      db.select({ avgTat: sql<number>`AVG(${cases.tat})` })
+        .from(cases)
+        .where(and(eq(cases.clientId, clientId), isNotNull(cases.tat), gte(cases.deliveredTime, thirtyDaysAgo))),
+    ]);
+
+    const statusCount = (statuses: string[]) =>
+      statusRows.filter((r) => statuses.includes(r.status)).reduce((sum, r) => sum + r.n, 0);
+    const activeCount = statusCount(activeStatuses);
+    const deliveredCount = statusCount(["approved", "delivered"]);
+    const awaitingActionCount = statusCount(["submitted_to_client"]);
+    const holdCount = statusCount(["on_hold"]);
+
     const avgTatMinutes = tatResult[0]?.avgTat ? Number(tatResult[0].avgTat) : null;
     const avgTurnaround = avgTatMinutes !== null ? `${(avgTatMinutes / 1440).toFixed(1)}d` : "0.0d";
 
     // 2. Case Volume Trends (Monthly)
     const now = new Date();
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(now.getMonth() - 5);
-    sixMonthsAgo.setDate(1);
-    sixMonthsAgo.setHours(0, 0, 0, 0);
-
-    const recentCases = clientCases.filter((c) => new Date(c.createdAt) >= sixMonthsAgo);
     const volumeTrendsMap = new Map<string, number>();
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     for (let i = 0; i < 6; i++) {
       const d = new Date();
       d.setMonth(now.getMonth() - 5 + i);
-      const label = `${monthNames[d.getMonth()]}`;
-      volumeTrendsMap.set(label, 0);
+      volumeTrendsMap.set(monthNames[d.getMonth()], 0);
     }
-
-    recentCases.forEach((c) => {
-      const date = new Date(c.createdAt);
-      const label = `${monthNames[date.getMonth()]}`;
-      if (volumeTrendsMap.has(label)) {
-        volumeTrendsMap.set(label, volumeTrendsMap.get(label)! + 1);
-      }
-    });
+    for (const r of monthRows) {
+      const label = monthNames[r.m - 1];
+      if (volumeTrendsMap.has(label)) volumeTrendsMap.set(label, volumeTrendsMap.get(label)! + r.n);
+    }
 
     const volumeTrends = Array.from(volumeTrendsMap.entries()).map(([month, count]) => ({
       month,
@@ -122,12 +124,12 @@ export async function GET(req: NextRequest) {
 
     // 3. Design Breakdown (Category-wise)
     const categoryCounts: Record<string, number> = {};
-    clientCases.forEach((c) => {
-      const cat = c.category || "Other";
-      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    categoryRows.forEach((r) => {
+      const cat = r.category || "Other";
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + r.n;
     });
 
-    const totalClientCasesCount = clientCases.length;
+    const totalClientCasesCount = categoryRows.reduce((sum, r) => sum + r.n, 0);
     const colors = ["hsl(158,64%,28%)", "hsl(38,92%,50%)", "hsl(200,90%,45%)", "#6366f1", "#f59e0b", "#10b981"];
     const breakdownData = Object.entries(categoryCounts)
       .map(([name, count], index) => ({
@@ -138,9 +140,7 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.value - a.value);
 
     // 4. Active Design Queue (Top 10 active cases)
-    const activeDesignQueue = clientCases
-      .filter((c) => !["approved", "delivered"].includes(c.status))
-      .slice(0, 10)
+    const activeDesignQueue = queueRows
       .map((c) => {
         const data = (c.subTypeData as Record<string, any>) || {};
         let restoration = "";
@@ -189,9 +189,8 @@ export async function GET(req: NextRequest) {
     }
 
     // 5. Activity Timeline for this Client's Cases
-    const caseIds = clientCases.map((c) => c.id);
     let activityTimeline: any[] = [];
-    if (caseIds.length > 0) {
+    if (totalClientCasesCount > 0) {
       const logs = await db
         .select({
           id: activityLogs.id,
@@ -207,9 +206,9 @@ export async function GET(req: NextRequest) {
           actorName: profiles.fullName,
         })
         .from(activityLogs)
-        .leftJoin(cases, eq(activityLogs.caseId, cases.id))
+        .innerJoin(cases, eq(activityLogs.caseId, cases.id))
         .leftJoin(profiles, eq(activityLogs.userId, profiles.id))
-        .where(inArray(activityLogs.caseId, caseIds))
+        .where(eq(cases.clientId, clientId))
         .orderBy(desc(activityLogs.actionAt))
         .limit(10);
 

@@ -4,11 +4,43 @@ import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 
+import { LOGIN_STAMP_COOKIE, isLoginStampValid } from '@/src/lib/auth/session-limit'
+import { VERIFIED_USER_HEADER } from '@/src/lib/auth/request-user'
 import { getClientIp } from '@/src/lib/security/client-ip'
 import { rateLimit, SENSITIVE_PATH_LIMITS } from '@/src/lib/security/rate-limit'
 
 const GLOBAL_RATE_LIMIT = 300
 const GLOBAL_WINDOW_SECONDS = 60
+
+// The proxy only needs role/createdBy/status to route and gate the request. Looking that up in Postgres
+// on EVERY request (pages + every API call) is a pooler round trip on the critical path, so keep a short,
+// bounded per-process cache. A role/status change therefore takes effect within GATE_TTL_MS; every route
+// handler still re-reads the full profile itself, so authorization inside handlers is never stale.
+const GATE_TTL_MS = 15_000
+const GATE_MAX_ENTRIES = 5_000
+type GateProfile = { role: string | undefined; createdBy: string | null | undefined; status: string | undefined }
+const gateCache = new Map<string, { value: GateProfile; expires: number }>()
+
+async function getGateProfile(userId: string): Promise<GateProfile> {
+  const now = Date.now()
+  const hit = gateCache.get(userId)
+  if (hit && hit.expires > now) return hit.value
+
+  const [row] = await db
+    .select({ role: profiles.role, createdBy: profiles.createdBy, status: profiles.status })
+    .from(profiles)
+    .where(eq(profiles.id, userId))
+    .limit(1)
+  const value: GateProfile = { role: row?.role, createdBy: row?.createdBy, status: row?.status }
+
+  if (gateCache.size >= GATE_MAX_ENTRIES) {
+    for (const [k, v] of gateCache) if (v.expires <= now) gateCache.delete(k)
+    if (gateCache.size >= GATE_MAX_ENTRIES) gateCache.clear()
+  }
+  // Don't cache "no profile": a freshly-created account should be picked up immediately.
+  if (row) gateCache.set(userId, { value, expires: now + GATE_TTL_MS })
+  return value
+}
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -101,19 +133,24 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/sign-in', request.url))
   }
 
+  // Force a fresh login every SESSION_MAX_AGE_SECONDS (7h), whatever Supabase's refresh tokens allow.
+  // Auth pages are exempt so the sign-in and password-recovery flows still work.
+  if (user && !isPublicApi && !isAuthPage && !isSignUpPage &&
+      !isLoginStampValid(request.cookies.get(LOGIN_STAMP_COOKIE)?.value)) {
+    // scope 'local' revokes only this browser's session, not the user's other devices.
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+    const expired = pathname.startsWith('/api')
+      ? NextResponse.json({ error: 'Session expired', code: 'session_expired' }, { status: 401 })
+      : NextResponse.redirect(new URL('/auth/sign-in?reason=session_expired', request.url))
+    // Carry over the cookie deletions signOut() wrote, and drop our own stamp.
+    supabaseResponse.cookies.getAll().forEach((c) => expired.cookies.set(c))
+    expired.cookies.delete(LOGIN_STAMP_COOKIE)
+    return expired
+  }
+
   if (user && !isPublicApi) {
     // Fetch profile to get role and parent client ID via Drizzle ORM
-    const profileResult = await db
-      .select({
-        role: profiles.role,
-        createdBy: profiles.createdBy,
-        status: profiles.status,
-      })
-      .from(profiles)
-      .where(eq(profiles.id, user.id))
-      .limit(1)
-
-    const profile = profileResult[0]
+    const profile = await getGateProfile(user.id)
     const role = profile?.role
     const createdBy = profile?.createdBy
     const status = profile?.status
@@ -149,7 +186,15 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  return supabaseResponse
+  // Forward the identity this proxy already verified, so read-only handlers can skip a second Supabase
+  // Auth round trip (see src/lib/auth/request-user.ts). Any client-supplied copy is dropped first, so the
+  // header can only ever originate from here.
+  const forwarded = new Headers(request.headers)
+  forwarded.delete(VERIFIED_USER_HEADER)
+  if (user) forwarded.set(VERIFIED_USER_HEADER, user.id)
+  const finalResponse = NextResponse.next({ request: { headers: forwarded } })
+  supabaseResponse.cookies.getAll().forEach((c) => finalResponse.cookies.set(c))
+  return finalResponse
 }
 
 

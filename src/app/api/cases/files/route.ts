@@ -5,6 +5,7 @@ import { createClient } from '@/src/lib/supabase/server';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
 import { getProfileLabName } from '@/src/lib/profile-utils';
 
@@ -75,6 +76,30 @@ export async function GET(req: NextRequest) {
     }
 
     const key = objectKey(labName, fileName);
+
+    // Optional direct-to-R2 delivery (R2_DIRECT_DOWNLOADS=true): after the authorization above, redirect to a
+    // short-lived presigned URL so the bytes go Cloudflare → browser instead of R2 → this server → nginx →
+    // browser. Forced download + octet-stream keep the untrusted-content guarantees (and R2 is a different
+    // origin from the app, so nothing can touch our cookies). HTML stays proxied below because it needs the
+    // CSP sandbox. The bucket needs a CORS rule for this origin if any page fetch()es these URLs.
+    // Off by default; not exercised in tests.
+    {
+      const lower = fileName.toLowerCase();
+      const wantsHtml = lower.endsWith('.html') || lower.endsWith('.htm');
+      if (process.env.R2_DIRECT_DOWNLOADS === 'true' && !wantsHtml) {
+        const url = await getSignedUrl(
+          r2,
+          new GetObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: key,
+            ResponseContentType: 'application/octet-stream',
+            ResponseContentDisposition: `attachment; filename="${encodeURIComponent(fileName)}"`,
+          }),
+          { expiresIn: 300 },
+        );
+        return new Response(null, { status: 302, headers: { Location: url, 'Cache-Control': 'private, no-store' } });
+      }
+    }
 
     let object;
     try {

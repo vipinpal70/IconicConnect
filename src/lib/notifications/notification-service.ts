@@ -1,7 +1,8 @@
 import { db } from '@/src/db';
 import { notifications, notificationPreferences } from '@/src/db/schema/notification';
 import { profiles } from '@/src/db/schema/profile';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
+import { connection } from '@/src/lib/queue/client';
 import { queueEmail } from '@/src/lib/queue/jobs';
 import { NotificationEventPayload, NotificationType } from './notification-events';
 
@@ -75,46 +76,53 @@ export class NotificationService {
   }
 
   /**
-   * Dispatches the notification event standard payload.
-   * It performs payload validation, resolves target user preferences,
-   * routes to the active channels, and handles failures elegantly.
+   * Dispatches one notification. Thin wrapper over dispatchMany so single and fan-out sends share one
+   * code path (and one set of cache invalidations).
    */
   static async dispatch(payload: NotificationEventPayload): Promise<{ success: boolean; channels: string[] }> {
-    console.log(`[NotificationService] Emitting event: ${payload.type} from ${payload.actorUserId} to ${payload.targetUserId}`);
-
-    // 1. Payload validation
     if (!payload.type || !payload.actorUserId || !payload.targetUserId || !payload.title || !payload.message) {
       console.error('[NotificationService] Invalid payload parameters:', payload);
       throw new Error('Invalid notification payload');
     }
+    const [result] = await this.dispatchMany([payload]);
+    return result;
+  }
 
-    const channels: string[] = [];
+  /**
+   * Fan-out dispatch. Cost is a fixed 3 queries (profiles, preferences, one bulk insert) plus the email
+   * enqueues, regardless of recipient count — the old per-recipient path ran ~4 queries each, concurrently,
+   * which saturated the 3-connection pool whenever a case was submitted to many staff.
+   * Recipients with no preference row are treated as all-enabled (the schema defaults) without writing one.
+   */
+  static async dispatchMany(payloads: NotificationEventPayload[]): Promise<{ success: boolean; channels: string[] }[]> {
+    const valid = payloads.map((p) => Boolean(p.type && p.actorUserId && p.targetUserId && p.title && p.message));
+    const items = payloads.filter((_, i) => valid[i]);
+    if (items.length === 0) return payloads.map(() => ({ success: false, channels: [] }));
 
-    try {
-      // 2. Resolve target user profile (get email)
-      const [targetProfile] = await db
-        .select()
-        .from(profiles)
-        .where(eq(profiles.id, payload.targetUserId))
-        .limit(1);
+    const targetIds = Array.from(new Set(items.map((p) => p.targetUserId)));
+    const [targetProfiles, prefRows] = await Promise.all([
+      db.select({ id: profiles.id, email: profiles.email }).from(profiles).where(inArray(profiles.id, targetIds)),
+      db.select().from(notificationPreferences).where(inArray(notificationPreferences.userId, targetIds)),
+    ]);
+    const emailById = new Map(targetProfiles.map((r) => [r.id, r.email]));
+    const prefsById = new Map(prefRows.map((r) => [r.userId, r]));
+    const allOn = new Proxy({}, { get: () => true }) as any;
 
-      if (!targetProfile) {
-        console.warn(`[NotificationService] Target user profile ${payload.targetUserId} not found. Skipping.`);
-        return { success: false, channels };
+    const outcomes = new Map<NotificationEventPayload, { success: boolean; channels: string[] }>();
+    const inserts: (typeof notifications.$inferInsert)[] = [];
+    const emails: Array<{ payload: NotificationEventPayload; to: string }> = [];
+
+    for (const payload of items) {
+      if (!emailById.has(payload.targetUserId)) {
+        outcomes.set(payload, { success: false, channels: [] });
+        continue;
       }
+      const prefs = prefsById.get(payload.targetUserId) ?? allOn;
+      const channels: string[] = [];
+      outcomes.set(payload, { success: true, channels });
 
-      // 3. Resolve preferences (loads defaults if missing)
-      const prefs = await this.getPreferences(payload.targetUserId);
-
-      // Determine channel switches
-      const isEmailEnabled = prefs.emailEnabled && this.isEventEnabledForEmail(payload.type, prefs);
-      const isInAppEnabled = prefs.inAppEnabled && this.isEventEnabledForInApp(payload.type, prefs);
-
-      console.log(`[NotificationService] Preference evaluation: email=${isEmailEnabled}, inApp=${isInAppEnabled}`);
-
-      // 4. In-App delivery (write database row)
-      if (isInAppEnabled) {
-        await db.insert(notifications).values({
+      if (prefs.inAppEnabled && this.isEventEnabledForInApp(payload.type, prefs)) {
+        inserts.push({
           userId: payload.targetUserId,
           type: payload.type,
           title: payload.title,
@@ -125,30 +133,53 @@ export class NotificationService {
           dismissed: false,
         });
         channels.push('in-app');
-        console.log(`[NotificationService] In-app notification created for ${payload.targetUserId}`);
       }
+      const email = emailById.get(payload.targetUserId);
+      if (email && prefs.emailEnabled && this.isEventEnabledForEmail(payload.type, prefs)) {
+        emails.push({ payload, to: email });
+      }
+    }
 
-      // 5. Email delivery (enqueue in BullMQ)
-      if (isEmailEnabled && targetProfile.email) {
+    if (inserts.length > 0) {
+      await db.insert(notifications).values(inserts);
+      await this.invalidateUnreadCaches(inserts.map((r) => r.userId));
+    }
+
+    // Email failures must NOT break the business flow — log and continue.
+    await Promise.allSettled(
+      emails.map(async ({ payload, to }) => {
         try {
           await queueEmail({
-            to: targetProfile.email,
+            to,
             subject: payload.title,
             type: 'notification',
             html: this.renderEmailHtml(payload.title, payload.message, payload.link),
           });
-          channels.push('email');
-          console.log(`[NotificationService] Email enqueued successfully to ${targetProfile.email}`);
+          outcomes.get(payload)!.channels.push('email');
         } catch (emailErr) {
-          console.error(`[NotificationService] Email delivery failure enqueuing for ${targetProfile.email}:`, emailErr);
-          // Failures of email sending must NOT break business logic flow, so we catch and log
+          console.error(`[NotificationService] Email enqueue failed for ${payload.targetUserId}:`, emailErr);
         }
-      }
+      })
+    );
 
-      return { success: true, channels };
+    let k = 0;
+    return payloads.map((p, i) => (valid[i] ? outcomes.get(items[k++])! : { success: false, channels: [] }));
+  }
+
+  /**
+   * Drop the cached unread count and first notification page for these users in a single DEL, so a new
+   * notification shows on the next poll instead of after the cache TTL. (Other list pages age out in 60s.)
+   */
+  private static async invalidateUnreadCaches(userIds: string[]) {
+    if (connection.status !== 'ready') return;
+    try {
+      const keys = Array.from(new Set(userIds)).flatMap((id) => [
+        `notifications:${id}:unread`,
+        `notifications:${id}:list:20:0`,
+      ]);
+      await connection.del(...keys);
     } catch (err) {
-      console.error(`[NotificationService] Failed to dispatch notification event:`, err);
-      throw err;
+      console.error('[NotificationService] Cache invalidation failed:', err);
     }
   }
 

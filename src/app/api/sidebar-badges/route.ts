@@ -1,3 +1,5 @@
+import { getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache'
+import { getRequestUser } from '@/src/lib/auth/request-user'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
@@ -21,8 +23,13 @@ async function getOne(query: Promise<{ count: number }[]>): Promise<boolean> {
 export async function GET() {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getRequestUser(supabase)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // Per-user (key includes the verified user id) 15s cache: the client polls this every 30s per open tab.
+    const cacheKey = `sidebar-badges:${user.id}`
+    const cached = await getCachedData<Record<string, boolean>>(cacheKey)
+    if (cached) return NextResponse.json(cached)
 
     const profileResult = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)
     const profile = profileResult[0]
@@ -36,15 +43,20 @@ export async function GET() {
     const getSince = (key: string): Date => seenMap.get(key) ?? profile.createdAt
 
     const badge: Record<string, boolean> = {}
+    // The badge counts are independent — run them concurrently instead of one Mumbai round trip each.
+    const pending: Promise<void>[] = []
+    const setBadge = (key: string, query: Promise<{ count: number }[]>) => {
+      pending.push(getOne(query).then((v) => { badge[key] = v }))
+    }
 
     if (isValidRoleForType('admin_portal', profile.role)) {
       // Cases — new cases submitted
-      badge.cases = await getOne(
+      setBadge('cases', 
         db.select({ count: count() }).from(cases).where(gt(cases.createdAt, getSince('cases')))
       )
 
       // Clients — new client registrations (all admin-portal roles can see clients page)
-      badge.clients = await getOne(
+      setBadge('clients', 
         db
           .select({ count: count() })
           .from(profiles)
@@ -52,7 +64,7 @@ export async function GET() {
       )
 
       // Support — new support tickets
-      badge.support = await getOne(
+      setBadge('support', 
         db
           .select({ count: count() })
           .from(supportTickets)
@@ -60,7 +72,7 @@ export async function GET() {
       )
 
       // Billing — new invoices generated
-      badge.billing = await getOne(
+      setBadge('billing', 
         db
           .select({ count: count() })
           .from(invoices)
@@ -68,7 +80,7 @@ export async function GET() {
       )
 
       // Offers — new offer claims from clients
-      badge.offers = await getOne(
+      setBadge('offers', 
         db
           .select({ count: count() })
           .from(offerClaims)
@@ -76,17 +88,17 @@ export async function GET() {
       )
 
       // Notifications — unread (no last_seen_at needed, just unread count)
-      badge.notifications = await getOne(
+      setBadge('notifications', 
         db
           .select({ count: count() })
           .from(notifications)
-          .where(and(eq(notifications.userId, user.id), eq(notifications.read, false)))
+          .where(and(eq(notifications.userId, user.id), eq(notifications.read, false), eq(notifications.dismissed, false)))
       )
     } else if (isLabUser(profile)) {
       const clientId = resolveClientId(profile)
 
       // Cases — any case belonging to this lab that has been updated
-      badge.cases = await getOne(
+      setBadge('cases', 
         db
           .select({ count: count() })
           .from(cases)
@@ -94,7 +106,7 @@ export async function GET() {
       )
 
       // Support — own tickets with updates
-      badge.support = await getOne(
+      setBadge('support', 
         db
           .select({ count: count() })
           .from(supportTickets)
@@ -104,7 +116,7 @@ export async function GET() {
       )
 
       // Billing — new invoices issued to this client
-      badge.billing = await getOne(
+      setBadge('billing', 
         db
           .select({ count: count() })
           .from(invoices)
@@ -112,7 +124,7 @@ export async function GET() {
       )
 
       // Offers — new active offers published since last visit
-      badge.offers = await getOne(
+      setBadge('offers', 
         db
           .select({ count: count() })
           .from(offers)
@@ -120,7 +132,7 @@ export async function GET() {
       )
 
       // Tutorials — new tutorials published
-      badge.tutorials = await getOne(
+      setBadge('tutorials', 
         db
           .select({ count: count() })
           .from(tutorials)
@@ -128,14 +140,16 @@ export async function GET() {
       )
 
       // Notifications — unread
-      badge.notifications = await getOne(
+      setBadge('notifications', 
         db
           .select({ count: count() })
           .from(notifications)
-          .where(and(eq(notifications.userId, user.id), eq(notifications.read, false)))
+          .where(and(eq(notifications.userId, user.id), eq(notifications.read, false), eq(notifications.dismissed, false)))
       )
     }
 
+    await Promise.all(pending)
+    await setCachedData(cacheKey, badge, 15)
     return NextResponse.json(badge)
   } catch (err) {
     console.error('[sidebar-badges GET]', err)
@@ -162,6 +176,9 @@ export async function PATCH(req: NextRequest) {
         target: [sidebarSeenAt.userId, sidebarSeenAt.pageKey],
         set: { lastSeenAt: sql`now()` },
       })
+
+    // The badge for this page just cleared — don't serve the stale cached copy.
+    await deleteCachedData(`sidebar-badges:${user.id}`)
 
     return NextResponse.json({ ok: true })
   } catch (err) {
