@@ -412,3 +412,48 @@ export async function streamDownload(
     },
   })
 }
+
+
+/**
+ * A lab (or its sub-user) downloaded a case's final design file directly from
+ * the case page, outside the bulk ZIP. Records it as a completed
+ * `client_output` download so the same "Downloaded" badge / skip logic applies.
+ * Idempotent: a case that already has a completed output download is left
+ * alone. Only the final design (not preview files) is fingerprinted, so a
+ * later bulk download still offers previews the lab hasn't fetched.
+ */
+export async function recordSingleOutputDownload(
+  profile: AuthedProfile,
+  caseId: string,
+): Promise<{ recorded: boolean; reason?: string }> {
+  const { cases: rows } = await loadDownloadableCases(profile, 'client_output', [caseId])
+  const row = rows[0]
+  if (!row) return { recorded: false, reason: 'not_accessible' }
+  if (!row.outputFile) return { recorded: false, reason: 'no_output' }
+
+  const latest = await getLatestCompleted([row.id], 'client_output')
+  if (latest.has(row.id)) return { recorded: false, reason: 'already_recorded' }
+
+  const claimed = await claimCases(profile, 'client_output', [{ id: row.id, clientId: row.clientId }], null)
+  const claimId = claimed.get(row.id)
+  if (!claimId) return { recorded: false, reason: 'in_progress' }
+
+  try {
+    const collected = await collectClientOutputEntries([row])
+    const inspected = await inspectEntries(collected.entries.filter((e) => !e.path.startsWith('preview/')))
+    const fingerprints = inspected.filter((e) => !e.missing).map((e) => fileFingerprint(e))
+    await completeClaim(claimId, {
+      caseId: row.id,
+      clientId: row.clientId,
+      scope: 'client_output',
+      filesDelivered: 1,
+      bytesDelivered: inspected.reduce((n, e) => n + (e.size ?? 0), 0),
+      signature: signatureOf(fingerprints),
+      fingerprints,
+    })
+    return { recorded: true }
+  } catch (err) {
+    await failClaim(claimId, err instanceof Error ? err.message : 'record_failed')
+    throw err
+  }
+}

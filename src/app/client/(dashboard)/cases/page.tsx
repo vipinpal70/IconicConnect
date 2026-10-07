@@ -2152,6 +2152,9 @@ export default function CasesPage() {
                             <div className="flex items-center gap-1.5">
                               <Link
                                 href={`/client/cases/${c.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
                                 className="font-semibold text-[11px] text-slate-800 hover:underline hover:text-primary"
                               >
                                 {c.caseNumber || c.id}

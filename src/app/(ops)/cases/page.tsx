@@ -231,12 +231,13 @@ type AppliedCaseFilters = {
   search: string;
   statuses: string[];
   category: string;
+  clientId: string;
   assignedTo: string; // "", "mine", or a user id
   from: string;
   to: string;
 };
 const EMPTY_CASE_FILTERS: AppliedCaseFilters = {
-  search: "", statuses: [], category: "", assignedTo: "", from: "", to: "",
+  search: "", statuses: [], category: "", clientId: "", assignedTo: "", from: "", to: "",
 };
 
 function buildCasesQuery(f: AppliedCaseFilters, limit: number, page: number): string {
@@ -244,6 +245,7 @@ function buildCasesQuery(f: AppliedCaseFilters, limit: number, page: number): st
   if (f.search) p.set("search", f.search);
   if (f.statuses.length) p.set("statuses", f.statuses.join(","));
   if (f.category) p.set("category", f.category);
+  if (f.clientId) p.set("clientId", f.clientId);
   if (f.assignedTo) p.set("assignedTo", f.assignedTo);
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
@@ -323,6 +325,7 @@ export default function CasesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [typeFilter, setTypeFilter] = useState<string | "All">("All");
   const [assignedFilter, setAssignedFilter] = useState<string>("All");
+  const [clientFilter, setClientFilter] = useState<string>("All");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -367,6 +370,7 @@ export default function CasesPage() {
     search: search.trim(),
     statuses: statusFilter === "All" ? [] : (STATUS_FILTER_MAP[statusFilter] ?? []),
     category: typeFilter === "All" ? "" : typeFilter,
+    clientId: clientFilter === "All" ? "" : clientFilter,
     assignedTo: assignedFilter === "All" ? "" : assignedFilter,
     from,
     to,
@@ -400,6 +404,7 @@ export default function CasesPage() {
     setTypeFilter("All");
     setStatusFilter("All");
     setAssignedFilter("All");
+    setClientFilter("All");
     setFrom("");
     setTo("");
     void runFetch(EMPTY_CASE_FILTERS);
@@ -498,6 +503,20 @@ export default function CasesPage() {
     queryFn: async () => {
       try {
         const res = await fetch("/api/admin/members");
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: clientOptions } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["ops-client-options"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/admin/clients/options");
         if (!res.ok) return [];
         return res.json();
       } catch {
@@ -993,11 +1012,12 @@ export default function CasesPage() {
           : false);
       const matchesStatus = f.statuses.length === 0 || f.statuses.includes(c.status);
       const matchesType = !f.category || c.category === f.category;
+      const matchesClient = !f.clientId || c.clientId === f.clientId;
       const matchesAssigned = !f.assignedTo || !assignedId || c.designerId === assignedId || c.qcId === assignedId;
       const createdAtDate = c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "";
       const matchesFrom = !f.from || createdAtDate >= f.from;
       const matchesTo = !f.to || createdAtDate <= f.to;
-      return matchesSearch && matchesStatus && matchesType && matchesAssigned && matchesFrom && matchesTo;
+      return matchesSearch && matchesStatus && matchesType && matchesClient && matchesAssigned && matchesFrom && matchesTo;
     });
   }, [cases, appliedFilters, activeUserId]);
 
@@ -1298,6 +1318,13 @@ export default function CasesPage() {
                   {Object.keys(CASE_HIERARCHY).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <Select value={clientFilter} onValueChange={setClientFilter}>
+                <SelectTrigger className="w-full lg:w-48 h-8 text-xs"><SelectValue placeholder="All labs" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Labs</SelectItem>
+                  {clientOptions?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
               <Select value={assignedFilter} onValueChange={setAssignedFilter}>
                 <SelectTrigger className="w-full lg:w-48 h-8 text-xs"><SelectValue placeholder="All users" /></SelectTrigger>
                 <SelectContent>
@@ -1470,6 +1497,8 @@ export default function CasesPage() {
                             <div className="flex items-center gap-1.5">
                               <Link
                                 href={`/cases/${c.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="hover:underline cursor-pointer"
                               >

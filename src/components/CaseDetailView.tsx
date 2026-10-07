@@ -451,6 +451,17 @@ export function CaseDetailView({
 		staleTime: 5 * 60_000,
 	});
 	const isAdminViewer = viewerProfile?.role === "admin";
+	const isLabViewer = viewerProfile?.role === "client" || viewerProfile?.role === "subuser";
+
+	// Mark the case as downloaded by the lab when its final design is fetched
+	// from this page. Fire-and-forget: never blocks or breaks the download.
+	const markOutputDownloaded = () => {
+		if (!isLabViewer || !caseRecord) return;
+		void fetch(`/api/client/cases/${caseRecord.id}/output-downloaded`, {
+			method: "POST",
+			keepalive: true,
+		}).catch(() => {});
+	};
 
 	const handleStatusChange = async (
 		targetStatus: string,
@@ -1436,6 +1447,7 @@ export function CaseDetailView({
 													<a
 														href={caseRecord.outputFile}
 														download
+														onClick={markOutputDownloaded}
 														target="_blank"
 														rel="noreferrer"
 														className="w-full block"

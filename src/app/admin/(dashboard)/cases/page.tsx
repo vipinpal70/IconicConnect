@@ -1331,6 +1331,8 @@ export default function AdminCasesPage() {
 														<div className="flex items-center gap-1.5">
 															<Link
 																href={`/admin/cases/${caseItem.id}`}
+																target="_blank"
+																rel="noopener noreferrer"
 																className="hover:underline cursor-pointer font-semibold text-xs text-black"
 															>
 																{caseItem.caseNumber || caseItem.id}
