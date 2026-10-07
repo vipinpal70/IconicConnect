@@ -248,8 +248,10 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
+        {/* Company Details + Personal Info, side by side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {/* Company Details */}
-        <Card className="shadow-card border-border/50 max-w-sm">
+        <Card className="shadow-card border-border/50">
           <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50">
             <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">Company Details</CardTitle>
           </CardHeader>
@@ -263,7 +265,7 @@ export default function ProfilePage() {
         </Card>
 
         {/* Personal Info — editable by both client and sub-user */}
-        <Card className="shadow-card border-border/50 max-w-sm">
+        <Card className="shadow-card border-border/50">
           <CardHeader className="py-2.5 px-4 bg-muted/20 border-b border-border/50 flex flex-row items-center justify-between">
             <CardTitle className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
               <User className="h-3.5 w-3.5 text-primary" /> Personal Info
@@ -324,6 +326,7 @@ export default function ProfilePage() {
             )}
           </CardContent>
         </Card>
+        </div>
 
         {/* Users & Credentials — only visible to the parent client */}
         {profile?.role !== "subuser" && <Card className="shadow-card border-border/50">
