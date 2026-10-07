@@ -718,10 +718,14 @@ export async function GET(req: NextRequest) {
     // Staff see who last bulk-downloaded each case's lab files; labs never get the staff-only fields.
     const staffDownloadCaseIds = isAdmin ? results.filter((r) => r.internalFilesDownloadedAt).map((r) => r.id) : [];
     const staffDownloads = await getLatestCompleted(staffDownloadCaseIds, 'internal_files');
+    // Staff also see which lab user (client or sub-user) downloaded the output.
+    const labDownloadCaseIds = isAdmin ? results.filter((r) => r.clientOutputDownloadedAt).map((r) => r.id) : [];
+    const labDownloads = await getLatestCompleted(labDownloadCaseIds, 'client_output');
 
     const mappedResults = results.map(r => stripStaffOnlyCaseFields({
       ...r,
       internalFilesDownloadedBy: staffDownloads.get(r.id)?.downloadedByName ?? null,
+      clientOutputDownloadedBy: labDownloads.get(r.id)?.downloadedByName ?? null,
       designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
       clientDisplayName: r.clientId ? (clientsMap.get(r.clientId) || null) : null,
       todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,

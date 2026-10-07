@@ -301,6 +301,7 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/admin/support') ||
         pathname.startsWith('/api/admin/support') ||
         pathname.startsWith('/api/admin/members') ||
+        pathname === '/api/admin/clients/options' ||
         pathname.startsWith('/api/admin/milling') ||
         pathname.startsWith('/api/tutorials') ||
         pathname.startsWith('/api/offers')
@@ -315,6 +316,7 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/admin/support') ||
         pathname.startsWith('/api/admin/support') ||
         pathname.startsWith('/api/admin/members') ||
+        pathname === '/api/admin/clients/options' ||
         pathname.startsWith('/api/tutorials') ||
         pathname.startsWith('/api/offers')
       )

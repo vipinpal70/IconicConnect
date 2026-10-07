@@ -52,7 +52,7 @@ export function timelineForClient(timeline: unknown): CaseTimelineEvent[] {
  */
 export function stripStaffOnlyCaseFields<T extends Record<string, unknown>>(row: T, role: string): T {
   if (role !== 'client' && role !== 'subuser') return row
-  const { internalFilesDownloadedAt: _internal, internalFilesDownloadedBy: _by, ...rest } = row as Record<string, unknown>
+  const { internalFilesDownloadedAt: _internal, internalFilesDownloadedBy: _by, clientOutputDownloadedBy: _cby, ...rest } = row as Record<string, unknown>
   return rest as T
 }
 

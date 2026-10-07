@@ -206,6 +206,7 @@ type CaseRecord = {
 	outputFile?: string | null;
 	previewFile?: string | null;
 	outputNote?: string | null;
+	clientOutputDownloadedAt?: string | null;
 	preferredTeethLibrary?: string | null;
 	teethLibraryFileUrl?: string | null;
 	teethLibraryFileName?: string | null;
@@ -1433,6 +1434,18 @@ export function CaseDetailView({
 													<h4 className="text-sm font-semibold text-gray-900">
 														Final Design File
 													</h4>
+													{chatSide === "admin" && caseRecord.clientOutputDownloadedAt && (
+														<span className="mt-1 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+															Downloaded by lab on{" "}
+															{new Date(caseRecord.clientOutputDownloadedAt).toLocaleString("en-GB", {
+																day: "numeric",
+																month: "short",
+																year: "numeric",
+																hour: "2-digit",
+																minute: "2-digit",
+															})}
+														</span>
+													)}
 													{caseRecord.outputNote ? (
 														<p className="text-s text-red-700 mt-1.5 bg-gray-200 rounded p-2 border border-indigo-100/30 whitespace-pre-wrap">
 															{caseRecord.outputNote}

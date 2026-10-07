@@ -83,6 +83,8 @@ type OpsCase = {
   outputFile?: string | null;
   internalFilesDownloadedAt?: string | null;
   internalFilesDownloadedBy?: string | null;
+  clientOutputDownloadedAt?: string | null;
+  clientOutputDownloadedBy?: string | null;
   previewFile?: string | null;
   outputNote?: string | null;
   todayMessagesCount?: number;
@@ -1504,12 +1506,12 @@ export default function CasesPage() {
                               >
                                 {c.caseNumber || c.id}
                               </Link>
-                              {c.internalFilesDownloadedAt && (
+                              {c.clientOutputDownloadedAt && (
                                 <span
                                   className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700"
-                                  title={`Files downloaded on ${new Date(c.internalFilesDownloadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${c.internalFilesDownloadedBy ? ` by ${c.internalFilesDownloadedBy}` : ""}`}
+                                  title={`Output downloaded by the lab on ${new Date(c.clientOutputDownloadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${c.clientOutputDownloadedBy ? ` by ${c.clientOutputDownloadedBy}` : ""}`}
                                 >
-                                  Downloaded{c.internalFilesDownloadedBy ? ` · ${c.internalFilesDownloadedBy}` : ""}
+                                  Downloaded by lab
                                 </span>
                               )}
                               {shouldShowChatIcon(c, currentUser) && (hasUnreadChat || (c.todayMessagesCount || 0) > 0) && (

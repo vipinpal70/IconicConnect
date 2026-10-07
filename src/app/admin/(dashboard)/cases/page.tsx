@@ -86,6 +86,8 @@ type CaseRecord = {
 	outputFile?: string | null;
 	internalFilesDownloadedAt?: string | null;
 	internalFilesDownloadedBy?: string | null;
+	clientOutputDownloadedAt?: string | null;
+	clientOutputDownloadedBy?: string | null;
 	previewFile?: string | null;
 	outputNote?: string | null;
 	scanFileName?: string | null;
@@ -1337,14 +1339,14 @@ export default function AdminCasesPage() {
 															>
 																{caseItem.caseNumber || caseItem.id}
 															</Link>
-															{caseItem.internalFilesDownloadedAt && (
-																<span
-																	className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700"
-																	title={`Files downloaded on ${new Date(caseItem.internalFilesDownloadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${caseItem.internalFilesDownloadedBy ? ` by ${caseItem.internalFilesDownloadedBy}` : ""}`}
-																>
-																	Downloaded{caseItem.internalFilesDownloadedBy ? ` · ${caseItem.internalFilesDownloadedBy}` : ""}
-																</span>
-															)}
+															{caseItem.clientOutputDownloadedAt && (
+															<span
+																className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700"
+																title={`Output downloaded by the lab on ${new Date(caseItem.clientOutputDownloadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${caseItem.clientOutputDownloadedBy ? ` by ${caseItem.clientOutputDownloadedBy}` : ""}`}
+															>
+																Downloaded by lab
+															</span>
+														)}
 														</div>
 													</td>
 													<td className="px-3.5 py-2 text-[11px] text-black font-semibold">
