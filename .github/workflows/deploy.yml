@@ -5,7 +5,7 @@ on:
     branches:
       # - main
       # - master
-      - phase2
+      - phase2-designOnly
 
 jobs:
   deploy:
