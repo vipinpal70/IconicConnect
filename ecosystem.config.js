@@ -1,10 +1,10 @@
 // Server: 4 vCPU / 16 GB RAM (Redis runs in Docker on the same box).
 //
-// CPU plan: 3 web processes in cluster mode (they share port 4000) + 1 core left for the worker,
-// the schedulers, Redis and nginx.
+// CPU plan: 2 web processes in cluster mode (they share port 4000), leaving the other cores for the
+// worker, the schedulers, Redis and nginx.
 //
 // Database connections (Supabase pooler): every process has its own pool, sized by DB_POOL_MAX.
-//   web      3 processes x 8  = 24
+//   web      2 processes x 12 = 24
 //   worker   1 process   x 3  =  3
 //   schedulers 4 x 1          =  4        -> 31 in total
 // Keep the total at or below Supabase "Pool size" (Dashboard -> Database -> Connection pooling) —
@@ -18,6 +18,7 @@ module.exports = {
   apps: [
     {
       name: 'iconic-connect-web',
+      cwd: __dirname, // run from the project folder no matter where `pm2 start` is typed
       // Cluster mode needs a node script (not `npm run start`); this is what `next start` runs.
       script: 'node_modules/next/dist/bin/next',
       args: 'start -p 4000',
@@ -36,6 +37,7 @@ module.exports = {
     },
     {
       name: 'iconic-connect-worker',
+      cwd: __dirname, // run from the project folder no matter where `pm2 start` is typed
       script: 'npx',
       args: 'tsx src/lib/queue/worker.ts',
       instances: 1,
@@ -50,6 +52,7 @@ module.exports = {
     },
     {
       name: 'iconic-connect-cleanup',
+      cwd: __dirname, // run from the project folder no matter where `pm2 start` is typed
       script: 'npx',
       args: 'tsx src/lib/queue/cleanup-scheduler.ts',
       instances: 1,
@@ -64,6 +67,7 @@ module.exports = {
     },
     {
       name: 'iconic-connect-auto-approve',
+      cwd: __dirname, // run from the project folder no matter where `pm2 start` is typed
       script: 'npx',
       args: 'tsx src/lib/queue/auto-approve-scheduler.ts',
       instances: 1,
@@ -78,6 +82,7 @@ module.exports = {
     },
     {
       name: 'iconic-connect-r2-cleanup',
+      cwd: __dirname, // run from the project folder no matter where `pm2 start` is typed
       script: 'npx',
       args: 'tsx src/lib/queue/r2-cleanup-scheduler.ts',
       instances: 1,
@@ -92,6 +97,7 @@ module.exports = {
     },
     {
       name: 'iconic-connect-r2-retention',
+      cwd: __dirname, // run from the project folder no matter where `pm2 start` is typed
       script: 'npx',
       args: 'tsx src/lib/queue/r2-retention-scheduler.ts',
       instances: 1,

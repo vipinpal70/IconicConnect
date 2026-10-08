@@ -481,6 +481,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const t0 = performance.now();
   try {
     const supabase = await createClient();
     const user = await getRequestUser(supabase);
@@ -491,6 +492,7 @@ export async function GET(req: NextRequest) {
 
     const profileResult = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
     const profile = profileResult[0];
+    const tProfile = performance.now();
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
@@ -557,7 +559,11 @@ export async function GET(req: NextRequest) {
     const cachedCases = hasFilters
       ? null
       : await getCachedData<{ data: unknown[]; hasMore: boolean }>(casesCacheKey)
-    if (cachedCases) return NextResponse.json(cachedCases)
+    if (cachedCases) {
+      return NextResponse.json(cachedCases, {
+        headers: { 'Server-Timing': `profile;dur=${Math.round(tProfile - t0)}, cache;dur=${Math.round(performance.now() - tProfile)}, hit;desc="redis"` },
+      })
+    }
 
     // Build the search predicate. The file-name and client-name matches are
     // resolved to id lists up front — each a single index-backed query (the
@@ -640,6 +646,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized role' }, { status: 403 });
     }
 
+    const tList = performance.now();
+
     // Determine hasMore before trimming the extra row
     const hasMore = results.length > limit;
     if (hasMore) results = results.slice(0, limit);
@@ -707,7 +715,10 @@ export async function GET(req: NextRequest) {
 
     const payload = { data: mappedResults, hasMore }
     if (!hasFilters) await setCachedData(casesCacheKey, payload, CASES_LIST_TTL)
-    return NextResponse.json(payload);
+    const tEnd = performance.now();
+    const timing = `profile;dur=${Math.round(tProfile - t0)}, list;dur=${Math.round(tList - tProfile)}, enrich;dur=${Math.round(tEnd - tList)}, total;dur=${Math.round(tEnd - t0)}`;
+    if (tEnd - t0 > 1500) console.warn(`[perf] slow GET /api/cases ${timing}`);
+    return NextResponse.json(payload, { headers: { 'Server-Timing': timing } });
   } catch (error: unknown) {
     console.error('Get cases error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });

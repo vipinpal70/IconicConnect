@@ -80,15 +80,20 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Inside middleware function
+  // Per-request timings, exposed as a `Server-Timing` header (browser DevTools → Network → Timing) and
+  // logged when slow, so a slow page can be traced to Supabase Auth, Redis or the profile lookup.
+  const tAuth = performance.now()
   const { data: { user } } = await supabase.auth.getUser()
+  const authMs = Math.round(performance.now() - tAuth)
 
   // Rate-limit key: user id when logged in, otherwise the real client IP (never the
   // client-controlled first X-Forwarded-For hop). Redis-backed, shared across processes.
   const ip = getClientIp(request.headers)
   const rateLimitKey = user ? `u:${user.id}` : `ip:${ip}`
 
+  const tRate = performance.now()
   const globalLimit = await rateLimit(`global:${rateLimitKey}`, GLOBAL_RATE_LIMIT, GLOBAL_WINDOW_SECONDS)
+  const rateMs = Math.round(performance.now() - tRate)
   if (globalLimit.limited) {
     return new NextResponse('Too Many Requests', {
       status: 429,
@@ -148,9 +153,12 @@ export async function proxy(request: NextRequest) {
     return expired
   }
 
+  let gateMs = 0
   if (user && !isPublicApi) {
     // Fetch profile to get role and parent client ID via Drizzle ORM
+    const tGate = performance.now()
     const profile = await getGateProfile(user.id)
+    gateMs = Math.round(performance.now() - tGate)
     const role = profile?.role
     const createdBy = profile?.createdBy
     const status = profile?.status
@@ -194,6 +202,10 @@ export async function proxy(request: NextRequest) {
   if (user) forwarded.set(VERIFIED_USER_HEADER, user.id)
   const finalResponse = NextResponse.next({ request: { headers: forwarded } })
   supabaseResponse.cookies.getAll().forEach((c) => finalResponse.cookies.set(c))
+  finalResponse.headers.set('Server-Timing', `auth;dur=${authMs}, ratelimit;dur=${rateMs}, gate;dur=${gateMs}`)
+  if (authMs + rateMs + gateMs > 800) {
+    console.warn(`[perf] slow proxy ${request.method} ${pathname} auth=${authMs}ms ratelimit=${rateMs}ms gate=${gateMs}ms`)
+  }
   return finalResponse
 }
 
