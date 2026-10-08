@@ -1103,18 +1103,16 @@ export function CaseDetailView({
 										<DetailRow
 											label="Reference Images"
 											value={
-												<Button
+												<button
 													type="button"
-													variant="outline"
-													size="sm"
-													className="h-7 text-xs"
+													className="animate-pulse rounded-md border-2 border-red-500 bg-white px-3.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
 													onClick={() => {
 														setReferenceImagesIndex(0);
 														setIsReferenceImagesOpen(true);
 													}}
 												>
 													Preview
-												</Button>
+												</button>
 											}
 										/>
 									)}
