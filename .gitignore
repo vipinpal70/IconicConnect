@@ -54,3 +54,6 @@ referencecode/
 
 # local case XML extraction scripts
 /scripts/case-xml-extract/
+
+# local deploy-script notes (not for git history)
+/script.md

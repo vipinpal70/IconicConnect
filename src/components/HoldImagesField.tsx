@@ -128,9 +128,12 @@ export function HoldImagesField({
 				// `${labName}/hold-images/${caseId}/${uuid}-${originalName}` — no
 				// two cases can ever collide on the same R2 object. The display
 				// `fileName` sent below stays the clean original name.
+				// The upload API caps the whole name at 255 chars (the folder + uuid prefix take 86), so only the
+				// tail of a very long original name goes into the storage key — the extension is always kept.
+				const storageName = file.name.length > 120 ? file.name.slice(-120) : file.name;
 				const storageFile = new File(
 					[file],
-					`hold-images/${caseId}/${crypto.randomUUID()}-${file.name}`,
+					`hold-images/${caseId}/${crypto.randomUUID()}-${storageName}`,
 					{ type: file.type },
 				);
 				const onFileProgress = (pct: number) => {
