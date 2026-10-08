@@ -942,15 +942,13 @@ export function CaseDetailView({
 					)}
 
 					{caseRecord.holdReason && (
-						<div className="p-4 rounded-lg border-2 border-red-500 bg-red-50 text-red-900 text-xs font-medium flex items-center justify-between gap-4 shadow-[0_0_0_3px_rgba(239,68,68,0.15)]">
-							<div className="flex flex-col gap-1 min-w-0">
-								<span className="font-bold flex items-center gap-1.5 text-red-600">
-									⏸ On Hold — Reason
-								</span>
-								<p className="whitespace-pre-wrap font-normal mt-0.5 text-red-800">
-									{caseRecord.holdReason}
-								</p>
-							</div>
+						<div className="p-4 rounded-lg border-2 border-red-500 bg-red-50 text-red-900 text-xs font-medium flex flex-col gap-1 shadow-[0_0_0_3px_rgba(239,68,68,0.15)]">
+							<span className="font-bold flex items-center gap-1.5 text-red-600">
+								⏸ On Hold — Reason
+							</span>
+							<p className="whitespace-pre-wrap font-normal mt-0.5 text-red-800">
+								{caseRecord.holdReason}
+							</p>
 							{holdImages.length > 0 && (
 								<button
 									type="button"
@@ -958,14 +956,9 @@ export function CaseDetailView({
 										setHoldImagesPreviewIndex(0);
 										setIsHoldImagesPreviewOpen(true);
 									}}
-									title={`Preview Images (${holdImages.length})`}
-									className="relative shrink-0 h-12 w-48 overflow-hidden rounded-md border border-red-300 bg-red-100 bg-cover bg-center"
-									style={{ backgroundImage: `url("${holdImages[0].fileUrl}")` }}
+									className="mt-1.5 self-start animate-pulse rounded-md border-2 border-red-500 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
 								>
-									<span className="absolute inset-0 bg-black/40 hover:bg-black/30 transition-colors" />
-									<span className="relative flex h-full items-center justify-center text-[12px] font-semibold text-white">
-										Preview Images{holdImages.length > 1 ? ` (${holdImages.length})` : ""}
-									</span>
+									Preview Images{holdImages.length > 1 ? ` (${holdImages.length})` : ""}
 								</button>
 							)}
 						</div>
