@@ -909,20 +909,6 @@ export function CaseDetailView({
 					</p>
 				</div>
 				<div className="ml-auto flex items-center gap-2">
-					{holdImages.length > 0 && (
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							className="h-7 text-xs gap-1.5"
-							onClick={() => {
-								setHoldImagesPreviewIndex(0);
-								setIsHoldImagesPreviewOpen(true);
-							}}
-						>
-							⏸ Hold Images ({holdImages.length})
-						</Button>
-					)}
 					{caseRecord.autoApproved && (
 						<span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
 							⏱ Auto-Approved
@@ -956,13 +942,32 @@ export function CaseDetailView({
 					)}
 
 					{caseRecord.holdReason && (
-						<div className="p-4 rounded-lg border-2 border-red-500 bg-red-50 text-red-900 text-xs font-medium flex flex-col gap-1 shadow-[0_0_0_3px_rgba(239,68,68,0.15)]">
-							<span className="font-bold flex items-center gap-1.5 text-red-600">
-								⏸ On Hold — Reason
-							</span>
-							<p className="whitespace-pre-wrap font-normal mt-0.5 text-red-800">
-								{caseRecord.holdReason}
-							</p>
+						<div className="p-4 rounded-lg border-2 border-red-500 bg-red-50 text-red-900 text-xs font-medium flex items-center justify-between gap-4 shadow-[0_0_0_3px_rgba(239,68,68,0.15)]">
+							<div className="flex flex-col gap-1 min-w-0">
+								<span className="font-bold flex items-center gap-1.5 text-red-600">
+									⏸ On Hold — Reason
+								</span>
+								<p className="whitespace-pre-wrap font-normal mt-0.5 text-red-800">
+									{caseRecord.holdReason}
+								</p>
+							</div>
+							{holdImages.length > 0 && (
+								<button
+									type="button"
+									onClick={() => {
+										setHoldImagesPreviewIndex(0);
+										setIsHoldImagesPreviewOpen(true);
+									}}
+									title={`Preview Images (${holdImages.length})`}
+									className="relative shrink-0 h-12 w-48 overflow-hidden rounded-md border border-red-300 bg-red-100 bg-cover bg-center"
+									style={{ backgroundImage: `url("${holdImages[0].fileUrl}")` }}
+								>
+									<span className="absolute inset-0 bg-black/40 hover:bg-black/30 transition-colors" />
+									<span className="relative flex h-full items-center justify-center text-[12px] font-semibold text-white">
+										Preview Images{holdImages.length > 1 ? ` (${holdImages.length})` : ""}
+									</span>
+								</button>
+							)}
 						</div>
 					)}
 
@@ -2009,7 +2014,7 @@ export function CaseDetailView({
 			<Dialog open={isHoldImagesPreviewOpen} onOpenChange={setIsHoldImagesPreviewOpen}>
 				<DialogContent className="max-w-3xl w-[95vw] p-0 bg-black border-0 overflow-hidden">
 					<DialogHeader className="sr-only">
-						<DialogTitle>Hold Images</DialogTitle>
+						<DialogTitle>Preview Images</DialogTitle>
 					</DialogHeader>
 					{holdImages.length > 0 && (
 						<div className="relative flex items-center justify-center min-h-[60vh]">

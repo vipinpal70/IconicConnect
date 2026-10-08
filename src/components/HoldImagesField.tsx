@@ -175,7 +175,7 @@ export function HoldImagesField({
 	return (
 		<div className="space-y-2">
 			<Label className={`text-xs font-bold ${dark ? "text-zinc-200" : "text-gray-700"}`}>
-				Hold Images (optional)
+				Preview Images (optional)
 				{value.length > 0 && ` — ${value.length}/${MAX_HOLD_IMAGES}`}
 			</Label>
 			<input
