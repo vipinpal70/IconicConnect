@@ -1,6 +1,6 @@
 # Design-Only Conversion Plan — remove Design + Milling, Milling Only and the Milling Centre portal
 
-Branch: `phase2-designOnly` (from `phase2`). **Status: Phases 1–6 implemented (uncommitted). Phase 2 script written but `--apply` not yet run. Phase 7 (destructive DB migration) pending.**
+Branch: `phase2-designOnly` (from `phase2`). **Status: Phases 1–7 implemented. Phase 2 script (`convert-to-design-only.ts`) has been removed from the repo along with the milling schema — run it from git history (commit 0e68177) BEFORE applying migration 0058, which aborts if any milling data remains.**
 
 Business decision: Iconic and its clients deliver **design only**. There is no milling, no
 milling centre, no partner designer, no physical shipping. This repo must not contain any of it.

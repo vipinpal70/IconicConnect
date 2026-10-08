@@ -13,7 +13,6 @@ import { sql } from 'drizzle-orm'
 export const userTypeEnum = pgEnum('user_type', [
   'lab_portal',           // client side
   'admin_portal',   // admin/owner side
-  'milling_portal', // milling centre partner side
 ])
 
 export const userRoleEnum = pgEnum('user_role', [
@@ -26,10 +25,6 @@ export const userRoleEnum = pgEnum('user_role', [
   'account_manager',
   'designer',
   'consultant',
-  // milling_portal roles
-  'milling_admin',
-  'milling_production',
-  'milling_support',
 ])
 
 export const userStatusEnum = pgEnum('user_status', [
@@ -71,22 +66,6 @@ export const profiles = pgTable('profiles', {
   createdBy: uuid('created_by'),               // parent user's id
   password: varchar('password', { length: 255 }),
 
-  // Milling portal: which centre this user belongs to (FK enforced in migration SQL,
-  // not declared here, to avoid a schema-file import cycle with ./milling)
-  millingCenterId: uuid('milling_center_id'),
-
-  // Client-only: which of the 3 service flows (design_only/design_milling/
-  // milling_only) this client can submit cases for and see pricing on.
-  // Subusers inherit their parent client's value at read time.
-  enabledServiceTypes: text('enabled_service_types')
-    .array()
-    .notNull()
-    .default(sql`'{design_only}'::text[]`),
-
-  // Client-only: when true, this lab may only create "3D Model" category cases —
-  // every other case category is hidden/rejected for them.
-  modelOnlyLab: boolean('model_only_lab').default(false).notNull(),
-
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   onBoardedAt: timestamp('onboarded_at'),
@@ -95,7 +74,6 @@ export const profiles = pgTable('profiles', {
     roleIdx: index('role_idx').on(table.role),
     emailIdx: index('email_idx').on(table.email),
     createdByIdx: index('profiles_created_by_idx').on(table.createdBy),
-    millingCenterIdIdx: index('profiles_milling_center_id_idx').on(table.millingCenterId),
   }
 })
 

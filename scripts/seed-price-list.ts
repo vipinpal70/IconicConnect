@@ -32,7 +32,7 @@ const filePath =
     ? path.resolve(process.cwd(), process.argv[fileFlagIndex + 1])
     : path.join(process.cwd(), 'scripts', 'price-list-seed.json')
 
-// service_catalog.service_type is a legacy column — the product is Design-only.
+// Section name in the JSON file (the product is Design-only; the DB column is gone).
 type ServiceType = 'design_only'
 type UnitType = 'per_tooth' | 'per_arch' | 'per_case'
 
@@ -118,8 +118,7 @@ async function seedServiceType(serviceType: ServiceType, rawRows: unknown[]) {
       .where(
         and(
           eq(serviceCatalog.category, row.category),
-          eq(serviceCatalog.subCategory, row.subCategory),
-          eq(serviceCatalog.serviceType, serviceType)
+          eq(serviceCatalog.subCategory, row.subCategory)
         )
       )
       .limit(1)
@@ -160,7 +159,6 @@ async function seedServiceType(serviceType: ServiceType, rawRows: unknown[]) {
           .values({
             category: row.category,
             subCategory: row.subCategory,
-            serviceType,
             unitType: row.unitType,
             defaultPrice: row.defaultPrice.toFixed(2),
             isActive: willBeActive,

@@ -88,9 +88,7 @@ export async function getUnitPrice(
     .where(
       and(
         eq(serviceCatalog.category, category),
-        eq(serviceCatalog.subCategory, subCategory),
-        // service_type is a legacy column (Design-only product) — see lib/price-list.ts
-        eq(serviceCatalog.serviceType, 'design_only')
+        eq(serviceCatalog.subCategory, subCategory)
       )
     )
     .limit(1)

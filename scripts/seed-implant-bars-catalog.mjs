@@ -21,7 +21,6 @@ import IORedis from 'ioredis'
 const APPLY = process.argv.includes('--apply')
 const CATEGORY = 'Implant Bars'
 const SUB_CATEGORY = 'Implant Bars'
-const FLOWS = ['design_only'] // legacy service_type column — Design-only product
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set')
@@ -35,34 +34,27 @@ try {
 
   await sql.begin(async (tx) => {
     // 1. Catalog rows
-    const catalogToAdd = []
-    for (const flow of FLOWS) {
-      const [existing] = await tx`
-        SELECT id FROM service_catalog
-        WHERE category = ${CATEGORY} AND sub_category = ${SUB_CATEGORY} AND service_type = ${flow}`
-      if (existing) continue
+    const [existing] = await tx`
+      SELECT id FROM service_catalog
+      WHERE category = ${CATEGORY} AND sub_category = ${SUB_CATEGORY}`
+    if (existing) {
+      console.log('  catalog: already present')
+    } else {
       const [ref] = await tx`
         SELECT default_price, is_active FROM service_catalog
-        WHERE category = 'Implants' AND sub_category = 'Ti-Base' AND service_type = ${flow}`
-      catalogToAdd.push({
-        flow,
-        price: ref?.default_price ?? '4.00',
-        active: ref?.is_active ?? true,
-      })
-    }
-    for (const r of catalogToAdd) {
-      console.log(`  catalog: + ${r.flow} @ ${r.price} (${r.active ? 'active' : 'inactive'})`)
+        WHERE category = 'Implants' AND sub_category = 'Ti-Base'`
+      const price = ref?.default_price ?? '4.00'
+      const active = ref?.is_active ?? true
+      console.log(`  catalog: + ${price} (${active ? 'active' : 'inactive'})`)
       if (APPLY) {
         await tx`
-          INSERT INTO service_catalog (category, sub_category, service_type, unit_type, default_price, sort_order, is_active)
-          VALUES (${CATEGORY}, ${SUB_CATEGORY}, ${r.flow}, 'per_tooth', ${r.price}, 32, ${r.active})
-          ON CONFLICT (category, sub_category, service_type) DO NOTHING`
+          INSERT INTO service_catalog (category, sub_category, unit_type, default_price, sort_order, is_active)
+          VALUES (${CATEGORY}, ${SUB_CATEGORY}, 'per_tooth', ${price}, 32, ${active})
+          ON CONFLICT (category, sub_category) DO NOTHING`
       }
     }
-    if (catalogToAdd.length === 0) console.log('  catalog: already present for all flows')
 
-    // 2. Client price-list rows (in dry run, catalog rows may not exist yet — count by join on what exists
-    //    plus the flows that would be added)
+    // 2. Client price-list rows (in dry run the catalog row may not exist yet)
     if (APPLY) {
       const inserted = await tx`
         INSERT INTO client_price_list (client_id, catalog_item_id, price, is_enabled)
@@ -72,9 +64,8 @@ try {
         FROM profiles p
         JOIN service_catalog bars
           ON bars.category = ${CATEGORY} AND bars.sub_category = ${SUB_CATEGORY}
-         AND bars.service_type = 'design_only'
         LEFT JOIN service_catalog ref
-          ON ref.category = 'Implants' AND ref.sub_category = 'Ti-Base' AND ref.service_type = bars.service_type
+          ON ref.category = 'Implants' AND ref.sub_category = 'Ti-Base'
         LEFT JOIN client_price_list ref_cpl
           ON ref_cpl.client_id = p.id AND ref_cpl.catalog_item_id = ref.id
         WHERE p.user_role = 'client'

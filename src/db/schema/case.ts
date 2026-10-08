@@ -25,23 +25,11 @@ export const caseStatusEnum = pgEnum('case_status', [
   'on_hold',                 // 8. Hold / failed
   'client_feedback',         // 9. Client feedback / rejected
   'approved',                // 10. Approved
-  // Legacy milling-pipeline values — no longer used by the app; dropped from the
-  // Postgres enum in design-only-removal-plan.md Phase 7.
-  'ready_for_milling',       // 10a. Package sent to milling centre
-  'milling_in_progress',     // 10b. Milling centre has started manufacturing
-  'milling_qc',              // 10c. QC at milling centre
-  'packaging',               // 10d. Milling centre is packaging
-  'dispatched',              // 10e. Shipped by milling centre — carrier has picked up
   'delivered',               // 11. Delivered
   'cancelled',               // 12. Cancelled
   'change_requested',        // 13. Change requested
   'client_reject',           // 14. Client rejected case
 ])
-
-export const serviceTypeEnum = pgEnum('service_type', ['design_only', 'design_milling', 'milling_only'])
-
-// Legacy: always 'internal' now. Dropped in design-only-removal-plan.md Phase 7.
-export const designSourceEnum = pgEnum('design_source', ['internal', 'partner'])
 
 export const CASE_LIFECYCLE_STEPS = [
   'Submitted',
@@ -52,14 +40,8 @@ export const CASE_LIFECYCLE_STEPS = [
   'Completed',
 ] as const
 
-// Statuses the app still uses (every enum value except the legacy milling ones).
-export type ActiveCaseStatus = Exclude<
-  typeof caseStatusEnum.enumValues[number],
-  'ready_for_milling' | 'milling_in_progress' | 'milling_qc' | 'packaging' | 'dispatched'
->
-
 export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
-  ActiveCaseStatus,
+  typeof caseStatusEnum.enumValues[number],
   (typeof CASE_LIFECYCLE_STEPS)[number]
 > = {
   scan_received: 'Submitted',
@@ -78,7 +60,7 @@ export const CASE_STATUS_TO_LIFECYCLE_STEP: Record<
   client_reject: 'Completed',
 }
 
-export const CLIENT_STATUS_LABELS: Record<ActiveCaseStatus, string> = {
+export const CLIENT_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
   scan_received: 'Case Submitted',
   scan_not_verified: 'In Validation',
   scan_verified: 'Validated',
@@ -95,7 +77,7 @@ export const CLIENT_STATUS_LABELS: Record<ActiveCaseStatus, string> = {
   client_reject: 'Rejected',
 }
 
-export const INTERNAL_STATUS_LABELS: Record<ActiveCaseStatus, string> = {
+export const INTERNAL_STATUS_LABELS: Record<typeof caseStatusEnum.enumValues[number], string> = {
   scan_received: 'Scan Received',
   scan_not_verified: 'Scan Rejected',
   scan_verified: 'Scan Verified',
@@ -152,8 +134,6 @@ export const cases = pgTable('cases', {
 
   // Status
   status: caseStatusEnum('status').default('scan_received').notNull(),
-  serviceType: serviceTypeEnum('service_type').default('design_only').notNull(),
-  designSource: designSourceEnum('design_source').default('internal').notNull(),
   holdReason: text('hold_reason'),
   cancelReason: text('cancel_reason'),
   feedbackReason: text('feedback_reason'),

@@ -32,9 +32,9 @@ try {
   let inserted = 0
   for (const row of rows) {
     const result = await sql`
-      INSERT INTO "service_catalog" ("category", "sub_category", "service_type", "unit_type", "default_price", "sort_order", "is_active")
-      VALUES (${row.category}, ${row.subCategory}, 'design_only', ${row.unitType}, ${row.defaultPrice}, ${row.sortOrder}, true)
-      ON CONFLICT ("category", "sub_category", "service_type") DO NOTHING
+      INSERT INTO "service_catalog" ("category", "sub_category", "unit_type", "default_price", "sort_order", "is_active")
+      VALUES (${row.category}, ${row.subCategory}, ${row.unitType}, ${row.defaultPrice}, ${row.sortOrder}, true)
+      ON CONFLICT ("category", "sub_category") DO NOTHING
       RETURNING "id"
     `
     inserted += result.length

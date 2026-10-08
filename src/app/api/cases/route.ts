@@ -4,7 +4,7 @@ import { getLatestCompleted } from '@/src/lib/bulk-download/tracking';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles, caseReferenceFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, type ActiveCaseStatus, caseStatusEnum } from '@/src/db/schema/case';
+import { cases, caseFiles, caseReferenceFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum } from '@/src/db/schema/case';
 import { profiles, subUsers } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/supabase/server';
 import { eq, and, or, inArray, ilike, gte, lte, sql, asc, desc, type SQL } from 'drizzle-orm';
@@ -25,7 +25,7 @@ const CASES_LIST_TTL = 300 // 5 minutes
 // dead end (Cancelled/Client Rejected) — i.e. everything not yet 'Completed'
 // on the client-facing lifecycle. Re-uploading the same file while an
 // earlier case is still in one of these is blocked as a likely duplicate.
-const ACTIVE_CASE_STATUSES = (Object.keys(CASE_STATUS_TO_LIFECYCLE_STEP) as ActiveCaseStatus[]).filter(
+const ACTIVE_CASE_STATUSES = caseStatusEnum.enumValues.filter(
   (status) => CASE_STATUS_TO_LIFECYCLE_STEP[status] !== 'Completed'
 );
 
@@ -37,7 +37,6 @@ const caseListSelection = {
   category: cases.category,
   subTypeData: cases.subTypeData,
   status: cases.status,
-  designSource: cases.designSource,
   holdReason: cases.holdReason,
   cancelReason: cases.cancelReason,
   feedbackReason: cases.feedbackReason,
@@ -201,7 +200,7 @@ export async function POST(req: NextRequest) {
 
         if (duplicate) {
           return NextResponse.json({
-            error: `The file "${duplicate.fileName}" was already uploaded in case ${duplicate.caseNumber || ''} (${(CLIENT_STATUS_LABELS[duplicate.status as ActiveCaseStatus] ?? duplicate.status)}). Please wait for that case to finish before resubmitting the same file.`
+            error: `The file "${duplicate.fileName}" was already uploaded in case ${duplicate.caseNumber || ''} (${CLIENT_STATUS_LABELS[duplicate.status]}). Please wait for that case to finish before resubmitting the same file.`
           }, { status: 409 });
         }
       }

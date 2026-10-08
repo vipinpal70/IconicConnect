@@ -11,6 +11,7 @@ import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
 // will pull the postgres/drizzle db chain into the browser bundle.
 export * from './price-list-shared'
 import type { PriceListEntryFull } from './price-list-shared'
+import { DEFAULT_CATALOG_ITEMS } from './default-catalog'
 
 export async function resolveClientIdFromProfile(profileId: string, role: string) {
   if (role === 'client') return profileId
@@ -20,10 +21,6 @@ export async function resolveClientIdFromProfile(profileId: string, role: string
   }
   return null
 }
-
-// service_catalog.service_type is a legacy column (dropped in design-only-removal-plan.md
-// Phase 7): the product is Design-only, so every read/write below is pinned to this value.
-const DESIGN_ONLY = 'design_only' as const
 
 export async function getPriceListForClient(
   clientId: string,
@@ -55,7 +52,6 @@ export async function getPriceListForClient(
     .where(
       and(
         eq(clientPriceList.clientId, clientId),
-        eq(serviceCatalog.serviceType, DESIGN_ONLY),
         includeInactive ? undefined : eq(serviceCatalog.isActive, true)
       )
     )
@@ -81,7 +77,6 @@ export async function getServiceCatalog(
     .from(serviceCatalog)
     .where(
       and(
-        eq(serviceCatalog.serviceType, DESIGN_ONLY),
         includeInactive ? undefined : eq(serviceCatalog.isActive, true)
       )
     )
@@ -108,7 +103,7 @@ export async function seedClientPriceList(clientId: string, createdById?: string
   const catalog = await db
     .select()
     .from(serviceCatalog)
-    .where(and(eq(serviceCatalog.isActive, true), eq(serviceCatalog.serviceType, DESIGN_ONLY)))
+    .where(eq(serviceCatalog.isActive, true))
     .orderBy(serviceCatalog.sortOrder)
 
   if (catalog.length === 0) return
@@ -204,8 +199,7 @@ export async function updateClientPriceList(
 
 // Reconciles the service_catalog table against `defaultItems` below — safe to
 // call on every request, not just once from empty. Uses onConflictDoNothing
-// keyed on (category, subCategory, serviceType) — new rows take the
-// column default 'design_only' — so existing rows (including
+// keyed on (category, subCategory), so existing rows (including
 // admin-edited prices) are never touched; only rows for *new* items added to
 // this list in a later release get inserted. This is what makes adding a new
 // category/sub-category here alone enough — no separate one-off backfill
@@ -215,40 +209,7 @@ export async function updateClientPriceList(
 // used to bail out early once the table was non-empty).
 export async function ensureServiceCatalogSeeded() {
   // Seed default catalog items (23 original + additions since)
-  const defaultItems = [
-    { category: 'Crown & Bridge', subCategory: 'Crown', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 1 },
-    { category: 'Crown & Bridge', subCategory: 'Bridge', unitType: 'per_tooth' as const, defaultPrice: '5.00', sortOrder: 2 },
-    { category: 'Crown & Bridge', subCategory: 'Cutback', unitType: 'per_tooth' as const, defaultPrice: '5.00', sortOrder: 3 },
-    { category: 'Crown & Bridge', subCategory: 'Coping', unitType: 'per_tooth' as const, defaultPrice: '5.00', sortOrder: 4 },
-    { category: 'Crown & Bridge', subCategory: 'Screw Retained', unitType: 'per_tooth' as const, defaultPrice: '10.00', sortOrder: 5 },
-    { category: 'Crown & Bridge', subCategory: 'In-Lay', unitType: 'per_tooth' as const, defaultPrice: '15.00', sortOrder: 6 },
-    { category: 'Crown & Bridge', subCategory: 'On-Lay', unitType: 'per_tooth' as const, defaultPrice: '20.00', sortOrder: 7 },
-    { category: 'Implants', subCategory: 'Robotic', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 8 },
-    { category: 'Implants', subCategory: 'Ti-Base', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 9 },
-    { category: 'Implants', subCategory: 'Custom', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 10 },
-    { category: 'Appliances', subCategory: 'Night Guards', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 11 },
-    { category: 'Appliances', subCategory: 'Sport Guards', unitType: 'per_arch' as const, defaultPrice: '20.00', sortOrder: 12 },
-    { category: 'Appliances', subCategory: 'Mouth Guards', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 13 },
-    { category: 'Appliances', subCategory: 'NTI', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 14 },
-    { category: 'Dentures', subCategory: 'Reference Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 15 },
-    { category: 'Dentures', subCategory: 'Copy Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 16 },
-    { category: 'Dentures', subCategory: 'Immediate Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 17 },
-    { category: 'Dentures', subCategory: 'Full Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 18 },
-    { category: 'Dentures', subCategory: 'Partial Denture', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 19 },
-    { category: 'Cosmetics', subCategory: 'Digital Wax Up', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 20 },
-    { category: 'Cosmetics', subCategory: 'Veneers', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 21 },
-    { category: 'Cosmetics', subCategory: 'Snap on Smile', unitType: 'per_arch' as const, defaultPrice: '15.00', sortOrder: 22 },
-    { category: 'Model', subCategory: '3D Model', unitType: 'per_case' as const, defaultPrice: '4.00', sortOrder: 23 },
-    { category: '3D Model', subCategory: 'Full Arch Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 24 },
-    { category: '3D Model', subCategory: 'Quad Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 25 },
-    { category: '3D Model', subCategory: 'Contact Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 26 },
-    { category: '3D Model', subCategory: 'Horse Shoe Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 27 },
-    { category: '3D Model', subCategory: 'Implant Model', unitType: 'per_case' as const, defaultPrice: '3.50', sortOrder: 28 },
-    { category: '3D Model', subCategory: 'Die', unitType: 'per_tooth' as const, defaultPrice: '0.50', sortOrder: 29 },
-    { category: '3D Model', subCategory: 'Articulator', unitType: 'per_case' as const, defaultPrice: '0.50', sortOrder: 30 },
-    { category: '3D Model', subCategory: 'Drain Holes', unitType: 'per_case' as const, defaultPrice: '0.00', sortOrder: 31 },
-    { category: 'Implant Bars', subCategory: 'Implant Bars', unitType: 'per_tooth' as const, defaultPrice: '4.00', sortOrder: 32 },
-  ]
+  const defaultItems = DEFAULT_CATALOG_ITEMS
 
   await db
     .insert(serviceCatalog)

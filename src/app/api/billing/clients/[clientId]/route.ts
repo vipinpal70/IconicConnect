@@ -17,8 +17,7 @@ import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 const BILLING_TTL = 1800 // 30 minutes
 
 // ── Price map helpers ──────────────────────────────────────────────────────────
-// Keyed by category:subCategory. service_catalog.service_type is a legacy column
-// (Design-only product), so the queries below read only its 'design_only' rows.
+// Keyed by category:subCategory.
 
 function buildPriceMap(
   catalogItems: { category: string; subCategory: string; defaultPrice: string }[],
@@ -199,7 +198,7 @@ export async function GET(
         category: serviceCatalog.category,
         subCategory: serviceCatalog.subCategory,
         defaultPrice: serviceCatalog.defaultPrice,
-      }).from(serviceCatalog).where(and(eq(serviceCatalog.isActive, true), eq(serviceCatalog.serviceType, 'design_only'))),
+      }).from(serviceCatalog).where(eq(serviceCatalog.isActive, true)),
 
       clientId !== 'all'
         ? db.select({
@@ -209,7 +208,7 @@ export async function GET(
           })
           .from(clientPriceList)
           .innerJoin(serviceCatalog, eq(clientPriceList.catalogItemId, serviceCatalog.id))
-          .where(and(eq(clientPriceList.clientId, clientId), eq(serviceCatalog.serviceType, 'design_only')))
+          .where(eq(clientPriceList.clientId, clientId))
         : Promise.resolve([]),
     ])
 
