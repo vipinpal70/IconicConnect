@@ -956,7 +956,7 @@ export function CaseDetailView({
 										setHoldImagesPreviewIndex(0);
 										setIsHoldImagesPreviewOpen(true);
 									}}
-									className="mt-1.5 self-start animate-pulse rounded-md border-2 border-red-500 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
+									className="mt-1.5 self-start animate-pulse rounded-md border-2 border-red-500 bg-white px-3.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
 								>
 									Preview Images{holdImages.length > 1 ? ` (${holdImages.length})` : ""}
 								</button>
