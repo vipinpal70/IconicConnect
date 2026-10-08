@@ -171,6 +171,8 @@ export const cases = pgTable('cases', {
 }, (table) => ({
   clientIdCreatedAtIdx: index('cases_client_id_created_at_idx').on(table.clientId, table.createdAt),
   createdAtIdx: index('cases_created_at_idx').on(table.createdAt),
+  createdAtIdIdx: index('cases_created_at_id_idx').on(table.createdAt.desc(), table.id.desc()),
+  clientIdCreatedAtIdIdx: index('cases_client_id_created_at_id_idx').on(table.clientId, table.createdAt.desc(), table.id.desc()),
   updatedAtIdx: index('cases_updated_at_idx').on(table.updatedAt),
   designerIdIdx: index('cases_designer_id_idx').on(table.designerId),
   qcIdIdx: index('cases_qc_id_idx').on(table.qcId),
@@ -197,6 +199,7 @@ export const caseFiles = pgTable('case_files', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   caseIdIdx: index('case_files_case_id_idx').on(table.caseId),
+  caseIdCreatedAtIdx: index('case_files_case_id_created_at_idx').on(table.caseId, table.createdAt),
   // Backs the case-list Universal Search's `lower(file_name) LIKE '%term%'`
   // full/partial file-name match — see migration 0052. Requires pg_trgm.
   fileNameTrgmIdx: index('case_files_file_name_trgm_idx').using(

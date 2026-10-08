@@ -501,12 +501,10 @@ export async function GET(req: NextRequest) {
     const isAdmin = isValidRoleForType('admin_portal', profile.role)
     const cacheClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id
 
-    // Hard row ceiling — 300 for the admin console, 200 for the lab / ops
-    // portals — so neither the query nor the browser list can grow unbounded.
-    // The pages default to and page in CASES_PAGE_SIZE (100) rows.
-    const maxRows = isAdmin ? 300 : 200;
-    const limit = Math.min(Math.max(Number(searchParams.get('limit') || 100), 1), maxRows);
-    const page = Math.max(Number(searchParams.get('page') || 1), 1);
+    // Page-based loading with no overall cap: every page is `limit` rows (default 100, which is
+    // what all the cases pages request), `page` walks through the whole result set.
+    const limit = Math.max(Math.floor(Number(searchParams.get('limit')) || 100), 1);
+    const page = Math.max(Math.floor(Number(searchParams.get('page')) || 1), 1);
     const offset = (page - 1) * limit;
 
     // ── Server-side list filters ────────────────────────────────────────────
@@ -623,19 +621,19 @@ export async function GET(req: NextRequest) {
     if (isAdmin) {
       results = await db.select(caseListSelection).from(cases)
         .where(filterCondition)
-        .orderBy(desc(cases.createdAt))
+        .orderBy(desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'client') {
       results = await db.select(caseListSelection).from(cases)
         .where(and(eq(cases.clientId, profile.id), filterCondition))
-        .orderBy(desc(cases.createdAt))
+        .orderBy(desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'subuser') {
       results = await db.select(caseListSelection).from(cases)
         .where(and(eq(cases.clientId, cacheClientId), filterCondition))
-        .orderBy(desc(cases.createdAt))
+        .orderBy(desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
         .offset(offset);
     } else {
@@ -654,17 +652,20 @@ export async function GET(req: NextRequest) {
 
     const [designersProfiles, clientsProfiles, chatMetadata, fileRows] = await Promise.all([
       designerIds.length > 0
-        ? db.select().from(profiles).where(inArray(profiles.id, designerIds))
+        ? db.select({ id: profiles.id, fullName: profiles.fullName, email: profiles.email })
+            .from(profiles).where(inArray(profiles.id, designerIds))
         : Promise.resolve([]),
       clientIds.length > 0
-        ? db.select().from(profiles).where(inArray(profiles.id, clientIds))
+        ? db.select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: profiles.email })
+            .from(profiles).where(inArray(profiles.id, clientIds))
         : Promise.resolve([]),
       getCasesChatMetadata(caseIds, profile.id),
       caseIds.length > 0
-        ? db.select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
+        ? // One row per case (its first uploaded file) instead of every file of every case on the page.
+          db.selectDistinctOn([caseFiles.caseId], { caseId: caseFiles.caseId, fileName: caseFiles.fileName })
             .from(caseFiles)
             .where(inArray(caseFiles.caseId, caseIds))
-            .orderBy(asc(caseFiles.createdAt))
+            .orderBy(caseFiles.caseId, asc(caseFiles.createdAt))
         : Promise.resolve([]),
     ]);
 

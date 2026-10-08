@@ -219,10 +219,20 @@ const STATUS_FILTER_MAP: Record<string, string[]> = {
   "Cancelled": ["cancelled"],
 };
 
-// Fetch the 100 most recent cases by default and per "Load more"; never hold
-// more than MAX_CASES rows in the browser (server-enforced too).
+// Cases load 100 per page, newest first; "Load more" keeps appending pages with no overall cap.
 const CASES_PAGE_SIZE = 100;
-const MAX_CASES = 200;
+
+// Append/merge helper: keep first occurrence of each id, preserving order.
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
+}
 
 // Snapshot of the filter bar last sent to the server. The inputs only update
 // local state; "Fetch" copies them here and re-queries /api/cases so the result
@@ -335,11 +345,9 @@ export default function CasesPage() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
-  // Tracks total cases currently loaded; grows as the user loads more or creates new cases.
-  // fetchCases() re-fetches everything loaded so far (used for the initial load and the
-  // periodic refresh, so already-loaded rows stay fresh); handleLoadMore() fetches only
-  // the next page and appends it, rather than re-fetching everything.
-  const loadedCountRef = useRef(CASES_PAGE_SIZE);
+  // Number of 100-row pages currently loaded. fetchCases() reloads pages 1..N in parallel (initial
+  // load, filter change, after a mutation); handleLoadMore() fetches only the next page and appends it.
+  const loadedPagesRef = useRef(1);
 
   // Filters run on the server, on demand (via the "Fetch" button / Enter in the
   // search box). `appliedFilters` is the snapshot reflected in the list;
@@ -347,17 +355,19 @@ export default function CasesPage() {
   const [appliedFilters, setAppliedFilters] = useState<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
   const appliedRef = useRef<AppliedCaseFilters>(EMPTY_CASE_FILTERS);
 
+  const fetchPageJson = async (page: number) => {
+    const res = await fetch(buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, page));
+    if (!res.ok) throw new Error("Failed to load cases");
+    return res.json() as Promise<{ data?: OpsCase[]; hasMore?: boolean }>;
+  };
+
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const res = await fetch(buildCasesQuery(appliedRef.current, loadedCountRef.current, 1));
-      if (res.ok) {
-        const json = await res.json();
-        setCases(Array.isArray(json.data) ? json.data : []);
-        setHasMore(json.hasMore ?? false);
-      } else {
-        toast.error("Failed to load cases");
-      }
+      const pages = Math.max(loadedPagesRef.current, 1);
+      const results = await Promise.all(Array.from({ length: pages }, (_, i) => fetchPageJson(i + 1)));
+      setCases(dedupeById(results.flatMap((r) => (Array.isArray(r.data) ? r.data : []))));
+      setHasMore(results[results.length - 1]?.hasMore ?? false);
     } catch (err) {
       console.error("Error fetching cases:", err);
       toast.error("Failed to fetch cases");
@@ -383,13 +393,12 @@ export default function CasesPage() {
     setAppliedFilters(next);
   };
 
-  // Fetch — re-query the server for the matching set (up to the cap), from the
-  // first page.
+  // Fetch — re-query the server for the matching set, from the first page.
   const runFetch = async (override?: AppliedCaseFilters) => {
     const next = override ?? snapshotFilters();
     appliedRef.current = next;
     setAppliedFilters(next);
-    loadedCountRef.current = CASES_PAGE_SIZE;
+    loadedPagesRef.current = 1;
     setIsFetching(true);
     try {
       await fetchCases(false);
@@ -411,20 +420,14 @@ export default function CasesPage() {
   };
 
   const handleLoadMore = async () => {
-    if (loadedCountRef.current >= MAX_CASES) return;
+    const nextPage = loadedPagesRef.current + 1;
     setIsLoadingMore(true);
     try {
-      const nextPage = Math.floor(loadedCountRef.current / CASES_PAGE_SIZE) + 1;
-      const res = await fetch(buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, nextPage));
-      if (res.ok) {
-        const json = await res.json();
-        const newRows = Array.isArray(json.data) ? json.data : [];
-        setCases((prev) => [...prev, ...newRows]);
-        setHasMore(json.hasMore ?? false);
-        loadedCountRef.current += newRows.length;
-      } else {
-        toast.error("Failed to load more cases");
-      }
+      const json = await fetchPageJson(nextPage);
+      const newRows: OpsCase[] = Array.isArray(json.data) ? json.data : [];
+      setCases((prev) => dedupeById([...prev, ...newRows]));
+      setHasMore(json.hasMore ?? false);
+      loadedPagesRef.current = nextPage;
     } catch {
       toast.error("Failed to load more cases");
     } finally {
@@ -439,15 +442,13 @@ export default function CasesPage() {
   // cases; rows loaded via "Load more" beyond the first page are left untouched.
   const refreshFirstPage = async () => {
     try {
-      const res = await fetch(buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, 1));
-      if (!res.ok) return;
-      const json = await res.json();
+      const json = await fetchPageJson(1);
       const freshRows: OpsCase[] = Array.isArray(json.data) ? json.data : [];
+      const freshById = new Map(freshRows.map((r) => [r.id, r]));
       setCases((prev) => {
         const prevIds = new Set(prev.map((c) => c.id));
         const newOnes = freshRows.filter((r) => !prevIds.has(r.id));
-        const updated = prev.map((c) => freshRows.find((r) => r.id === c.id) ?? c);
-        return [...newOnes, ...updated];
+        return [...newOnes, ...prev.map((c) => freshById.get(c.id) ?? c)];
       });
     } catch (err) {
       console.error("Error refreshing cases:", err);
@@ -457,7 +458,7 @@ export default function CasesPage() {
   // Initial load (top CASES_PAGE_SIZE, no filters) + a 30s refresh that re-runs
   // whatever filter snapshot is currently applied.
   useEffect(() => {
-    loadedCountRef.current = CASES_PAGE_SIZE;
+    loadedPagesRef.current = 1;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
     const intervalId = window.setInterval(() => { void refreshFirstPage(); }, 30_000);
     return () => {
@@ -1103,7 +1104,6 @@ export default function CasesPage() {
         setNotes(""); setTeeth([]); setToothSystem("USA"); setModelRequired(null);
         setCategory("Crown & Bridges"); setSubTypeData({});
         setSingleFile(null); setUploadedFileUrl(null); setUploadedFile(null);
-        loadedCountRef.current += 1;
         fetchCases();
       } else {
         toast.error("Failed to submit case.");
@@ -1165,7 +1165,6 @@ export default function CasesPage() {
         setBulkRows([]);
         if (bulkFileRef.current) bulkFileRef.current.value = "";
         setUploadOpen(false);
-        loadedCountRef.current += addedCount;
         fetchCases();
       } else {
         toast.error("Failed to submit bulk cases.");
@@ -1911,7 +1910,7 @@ export default function CasesPage() {
                 </tbody>
               </table>
             </div>
-            {!isLoading && hasMore && cases.length < MAX_CASES && (
+            {!isLoading && hasMore && (
               <div className="p-3 border-t border-border/50 flex justify-center">
                 <Button
                   variant="outline"

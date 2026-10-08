@@ -316,10 +316,8 @@ export default function AdminCasesPage() {
 	const [approveChecklist, setApproveChecklist] = useState<
 		Record<string, boolean>
 	>({});
-	// Fetch the 100 most recent cases by default and per "Load more"; cap the
-	// admin console at MAX_CASES rows in the browser (server-enforced too).
+	// Cases load 100 per page, newest first; "Load more" keeps appending pages with no overall cap.
 	const CASES_PAGE_SIZE = 100;
-	const MAX_CASES = 300;
 
 	// Two snapshots of the filter bar:
 	//   appliedFilters — narrows the rows already loaded in the browser ("Apply")
@@ -403,9 +401,7 @@ export default function AdminCasesPage() {
 		},
 		initialPageParam: 1,
 		getNextPageParam: (lastPage, allPages) =>
-			lastPage.hasMore && allPages.length * CASES_PAGE_SIZE < MAX_CASES
-				? allPages.length + 1
-				: undefined,
+			lastPage.hasMore ? allPages.length + 1 : undefined,
 		staleTime: 20_000,
 	});
 

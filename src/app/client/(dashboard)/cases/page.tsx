@@ -124,10 +124,8 @@ const STATUS_FILTER_MAP: Record<string, string[]> = {
   "Cancelled": ["cancelled"],
 };
 
-// Fetch the 100 most recent cases by default and per "Load more"; never hold
-// more than MAX_CASES rows in the browser (server-enforced too).
+// Cases load 100 per page, newest first; "Load more" keeps appending pages with no overall cap.
 const CASES_PAGE_SIZE = 100;
-const MAX_CASES = 200;
 
 // Snapshot of the filter bar that was last sent to the server. The inputs only
 // update local state; "Fetch" copies them here and re-queries /api/cases so the
@@ -135,14 +133,26 @@ const MAX_CASES = 200;
 type AppliedCaseFilters = { search: string; statuses: string[]; category: string; from: string; to: string };
 const EMPTY_CASE_FILTERS: AppliedCaseFilters = { search: "", statuses: [], category: "", from: "", to: "" };
 
-function buildCasesQuery(f: AppliedCaseFilters, limit: number): string {
-  const p = new URLSearchParams({ limit: String(limit), page: "1" });
+function buildCasesQuery(f: AppliedCaseFilters, limit: number, page = 1): string {
+  const p = new URLSearchParams({ limit: String(limit), page: String(page) });
   if (f.search) p.set("search", f.search);
   if (f.statuses.length) p.set("statuses", f.statuses.join(","));
   if (f.category) p.set("category", f.category);
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
   return `/api/cases?${p.toString()}`;
+}
+
+// Append/merge helper: keep first occurrence of each id, preserving order.
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
 }
 
 const hasAllRequiredCaseFields = (
@@ -204,7 +214,8 @@ export default function CasesPage() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
-  const pageLimitRef = useRef(CASES_PAGE_SIZE);
+  // Number of 100-row pages currently loaded.
+  const loadedPagesRef = useRef(1);
 
   // Filters run on the server, on demand (via the "Fetch" button / Enter in the
   // search box). `appliedFilters` is the snapshot currently reflected in the
@@ -220,22 +231,42 @@ export default function CasesPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
 
+  const fetchPageJson = async (page: number) => {
+    const res = await fetch(buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, page));
+    if (!res.ok) throw new Error("Failed to load cases");
+    return res.json() as Promise<{ data?: any[]; hasMore?: boolean }>;
+  };
+
+  // (Re)load everything loaded so far — pages 1..N fetched in parallel, 100 rows each. Used for the
+  // initial load, after a filter change and after a mutation, so already-loaded rows stay fresh.
   const fetchCases = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
     try {
-      const res = await fetch(buildCasesQuery(appliedRef.current, pageLimitRef.current));
-      if (res.ok) {
-        const json = await res.json();
-        setCases(Array.isArray(json.data) ? json.data : []);
-        setHasMore(json.hasMore ?? false);
-      } else {
-        toast.error("Failed to load cases");
-      }
+      const pages = Math.max(loadedPagesRef.current, 1);
+      const results = await Promise.all(Array.from({ length: pages }, (_, i) => fetchPageJson(i + 1)));
+      setCases(dedupeById(results.flatMap((r) => (Array.isArray(r.data) ? r.data : []))));
+      setHasMore(results[results.length - 1]?.hasMore ?? false);
     } catch (err) {
       console.error("Error fetching cases:", err);
       toast.error("Failed to fetch cases");
     } finally {
       if (showLoading) setIsLoading(false);
+    }
+  };
+
+  // Background refresh — only the first page (newest 100): updates rows in place and prepends new
+  // cases, leaving pages loaded via "Load more" as they are, so its cost stays constant.
+  const refreshFirstPage = async () => {
+    try {
+      const json = await fetchPageJson(1);
+      const fresh: any[] = Array.isArray(json.data) ? json.data : [];
+      const freshById = new Map(fresh.map((r) => [r.id, r]));
+      setCases((prev) => {
+        const prevIds = new Set(prev.map((c) => c.id));
+        return [...fresh.filter((r) => !prevIds.has(r.id)), ...prev.map((c) => freshById.get(c.id) ?? c)];
+      });
+    } catch (err) {
+      console.error("Error refreshing cases:", err);
     }
   };
 
@@ -254,13 +285,12 @@ export default function CasesPage() {
     setAppliedFilters(next);
   };
 
-  // Fetch — re-query the server for the matching set (up to the cap) and reset
-  // paging to the first CASES_PAGE_SIZE rows.
+  // Fetch — re-query the server for the matching set and reset paging to the first page.
   const runFetch = async (override?: AppliedCaseFilters) => {
     const next = override ?? snapshotFilters();
     appliedRef.current = next;
     setAppliedFilters(next);
-    pageLimitRef.current = CASES_PAGE_SIZE;
+    loadedPagesRef.current = 1;
     setIsFetching(true);
     try {
       await fetchCases(false);
@@ -352,22 +382,15 @@ export default function CasesPage() {
   };
 
   const handleLoadMore = async () => {
-    const prevLimit = pageLimitRef.current;
-    if (prevLimit >= MAX_CASES) return;
-    pageLimitRef.current = Math.min(prevLimit + CASES_PAGE_SIZE, MAX_CASES);
+    const nextPage = loadedPagesRef.current + 1;
     setIsLoadingMore(true);
     try {
-      const res = await fetch(buildCasesQuery(appliedRef.current, pageLimitRef.current));
-      if (res.ok) {
-        const json = await res.json();
-        setCases(Array.isArray(json.data) ? json.data : []);
-        setHasMore(json.hasMore ?? false);
-      } else {
-        pageLimitRef.current = prevLimit;
-        toast.error("Failed to load more cases");
-      }
+      const json = await fetchPageJson(nextPage);
+      const rows: any[] = Array.isArray(json.data) ? json.data : [];
+      setCases((prev) => dedupeById([...prev, ...rows]));
+      setHasMore(json.hasMore ?? false);
+      loadedPagesRef.current = nextPage;
     } catch {
-      pageLimitRef.current = prevLimit;
       toast.error("Failed to load more cases");
     } finally {
       setIsLoadingMore(false);
@@ -377,9 +400,9 @@ export default function CasesPage() {
   // Initial load (top CASES_PAGE_SIZE, no filters) + a 30s refresh that re-runs
   // whatever filter snapshot is currently applied.
   useEffect(() => {
-    pageLimitRef.current = CASES_PAGE_SIZE;
+    loadedPagesRef.current = 1;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
-    const intervalId = window.setInterval(() => { void fetchCases(false); }, 30_000);
+    const intervalId = window.setInterval(() => { void refreshFirstPage(); }, 30_000);
     return () => { window.clearTimeout(timeoutId); window.clearInterval(intervalId); };
   }, []);
 
@@ -796,7 +819,6 @@ export default function CasesPage() {
         setReferenceImages([]);
         setPreferredTeethLibrary("default");
         setUploadedLibraryFile(null);
-        pageLimitRef.current += 1;
         fetchCases();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -920,7 +942,6 @@ export default function CasesPage() {
         setBulkRows([]);
         if (bulkFileRef.current) bulkFileRef.current.value = "";
         setUploadOpen(false);
-        pageLimitRef.current += addedCount;
         fetchCases();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -1915,8 +1936,7 @@ export default function CasesPage() {
                   >
                     <ThreeShapeImport
                       onSubmitted={() => {
-                        pageLimitRef.current += 1;
-                        fetchCases();
+                                        fetchCases();
                       }}
                       onClose={() => setUploadOpen(false)}
                     />
@@ -2149,7 +2169,7 @@ export default function CasesPage() {
                 </tbody>
               </table>
             </div>
-            {!isLoading && hasMore && cases.length < MAX_CASES && (
+            {!isLoading && hasMore && (
               <div className="p-3 border-t border-border/50 flex justify-center">
                 <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5"
                   onClick={handleLoadMore} disabled={isLoadingMore}>
