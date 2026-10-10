@@ -9,8 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:migrate": "node scripts/migrate.mjs",
-    "db:push": "node scripts/migrate.mjs",
+    "db:migrate": "echo \"db:migrate (Drizzle) is retired - migrations are dbmate files in db/migrations. Use: npm run db:deploy\" && exit 1",
+    "db:push": "echo \"db:migrate (Drizzle) is retired - migrations are dbmate files in db/migrations. Use: npm run db:deploy\" && exit 1",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "db:clean": "node scripts/clean-test-data.mjs",
@@ -35,7 +35,9 @@
     "db:up": "dbmate --env-file .env.local --migrations-dir db/migrations --no-dump-schema up",
     "db:down": "dbmate --env-file .env.local --migrations-dir db/migrations --no-dump-schema rollback",
     "db:status": "dbmate --env-file .env.local --migrations-dir db/migrations status",
-    "db:migrate-from-supabase": "tsx scripts/migrate-from-supabase.ts"
+    "db:migrate-from-supabase": "tsx scripts/migrate-from-supabase.ts",
+    "db:deploy": "dbmate --migrations-dir db/migrations --no-dump-schema up",
+    "db:deploy:status": "dbmate --migrations-dir db/migrations status"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1077.0",
@@ -76,6 +78,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dbmate": "^2.36.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "^16.3.8",

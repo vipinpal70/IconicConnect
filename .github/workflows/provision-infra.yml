@@ -1,0 +1,118 @@
+name: Provision server (Docker, Postgres, Redis)
+
+# Sets up / updates the data services on the live server. Idempotent: running it again changes nothing that is
+# already correct and never rotates a password. The privileged part (root on the server) is intentionally a
+# SEPARATE workflow from the app deploy, gated by the "production" environment (add required reviewers in
+# Settings → Environments → production so nobody can run it unreviewed).
+on:
+  workflow_dispatch:
+    inputs:
+      write_app_env:
+        description: "Write DATABASE_URL / REDIS_URL into the app's .env on the server (a .bak.provision copy is kept)"
+        type: boolean
+        default: false
+      harden_ssh:
+        description: "Disable SSH password + root login. Make sure your SSH KEY works first!"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "deploy/**"
+      - ".github/workflows/provision-infra.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provision-infra
+  cancel-in-progress: false   # never interrupt a half-finished provision
+
+env:
+  APP_DIR: /home/ubuntu/iconicconnect
+
+jobs:
+  validate:
+    name: Validate scripts & compose policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Shell scripts parse and lint clean
+        run: |
+          bash -n deploy/*.sh
+          shellcheck -S warning deploy/*.sh
+
+      - name: Compose file is valid
+        run: |
+          tmp="$(mktemp -d)"
+          cp deploy/docker-compose.prod.yml "$tmp/docker-compose.yml"
+          ./deploy/render-secrets.sh "$tmp" >/dev/null
+          (cd "$tmp" && docker compose config -q)
+
+      - name: Policy — every published port must be loopback-only
+        run: |
+          tmp="$(mktemp -d)"
+          cp deploy/docker-compose.prod.yml "$tmp/docker-compose.yml"
+          ./deploy/render-secrets.sh "$tmp" >/dev/null
+          bad="$(cd "$tmp" && docker compose --profile tools config --format json \
+            | jq -r '.services | to_entries[] | .key as $s | (.value.ports // [])[] | select(.host_ip != "127.0.0.1") | "\($s): \(.published)->\(.target) on \(.host_ip // "ALL INTERFACES")"')"
+          if [ -n "$bad" ]; then echo "::error::Ports exposed beyond loopback:"; echo "$bad"; exit 1; fi
+          echo "All published ports are bound to 127.0.0.1"
+
+  provision:
+    name: Provision production server
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Plain OpenSSH (no third-party action in the root-level path). The server's host key is PINNED via the
+      # VPS_KNOWN_HOSTS secret and StrictHostKeyChecking=yes, so a man-in-the-middle cannot impersonate the VPS.
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          [ -n "$KNOWN_HOSTS" ] || { echo "::error::Secret VPS_KNOWN_HOSTS is not set (see deploy/README.md)"; exit 1; }
+          install -m 700 -d ~/.ssh
+          umask 177
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload deploy/ to the server
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USERNAME }}
+          SSH_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          tar -czf - deploy | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" \
+            -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes \
+            "$SSH_USER@$HOST" 'rm -rf /tmp/iconic-deploy && mkdir -p /tmp/iconic-deploy && tar -xzf - -C /tmp/iconic-deploy'
+
+      - name: Run setup-server.sh as root
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USERNAME }}
+          SSH_PORT: ${{ secrets.VPS_PORT }}
+          WRITE_APP_ENV: ${{ inputs.write_app_env && '1' || '0' }}
+          HARDEN_SSH: ${{ inputs.harden_ssh && '1' || '0' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" \
+            -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes \
+            "$SSH_USER@$HOST" \
+            "sudo env INSTALL_DIR=/opt/iconic APP_ENV_FILE='$APP_DIR/.env' WRITE_APP_ENV='$WRITE_APP_ENV' HARDEN_SSH='$HARDEN_SSH' bash /tmp/iconic-deploy/deploy/setup-server.sh"
+
+      - name: Clean up uploaded files
+        if: always()
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USERNAME }}
+          SSH_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes \
+            "$SSH_USER@$HOST" 'rm -rf /tmp/iconic-deploy' || true
+          rm -f ~/.ssh/deploy_key

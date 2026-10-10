@@ -1,5 +1,8 @@
 name: Deploy to VPS
 
+# NOTE: this runs the APP deploy only (PM2 + nginx). The data services (Docker/Postgres/Redis) are provisioned by
+# provision-infra.yml. Before pointing this at the no-supabase branch, make sure that workflow has run once.
+
 on:
   push:
     branches:
@@ -7,21 +10,32 @@ on:
       # - master
       - phase2-designOnly
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-app
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@master
+        # Pinned to a commit (not @master): this action receives the server's SSH key, so it must not change under us.
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
+          # Pins the server's host key (SHA256:...) so a man-in-the-middle cannot impersonate the VPS. Required secret.
+          fingerprint: ${{ secrets.VPS_FINGERPRINT }}
           envs: GITHUB_REF_NAME
           script: |
             # Exit on error
@@ -59,11 +73,11 @@ jobs:
             # Check if directory is a git repository
             if [ ! -d ".git" ]; then
               echo "Initializing repository from branch $GITHUB_REF_NAME..."
-              git clone -b $GITHUB_REF_NAME https://github.com/${{ github.repository }}.git .
+              git clone -b "$GITHUB_REF_NAME" https://github.com/${{ github.repository }}.git .
             else
               echo "Updating from branch $GITHUB_REF_NAME..."
-              git fetch origin $GITHUB_REF_NAME
-              git reset --hard origin/$GITHUB_REF_NAME
+              git fetch origin "$GITHUB_REF_NAME"
+              git reset --hard "origin/$GITHUB_REF_NAME"
             fi
 
             # Ensure case_data directory exists and has correct permissions for local uploads
@@ -79,9 +93,10 @@ jobs:
             echo "Installing dependencies..."
             npm install --include=dev
 
-            # Apply committed Drizzle migrations on the server
+            # Apply the committed dbmate migrations (db/migrations/*.sql). Needs DATABASE_URL, loaded from .env above.
+            # (The old Drizzle migrator `db:migrate` is retired: it would build the legacy schema.)
             echo "Running database migrations..."
-            npm run db:migrate
+            npm run db:deploy
             
             # Ensure tsx and pm2 are installed
             echo "Installing global dependencies..."
