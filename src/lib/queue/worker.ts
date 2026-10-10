@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
 import { createWorkerConnection } from './client';
+import { processCaseCleanup, type CaseCleanupJob } from './case-cleanup';
+import { processMaintenance, scheduleMaintenance } from './maintenance';
 import { resend } from '../resend';
 
 export interface EmailJobData {
@@ -12,14 +14,41 @@ export interface EmailJobData {
 
 let worker: Worker | null = null;
 
+// Each BullMQ Worker needs its OWN Redis connection (blocking commands). Concurrency is per queue.
+function startBackgroundWorkers() {
+  const cleanup = new Worker<CaseCleanupJob>(
+    'case-cleanup',
+    async (job) => {
+      const r = await processCaseCleanup(job.data);
+      console.log(`[CaseCleanup] ${job.data.caseNumber ?? job.data.caseId}: ${r.objectsRequested} object(s) deleted, ${r.objectsKept} kept (still referenced), ${r.notificationsRemoved} notification(s) removed`);
+      return r;
+    },
+    { connection: createWorkerConnection() as any, concurrency: 3 },
+  );
+  cleanup.on('failed', (job, err) => console.error(`[CaseCleanup] job ${job?.id} attempt ${job?.attemptsMade} failed: ${err.message}`));
+  cleanup.on('error', (err) => console.error('[CaseCleanup] worker error:', err.message));
+
+  const maintenance = new Worker(
+    'maintenance',
+    async (job) => processMaintenance(job.name),
+    { connection: createWorkerConnection() as any, concurrency: 1 },
+  );
+  maintenance.on('failed', (job, err) => console.error(`[Maintenance] ${job?.name} failed: ${err.message}`));
+  maintenance.on('error', (err) => console.error('[Maintenance] worker error:', err.message));
+  scheduleMaintenance().catch((err) => console.error('[Maintenance] scheduling failed:', err.message));
+  console.log('[Worker] case-cleanup + maintenance workers initialized');
+}
+
 if (process.env.NODE_ENV === 'production') {
   worker = createWorker();
+  startBackgroundWorkers();
 } else {
   // Prevent multiple worker instances across HMR reloads in development.
   // Store both the worker and its dedicated connection in global so they survive reloads.
   if (!(global as any).emailWorker) {
     (global as any).emailWorkerConnection = createWorkerConnection();
     (global as any).emailWorker = createWorker((global as any).emailWorkerConnection);
+    startBackgroundWorkers();
   }
   worker = (global as any).emailWorker;
 }
