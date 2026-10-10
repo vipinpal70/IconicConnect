@@ -43,12 +43,18 @@ exec 9>"$LOCAL_DIR/.r2-backup.lock"
 flock -n 9 || { echo "another R2 backup is already running"; exit 0; }
 
 # 1 ─ a fresh, verified local dump (reuse tonight's local backup if it is recent, else take one now)
-latest_local() { find "$LOCAL_DIR" -maxdepth 1 -name "${DB}_*.dump" -type f -mmin "-$((MAX_AGE_HOURS * 60))" -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-; }
-SRC="$(latest_local || true)"
+# newest local dump; with a max age (hours) it only counts if recent enough, with none it is simply the newest.
+latest_local() {
+  local age=()
+  [ -n "${1:-}" ] && age=(-mmin "-$(($1 * 60))")
+  find "$LOCAL_DIR" -maxdepth 1 -name "${DB}_*.dump" -type f "${age[@]}" -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-
+}
+SRC=""
+[ "${FORCE_FRESH_DUMP:-0}" = "1" ] || SRC="$(latest_local "$MAX_AGE_HOURS" || true)"
 if [ -z "$SRC" ]; then
-  echo "no local dump newer than ${MAX_AGE_HOURS}h — taking one now"
+  [ "${FORCE_FRESH_DUMP:-0}" = "1" ] && echo "FORCE_FRESH_DUMP=1 — taking a new dump" || echo "no local dump newer than ${MAX_AGE_HOURS}h — taking one now"
   BACKUP_DIR="$LOCAL_DIR" "$HERE/backup-postgres.sh"
-  SRC="$(latest_local)"
+  SRC="$(latest_local)"       # the one just created (newest), whatever the age window
 fi
 [ -s "$SRC" ] || { echo "no usable local dump found" >&2; exit 1; }
 echo "source: $SRC ($(du -h "$SRC" | cut -f1))"

@@ -119,6 +119,18 @@ are ever deleted; anything else in the bucket is left alone (max 50 deletions pe
    * edit `/opt/iconic/r2-backup.env` on the server, then `sudo systemctl enable --now iconic-backup-r2.timer`.
 4. Test it now: `sudo systemctl start iconic-backup-r2.service && journalctl -u iconic-backup-r2.service -n 20`.
 
+### Backing up your LOCAL (laptop) database to R2
+Uses the R2 credentials already in `.env`; no server needed.
+```bash
+npm run db:backup:r2              # fresh dump → AES-256 encrypt → upload → verify → then delete the previous one
+npm run db:backup:r2 -- list      # what is stored
+npm run db:backup:r2 -- restore   # newest → scratch database "restore_check_r2" (your real DB is never touched)
+```
+Stored under `db-backups/local-dev/` (separate from any server backup prefix, so they can never prune each other).
+The key is generated once at `~/.config/iconic/backup_key` — **copy it somewhere safe**; backups cannot be decrypted without it.
+The app's R2 orphan-cleanup and 3-month retention jobs are hard-blocked from `db-backups/` (`src/lib/r2-objects.ts`),
+so sharing the app bucket is safe — a dedicated bucket + scoped token is still the better long-term setup.
+
 **Recommended:** set `R2_KEEP_BACKUPS=3`. With 1, a backup that uploads fine but turns out to be bad (logical
 corruption you only notice a week later) replaces your last good copy. R2 storage for three small dumps costs almost nothing.
 Add a free [healthchecks.io](https://healthchecks.io) URL as `HEALTHCHECK_URL` so you are *told* if backups stop running.

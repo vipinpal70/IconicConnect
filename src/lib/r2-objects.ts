@@ -25,7 +25,16 @@ export function keyFromProxyUrl(url: string | null | undefined): string | null {
   return `${labName}/${fileName}`;
 }
 
-/** Every object currently in the R2 bucket, paginated. */
+/**
+ * Key prefixes that belong to infrastructure, not to the app's own files — database backups live here
+ * (deploy/backup-to-r2.sh). The orphan sweep and the retention job delete anything that is not referenced by the
+ * database / is old, so without this guard they would delete the backups. Protected keys are (1) never listed and
+ * (2) refused by deleteKeys() — two independent layers.
+ */
+export const PROTECTED_KEY_PREFIXES = ['db-backups/'] as const;
+export const isProtectedKey = (key: string): boolean => PROTECTED_KEY_PREFIXES.some((p) => key.startsWith(p));
+
+/** Every object currently in the R2 bucket, paginated (protected infrastructure prefixes excluded). */
 export async function listAllR2Objects(): Promise<Array<{ key: string; lastModified?: Date }>> {
   const objects: Array<{ key: string; lastModified?: Date }> = [];
   let continuationToken: string | undefined;
@@ -39,7 +48,7 @@ export async function listAllR2Objects(): Promise<Array<{ key: string; lastModif
       })
     );
     for (const obj of res.Contents ?? []) {
-      if (obj.Key) objects.push({ key: obj.Key, lastModified: obj.LastModified });
+      if (obj.Key && !isProtectedKey(obj.Key)) objects.push({ key: obj.Key, lastModified: obj.LastModified });
     }
     continuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (continuationToken);
@@ -48,7 +57,9 @@ export async function listAllR2Objects(): Promise<Array<{ key: string; lastModif
 }
 
 /** Delete keys in batches of 1000 (the DeleteObjects limit). Returns the count actually deleted. */
-export async function deleteKeys(keys: string[]): Promise<number> {
+export async function deleteKeys(requested: string[]): Promise<number> {
+  const keys = requested.filter((k) => !isProtectedKey(k)); // never delete backups, whoever asks
+  if (keys.length !== requested.length) console.error(`[R2] refused to delete ${requested.length - keys.length} protected key(s)`);
   let deleted = 0;
   for (let i = 0; i < keys.length; i += 1000) {
     const batch = keys.slice(i, i + 1000);
@@ -63,5 +74,6 @@ export async function deleteKeys(keys: string[]): Promise<number> {
       console.error(`[R2] Failed to delete ${err.Key}: ${err.Code} ${err.Message}`);
     }
   }
-  return deleted;
+  // Protected keys were refused on purpose; they count as handled so callers do not retry forever.
+  return deleted + (requested.length - keys.length);
 }
