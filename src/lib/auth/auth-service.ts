@@ -14,8 +14,10 @@ import { createSession, destroyAllSessions } from './session'
 export const normalizeEmail = (e: string) => e.trim().toLowerCase()
 
 export type SignInResult =
-  | { ok: true; sid: string; role: string; status: string; clientId: string | null }
-  | { ok: false; reason: 'invalid' | 'blocked'; status?: string }
+  | { ok: true; sid: string; userId: string; role: string; status: string; clientId: string | null }
+  // `why`/`userId` are for the audit log ONLY — never put them in an HTTP response (no account enumeration).
+  | { ok: false; reason: 'invalid'; why: 'unknown_email' | 'bad_password'; userId: string | null }
+  | { ok: false; reason: 'blocked'; status: string; userId: string }
 
 /** One indexed read (users ⨝ profiles by PK) → verify → one Redis write. */
 export async function signIn(emailRaw: string, password: string): Promise<SignInResult> {
@@ -31,8 +33,9 @@ export async function signIn(emailRaw: string, password: string): Promise<SignIn
     .limit(1)
 
   const verdict = await verifyPassword(password, row?.hash ?? null)
-  if (!row || !verdict.ok || !row.role) return { ok: false, reason: 'invalid' }
-  if (row.status !== 'active') return { ok: false, reason: 'blocked', status: row.status ?? 'pending' }
+  if (!row) return { ok: false, reason: 'invalid', why: 'unknown_email', userId: null }
+  if (!verdict.ok || !row.role) return { ok: false, reason: 'invalid', why: 'bad_password', userId: row.id }
+  if (row.status !== 'active') return { ok: false, reason: 'blocked', status: row.status ?? 'pending', userId: row.id }
 
   if (verdict.needsRehash) {
     // Legacy bcrypt (migrated from Supabase) → argon2id, transparently.
@@ -44,7 +47,7 @@ export async function signIn(emailRaw: string, password: string): Promise<SignIn
   const { sid } = await createSession({
     userId: row.id, email: row.email, role: row.role, userType: row.userType!, clientId: row.clientId, status: row.status,
   })
-  return { ok: true, sid, role: row.role, status: row.status, clientId: row.clientId }
+  return { ok: true, sid, userId: row.id, role: row.role, status: row.status, clientId: row.clientId }
 }
 
 export class EmailTakenError extends Error { constructor() { super('A user with this email already exists.') } }

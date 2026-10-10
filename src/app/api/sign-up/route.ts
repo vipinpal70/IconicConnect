@@ -1,3 +1,4 @@
+import { logAuthEvent } from '@/src/lib/auth/audit'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema'
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to save profile' }, { status: 500 })
     }
     body.id = newUserId
+    logAuthEvent({ event: 'account_created', userId: newUserId, email: body.email, headers: req.headers, details: { via: 'signup', role: 'client' } })
 
     // Automatically ensure default catalog exists and seed the client's allocated price list
     await handleProfileCreated(body.id, 'client').catch((err) =>

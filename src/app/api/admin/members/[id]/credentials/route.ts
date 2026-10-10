@@ -1,3 +1,4 @@
+import { logAuthEvent } from '@/src/lib/auth/audit';
 import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link'
 import { getEmail } from '@/src/lib/auth/auth-service'
 import { escapeHtml } from '@/src/lib/security/html'
@@ -52,6 +53,7 @@ export async function POST(
 
     // 2. Hash + store; every existing session of that user is revoked.
     await setPassword(id, password);
+    logAuthEvent({ event: 'pw_changed_by_admin', userId: id, actorId: user.id, email: await getEmail(id), headers: req.headers, details: { sessionsRevoked: true } });
 
     // 3. Send email with new credentials via Queue — queueEmailSafely never
     // throws, so a queue/Redis failure here can't 500 a request whose primary

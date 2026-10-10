@@ -1,3 +1,4 @@
+import { logAuthEvent } from '@/src/lib/auth/audit'
 import { getEmails } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/src/lib/auth/server'
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
       password,
     })
 
+    logAuthEvent({ event: 'account_created', userId: newSubUser.id, actorId: profile.id, email, headers: req.headers, details: { via: 'subuser', role: 'subuser' } })
     const formatted = {
       id: newSubUser.id,
       name: newSubUser.fullName || '',

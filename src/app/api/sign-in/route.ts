@@ -1,3 +1,4 @@
+import { logAuthEvent, shouldLogLockout } from '@/src/lib/auth/audit'
 import { NextRequest, NextResponse } from 'next/server'
 import { signIn, normalizeEmail } from '@/src/lib/auth/auth-service'
 import { SESSION_COOKIE, sessionCookieOptions } from '@/src/lib/auth/session'
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     // Lock BEFORE hashing so a flood of guesses can't be used to burn CPU on argon2 either.
     const attempts = await loginAttemptStatus(key, ip)
     if (attempts.locked) {
+      if (await shouldLogLockout(key)) logAuthEvent({ event: 'signin_locked', email: key, headers: req.headers, details: { byEmail: attempts.byEmail, byIp: attempts.byIp } })
       return NextResponse.json(
         { error: 'Too many failed attempts. Please wait 15 minutes or reset your password.' },
         { status: 429, headers: { 'Retry-After': '900' } },
@@ -34,12 +36,14 @@ export async function POST(req: NextRequest) {
 
     if (!result.ok && result.reason === 'invalid') {
       await recordLoginFailure(key, ip)
+      logAuthEvent({ event: 'signin_fail', userId: result.userId, email: key, headers: req.headers, details: { reason: result.why } })
       // Same message for unknown email / wrong password.
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
     await clearLoginFailures(key)
 
     if (!result.ok) {
+      logAuthEvent({ event: 'signin_blocked', userId: result.userId, email: key, headers: req.headers, details: { status: result.status } })
       return NextResponse.json({
         success: false,
         isBlocked: true,
@@ -49,6 +53,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    logAuthEvent({ event: 'signin_ok', userId: result.userId, email: key, headers: req.headers, details: { role: result.role } })
     const response = NextResponse.json({ success: true, redirectUrl: HOME[result.role] ?? '/dashboard' })
     response.cookies.set(SESSION_COOKIE, result.sid, sessionCookieOptions)
     return response

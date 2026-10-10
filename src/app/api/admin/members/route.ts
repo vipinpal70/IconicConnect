@@ -1,3 +1,4 @@
+import { logAuthEvent } from '@/src/lib/auth/audit'
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
@@ -103,6 +104,7 @@ export async function POST(req: NextRequest) {
         profile: { fullName, role, userType, phone, status: 'active' },
       });
       authData = { user: { id: created.id } };
+      logAuthEvent({ event: 'account_created', userId: created.id, actorId: user.id, email, headers: req.headers, details: { via: 'admin', role, userType } });
     } catch (dbError: any) {
       if (dbError instanceof EmailTakenError) {
         return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 409 });

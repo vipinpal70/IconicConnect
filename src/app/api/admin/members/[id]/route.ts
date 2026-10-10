@@ -1,3 +1,4 @@
+import { logAuthEvent } from '@/src/lib/auth/audit';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEmail } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db';
@@ -144,6 +145,15 @@ export async function PATCH(
     // (a suspended or demoted user must not keep working until their 7 h session ends).
     if (updateData.role || updateData.userType || updateData.status) {
       await destroyAllSessions(id).catch((e) => console.error('[members PATCH] session revoke failed', e));
+
+      // Audit only what actually changed (from -> to); a no-op PATCH is not a security event.
+      const changes: Record<string, { from: string | null; to: string | null }> = {};
+      if (updateData.role && updateData.role !== existingProfile?.role) changes.role = { from: existingProfile?.role ?? null, to: updateData.role };
+      if (updateData.status && updateData.status !== existingProfile?.status) changes.status = { from: existingProfile?.status ?? null, to: updateData.status };
+      if (updateData.userType && updateData.userType !== existingProfile?.userType) changes.userType = { from: existingProfile?.userType ?? null, to: updateData.userType };
+      if (Object.keys(changes).length > 0) {
+        logAuthEvent({ event: 'role_changed', userId: id, actorId: user.id, email: await getEmail(id), headers: req.headers, details: { changes, sessionsRevoked: true } });
+      }
     }
 
     await Promise.all([
@@ -214,15 +224,20 @@ export async function DELETE(
   try {
     const [existingProfile] = await db.select().from(profiles).where(eq(profiles.id, id)).limit(1);
 
+    // Capture identity BEFORE deleting: afterwards the email is gone from `users`.
+    const deletedEmail = await getEmail(id);
+
     // 1. Delete the credential row; the profile row goes with it (ON DELETE CASCADE) and sessions are revoked.
     await deleteUser(id);
+    // userId is NULL on purpose: the account no longer exists, so a FK to it would be rejected. The id and email are kept in the record.
+    logAuthEvent({ event: 'account_deleted', userId: null, actorId: user.id, email: deletedEmail, headers: req.headers, details: { deletedUserId: id, role: existingProfile?.role ?? null } });
 
     await logActivity({
       actor: actorProfile,
       action: 'member.deleted',
       details: {
         memberId: id,
-        email: (await getEmail(existingProfile?.id)) ?? null,
+        email: deletedEmail || null,
         fullName: existingProfile?.fullName ?? null,
         role: existingProfile?.role ?? null,
         userType: existingProfile?.userType ?? null,

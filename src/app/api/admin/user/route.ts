@@ -1,3 +1,4 @@
+import { logAuthEvent } from '@/src/lib/auth/audit'
 
 
 /**
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
                 profile: { userType: 'admin_portal', role, status: 'active', fullName: fullName || null, phone: phone || null },
             })
             data = { user: { id: created.id } }
+            logAuthEvent({ event: 'account_created', userId: created.id, email, headers: req.headers, details: { via: 'admin_bootstrap', role: 'admin' } })
         } catch (dbError: any) {
             if (dbError instanceof EmailTakenError) {
                 return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 409 })

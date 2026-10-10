@@ -1,3 +1,4 @@
+import { logAuthEvent } from '@/src/lib/auth/audit'
 import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link'
 import { getEmail } from '@/src/lib/auth/auth-service'
 import { escapeHtml } from '@/src/lib/security/html'
@@ -69,6 +70,7 @@ export async function POST(
     }
 
     await setPassword(id, password)
+    logAuthEvent({ event: 'pw_changed_by_admin', userId: id, actorId: auth.profile.id, email: await getEmail(id), headers: req.headers, details: { sessionsRevoked: true } })
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const setLink = await createSetPasswordLink((await getEmail(client.id)))

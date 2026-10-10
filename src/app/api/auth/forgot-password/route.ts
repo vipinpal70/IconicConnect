@@ -1,3 +1,4 @@
+import { logAuthEvent } from '@/src/lib/auth/audit';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
@@ -17,6 +18,8 @@ export async function POST(req: NextRequest) {
 
     // 1. Look the account up (one indexed read). Identical response whether or not it exists — no enumeration.
     const userId = await findUserIdByEmail(email);
+    // Recorded for both outcomes (unknown emails = probing) but the response below is identical either way.
+    logAuthEvent({ event: 'pw_reset_requested', userId, email, headers: req.headers, details: { known: Boolean(userId) } });
     if (!userId) return NextResponse.json(GENERIC_OK);
     const [profile] = await db.select({ fullName: profiles.fullName }).from(profiles).where(eq(profiles.id, userId)).limit(1);
 
