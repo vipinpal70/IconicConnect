@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     await Promise.all([
       deleteCachedData(`profile:${clientId}`),
       deleteCachedData(`client:${clientId}`),
-      deleteCachedData('clients:list'),
+      deleteCachedData('clients:list:v2'),
     ])
 
     await logActivity({

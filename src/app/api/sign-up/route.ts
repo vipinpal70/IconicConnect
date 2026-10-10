@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     )
 
     // Bust the admin clients-list cache so the new registration shows up immediately
-    await deleteCachedData('clients:list').catch((err) =>
+    await deleteCachedData('clients:list:v2').catch((err) =>
       console.error('[sign-up deleteCachedData]', err)
     )
 

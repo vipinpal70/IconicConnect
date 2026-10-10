@@ -64,7 +64,7 @@ export async function GET(
 async function invalidateClientCaches(id: string) {
   await Promise.all([
     deleteCachedData(clientKey(id)),
-    deleteCachedData('clients:list'),
+    deleteCachedData('clients:list:v2'),
   ])
 }
 

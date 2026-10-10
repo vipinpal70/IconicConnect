@@ -1,89 +1,61 @@
 "use client"
 
-import { useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Suspense, useEffect, useState } from "react"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { format } from "date-fns"
-import { Card, CardContent } from "@/src/components/ui/card"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { Label } from "@/src/components/ui/label"
 import { Textarea } from "@/src/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/src/components/ui/dialog"
-import { Badge } from "@/src/components/ui/badge"
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuTrigger, DropdownMenuSeparator,
-} from "@/src/components/ui/dropdown-menu"
-import {
-  Building2, Mail, Phone, MapPin, ShieldCheck, ArrowRight, CircleCheck, CircleX,
-  RefreshCw, MoreVertical, UserX, UserCheck, Trash2, AlertTriangle,
-} from "lucide-react"
+import { AlertTriangle, SearchX, Users } from "lucide-react"
 import { toast } from "sonner"
+import { ClientCard, type ClientPaymentSummary, type ClientRow } from "./_components/ClientCard"
+import { ClientFilters, type Facets } from "./_components/ClientFilters"
+import { ClientPagination } from "./_components/ClientPagination"
+import { useClientFilters } from "./_components/useClientFilters"
 
-type ClientPaymentSummary = {
-  clientId: string
-  invoiceId: string
-  invoiceNumber: string
-  clientPaid: boolean
-  clientPaymentDate: string | null
-  received: boolean
-  pendingCount: number
-  totalInvoices: number
-}
+type ListResponse = { data: ClientRow[]; total: number; page: number; limit: number; pageCount: number; facets: Facets }
 
-type ClientProfile = {
-  id: string
-  fullName: string | null
-  email: string
-  labName: string | null
-  phone: string | null
-  city: string | null
-  state: string | null
-  status: string
-  plan: string
-  createdAt: string
-}
-
-const statusColor: Record<string, string> = {
-  Active: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-  Onboarding: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-  Trial: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  Onboarded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-  pending: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  Paused: "bg-slate-500/10 text-slate-500 border-slate-500/20",
-}
+const PAGE_SIZE = 24
 
 export default function AdminClients() {
+  // useSearchParams() (inside the filter hook) must sit under a Suspense boundary.
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <ClientsDirectory />
+    </Suspense>
+  )
+}
+
+function ClientsDirectory() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [onboardOpen, setOnboardOpen] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [clientToDelete, setClientToDelete] = useState<ClientProfile | null>(null)
+  const [clientToDelete, setClientToDelete] = useState<ClientRow | null>(null)
+  const { filters, update, input, setInput, activeCount, clearAll } = useClientFilters()
 
-  const { data: clients, isLoading, error } = useQuery<ClientProfile[]>({
-    queryKey: ["pendingClients"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/clients")
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useQuery<ListResponse>({
+    // Key starts with "pendingClients" so the existing invalidations (approve / status / delete / plan) still hit it.
+    queryKey: ["pendingClients", "list", filters],
+    queryFn: async ({ signal }) => {
+      const p = new URLSearchParams({ limit: String(PAGE_SIZE), page: String(filters.page), sort: filters.sort })
+      if (filters.q) p.set("q", filters.q)
+      if (filters.status) p.set("status", filters.status)
+      if (filters.plan) p.set("plan", filters.plan)
+      if (filters.payment) p.set("payment", filters.payment)
+      const res = await fetch(`/api/admin/clients/list?${p}`, { signal, cache: "no-store" })
       if (!res.ok) throw new Error("Failed to fetch clients")
       return res.json()
     },
+    placeholderData: keepPreviousData, // keep showing the old results (dimmed) instead of flashing a spinner
+    staleTime: 15_000,
   })
 
-  const handleHardRefresh = async () => {
-    setIsRefreshing(true)
-    try {
-      const res = await fetch("/api/admin/clients?refresh=true", { cache: "no-store" })
-      if (!res.ok) throw new Error("Failed to refresh clients")
-      const data = await res.json()
-      queryClient.setQueryData(["pendingClients"], data)
-      toast.success("Refreshed directly from the database")
-    } catch {
-      toast.error("Failed to refresh")
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
+  // If the last client of the last page was deleted/filtered away, step back to a page that exists.
+  useEffect(() => {
+    if (data && !isPlaceholderData && filters.page > data.pageCount) update({ page: data.pageCount }, true)
+  }, [data, isPlaceholderData, filters.page, update])
 
   const { data: paymentSummary } = useQuery<Record<string, ClientPaymentSummary>>({
     queryKey: ["clientPaymentSummary"],
@@ -109,6 +81,7 @@ export default function AdminClients() {
       queryClient.invalidateQueries({ queryKey: ["pendingClients"] })
       toast.success("Client approved successfully")
     },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   const statusMutation = useMutation({
@@ -140,207 +113,71 @@ export default function AdminClients() {
       }
       return res.json()
     },
-    onSuccess: (data: { warning?: string }) => {
+    onSuccess: (d: { warning?: string }) => {
       queryClient.invalidateQueries({ queryKey: ["pendingClients"] })
       setClientToDelete(null)
-      if (data?.warning) {
-        toast.warning(data.warning)
-      } else {
-        toast.success("Client deleted")
-      }
+      if (d?.warning) toast.warning(d.warning)
+      else toast.success("Client deleted")
     },
     onError: (err: Error) => toast.error(err.message),
   })
 
   if (isLoading) return <LoadingSpinner />
-  if (error) return <ErrorMessage message={(error as Error).message} />
+  if (error && !data) return <ErrorMessage message={(error as Error).message} />
+
+  const total = data?.total ?? 0
+  const from = total === 0 ? 0 : (filters.page - 1) * PAGE_SIZE + 1
+  const to = Math.min(filters.page * PAGE_SIZE, total)
 
   return (
-    
       <div className="space-y-4 animate-fade-in">
-        <div className="flex items-center justify-between gap-4">
-          <div className="space-y-0.5">
-            <h1 className="text-xl font-semibold text-foreground">Clients</h1>
-            <p className="text-xs text-muted-foreground">Review registrations, manage profiles and price lists</p>
-          </div>
+        <div className="space-y-0.5">
+          <h1 className="text-xl font-semibold text-foreground">Clients</h1>
+          <p className="text-xs text-muted-foreground">Review registrations, manage profiles and price lists</p>
+        </div>
 
-          {/* <Button onClick={() => setOnboardOpen(true)} size="sm" className="gradient-primary border-none shadow-glow text-xs h-8">
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Onboard Client
-          </Button> */}
+        <ClientFilters
+          filters={filters}
+          input={input}
+          onInput={setInput}
+          onChange={(patch) => update(patch)}
+          onClear={clearAll}
+          activeCount={activeCount}
+          facets={data?.facets}
+          onRefresh={() => { queryClient.invalidateQueries({ queryKey: ["clientPaymentSummary"] }); refetch() }}
+          refreshing={isFetching}
+        />
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs gap-1.5"
-            onClick={handleHardRefresh}
-            disabled={isRefreshing}
-            title="Bypass cache and reload directly from the database"
+        <p className="text-[11px] text-muted-foreground" aria-live="polite">
+          {total === 0 ? "No clients" : <>Showing <span className="font-semibold text-foreground">{from}–{to}</span> of <span className="font-semibold text-foreground">{total}</span> client{total === 1 ? "" : "s"}</>}
+          {activeCount > 0 && total > 0 ? " matching your filters" : ""}
+        </p>
+
+        {data && data.data.length === 0 ? (
+          <EmptyState filtered={activeCount > 0} onClear={clearAll} />
+        ) : (
+          <div
+            className={`grid grid-cols-1 gap-3 transition-opacity sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 ${isPlaceholderData ? "opacity-60" : ""}`}
+            aria-busy={isPlaceholderData}
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-            {isRefreshing ? "Refreshing…" : "Refresh"}
-          </Button>
-        </div>
+            {data?.data.map((client) => (
+              <ClientCard
+                key={client.id}
+                client={client}
+                payment={paymentSummary?.[client.id]}
+                statusBusy={statusMutation.isPending}
+                approveBusy={approveMutation.isPending}
+                deleteBusy={deleteMutation.isPending}
+                onOpen={() => router.push(`/admin/clients/${client.id}`)}
+                onApprove={() => approveMutation.mutate(client.id)}
+                onSetStatus={(status) => statusMutation.mutate({ id: client.id, status })}
+                onDelete={() => setClientToDelete(client)}
+              />
+            ))}
+          </div>
+        )}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-          {clients?.map((client) => (
-            <Card
-              key={client.id}
-              className="group cursor-pointer border-border/50 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-sm"
-              role="button"
-              tabIndex={0}
-              onClick={() => router.push(`/admin/clients/${client.id}`)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault()
-                  router.push(`/admin/clients/${client.id}`)
-                }
-              }}
-            >
-              <CardContent className="space-y-3 p-3.5">
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-semibold  text-primary-foreground shadow-sm">
-                      {client.labName?.charAt(0) || client.fullName?.charAt(0) || <Building2 className="h-4 w-4" />}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold  text-slate-800 group-hover:text-primary">{client.labName || "No Lab Name"}</p>
-                      <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">{client.id.slice(0, 8)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Badge
-                      variant="outline"
-                      className={`scale-90 origin-right shrink-0 ${client.status === "inactive"
-                        ? "bg-red-500/10 text-red-600 border-red-500/20"
-                        : statusColor[client.status === "pending" ? "pending" : client.plan] || statusColor.Active
-                        }`}
-                    >
-                      {client.status === "pending"
-                        ? "Pending Approval"
-                        : client.status === "inactive"
-                          ? "Inactive"
-                          : client.plan}
-                    </Badge>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48 text-xs" onClick={(event) => event.stopPropagation()}>
-                        {client.status === "inactive" ? (
-                          <DropdownMenuItem
-                            className="gap-1.5 text-xs"
-                            disabled={statusMutation.isPending}
-                            onClick={() => statusMutation.mutate({ id: client.id, status: "active" })}
-                          >
-                            <UserCheck className="h-3.5 w-3.5" />
-                            Reactivate
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem
-                            className="gap-1.5 text-xs"
-                            disabled={statusMutation.isPending}
-                            onClick={() => statusMutation.mutate({ id: client.id, status: "inactive" })}
-                          >
-                            <UserX className="h-3.5 w-3.5" />
-                            Deactivate
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="gap-1.5 text-xs text-red-500 hover:text-red-600 focus:text-red-600 focus:bg-red-50"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => setClientToDelete(client)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <MapPin className="h-3 w-3 text-primary/60" />
-                    <span className="truncate">{client.city || "No City"}, {client.state || "No State"}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Mail className="h-3 w-3 text-primary/60" />
-                    <span className="truncate">{client.email}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Phone className="h-3 w-3 text-primary/60" />
-                    <span>{client.phone || "No Phone"}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-border/50 pt-2 text-[10px]">
-                  <span className="text-muted-foreground">
-                    POC: <span className="font-semibold text-slate-700">{client.fullName || "-"}</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    Reg: <span className="font-semibold text-slate-700">{format(new Date(client.createdAt), "MMM dd")}</span>
-                  </span>
-                </div>
-
-                {/* Payment indicator */}
-                {paymentSummary?.[client.id] ? (
-                  <div className="flex items-center justify-between border-t border-border/50 pt-1.5 text-[10px]">
-                    {paymentSummary[client.id].clientPaid ? (
-                      <div className="flex items-center gap-1 text-green-600">
-                        <CircleCheck className="h-3.5 w-3.5 text-green-500" />
-                        <span className="font-semibold">
-                          {paymentSummary[client.id].clientPaymentDate
-                            ? `Paid ${new Date(paymentSummary[client.id].clientPaymentDate!).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-                            : "Latest Paid"}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-red-500">
-                        <CircleX className="h-3.5 w-3.5 text-red-400" />
-                        <span className="font-semibold">
-                          {paymentSummary[client.id].pendingCount > 1
-                            ? `${paymentSummary[client.id].pendingCount} unpaid`
-                            : "Unpaid"}
-                        </span>
-                      </div>
-                    )}
-                    <span className="text-muted-foreground">
-                      {paymentSummary[client.id].totalInvoices} invoice{paymentSummary[client.id].totalInvoices !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-                ) : null}
-
-                <div className="flex items-center justify-between pt-1 text-[10px] text-primary font-semibold ">
-                  <span>Open client profile</span>
-                  <ArrowRight className="h-3 w-3" />
-                </div>
-
-                {client.status === "pending" && (
-                  <Button
-                    className="mt-1.5 h-7 w-full gap-1.5 text-[10px]"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      approveMutation.mutate(client.id)
-                    }}
-                    disabled={approveMutation.isPending}
-                  >
-                    <ShieldCheck className="h-3 w-3" />
-                    Approve Registration
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <ClientPagination page={filters.page} pageCount={data?.pageCount ?? 1} onPage={(p) => { update({ page: p }, true); window.scrollTo({ top: 0, behavior: "smooth" }) }} />
 
         <Dialog open={onboardOpen} onOpenChange={setOnboardOpen}>
           <DialogContent className="sm:max-w-lg">
@@ -435,6 +272,20 @@ export default function AdminClients() {
         </Dialog>
       </div>
 
+  )
+}
+
+function EmptyState({ filtered, onClear }: { filtered: boolean; onClear: () => void }) {
+  const Icon = filtered ? SearchX : Users
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
+      <Icon className="mb-3 h-8 w-8 text-muted-foreground/60" />
+      <p className="text-sm font-semibold text-foreground">{filtered ? "No clients match your filters" : "No clients yet"}</p>
+      <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+        {filtered ? "Try a different search term or remove some filters." : "New lab registrations will appear here for approval."}
+      </p>
+      {filtered && <Button variant="outline" size="sm" className="mt-4 h-8 text-xs" onClick={onClear}>Clear all filters</Button>}
+    </div>
   )
 }
 

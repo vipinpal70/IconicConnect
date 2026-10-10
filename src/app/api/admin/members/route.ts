@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Invalidate clients list so the next fetch reflects the new member
-    await deleteCachedData('clients:list').catch(() => {})
+    await deleteCachedData('clients:list:v2').catch(() => {})
 
     return NextResponse.json({ success: true, user: authData.user, emailQueued });
   } catch (error) {

@@ -159,7 +159,7 @@ export async function PATCH(
     await Promise.all([
       deleteCachedData(`profile:${id}`),
       deleteCachedData(`client:${id}`),
-      deleteCachedData('clients:list'),
+      deleteCachedData('clients:list:v2'),
     ])
 
     await logActivity({
@@ -247,7 +247,7 @@ export async function DELETE(
     await Promise.all([
       deleteCachedData(`profile:${id}`),
       deleteCachedData(`client:${id}`),
-      deleteCachedData('clients:list'),
+      deleteCachedData('clients:list:v2'),
     ])
 
     return NextResponse.json({ success: true });

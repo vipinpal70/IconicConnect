@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
-import { profiles } from '@/src/db/schema/profile'
-import { eq } from 'drizzle-orm'
+import { profiles, users } from '@/src/db/schema/profile'
+import { eq, getTableColumns } from 'drizzle-orm'
 import { createClient } from '@/src/lib/auth/server'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 
-const CLIENTS_LIST_KEY = 'clients:list'
+const CLIENTS_LIST_KEY = 'clients:list:v2'
 const CLIENTS_LIST_TTL = 3600 // 1 hour
 
 export async function GET(req: NextRequest) {
@@ -17,26 +17,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if the requester is an admin
-    const [adminProfile] = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)
-    if (!adminProfile || adminProfile.role !== 'admin') {
+    // Role comes from the Redis session — no DB read needed for the authorization check.
+    if (user.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Legacy full-list endpoint (billing / offers / cases pickers). The Clients page uses /api/admin/clients/list.
     // ?refresh=true bypasses Redis and re-populates it from a fresh DB read —
     // used by the admin UI's "hard refresh" button.
     const forceRefresh = new URL(req.url).searchParams.get('refresh') === 'true'
 
     if (!forceRefresh) {
-      const cached = await getCachedData<typeof profiles.$inferSelect[]>(CLIENTS_LIST_KEY)
+      const cached = await getCachedData<Array<typeof profiles.$inferSelect & { email: string }>>(CLIENTS_LIST_KEY)
       if (cached) {
         return NextResponse.json(cached)
       }
     }
 
     // Fetch all clients
-    const allClients = await db.select()
+    // email lives in `users` now (single source of truth), so it must be joined in.
+    const allClients = await db.select({ ...getTableColumns(profiles), email: users.email })
       .from(profiles)
+      .innerJoin(users, eq(users.id, profiles.id))
       .where(eq(profiles.role, 'client'))
       .orderBy(profiles.createdAt)
 
