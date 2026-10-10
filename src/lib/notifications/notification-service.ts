@@ -1,3 +1,4 @@
+import { users } from '@/src/db/schema/profile'
 import { db } from '@/src/db';
 import { notifications, notificationPreferences } from '@/src/db/schema/notification';
 import { profiles } from '@/src/db/schema/profile';
@@ -101,7 +102,7 @@ export class NotificationService {
 
     const targetIds = Array.from(new Set(items.map((p) => p.targetUserId)));
     const [targetProfiles, prefRows] = await Promise.all([
-      db.select({ id: profiles.id, email: profiles.email }).from(profiles).where(inArray(profiles.id, targetIds)),
+      db.select({ id: profiles.id, email: users.email }).from(profiles).innerJoin(users, eq(users.id, profiles.id)).where(inArray(profiles.id, targetIds)),
       db.select().from(notificationPreferences).where(inArray(notificationPreferences.userId, targetIds)),
     ]);
     const emailById = new Map(targetProfiles.map((r) => [r.id, r.email]));

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, casePreviewFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { eq, and } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
 import { invalidateCasesCache } from '@/src/lib/redis-cache';

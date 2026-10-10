@@ -1,12 +1,13 @@
 import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link'
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { escapeHtml } from '@/src/lib/security/html'
 import { validatePasswordStrength } from '@/src/lib/security/password'
 import { NextRequest, NextResponse } from 'next/server'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { createClient } from '@/src/lib/supabase/server'
-import { supabaseAdmin } from '@/src/lib/supabase/admin'
+import { createClient } from '@/src/lib/auth/server'
+import { setPassword } from '@/src/lib/auth/auth-service'
 import { logActivity } from '@/src/lib/activity-log'
 import { queueEmailSafely } from '@/src/lib/queue/jobs'
 
@@ -67,50 +68,22 @@ export async function POST(
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
 
-    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { password })
-
-    if (authError) {
-      // Fall back to a direct database update — see the file-level comment.
-      try {
-        const result = await db.execute(sql`
-          UPDATE auth.users
-          SET encrypted_password = extensions.crypt(${password}, extensions.gen_salt('bf', 10)),
-              updated_at = now()
-          WHERE id = ${id}
-          RETURNING id
-        `)
-        const resultShape = result as unknown as { rows?: unknown[] } & unknown[]
-        const updatedRows = Array.isArray(result) ? resultShape : (resultShape.rows ?? resultShape)
-        if (!updatedRows || (updatedRows as unknown[]).length === 0) {
-          return NextResponse.json(
-            { error: `No matching login found for ${client.email} in the authentication system.` },
-            { status: 400 }
-          )
-        }
-      } catch (dbError) {
-        console.error('[admin/clients/[id]/credentials] direct DB fallback failed', dbError)
-        return NextResponse.json({ error: authError.message || 'Failed to update password' }, { status: 400 })
-      }
-
-      // Revoke existing sessions so the old password/session can't keep working.
-      await db.execute(sql`DELETE FROM auth.sessions WHERE user_id = ${id}`)
-        .catch((err) => console.error('[admin/clients/[id]/credentials] session revoke failed', err))
-    }
+    await setPassword(id, password)
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const setLink = await createSetPasswordLink(client.email)
+    const setLink = await createSetPasswordLink((await getEmail(client.id)))
     const { queued: emailQueued, error: emailError } = await queueEmailSafely({
-      to: client.email,
+      to: (await getEmail(client.id)),
       subject: 'Your IconicConnect Password has been Reset',
       type: 'credentials',
       html: `
         <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;border:1px solid #e5e7eb;border-radius:12px;">
           <h2 style="color:#065f46;margin-bottom:4px;">Password Reset</h2>
-          <p style="color:#111827;">Hello ${escapeHtml(client.fullName || client.labName || client.email)},</p>
+          <p style="color:#111827;">Hello ${escapeHtml(client.fullName || client.labName || (await getEmail(client.id)))},</p>
           <p style="color:#374151;">Your IconicConnect password has been reset by an administrator.</p>
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:20px 0;">
             <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Login URL:</strong> <a href="${appUrl}/auth/sign-in" style="color:#059669;">${appUrl}/auth/sign-in</a></p>
-            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${escapeHtml(client.email)}</p>
+            <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Email:</strong> ${escapeHtml((await getEmail(client.id)))}</p>
             ${setPasswordBlock(setLink, appUrl)}
           </div>
           
@@ -124,7 +97,7 @@ export async function POST(
     await logActivity({
       actor: auth.profile,
       action: 'client.password_reset',
-      details: { clientId: id, labName: client.labName, email: client.email, emailQueued },
+      details: { clientId: id, labName: client.labName, email: (await getEmail(client.id)), emailQueued },
     }).catch((err) => console.error('[client.password_reset logActivity]', err))
 
     return NextResponse.json({ success: true, emailQueued })

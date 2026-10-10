@@ -1,10 +1,10 @@
 import { isValidUploadFileName } from '@/src/lib/security/file-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { profiles, subUsers } from '@/src/db/schema/profile';
+import { profiles } from '@/src/db/schema/profile';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import {
   CreateMultipartUploadCommand,
   UploadPartCommand,
@@ -47,7 +47,7 @@ async function resolveClientContext(profile: AuthedProfile, adminClientId: strin
   } else if (profile.role === 'client') {
     clientId = profile.id;
   } else if (profile.role === 'subuser') {
-    const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
+    const subUserRecord = await Promise.resolve(profile.clientId ? [{ clientId: profile.clientId }] : []);
     if (!subUserRecord.length) {
       return { error: NextResponse.json({ error: 'Subuser parent client not found' }, { status: 400 }) };
     }

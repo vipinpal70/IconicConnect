@@ -2,9 +2,9 @@ import { caseBulkDownloads } from '@/src/db/schema/bulk-download';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, EDITABLE_STATUSES, caseMessages, caseFiles, caseHoldFiles } from '@/src/db/schema/case';
+import { cases, EDITABLE_STATUSES, caseMessages, caseFiles, caseHoldFiles, casePreviewFiles, caseReferenceFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { eq, and, or, like, sql } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { logActivity } from '@/src/lib/activity-log';
@@ -851,8 +851,13 @@ export async function DELETE(
       // 5. Delete case messages
       await tx.delete(caseMessages).where(eq(caseMessages.caseId, id));
 
-      // 6. Delete case files records associated with the case
+      // 6. Delete every file record that points at the case. These FKs are NO ACTION (not cascading), so a
+      //    case with preview files, reference images or hold images could not be deleted before.
+      //    (The R2 objects themselves become orphans and are reaped by the R2 cleanup scheduler.)
       await tx.delete(caseBulkDownloads).where(eq(caseBulkDownloads.caseId, id));
+      await tx.delete(casePreviewFiles).where(eq(casePreviewFiles.caseId, id));
+      await tx.delete(caseReferenceFiles).where(eq(caseReferenceFiles.caseId, id));
+      await tx.delete(caseHoldFiles).where(eq(caseHoldFiles.caseId, id));
       await tx.delete(caseFiles).where(eq(caseFiles.caseId, id));
 
       // 7. Finally delete the case

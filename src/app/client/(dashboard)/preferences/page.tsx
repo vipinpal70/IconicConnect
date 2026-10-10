@@ -9,7 +9,7 @@ import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { Label } from "@/src/components/ui/label";
 import { toast } from "sonner";
 import { Badge } from "@/src/components/ui/badge";
-import { createClient } from "@/src/lib/supabase/client";
+import { createClient } from "@/src/lib/auth/client";
 import {
 	Dialog,
 	DialogContent,

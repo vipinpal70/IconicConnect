@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { profiles, subUsers } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { profiles } from '@/src/db/schema/profile';
+import { createClient } from '@/src/lib/auth/server';
 import { eq } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
         allowed = true;
       }
     } else if (profile.role === 'subuser') {
-      const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
+      const subUserRecord = await Promise.resolve(profile.clientId ? [{ clientId: profile.clientId }] : []);
       if (subUserRecord.length) {
         const parentClient = await db.select().from(profiles).where(eq(profiles.id, subUserRecord[0].clientId)).limit(1).then(res => res[0]);
         if (parentClient) {
@@ -195,7 +195,7 @@ export async function DELETE(req: NextRequest) {
         allowed = true;
       }
     } else if (profile.role === 'subuser') {
-      const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
+      const subUserRecord = await Promise.resolve(profile.clientId ? [{ clientId: profile.clientId }] : []);
       if (subUserRecord.length) {
         const parentClient = await db.select().from(profiles).where(eq(profiles.id, subUserRecord[0].clientId)).limit(1).then(res => res[0]);
         if (parentClient) {

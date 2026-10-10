@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
-import { supabaseAdmin } from '@/src/lib/supabase/admin';
+import { createUserWithProfile, EmailTakenError } from '@/src/lib/auth/auth-service';
 import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link';
 import { escapeHtml } from '@/src/lib/security/html';
 import { validatePasswordStrength } from '@/src/lib/security/password';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { eq, desc } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
 import { isValidRoleForType } from '@/src/lib/auth/role';
@@ -94,40 +94,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
-    // 1. Create user in Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { fullName, role, userType },
-    });
-
-    if (authError || !authData.user) {
-      return NextResponse.json({ error: authError?.message || 'Failed to create auth user' }, { status: 400 });
-    }
-
-    // 2. Create profile in database
+    // Credentials + profile in one transaction.
+    let authData: { user: { id: string } };
     try {
-      await db.insert(profiles).values({
-        id: authData.user.id,
+      const created = await createUserWithProfile({
         email,
-        fullName,
-        role,
-        userType,
-        phone,
-        status: 'active',
+        password,
+        profile: { fullName, role, userType, phone, status: 'active' },
       });
+      authData = { user: { id: created.id } };
     } catch (dbError: any) {
-      // The auth user above was just created — if the profile fails to save,
-      // it's left as an orphaned Auth account with no matching profile. Clean
-      // it up so a duplicate-email attempt doesn't leave a ghost account behind.
-      console.error('[admin/members] profile insert failed', dbError);
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id).catch((delErr) =>
-        console.error('[admin/members] failed to clean up orphaned auth user', delErr)
-      );
-      if (dbError?.code === '23505') {
+      if (dbError instanceof EmailTakenError) {
         return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 409 });
       }
+      console.error('[admin/members] create failed', dbError);
       return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
-import { supabaseAdmin } from '@/src/lib/supabase/admin';
-import { createClient } from '@/src/lib/supabase/server';
+import { deleteUser } from '@/src/lib/auth/auth-service';
+import { destroyAllSessions } from '@/src/lib/auth/session';
+import { createClient } from '@/src/lib/auth/server';
 import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
 import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone';
@@ -10,7 +12,7 @@ import { deleteCachedData } from '@/src/lib/redis-cache';
 
 type MemberUpdateData = {
   fullName?: string
-  role?: 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | 'designer' | 'consultant'
+  role?: 'client' | 'subuser' | 'admin' | 'qc' | 'account_manager' | 'designer'
   status?: 'pending' | 'active' | 'inactive'
   phone?: string
   title?: string
@@ -129,7 +131,7 @@ export async function PATCH(
           actorUserId: user.id,
           targetUserId: id,
           title: 'Account Approved',
-          message: `Hello ${existingProfile.fullName || existingProfile.email}, your IconicConnect account has been approved and is now active.`,
+          message: `Hello ${existingProfile.fullName || (await getEmail(existingProfile.id))}, your IconicConnect account has been approved and is now active.`,
           link: '/dashboard',
           metadata: { role: existingProfile.role },
         });
@@ -138,16 +140,10 @@ export async function PATCH(
       }
     }
 
-    // 2. Update Auth user if needed (e.g. metadata)
-    const authUpdate: AuthMetadataUpdate = {};
-    if (updateData.fullName) authUpdate.fullName = updateData.fullName;
-    if (updateData.role) authUpdate.role = updateData.role;
-    if (updateData.userType) authUpdate.userType = updateData.userType;
-
-    if (Object.keys(authUpdate).length > 0) {
-      await supabaseAdmin.auth.admin.updateUserById(id, {
-        user_metadata: authUpdate,
-      });
+    // Role / status / type live in the Redis session — revoke so the change takes effect immediately
+    // (a suspended or demoted user must not keep working until their 7 h session ends).
+    if (updateData.role || updateData.userType || updateData.status) {
+      await destroyAllSessions(id).catch((e) => console.error('[members PATCH] session revoke failed', e));
     }
 
     await Promise.all([
@@ -218,26 +214,20 @@ export async function DELETE(
   try {
     const [existingProfile] = await db.select().from(profiles).where(eq(profiles.id, id)).limit(1);
 
-    // 1. Delete from Supabase Auth
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
-    if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 });
-    }
+    // 1. Delete the credential row; the profile row goes with it (ON DELETE CASCADE) and sessions are revoked.
+    await deleteUser(id);
 
     await logActivity({
       actor: actorProfile,
       action: 'member.deleted',
       details: {
         memberId: id,
-        email: existingProfile?.email ?? null,
+        email: (await getEmail(existingProfile?.id)) ?? null,
         fullName: existingProfile?.fullName ?? null,
         role: existingProfile?.role ?? null,
         userType: existingProfile?.userType ?? null,
       },
     });
-
-    // 2. Delete from Profile (Cascade should handle relations, but let's be explicit if needed)
-    await db.delete(profiles).where(eq(profiles.id, id));
 
     await Promise.all([
       deleteCachedData(`profile:${id}`),

@@ -1,8 +1,9 @@
+import { users } from '@/src/db/schema/profile'
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, caseFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { eq, inArray, asc } from 'drizzle-orm';
 
 /**
@@ -86,8 +87,8 @@ export async function POST(req: NextRequest) {
     const clientMap = new Map<string, string>();
     if (clientIds.length > 0) {
       const clientRows = await db
-        .select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: profiles.email })
-        .from(profiles)
+        .select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: users.email })
+        .from(profiles).innerJoin(users, eq(users.id, profiles.id))
         .where(inArray(profiles.id, clientIds));
       for (const c of clientRows) {
         clientMap.set(c.id, c.labName || c.fullName || c.email || '—');

@@ -1,9 +1,10 @@
+import { users } from '@/src/db/schema/profile'
 import { isValidUploadFileName } from '@/src/lib/security/file-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, casePreviewFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { eq, sql } from 'drizzle-orm';
 import { CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        const client = await db.select({ labName: profiles.labName, fullName: profiles.fullName, email: profiles.email }).from(profiles)
+        const client = await db.select({ labName: profiles.labName, fullName: profiles.fullName, email: users.email }).from(profiles).innerJoin(users, eq(users.id, profiles.id))
           .where(eq(profiles.id, caseRecord.clientId)).limit(1).then(r => r[0]);
         const labName = getProfileLabName(client);
 

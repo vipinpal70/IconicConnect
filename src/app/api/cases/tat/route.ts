@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
-import { profiles, subUsers } from "@/src/db/schema/profile";
-import { createClient } from "@/src/lib/supabase/server";
+import { profiles } from "@/src/db/schema/profile";
+import { createClient } from "@/src/lib/auth/server";
 import { eq, and, gte, isNotNull, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
@@ -40,11 +40,7 @@ export async function GET(req: NextRequest) {
       } else {
         clientId = profile.createdBy;
         if (!clientId) {
-          const subUserRecord = await db
-            .select()
-            .from(subUsers)
-            .where(eq(subUsers.id, profile.id))
-            .limit(1);
+          const subUserRecord = await Promise.resolve(profile.clientId ? [{ clientId: profile.clientId }] : []);
           if (subUserRecord.length > 0) {
             clientId = subUserRecord[0].clientId;
           }

@@ -3,7 +3,7 @@ import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
 import { invoices } from "@/src/db/schema/invoice";
 import { profiles } from "@/src/db/schema/profile";
-import { createClient } from "@/src/lib/supabase/server";
+import { createClient } from "@/src/lib/auth/server";
 import { eq, and, isNotNull, gte, lte, count, sql } from "drizzle-orm";
 import { isValidRoleForType } from "@/src/lib/auth/role";
 import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";

@@ -9,7 +9,7 @@ import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { eq, or } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { mapCaseToPricingInput, calculateCasePrice } from '@/src/lib/pricing'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 

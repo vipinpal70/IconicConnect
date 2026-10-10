@@ -1,8 +1,9 @@
+import { users } from '@/src/db/schema/profile'
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 
 /**
@@ -43,7 +44,7 @@ export async function GET(
         plan: profiles.plan,
         fullName: profiles.fullName,
         title: profiles.title,
-        email: profiles.email,
+        email: users.email,
         phone: profiles.phone,
         labName: profiles.labName,
         postalCode: profiles.postalCode,
@@ -55,7 +56,7 @@ export async function GET(
         updatedAt: profiles.updatedAt,
         onBoardedAt: profiles.onBoardedAt,
       })
-      .from(profiles)
+      .from(profiles).innerJoin(users, eq(users.id, profiles.id))
       .where(eq(profiles.id, id))
       .limit(1);
 

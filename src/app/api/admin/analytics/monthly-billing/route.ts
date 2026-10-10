@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/src/db";
 import { invoices } from "@/src/db/schema/invoice";
 import { profiles } from "@/src/db/schema/profile";
-import { createClient } from "@/src/lib/supabase/server";
+import { createClient } from "@/src/lib/auth/server";
 import { eq, gte, lte, sql, and } from "drizzle-orm";
 import { isValidRoleForType } from "@/src/lib/auth/role";
 import { getAnalyticsDateRange } from "@/src/lib/analytics-utils";

@@ -3,7 +3,7 @@ import { desc, eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { supportCallbackRequests } from '@/src/db/schema/support-callback-request'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error'

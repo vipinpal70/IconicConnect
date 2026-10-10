@@ -1,9 +1,10 @@
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { invoices } from '@/src/db/schema/invoice'
 import { profiles } from '@/src/db/schema/profile'
 import { eq, desc } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { formatInvoiceRow } from '@/src/lib/invoice'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 
@@ -37,7 +38,8 @@ export async function GET() {
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
     if (!client) return NextResponse.json([])
 
-    const result = rows.map((inv) => formatInvoiceRow(inv, client))
+    const clientEmail = await getEmail(client.id)
+    const result = rows.map((inv) => formatInvoiceRow(inv, client, clientEmail))
     await setCachedData(cacheKey, result, INVOICE_TTL)
     return NextResponse.json(result)
   } catch (err) {

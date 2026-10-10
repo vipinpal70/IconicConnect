@@ -1,71 +1,13 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { db } from '@/src/db'
-import { profiles } from '@/src/db/schema/profile'
-import { eq } from 'drizzle-orm'
 
-import { LOGIN_STAMP_COOKIE, isLoginStampValid } from '@/src/lib/auth/session-limit'
-import { VERIFIED_USER_HEADER } from '@/src/lib/auth/request-user'
+import { SESSION_COOKIE, getSession } from '@/src/lib/auth/session'
 import { getClientIp } from '@/src/lib/security/client-ip'
 import { rateLimit, SENSITIVE_PATH_LIMITS } from '@/src/lib/security/rate-limit'
 
 const GLOBAL_RATE_LIMIT = 300
 const GLOBAL_WINDOW_SECONDS = 60
 
-// The proxy only needs role/createdBy/status to route and gate the request. Looking that up in Postgres
-// on EVERY request (pages + every API call) is a pooler round trip on the critical path, so keep a short,
-// bounded per-process cache. A role/status change therefore takes effect within GATE_TTL_MS; every route
-// handler still re-reads the full profile itself, so authorization inside handlers is never stale.
-const GATE_TTL_MS = 15_000
-const GATE_MAX_ENTRIES = 5_000
-type GateProfile = { role: string | undefined; createdBy: string | null | undefined; status: string | undefined }
-const gateCache = new Map<string, { value: GateProfile; expires: number }>()
-
-async function getGateProfile(userId: string): Promise<GateProfile> {
-  const now = Date.now()
-  const hit = gateCache.get(userId)
-  if (hit && hit.expires > now) return hit.value
-
-  const [row] = await db
-    .select({ role: profiles.role, createdBy: profiles.createdBy, status: profiles.status })
-    .from(profiles)
-    .where(eq(profiles.id, userId))
-    .limit(1)
-  const value: GateProfile = { role: row?.role, createdBy: row?.createdBy, status: row?.status }
-
-  if (gateCache.size >= GATE_MAX_ENTRIES) {
-    for (const [k, v] of gateCache) if (v.expires <= now) gateCache.delete(k)
-    if (gateCache.size >= GATE_MAX_ENTRIES) gateCache.clear()
-  }
-  // Don't cache "no profile": a freshly-created account should be picked up immediately.
-  if (row) gateCache.set(userId, { value, expires: now + GATE_TTL_MS })
-  return value
-}
-
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
   // CSRF defence in depth (on top of SameSite cookies): a browser-initiated state-changing API call must
   // come from this site. Requests without an Origin header (server-to-server, curl) are unaffected.
   if (request.nextUrl.pathname.startsWith('/api') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
@@ -80,10 +22,12 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Per-request timings, exposed as a `Server-Timing` header (browser DevTools → Network → Timing) and
-  // logged when slow, so a slow page can be traced to Supabase Auth, Redis or the profile lookup.
+  // Session = ONE Redis GET carrying user id, role, status and effective client id — no Postgres read and
+  // no external auth call on the request path. Exposed via Server-Timing so slow requests are traceable.
   const tAuth = performance.now()
-  const { data: { user } } = await supabase.auth.getUser()
+  const sid = request.cookies.get(SESSION_COOKIE)?.value
+  const session = await getSession(sid)
+  const user = session ? { id: session.userId } : null
   const authMs = Math.round(performance.now() - tAuth)
 
   // Rate-limit key: user id when logged in, otherwise the real client IP (never the
@@ -127,8 +71,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/sign-in') ||
     pathname.startsWith('/api/sign-up') ||
-    pathname === '/api/admin/user' ||
-    pathname === '/api/admin/activate'
+    pathname === '/api/admin/user'
 
   // 1. Handle unauthorized access
   if (!user && !isAuthPage && !isSignUpPage && !isPublicApi) {
@@ -138,30 +81,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/sign-in', request.url))
   }
 
-  // Force a fresh login every SESSION_MAX_AGE_SECONDS (7h), whatever Supabase's refresh tokens allow.
-  // Auth pages are exempt so the sign-in and password-recovery flows still work.
-  if (user && !isPublicApi && !isAuthPage && !isSignUpPage &&
-      !isLoginStampValid(request.cookies.get(LOGIN_STAMP_COOKIE)?.value)) {
-    // scope 'local' revokes only this browser's session, not the user's other devices.
-    await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+  // A cookie that no longer maps to a session (expired after 7 h, revoked, or forged) → clear it and re-login.
+  if (!user && sid && !isPublicApi && !isAuthPage && !isSignUpPage) {
     const expired = pathname.startsWith('/api')
       ? NextResponse.json({ error: 'Session expired', code: 'session_expired' }, { status: 401 })
       : NextResponse.redirect(new URL('/auth/sign-in?reason=session_expired', request.url))
-    // Carry over the cookie deletions signOut() wrote, and drop our own stamp.
-    supabaseResponse.cookies.getAll().forEach((c) => expired.cookies.set(c))
-    expired.cookies.delete(LOGIN_STAMP_COOKIE)
+    expired.cookies.delete(SESSION_COOKIE)
     return expired
   }
 
   let gateMs = 0
   if (user && !isPublicApi) {
-    // Fetch profile to get role and parent client ID via Drizzle ORM
-    const tGate = performance.now()
-    const profile = await getGateProfile(user.id)
-    gateMs = Math.round(performance.now() - tGate)
-    const role = profile?.role
-    const createdBy = profile?.createdBy
-    const status = profile?.status
+    const role = session!.role
+    const createdBy = session!.clientId
+    const status = session!.status
 
     // Allow password recovery routes even when a session already exists.
     // Other auth pages should still redirect authenticated users away.
@@ -194,14 +127,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Forward the identity this proxy already verified, so read-only handlers can skip a second Supabase
-  // Auth round trip (see src/lib/auth/request-user.ts). Any client-supplied copy is dropped first, so the
-  // header can only ever originate from here.
-  const forwarded = new Headers(request.headers)
-  forwarded.delete(VERIFIED_USER_HEADER)
-  if (user) forwarded.set(VERIFIED_USER_HEADER, user.id)
-  const finalResponse = NextResponse.next({ request: { headers: forwarded } })
-  supabaseResponse.cookies.getAll().forEach((c) => finalResponse.cookies.set(c))
+  const finalResponse = NextResponse.next({ request })
   finalResponse.headers.set('Server-Timing', `auth;dur=${authMs}, ratelimit;dur=${rateMs}, gate;dur=${gateMs}`)
   if (authMs + rateMs + gateMs > 800) {
     console.warn(`[perf] slow proxy ${request.method} ${pathname} auth=${authMs}ms ratelimit=${rateMs}ms gate=${gateMs}ms`)
@@ -220,7 +146,6 @@ function getHomeRoute(role: string | undefined, createdBy: string | null | undef
     case 'qc':
     case 'designer':
     case 'account_manager':
-    case 'consultant':
       return '/dashboard'
     default:
       return '/dashboard'
@@ -259,7 +184,6 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/admin') ||
         pathname.startsWith('/api/admin') ||
         pathname.startsWith('/api/billing') ||
-        pathname.startsWith('/api/service-pricing') ||
         pathname.startsWith('/api/tutorials') ||
         pathname.startsWith('/api/offers') ||
         pathname.startsWith('/api/preference-forms')
@@ -292,7 +216,6 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/api/offers')
       )
     case 'account_manager':
-    case 'consultant':
       return (
         pathname.startsWith('/dashboard') ||
         pathname.startsWith('/cases') ||

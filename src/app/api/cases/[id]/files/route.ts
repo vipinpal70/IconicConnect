@@ -1,8 +1,10 @@
+import { getProfileLabName } from '@/src/lib/profile-utils';
+import { putLabFile } from '@/src/lib/r2-put';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, caseFiles } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
 import { invalidateCasesCache } from '@/src/lib/redis-cache';
@@ -51,29 +53,23 @@ export async function POST(
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-    const { error: uploadError } = await supabase
-      .storage
-      .from('case-files')
-      .upload(fileName, file);
-
-    if (uploadError) {
-      console.error('Supabase upload error:', uploadError);
+    const [clientProfile] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.clientId)).limit(1);
+    const labName = clientProfile ? getProfileLabName(clientProfile) : '';
+    if (!labName) return NextResponse.json({ error: 'Lab not found for case' }, { status: 400 });
+    const safeName = file.name.replace(/[\\/]/g, '_');
+    let fileUrl: string;
+    try {
+      fileUrl = await putLabFile(labName, `${caseRecord.caseNumber}/${Date.now()}-${safeName}`, file);
+    } catch (uploadError) {
+      console.error('R2 upload error:', uploadError);
       return NextResponse.json({ error: 'Failed to upload file to storage' }, { status: 500 });
     }
-
-    const { data: publicUrlData } = supabase
-      .storage
-      .from('case-files')
-      .getPublicUrl(fileName);
 
     const insertedFile = await db.insert(caseFiles).values({
       caseId: id,
       uploadedBy: user.id,
       fileName: file.name,
-      fileUrl: publicUrlData.publicUrl,
+      fileUrl,
       note: note || null,
       fileType: file.type,
       fileSize: file.size,

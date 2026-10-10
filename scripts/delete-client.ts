@@ -1,8 +1,9 @@
 import 'dotenv/config';
+import { users } from '../src/db/schema/profile';
+import { getEmail } from '../src/lib/auth/auth-service';
 import { db } from '../src/db';
 import {
   profiles,
-  subUsers,
   cases,
   caseFiles,
   caseMessages,
@@ -19,7 +20,7 @@ import {
   supportCallbackRequests,
   supportTickets
 } from '../src/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -43,8 +44,8 @@ async function main() {
       const results = await db.select().from(profiles).where(eq(profiles.id, searchInput)).limit(1);
       clientProfile = results[0];
     } else {
-      const results = await db.select().from(profiles).where(eq(profiles.email, searchInput)).limit(1);
-      clientProfile = results[0];
+      const results = await db.select({ p: profiles }).from(profiles).innerJoin(users, eq(users.id, profiles.id)).where(eq(users.email, searchInput.trim().toLowerCase())).limit(1);
+      clientProfile = results[0]?.p;
     }
   } catch (err: any) {
     console.error('\x1b[31m%s\x1b[0m', `❌ Error querying profiles: ${err.message || err}`);
@@ -61,7 +62,7 @@ async function main() {
   }
 
   const clientId = clientProfile.id;
-  const clientEmail = clientProfile.email;
+  const clientEmail = (await getEmail(clientProfile.id));
   const labName = clientProfile.labName;
 
   console.log('\x1b[32m%s\x1b[0m', `Found Client:`);
@@ -73,8 +74,8 @@ async function main() {
   // 2. Fetch all Subusers of the Client
   let subUserIds: string[] = [];
   try {
-    const subUserRecords = await db.select().from(subUsers).where(eq(subUsers.clientId, clientId));
-    subUserIds = subUserRecords.map((su: any) => su.profileId);
+    const subUserRecords = await db.select({ id: profiles.id }).from(profiles).where(and(eq(profiles.clientId, clientId), eq(profiles.role, 'subuser')));
+    subUserIds = subUserRecords.map((su) => su.id);
     console.log(`Found ${subUserIds.length} subuser(s) associated with this client.`);
   } catch (err: any) {
     console.error('\x1b[31m%s\x1b[0m', `❌ Error querying subusers: ${err.message || err}`);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 
 const CLIENTS_LIST_KEY = 'clients:list'

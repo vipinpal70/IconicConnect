@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/src/lib/supabase/client";
+import { createClient } from "@/src/lib/auth/client";
 import { fetchProfileWithCache, invalidateProfileCache } from "@/src/lib/profile-cache";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";

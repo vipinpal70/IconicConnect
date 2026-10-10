@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/src/db";
 import { invoices } from "@/src/db/schema/invoice";
 import { profiles } from "@/src/db/schema/profile";
-import { createClient } from "@/src/lib/supabase/server";
+import { createClient } from "@/src/lib/auth/server";
 import { eq, and, desc, gte, lte } from "drizzle-orm";
 import { isLabUser, resolveClientId } from "@/src/lib/auth/resolve-client-id";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";

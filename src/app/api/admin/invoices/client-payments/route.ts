@@ -3,7 +3,7 @@ import { db } from '@/src/db'
 import { invoices } from '@/src/db/schema/invoice'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 
 const PAYMENTS_KEY = 'invoices:payments:admin'

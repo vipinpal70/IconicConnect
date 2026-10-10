@@ -1,7 +1,7 @@
 import { caseBulkDownloads } from '@/src/db/schema/bulk-download'
-import { eq, inArray, or } from 'drizzle-orm'
+import { and, eq, inArray, or } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { profiles, subUsers } from '@/src/db/schema/profile'
+import { profiles } from '@/src/db/schema/profile'
 import {
   cases,
   caseMessages,
@@ -14,7 +14,7 @@ import { invoices } from '@/src/db/schema/invoice'
 import { supportTickets } from '@/src/db/schema/support-ticket'
 import { supportCallbackRequests } from '@/src/db/schema/support-callback-request'
 import { activityLogs } from '@/src/db/schema/activity-log'
-import { supabaseAdmin } from '@/src/lib/supabase/admin'
+import { deleteUser } from '@/src/lib/auth/auth-service'
 
 export interface DeleteClientResult {
   clientId: string
@@ -37,9 +37,9 @@ export interface DeleteClientResult {
  */
 export async function deleteClientCompletely(clientId: string): Promise<DeleteClientResult> {
   const subUserRows = await db
-    .select({ profileId: subUsers.profileId })
-    .from(subUsers)
-    .where(eq(subUsers.clientId, clientId))
+    .select({ profileId: profiles.id })
+    .from(profiles)
+    .where(and(eq(profiles.clientId, clientId), eq(profiles.role, 'subuser')))
   const subUserProfileIds = subUserRows.map((r) => r.profileId)
   const allProfileIds = [clientId, ...subUserProfileIds]
 
@@ -72,8 +72,6 @@ export async function deleteClientCompletely(clientId: string): Promise<DeleteCl
       await tx.delete(cases).where(eq(cases.clientId, clientId))
     }
 
-    await tx.delete(subUsers).where(eq(subUsers.clientId, clientId))
-
     if (subUserProfileIds.length > 0) {
       await tx.delete(profiles).where(inArray(profiles.id, subUserProfileIds))
     }
@@ -82,11 +80,9 @@ export async function deleteClientCompletely(clientId: string): Promise<DeleteCl
   })
 
   const authDeleteErrors: { id: string; error: string }[] = []
+  // Remove logins last (profiles are already gone); revokes any live sessions.
   for (const id of allProfileIds) {
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(id)
-    if (error && !/not.*found/i.test(error.message)) {
-      authDeleteErrors.push({ id, error: error.message })
-    }
+    try { await deleteUser(id) } catch (e) { authDeleteErrors.push({ id, error: e instanceof Error ? e.message : String(e) }) }
   }
 
   return {

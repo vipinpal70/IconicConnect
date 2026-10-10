@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { profiles, subUsers } from '@/src/db/schema/profile'
+import { profiles } from '@/src/db/schema/profile'
 import { supportTickets } from '@/src/db/schema/support-ticket'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { notifySupportTicketCreated } from '@/src/lib/notifications/notification-dispatcher'
 import { SUPPORT_TICKET_PRIORITIES, SUPPORT_TICKET_TYPES, isClientSupportStatus } from '@/src/lib/support-tickets'
 import { logActivity } from '@/src/lib/activity-log'
@@ -34,7 +35,7 @@ async function resolveClientId(profileId: string, role: string) {
   }
 
   if (role === 'subuser') {
-    const [subUserRecord] = await db.select().from(subUsers).where(eq(subUsers.profileId, profileId)).limit(1)
+    const [subUserRecord] = await db.select({ clientId: profiles.clientId }).from(profiles).where(eq(profiles.id, profileId)).limit(1)
     return subUserRecord?.clientId || profileId
   }
 
@@ -138,7 +139,7 @@ export async function POST(req: NextRequest) {
       subject: ticket.subject,
       category: ticket.category,
       priority: ticket.priority,
-      clientName: profile.labName || profile.fullName || profile.email || 'Client',
+      clientName: profile.labName || profile.fullName || (await getEmail(profile.id)) || 'Client',
     }).catch((err) => console.error('[support_ticket.created] Failed to dispatch notifications:', err))
 
     await logActivity({

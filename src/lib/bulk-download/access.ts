@@ -3,7 +3,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { MAX_CASES_PER_DOWNLOAD, CLIENT_OUTPUT_VISIBLE_STATUSES } from './limits'
 import type { AuthedProfile, DownloadScope, SkippedItem } from './types'
 

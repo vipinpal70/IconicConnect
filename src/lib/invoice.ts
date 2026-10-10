@@ -392,7 +392,8 @@ export type InvoiceWithClient = {
 
 export function formatInvoiceRow(
   inv: typeof invoices.$inferSelect,
-  client: typeof profiles.$inferSelect
+  client: typeof profiles.$inferSelect,
+  clientEmail = '',
 ): InvoiceWithClient {
   return {
     id: inv.id,
@@ -400,7 +401,7 @@ export function formatInvoiceRow(
     clientId: inv.clientId,
     clientName: client.fullName ?? '',
     clientLabName: client.labName,
-    clientEmail: client.email,
+    clientEmail,
     clientPhone: client.phone,
     clientCity: client.city,
     clientState: client.state,

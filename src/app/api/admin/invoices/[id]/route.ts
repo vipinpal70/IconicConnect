@@ -1,9 +1,10 @@
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { invoices } from '@/src/db/schema/invoice'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import {
   computeAdjustment,
   computeTotal,
@@ -46,7 +47,8 @@ export async function GET(
     const [client] = await db.select().from(profiles).where(eq(profiles.id, inv.clientId)).limit(1)
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
 
-    const result = formatInvoiceRow(inv, client)
+    const clientEmail = await getEmail(client.id)
+    const result = formatInvoiceRow(inv, client, clientEmail)
     await setCachedData(cacheKey, result, INVOICE_TTL)
     return NextResponse.json(result)
   } catch (err) {
@@ -169,7 +171,7 @@ export async function PATCH(
       },
     }).catch((err) => console.error('[invoice.updated logActivity]', err))
 
-    return NextResponse.json(formatInvoiceRow(updated, client))
+    return NextResponse.json(formatInvoiceRow(updated, client, await getEmail(client.id)))
   } catch (err) {
     console.error('[api/admin/invoices/[id] PATCH]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

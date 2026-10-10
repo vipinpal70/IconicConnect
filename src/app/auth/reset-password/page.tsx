@@ -3,13 +3,11 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/src/lib/supabase/client'
 import { toast } from "sonner";
 import { Loader2, Lock, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function ResetPasswordPage() {
   const router = useRouter()
-  const supabase = createClient()
 
   const [passwords, setPasswords] = useState({ password: '', confirmPassword: '' })
   const [loading, setLoading] = useState(true)
@@ -18,39 +16,18 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  const [token, setToken] = useState('')
+
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        // Check for error parameters (from our verify route or Supabase fallback)
-        const params = new URLSearchParams(window.location.search);
-        const errorMsg = params.get('error_description') || params.get('error');
-        const errorCode = params.get('error_code');
-
-        if (errorMsg || errorCode) {
-          setError(errorMsg || 'The link is invalid or has expired.');
-          setValidSession(false);
-          setLoading(false);
-          return;
-        }
-
-        // The verify route successfully exchanged the token and established a session
-        const { data: { user }, error } = await supabase.auth.getUser()
-        
-        if (error || !user) {
-          setError('Your password reset session is invalid or has expired. Please request a new link.')
-          setValidSession(false)
-        } else {
-          setValidSession(true)
-        }
-      } catch (err) {
-        setError('An error occurred while checking your session. Please try again.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkSession()
-  }, [supabase])
+    // The emailed link carries a single-use token; it is verified when the new password is submitted.
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get('token')
+    const errorMsg = params.get('error')
+    if (errorMsg) setError(errorMsg)
+    if (t) { setToken(t); setValidSession(true) }
+    else if (!errorMsg) setError('This reset link is invalid. Please request a new one.')
+    setLoading(false)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -67,12 +44,15 @@ export default function ResetPasswordPage() {
 
     setResetting(true)
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwords.password
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password: passwords.password }),
       })
+      const data = await res.json().catch(() => ({}))
 
-      if (error) {
-        toast.error(error.message)
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to reset password')
       } else {
         setSuccess(true)
         toast.success('Password reset successful!')

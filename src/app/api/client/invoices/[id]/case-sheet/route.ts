@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db'
 import { invoices } from '@/src/db/schema/invoice'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
 import { eq, inArray } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 
 function cell(value: string | number | null | undefined): string {
   const s = String(value ?? '')
@@ -131,7 +132,7 @@ export async function GET(
     if (inv.clientId !== clientId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
-    const clientName = client?.labName || client?.fullName || client?.email || '—'
+    const clientName = client?.labName || client?.fullName || (await getEmail(client?.id)) || '—'
     const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     const caseIds = (inv.caseIds as string[] | null) ?? []
 

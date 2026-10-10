@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
 import { toast } from "sonner";
 import {
 	COUNTRY_CODES,
@@ -44,7 +43,6 @@ const initial: FormData = {
 
 export default function SignUpPage() {
 	const router = useRouter();
-	const supabase = createClient();
 
 	const [form, setForm] = useState<FormData>(initial);
 	const [countryCode, setCountryCode] = useState("+91");
@@ -80,56 +78,36 @@ export default function SignUpPage() {
 		setLoading(true);
 		const fullPhone = formatPhoneForStorage(countryCode, form.phone);
 
-		const { data, error: signUpError } = await supabase.auth.signUp({
-			email: form.email,
-			password: form.password,
-			phone: fullPhone,
+		// One server call creates the login AND the profile atomically; the password is hashed server-side.
+		const profileRes = await fetch("/api/sign-up", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				email: form.email,
+				password: form.password,
+				fullName: form.name,
+				title: form.title,
+				phone: fullPhone,
+				labName: form.labName,
+				postalCode: form.postalCode,
+				city: form.city,
+				state: form.state,
+				country: form.country,
+			}),
 		});
 
-		if (signUpError) {
-			setError(signUpError.message);
-			toast.warning(signUpError.message);
+		if (!profileRes.ok) {
+			const errorData = await profileRes.json().catch(() => ({}));
+			const message = errorData.error || "Failed to create account";
+			setError(message);
+			if (profileRes.status === 409) {
+				toast.warning(message);
+			} else {
+				toast.error(message);
+			}
 			setLoading(false);
 			return;
 		}
-
-		if (data.user) {
-			// Now send data to the api endpoint to store info into the table
-			const profileRes = await fetch("/api/sign-up", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					id: data.user.id,
-					email: form.email,
-					fullName: form.name,
-					title: form.title,
-					phone: fullPhone,
-					labName: form.labName,
-					postalCode: form.postalCode,
-					city: form.city,
-					state: form.state,
-					country: form.country,
-					password: form.password,
-				}),
-			});
-
-			if (!profileRes.ok) {
-				const errorData = await profileRes.json();
-				const message = errorData.error || "Failed to create profile";
-				setError(message);
-				if (profileRes.status === 409) {
-					toast.warning(message);
-				} else {
-					toast.error(message);
-				}
-				setLoading(false);
-				return;
-			}
-		}
-
-		// Supabase can create a session on sign-up. Sign out before redirecting so
-		// the user lands on the sign-in page instead of getting bounced to the dashboard.
-		await supabase.auth.signOut();
 
 		setLoading(false);
 		router.replace("/auth/sign-in?registered=1");

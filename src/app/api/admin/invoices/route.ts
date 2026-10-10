@@ -1,9 +1,10 @@
+import { getEmail, getEmails } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { invoices } from '@/src/db/schema/invoice'
 import { profiles } from '@/src/db/schema/profile'
 import { eq, desc } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import {
   buildInvoiceItems,
   computeAdjustment,
@@ -53,11 +54,12 @@ export async function GET() {
       : []
 
     const clientMap = new Map(clientRows.map((c) => [c.id, c]))
+    const emailMap = await getEmails(clientRows.map((c) => c.id))
 
     const result = rows.map((inv) => {
       const client = clientMap.get(inv.clientId)
       if (!client) return null
-      return formatInvoiceRow(inv, client)
+      return formatInvoiceRow(inv, client, emailMap.get(client.id) ?? '')
     }).filter(Boolean)
 
     await setCachedData(cacheKey, result, INVOICE_TTL)
@@ -164,7 +166,7 @@ export async function POST(req: NextRequest) {
       },
     }).catch((err) => console.error('[invoice.created logActivity]', err))
 
-    return NextResponse.json(formatInvoiceRow(saved, client), { status: 201 })
+    return NextResponse.json(formatInvoiceRow(saved, client, await getEmail(client.id)), { status: 201 })
   } catch (err) {
     console.error('[api/admin/invoices POST]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

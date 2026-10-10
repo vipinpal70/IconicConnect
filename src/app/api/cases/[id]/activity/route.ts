@@ -4,7 +4,7 @@ import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { timelineForClient, isLabRole } from '@/src/lib/case-access'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 
 export async function GET(
   req: NextRequest,

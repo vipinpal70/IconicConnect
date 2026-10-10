@@ -7,7 +7,7 @@ async function checkProfiles() {
     const allProfiles = await db.select().from(profiles);
     console.log('--- Current Profiles ---');
     allProfiles.forEach(p => {
-      console.log(`ID: ${p.id}, Email: ${p.email}, Role: ${p.role}`);
+      console.log(`ID: ${p.id}, Role: ${p.role}`);
     });
     console.log('------------------------');
   } catch (error) {

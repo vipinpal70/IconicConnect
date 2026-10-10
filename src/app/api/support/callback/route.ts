@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { profiles, subUsers } from '@/src/db/schema/profile'
+import { profiles } from '@/src/db/schema/profile'
 import { supportCallbackRequests } from '@/src/db/schema/support-callback-request'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { notifyCallbackRequestCreated } from '@/src/lib/notifications/notification-dispatcher'
 import { logActivity } from '@/src/lib/activity-log'
 
@@ -28,7 +29,7 @@ async function getClientContext() {
 
   const clientId = profile.role === 'client'
     ? profile.id
-    : await db.select().from(subUsers).where(eq(subUsers.profileId, profile.id)).limit(1).then((rows) => rows[0]?.clientId || profile.id)
+    : await Promise.resolve(profile.clientId ? [{ clientId: profile.clientId }] : []).then((rows) => rows[0]?.clientId || profile.id)
 
   if (!clientId) {
     return { error: NextResponse.json({ error: 'Client account not found' }, { status: 404 }) }
@@ -46,8 +47,8 @@ export async function POST() {
 
     const { clientId, clientProfile, profile } = auth
 
-    const clientLabel = clientProfile?.labName || clientProfile?.fullName || clientProfile?.email || 'Client'
-    const requester = profile.fullName || profile.email || 'A client'
+    const clientLabel = clientProfile?.labName || clientProfile?.fullName || (await getEmail(clientProfile?.id)) || 'Client'
+    const requester = profile.fullName || (await getEmail(profile.id)) || 'A client'
     const clientName = clientProfile?.fullName || requester
     const labName = clientProfile?.labName || clientLabel
 
@@ -56,7 +57,7 @@ export async function POST() {
       clientName,
       labName,
       phone: clientProfile?.phone || null,
-      email: clientProfile?.email || requester,
+      email: (await getEmail(clientProfile?.id)) || requester,
       createdBy: profile.id,
     }).returning()
 

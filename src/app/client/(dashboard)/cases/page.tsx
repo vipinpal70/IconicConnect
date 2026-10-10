@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState, useRef, useEffect } from "react";
-import { createClient } from "@/src/lib/supabase/client";
+import { createClient } from "@/src/lib/auth/client";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -495,10 +495,9 @@ export default function CasesPage() {
 
   useEffect(() => {
     async function fetchProfile() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('labName').eq('id', user.id).single();
+      const res = await fetch('/api/profile').catch(() => null);
+      if (res?.ok) {
+        const profile = await res.json();
         if (profile?.labName) setLabName(profile.labName);
       }
     }

@@ -1,5 +1,6 @@
+import { getEmails } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
@@ -29,11 +30,12 @@ export async function GET(_req: NextRequest) {
 
     const subusers = await service.getSubUsers(profile.id)
 
+    const emails = await getEmails(subusers.map((u) => u.id))
     const formatted = subusers.map((u) => ({
       id: u.id,
       name: u.fullName || '',
-      username: u.email.split('@')[0],
-      email: u.email,
+      username: (emails.get(u.id) ?? '').split('@')[0],
+      email: emails.get(u.id) ?? '',
       role: u.title || 'Coordinator',
     }))
 
@@ -75,16 +77,15 @@ export async function POST(req: NextRequest) {
     const formatted = {
       id: newSubUser.id,
       name: newSubUser.fullName || '',
-      username: newSubUser.email.split('@')[0],
-      email: newSubUser.email,
+      username: String(email).split('@')[0],
+      email,
       role: newSubUser.title || 'Coordinator',
-      password: newSubUser.password || '••••••••',
     }
 
     await logActivity({
       actor: profile,
       action: 'subuser.created',
-      details: { subuserId: newSubUser.id, email: newSubUser.email, fullName: newSubUser.fullName, role, emailQueued },
+      details: { subuserId: newSubUser.id, email, fullName: newSubUser.fullName, role, emailQueued },
     }).catch((err) => console.error('[subuser.created logActivity]', err))
 
     return NextResponse.json({ data: formatted, emailQueued }, { status: 201 })

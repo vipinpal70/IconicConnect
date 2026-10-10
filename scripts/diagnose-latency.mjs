@@ -44,8 +44,21 @@ try {
 } catch { console.log('  This server      : (could not look up location)') }
 
 console.log('\n=== 2. Database round trips (server -> Supabase) ===')
-const sql = postgres(dbUrl, { prepare: false, max: 1 })
-await sql`select 1` // warm the connection
+// Session-mode pooler (port 5432) allows only `pool_size` clients in total — if the app already uses them all
+// this script cannot connect. Fall back to the transaction-mode pooler (port 6543) just for the measurement.
+let sql = postgres(dbUrl, { prepare: false, max: 1 })
+try {
+  await sql`select 1` // warm the connection
+} catch (e) {
+  if (!String(e.message).includes('EMAXCONNSESSION')) throw e
+  console.log('  ! Session-mode pooler is FULL (EMAXCONNSESSION). This is a problem for the app too.')
+  console.log('    Fix: use the transaction-mode pooler (port 6543) in DATABASE_URL for the running app.')
+  console.log('    Measuring through port 6543 instead...')
+  await sql.end({ timeout: 1 }).catch(() => {})
+  sql = postgres(dbUrl.replace(':5432/', ':6543/'), { prepare: false, max: 1 })
+  await sql`select 1`
+  verdicts.push('DATABASE_URL uses the session-mode pooler (port 5432) and it is full (pool_size limit). Switch the app to the transaction-mode pooler: port 6543.')
+}
 const rtt = line('select 1 (pure network round trip)', await time(() => sql`select 1`, 15))
 line('count(*) from cases', await time(() => sql`select count(*) from cases`, 8))
 line('cases page: newest 101 rows', await time(() => sql`select id, case_number, status, created_at, sub_type_data from cases order by created_at desc, id desc limit 101`, 8))

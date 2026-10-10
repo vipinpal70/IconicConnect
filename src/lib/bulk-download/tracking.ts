@@ -1,3 +1,4 @@
+import { users } from '@/src/db/schema/profile'
 import { and, desc, eq, inArray, lt } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
@@ -30,10 +31,10 @@ export async function getLatestCompleted(caseIds: string[], scope: DownloadScope
       downloadedBy: caseBulkDownloads.downloadedBy,
       downloadedByRole: caseBulkDownloads.downloadedByRole,
       downloadedByName: profiles.fullName,
-      downloadedByEmail: profiles.email,
+      downloadedByEmail: users.email,
     })
     .from(caseBulkDownloads)
-    .leftJoin(profiles, eq(caseBulkDownloads.downloadedBy, profiles.id))
+    .leftJoin(profiles, eq(caseBulkDownloads.downloadedBy, profiles.id)).leftJoin(users, eq(users.id, profiles.id))
     .where(and(
       inArray(caseBulkDownloads.caseId, caseIds),
       eq(caseBulkDownloads.scope, scope),

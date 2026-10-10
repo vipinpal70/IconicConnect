@@ -1,9 +1,11 @@
+import { users } from '@/src/db/schema/profile'
 import { NextRequest, NextResponse } from "next/server";
+import { getEmails } from '@/src/lib/auth/auth-service'
 import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { activityLogs } from "@/src/db/schema/activity-log";
-import { createClient } from "@/src/lib/supabase/server";
+import { createClient } from "@/src/lib/auth/server";
 import { eq, inArray, notInArray, and, count, desc } from "drizzle-orm";
 import { isValidRoleForType } from "@/src/lib/auth/role";
 
@@ -118,8 +120,9 @@ export async function GET(req: NextRequest) {
         .select()
         .from(profiles)
         .where(inArray(profiles.id, designerIds));
+      const designerEmails = await getEmails(designerIds);
       designersProfiles.forEach((p) => {
-        designersMap.set(p.id, p.fullName || p.email.split("@")[0]);
+        designersMap.set(p.id, p.fullName || (designerEmails.get(p.id) ?? '').split("@")[0]);
       });
     }
 
@@ -159,10 +162,10 @@ export async function GET(req: NextRequest) {
       .select({
         id: profiles.id,
         fullName: profiles.fullName,
-        email: profiles.email,
+        email: users.email,
         load: count(cases.id)
       })
-      .from(profiles)
+      .from(profiles).innerJoin(users, eq(users.id, profiles.id))
       .leftJoin(
         cases,
         and(
@@ -171,7 +174,7 @@ export async function GET(req: NextRequest) {
         )
       )
       .where(eq(profiles.role, "designer"))
-      .groupBy(profiles.id, profiles.fullName, profiles.email)
+      .groupBy(profiles.id, profiles.fullName, users.email)
       .orderBy(desc(count(cases.id)));
 
     // 4. Fetch 6 most recently created clients

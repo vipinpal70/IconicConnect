@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
 import { eq } from 'drizzle-orm';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import {
   CreateMultipartUploadCommand,
   UploadPartCommand,

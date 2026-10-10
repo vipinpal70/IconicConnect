@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
-import { eq, ilike } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { createResetToken, findUserIdByEmail } from '@/src/lib/auth/auth-service';
 import { escapeHtml } from '@/src/lib/security/html';
 
 export async function POST(req: NextRequest) {
@@ -15,43 +15,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    // 1. Check if email exists in profiles table
-    const results = await db.select().from(profiles).where(ilike(profiles.email, email)).limit(1);
-    const profile = results[0];
+    // 1. Look the account up (one indexed read). Identical response whether or not it exists — no enumeration.
+    const userId = await findUserIdByEmail(email);
+    if (!userId) return NextResponse.json(GENERIC_OK);
+    const [profile] = await db.select({ fullName: profiles.fullName }).from(profiles).where(eq(profiles.id, userId)).limit(1);
 
-    if (!profile) {
-      // Identical response whether or not the account exists — no email enumeration.
-      return NextResponse.json(GENERIC_OK);
-    }
-
-    // 2. Generate a recovery link using the Service Role Key
-    // This allows us to bypass Supabase's built-in email templates and use our own robust queue
-    if (typeof globalThis.WebSocket === 'undefined') {
-      globalThis.WebSocket = class {} as any;
-    }
-    const { createClient: createAdminClient } = await import('@supabase/supabase-js');
-    const supabaseAdmin = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
+    // 2. Single-use token, hashed at rest in Redis, 1 h.
     const origin = process.env.NEXT_PUBLIC_APP_URL!;
-
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: email,
-      options: {
-        redirectTo: `${origin}/auth/reset-password`
-      }
-    });
-
-    if (linkError || !linkData?.properties?.hashed_token) {
-      console.error('Error generating link:', linkError);
-      return NextResponse.json({ error: 'Failed to generate reset link' }, { status: 400 });
-    }
-
-    const tokenHash = linkData.properties.hashed_token;
-    const customResetUrl = `${origin}/auth/verify?token_hash=${tokenHash}&type=recovery&next=/auth/reset-password`;
+    const customResetUrl = `${origin}/auth/reset-password?token=${encodeURIComponent(await createResetToken(userId))}`;
 
     // 3. Queue the custom email via our Resend Worker. This is the entire
     // point of the request (unlike an admin-initiated password reset, there
@@ -67,7 +38,7 @@ export async function POST(req: NextRequest) {
       html: `
         <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto;">
           <h2>Reset Password</h2>
-          <p>Hello ${escapeHtml(profile.fullName || 'there')},</p>
+          <p>Hello ${escapeHtml(profile?.fullName || 'there')},</p>
           <p>We received a request to reset the password for your IconicConnect account. If you didn't make this request, you can safely ignore this email.</p>
           <br/>
           <a href="${customResetUrl}" style="display: inline-block; background-color: #00786f; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>

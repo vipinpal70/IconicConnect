@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { notificationPreferences } from '@/src/db/schema/notification';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { eq } from 'drizzle-orm';
 

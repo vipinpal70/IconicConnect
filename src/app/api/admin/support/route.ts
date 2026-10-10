@@ -1,9 +1,10 @@
+import { users } from '@/src/db/schema/profile'
 import { NextRequest, NextResponse } from 'next/server'
 import { desc, eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { supportTickets } from '@/src/db/schema/support-ticket'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error'
@@ -53,10 +54,10 @@ export async function GET(req: NextRequest) {
         updatedAt: supportTickets.updatedAt,
         clientName: profiles.fullName,
         labName: profiles.labName,
-        clientEmail: profiles.email,
+        clientEmail: users.email,
       })
       .from(supportTickets)
-      .leftJoin(profiles, eq(supportTickets.clientId, profiles.id))
+      .leftJoin(profiles, eq(supportTickets.clientId, profiles.id)).leftJoin(users, eq(users.id, profiles.id))
       .orderBy(desc(supportTickets.updatedAt))
 
     const filtered = status && status !== 'all'

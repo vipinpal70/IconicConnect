@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { subUsers } from '@/src/db/schema/profile'
+import { profiles } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
 
 // Server-only module (imports '@/src/db'). Client-safe types/helpers
@@ -16,7 +16,7 @@ import { DEFAULT_CATALOG_ITEMS } from './default-catalog'
 export async function resolveClientIdFromProfile(profileId: string, role: string) {
   if (role === 'client') return profileId
   if (role === 'subuser') {
-    const [record] = await db.select().from(subUsers).where(eq(subUsers.profileId, profileId)).limit(1)
+    const [record] = await db.select({ clientId: profiles.clientId }).from(profiles).where(eq(profiles.id, profileId)).limit(1)
     return record?.clientId ?? null
   }
   return null

@@ -1,9 +1,10 @@
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { getRequestUser } from '@/src/lib/auth/request-user'
 import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 
 const PROFILE_TTL = 3600 // 1 hour
@@ -35,8 +36,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    // Never expose the legacy plaintext `password` column (and don't cache it in Redis).
-    const { password: _legacyPassword, ...profile } = row
+    // Email lives in `users`, not `profiles`.
+    const profile = { ...row, email: await getEmail(row.id) }
 
     await setCachedData(key, profile, PROFILE_TTL)
     return NextResponse.json(profile)

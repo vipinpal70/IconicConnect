@@ -1,12 +1,16 @@
+import { putLabFile } from '@/src/lib/r2-put';
+import { users } from '@/src/db/schema/profile'
 import { getRequestUser } from '@/src/lib/auth/request-user';
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { stripStaffOnlyCaseFields } from '@/src/lib/case-access';
 import { getLatestCompleted } from '@/src/lib/bulk-download/tracking';
+import { getProfileCached } from '@/src/lib/profile-lookup';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { cases, caseFiles, caseReferenceFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum } from '@/src/db/schema/case';
-import { profiles, subUsers } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { profiles } from '@/src/db/schema/profile';
+import { createClient } from '@/src/lib/auth/server';
 import { eq, and, or, inArray, ilike, gte, lte, sql, asc, desc, type SQL } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
@@ -144,7 +148,7 @@ export async function POST(req: NextRequest) {
     } else if (profile.role === 'client') {
       clientId = profile.id;
     } else if (profile.role === 'subuser') {
-      const subUserRecord = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1);
+      const subUserRecord = await Promise.resolve(profile.clientId ? [{ clientId: profile.clientId }] : []);
       if (!subUserRecord.length) {
         return NextResponse.json({ error: 'Subuser parent client not found' }, { status: 400 });
       }
@@ -368,7 +372,7 @@ export async function POST(req: NextRequest) {
         preferredTeethLibrary: caseData.preferredTeethLibrary || 'default',
         teethLibraryFileUrl: caseData.teethLibraryFileUrl || null,
         teethLibraryFileName: caseData.teethLibraryFileName || null,
-        createdBy: profile.fullName || profile.email || 'System',
+        createdBy: profile.fullName || (await getEmail(profile.id)) || 'System',
       };
 
       const insertedCase = await db.insert(cases).values(newCase).returning().then(res => res[0]);
@@ -378,7 +382,7 @@ export async function POST(req: NextRequest) {
         caseId: insertedCase.id,
         caseNumber: insertedCase.caseNumber ?? '',
         category: insertedCase.category ?? '',
-        clientName: clientProfile?.labName || clientProfile?.fullName || clientProfile?.email || 'Client',
+        clientName: clientProfile?.labName || clientProfile?.fullName || (await getEmail(clientProfile?.id)) || 'Client',
       }).catch((err) => console.error('[CaseNotificationTrigger] Failed to dispatch case submission notification:', err));
 
       if (caseData.uploadedFiles && Array.isArray(caseData.uploadedFiles)) {
@@ -404,26 +408,18 @@ export async function POST(req: NextRequest) {
         });
       } else if (file) {
         // Legacy/Direct fallback upload
-        const storagePath = `case_data/${labName}/${caseNumber}/${file.name}`;
-
-        const { error: uploadError } = await supabase
-          .storage
-          .from('case-files')
-          .upload(storagePath, file, { upsert: true });
-
-        if (uploadError) {
+        let fileUrl: string | null = null;
+        try {
+          fileUrl = await putLabFile(labName, `${caseNumber}/${file.name}`, file);
+        } catch (uploadError) {
           console.error(`Failed to upload file for case ${caseNumber}:`, uploadError);
-        } else {
-          const { data: publicUrlData } = supabase
-            .storage
-            .from('case-files')
-            .getPublicUrl(storagePath);
-
+        }
+        if (fileUrl) {
           await db.insert(caseFiles).values({
             caseId: insertedCase.id,
             uploadedBy: user.id,
             fileName: file.name,
-            fileUrl: publicUrlData.publicUrl,
+            fileUrl,
             fileType: file.type,
             fileSize: file.size,
           });
@@ -490,8 +486,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const profileResult = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
-    const profile = profileResult[0];
+    const profile = await getProfileCached(user.id);
     const tProfile = performance.now();
 
     if (!profile) {
@@ -586,7 +581,7 @@ export async function GET(req: NextRequest) {
           .where(or(
             ilike(profiles.labName, likePattern),
             ilike(profiles.fullName, likePattern),
-            ilike(profiles.email, likePattern),
+            inArray(profiles.id, db.select({ id: users.id }).from(users).where(ilike(users.email, likePattern))),
           ))
           .limit(2000),
       ]);
@@ -658,14 +653,21 @@ export async function GET(req: NextRequest) {
     const clientIds = Array.from(new Set(results.map(r => r.clientId).filter(Boolean))) as string[];
     const caseIds = results.map((r) => r.id);
 
-    const [designersProfiles, clientsProfiles, chatMetadata, fileRows] = await Promise.all([
+    // Staff see who last bulk-downloaded each case's lab files; labs never get the staff-only fields.
+    const staffDownloadCaseIds = isAdmin ? results.filter((r) => r.internalFilesDownloadedAt).map((r) => r.id) : [];
+    // Staff also see which lab user (client or sub-user) downloaded the output.
+    const labDownloadCaseIds = isAdmin ? results.filter((r) => r.clientOutputDownloadedAt).map((r) => r.id) : [];
+
+    // Every lookup below depends only on `results`, so they all run in ONE parallel step (one network round
+    // trip of latency instead of three sequential ones).
+    const [designersProfiles, clientsProfiles, chatMetadata, fileRows, staffDownloads, labDownloads] = await Promise.all([
       designerIds.length > 0
-        ? db.select({ id: profiles.id, fullName: profiles.fullName, email: profiles.email })
-            .from(profiles).where(inArray(profiles.id, designerIds))
+        ? db.select({ id: profiles.id, fullName: profiles.fullName, email: users.email })
+            .from(profiles).innerJoin(users, eq(users.id, profiles.id)).where(inArray(profiles.id, designerIds))
         : Promise.resolve([]),
       clientIds.length > 0
-        ? db.select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: profiles.email })
-            .from(profiles).where(inArray(profiles.id, clientIds))
+        ? db.select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: users.email })
+            .from(profiles).innerJoin(users, eq(users.id, profiles.id)).where(inArray(profiles.id, clientIds))
         : Promise.resolve([]),
       getCasesChatMetadata(caseIds, profile.id),
       caseIds.length > 0
@@ -675,6 +677,8 @@ export async function GET(req: NextRequest) {
             .where(inArray(caseFiles.caseId, caseIds))
             .orderBy(caseFiles.caseId, asc(caseFiles.createdAt))
         : Promise.resolve([]),
+      getLatestCompleted(staffDownloadCaseIds, 'internal_files'),
+      getLatestCompleted(labDownloadCaseIds, 'client_output'),
     ]);
 
     const designersMap = new Map<string, string>();
@@ -695,12 +699,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Staff see who last bulk-downloaded each case's lab files; labs never get the staff-only fields.
-    const staffDownloadCaseIds = isAdmin ? results.filter((r) => r.internalFilesDownloadedAt).map((r) => r.id) : [];
-    const staffDownloads = await getLatestCompleted(staffDownloadCaseIds, 'internal_files');
-    // Staff also see which lab user (client or sub-user) downloaded the output.
-    const labDownloadCaseIds = isAdmin ? results.filter((r) => r.clientOutputDownloadedAt).map((r) => r.id) : [];
-    const labDownloads = await getLatestCompleted(labDownloadCaseIds, 'client_output');
 
     const mappedResults = results.map(r => stripStaffOnlyCaseFields({
       ...r,

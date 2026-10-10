@@ -5,7 +5,7 @@
  * */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createUserWithProfile, EmailTakenError } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema'
 import { handleProfileCreated } from '@/src/lib/price-list'
@@ -13,12 +13,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { validatePasswordStrength } from '@/src/lib/security/password'
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-import { createClient as createServerClient } from '@/src/lib/supabase/server'
+import { createClient as createServerClient } from '@/src/lib/auth/server'
 
 export async function GET() {
     // check the requested user should be admin only
@@ -66,53 +61,22 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: passwordError }, { status: 400 })
         }
 
-        // 3. Create auth user — email_confirm: true skips OTP/confirmation email
-        const { data, error: authError } = await supabaseAdmin.auth.admin.createUser({
-            email,
-            password,
-            phone,
-            email_confirm: true,
-            user_metadata: { name: fullName, phone: phone, role: "admin", userType: "admin_portal" },
-        })
-
-        if (authError || !data.user) {
-            return NextResponse.json(
-                { error: authError?.message ?? 'Auth creation failed' },
-                { status: 400 }
-            )
-        }
-
+        // 3. Credentials + profile in ONE transaction (active immediately). No orphaned account is possible.
         const role = "admin"
-
-        // 4. Insert profile — status active immediately since email is already confirmed
+        let data: { user: { id: string } }
         try {
-            await db.insert(profiles).values({
-                id: data.user.id,
+            const created = await createUserWithProfile({
                 email,
-                userType: 'admin_portal',
-                role,
-                status: 'active',
-                fullName: fullName || null,
-                phone: phone || null,
+                password,
+                profile: { userType: 'admin_portal', role, status: 'active', fullName: fullName || null, phone: phone || null },
             })
+            data = { user: { id: created.id } }
         } catch (dbError: any) {
-            // The auth user above was just created — if the profile fails to save,
-            // it's left as an orphaned Auth account with no matching profile. Clean
-            // it up so a duplicate-email attempt doesn't leave a ghost account behind.
-            console.error('[admin/register] profile insert failed', dbError)
-            await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch((delErr) =>
-                console.error('[admin/register] failed to clean up orphaned auth user', delErr)
-            )
-            if (dbError?.code === '23505') {
-                return NextResponse.json(
-                    { error: 'A user with this email already exists.' },
-                    { status: 409 }
-                )
+            if (dbError instanceof EmailTakenError) {
+                return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 409 })
             }
-            return NextResponse.json(
-                { error: 'Internal server error' },
-                { status: 500 }
-            )
+            console.error('[admin/register] create failed', dbError)
+            return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
         }
 
         // Automatically seed default catalog and client price list

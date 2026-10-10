@@ -1,8 +1,9 @@
+import { users } from '@/src/db/schema/profile'
 import { NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { asc, eq } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { isValidRoleForType } from '@/src/lib/auth/role'
 
 // Lightweight lab/client list (id + display name only) for the lab filter on
@@ -21,8 +22,8 @@ export async function GET() {
     }
 
     const rows = await db
-      .select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: profiles.email })
-      .from(profiles)
+      .select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: users.email })
+      .from(profiles).innerJoin(users, eq(users.id, profiles.id))
       .where(eq(profiles.role, 'client'))
       .orderBy(asc(profiles.labName))
 

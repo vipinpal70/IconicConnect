@@ -4,7 +4,7 @@ import { chatMessages } from '@/src/db/schema/chat';
 import { profiles } from '@/src/db/schema/profile';
 import { cases } from '@/src/db/schema/case';
 import { and, desc, eq } from 'drizzle-orm';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifications } from '@/src/db/schema/notification';

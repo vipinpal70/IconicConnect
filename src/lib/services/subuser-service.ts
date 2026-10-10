@@ -1,7 +1,6 @@
 import { validatePasswordStrength } from '@/src/lib/security/password'
 import { randomBytes } from 'node:crypto'
 import { type ISubUserRepository } from '../repositories/subuser-repository'
-import { supabaseAdmin } from '@/src/lib/supabase/admin'
 import { type Profile } from '@/src/db/schema/profile'
 import { sendCredentialsEmail } from '@/src/lib/mailer'
 import { NotificationService } from '@/src/lib/notifications/notification-service'
@@ -39,36 +38,22 @@ export class SubUserService {
     }
     const mainPassword = password || randomBytes(18).toString('base64url') + 'aA1!'
 
-    // 2. Create user in Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password: mainPassword,
-      email_confirm: true, // Immediately activate
-    })
+    // 2. Credentials + profile in one transaction (no orphaned login if the profile fails).
+    const profile = await this.subUserRepo.create(
+      {
+        userType: 'lab_portal',
+        role: 'subuser',
+        status: 'active', // Auto-activate
+        fullName: name,
+        title: role, // Store the sub-role (e.g. Manager) in the title field
+        createdBy: clientId,
+      },
+      clientId,
+      { email, password: mainPassword },
+    )
+    const userId = profile.id
 
-    if (authError || !authData.user) {
-      throw new Error(authError?.message || 'Failed to create user in Supabase Auth')
-    }
-
-    const userId = authData.user.id
-
-    try {
-      // 3. Create profile and mapping in DB
-      const profile = await this.subUserRepo.create(
-        {
-          id: userId,
-          userType: 'lab_portal',
-          role: 'subuser',
-          status: 'active', // Auto-activate
-          fullName: name,
-          title: role, // Store the sub-role (e.g. Manager) in the title field
-          email,
-          createdBy: clientId,
-          // Plaintext passwords are never stored (previously shown to the parent client in a reveal UI).
-        },
-        clientId
-      )
-
+    {
       // 4. Send welcome credentials email — sendCredentialsEmail never throws
       // (it wraps queueEmailSafely), so this can't fail the request; but the
       // caller still needs to know whether it actually queued so the client
@@ -96,12 +81,6 @@ export class SubUserService {
       })
 
       return { profile, emailQueued }
-    } catch (dbError) {
-      // Rollback Auth user if database insertion fails
-      await supabaseAdmin.auth.admin.deleteUser(userId).catch((err) => {
-        console.error('Failed to rollback Supabase Auth user:', err)
-      })
-      throw dbError
     }
   }
 
@@ -114,14 +93,7 @@ export class SubUserService {
       throw new Error('Sub-user not found or does not belong to this client')
     }
 
-    // 2. Delete user in Supabase Auth
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(subUserId)
-    if (authError) {
-      console.warn(`Supabase deleteUser warning: ${authError.message}`)
-      // Proceed to DB deletion even if auth fails (e.g. if user was already deleted in auth)
-    }
-
-    // 3. Delete user database records
+    // 2. Delete the login (profile cascades) and revoke its sessions
     await this.subUserRepo.delete(subUserId, clientId)
   }
 }

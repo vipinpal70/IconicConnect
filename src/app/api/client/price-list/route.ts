@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { eq } from 'drizzle-orm'
 import { resolveClientIdFromProfile, getPriceListForClient } from '@/src/lib/price-list'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'

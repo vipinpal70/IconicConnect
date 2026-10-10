@@ -11,6 +11,7 @@ export const SESSION_TTL_SECONDS = 7 * 60 * 60
 
 export type SessionData = {
   userId: string
+  email: string
   role: string
   userType: string
   /** Effective lab: client → own id, subuser → parent client, staff → null. */

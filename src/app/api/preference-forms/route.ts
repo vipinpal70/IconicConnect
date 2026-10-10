@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { desc, eq } from "drizzle-orm"
 import { db } from "@/src/db"
-import { profiles, subUsers } from "@/src/db/schema/profile"
+import { profiles } from "@/src/db/schema/profile"
 import { preferenceForms } from "@/src/db/schema/preference-form"
-import { createClient } from "@/src/lib/supabase/server"
+import { createClient } from "@/src/lib/auth/server"
 import { clonePreferenceFormPayload, type PreferenceFormPayload } from "@/src/lib/preference-forms"
 import { createSystemDefaultPreferenceForm } from "@/src/lib/preference-forms-server"
 import { logActivity } from "@/src/lib/activity-log"
@@ -25,7 +25,7 @@ async function getRequestContext(clientId?: string | null) {
   const isAdmin = profile.role === "admin"
 
   if (profile.role === "subuser") {
-    const [subUserRecord] = await db.select().from(subUsers).where(eq(subUsers.id, profile.id)).limit(1)
+    const [subUserRecord] = await Promise.resolve(profile.clientId ? [{ clientId: profile.clientId }] : [])
     if (!subUserRecord) {
       return { error: NextResponse.json({ error: "Sub-user parent client not found" }, { status: 400 }) }
     }

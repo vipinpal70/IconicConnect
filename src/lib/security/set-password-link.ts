@@ -1,25 +1,16 @@
-import { supabaseAdmin } from '@/src/lib/supabase/admin'
+import { createResetToken, findUserIdByEmail } from '@/src/lib/auth/auth-service'
 
 /**
  * One-time "set your password" link for new/reset accounts, so credentials emails never contain a
- * plaintext password (mailboxes, forwarding, queue payloads and email logs all retain it forever).
- * Returns null on failure — callers fall back to telling the user to use "Forgot password".
+ * plaintext password. Returns null on failure — callers fall back to telling the user to use "Forgot password".
  */
 export async function createSetPasswordLink(email: string): Promise<string | null> {
   try {
     const origin = process.env.NEXT_PUBLIC_APP_URL
     if (!origin) return null
-    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email,
-      options: { redirectTo: `${origin}/auth/reset-password` },
-    })
-    const tokenHash = data?.properties?.hashed_token
-    if (error || !tokenHash) {
-      console.error('[set-password-link] generateLink failed:', error)
-      return null
-    }
-    return `${origin}/auth/verify?token_hash=${encodeURIComponent(tokenHash)}&type=recovery&next=/auth/reset-password`
+    const userId = await findUserIdByEmail(email)
+    if (!userId) return null
+    return `${origin}/auth/reset-password?token=${encodeURIComponent(await createResetToken(userId))}`
   } catch (err) {
     console.error('[set-password-link] failed:', err)
     return null

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { NotificationService } from '@/src/lib/notifications/notification-service'
 import { NotificationType } from '@/src/lib/notifications/notification-events'
 import { logActivity } from '@/src/lib/activity-log'
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
         actorUserId: user.id,
         targetUserId: clientId,
         title: 'Account Approved',
-        message: `Hello ${clientProfile.fullName || clientProfile.email}, your IconicConnect account has been approved and is now active.`,
+        message: `Hello ${clientProfile.fullName || (await getEmail(clientProfile.id))}, your IconicConnect account has been approved and is now active.`,
         link: '/client/dashboard',
         metadata: { clientId },
       });
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     await logActivity({
       actor: adminProfile,
       action: 'client.approved',
-      details: { clientId, email: clientProfile.email, fullName: clientProfile.fullName },
+      details: { clientId, email: (await getEmail(clientProfile.id)), fullName: clientProfile.fullName },
     }).catch((err) => console.error('[client.approved logActivity]', err))
 
     return NextResponse.json({ success: true })

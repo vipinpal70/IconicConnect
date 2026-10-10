@@ -6,7 +6,7 @@ import { NotificationType } from './notification-events'
 import { NotificationService } from './notification-service'
 import { getStatusLabel, type CaseStatus } from '@/src/lib/case-status-mapping'
 
-type PortalRole = 'admin' | 'qc' | 'account_manager' | 'client' | 'subuser' | 'consultant'
+type PortalRole = 'admin' | 'qc' | 'account_manager' | 'client' | 'subuser'
 
 type DispatchPayload = {
   actorUserId: string
@@ -51,7 +51,7 @@ export async function notifySupportTicketCreated(input: {
   priority: string
   clientName: string
 }) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager', 'consultant'])
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
 
   return dispatchToUserIds(adminIds, (targetUserId) => ({
     type: NotificationType.SUPPORT_TICKET_CREATED,
@@ -77,7 +77,7 @@ export async function notifyCaseSubmitted(input: {
   category: string
   clientName: string
 }) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager', 'consultant'])
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
 
   return dispatchToUserIds(adminIds, (targetUserId) => ({
     type: NotificationType.CASE_CREATED,
@@ -212,7 +212,7 @@ export async function notifyCallbackRequestCreated(input: {
   labName: string
   requesterName: string
 }) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager', 'consultant'])
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
 
   return dispatchToUserIds(adminIds, (targetUserId) => ({
     type: NotificationType.SUPPORT_CALLBACK_REQUESTED,
@@ -289,7 +289,7 @@ export async function notifyClientRegistered(input: {
   labName?: string | null
   email: string
 }) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager', 'consultant'])
+  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
 
   return dispatchToUserIds(adminIds, (targetUserId) => ({
     type: NotificationType.CLIENT_REGISTERED,

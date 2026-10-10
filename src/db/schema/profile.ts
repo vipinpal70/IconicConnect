@@ -6,90 +6,59 @@ import {
   pgEnum,
   index,
   text,
-  boolean,
+  customType,
 } from 'drizzle-orm/pg-core'
-import { sql } from 'drizzle-orm'
 
-export const userTypeEnum = pgEnum('user_type', [
-  'lab_portal',           // client side
-  'admin_portal',   // admin/owner side
-])
+// Mirrors db/migrations (dbmate owns the DDL; this file only types the queries).
+const citext = customType<{ data: string }>({ dataType: () => 'citext' })
 
-export const userRoleEnum = pgEnum('user_role', [
-  // lab_portal roles
-  'client',
-  'subuser',
-  // admin_portal roles
-  'admin',
-  'qc',
-  'account_manager',
-  'designer',
-  'consultant',
-])
+export const userTypeEnum = pgEnum('user_type', ['lab_portal', 'admin_portal'])
+export const userRoleEnum = pgEnum('user_role', ['client', 'subuser', 'admin', 'qc', 'account_manager', 'designer'])
+export const userStatusEnum = pgEnum('user_status', ['pending', 'active', 'inactive'])
+export const planEnum = pgEnum('plan_status', ['trial', 'onboarded'])
 
-export const userStatusEnum = pgEnum('user_status', [
-  'pending',
-  'active',
-  'inactive',
-])
-
-export const planEnum = pgEnum('plan_status', [
-  'Trial',
-  'Onboarded',
-])
+/** Credentials only. Email lives here once (case-insensitive unique). */
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: citext('email').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }).defaultNow().notNull(),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
 
 export const profiles = pgTable('profiles', {
-  id: uuid('id').primaryKey(),        // = auth.users.id
+  id: uuid('id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
 
-  // Type & Role
   userType: userTypeEnum('user_type').notNull(),
   role: userRoleEnum('user_role').notNull(),
   status: userStatusEnum('user_status').default('pending').notNull(),
-  plan: planEnum('plan_status').default('Trial'), // Only for client/subuser
+  plan: planEnum('plan_status'),
 
-  // Personal
-  fullName: varchar('full_name', { length: 100 }),
-  title: varchar('title', { length: 50 }),
-  email: varchar('email', { length: 255 }).notNull().unique(),
-  phone: varchar('phone', { length: 20 }),
+  /** Effective lab: client → own id, subuser → parent client, staff → null. Replaces resolveClientId + sub_users. */
+  clientId: uuid('client_id'),
+  /** Who created this sub-user / staff member. */
+  createdBy: uuid('created_by'),
 
-  // Lab
+  fullName: varchar('full_name', { length: 150 }),
+  title: varchar('title', { length: 100 }),
+  phone: varchar('phone', { length: 30 }),
   labName: varchar('lab_name', { length: 150 }),
-
-  // Location
   postalCode: varchar('postal_code', { length: 20 }),
   city: varchar('city', { length: 100 }),
   state: varchar('state', { length: 100 }),
   country: varchar('country', { length: 100 }),
 
-  // Subuser / team member: who created them
-  createdBy: uuid('created_by'),               // parent user's id
-  password: varchar('password', { length: 255 }),
+  onBoardedAt: timestamp('onboarded_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  roleStatusIdx: index('idx_profiles_role_status').on(table.role, table.status),
+}))
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  onBoardedAt: timestamp('onboarded_at'),
-}, (table) => {
-  return {
-    roleIdx: index('role_idx').on(table.role),
-    emailIdx: index('email_idx').on(table.email),
-    createdByIdx: index('profiles_created_by_idx').on(table.createdBy),
-  }
-})
-
-export const subUsers = pgTable('sub_users', {
-  id: uuid('id').primaryKey(),        // = auth.users.id
-  profileId: uuid('profile_id').references(() => profiles.id).notNull(),
-  clientId: uuid('client_id').references(() => profiles.id).notNull(), // Parent client
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => {
-  return {
-    clientIdx: index('sub_users_client_id_idx').on(table.clientId),
-  }
-})
-
+export type User = typeof users.$inferSelect
 export type Profile = typeof profiles.$inferSelect
 export type NewProfile = typeof profiles.$inferInsert
-export type SubUser = typeof subUsers.$inferSelect
-export type NewSubUser = typeof subUsers.$inferInsert

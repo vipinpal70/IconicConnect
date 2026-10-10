@@ -6,8 +6,8 @@ import {
   caseStatusEnum,
   CASE_STATUS_TO_LIFECYCLE_STEP,
 } from '@/src/db/schema/case'
-import { profiles, subUsers } from '@/src/db/schema/profile'
-import { createClient } from '@/src/lib/supabase/server'
+import { profiles } from '@/src/db/schema/profile'
+import { createClient } from '@/src/lib/auth/server'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { getProfileLabName } from '@/src/lib/profile-utils'
 import { logActivity } from '@/src/lib/activity-log'
@@ -86,11 +86,7 @@ export async function POST(req: NextRequest) {
       clientId = profile.id
       labName = getProfileLabName(profile)
     } else {
-      const sub = await db
-        .select()
-        .from(subUsers)
-        .where(eq(subUsers.id, profile.id))
-        .limit(1)
+      const sub = await Promise.resolve(profile.clientId ? [{ clientId: profile.clientId }] : [])
         .then((r) => r[0])
       if (!sub) {
         return NextResponse.json({ error: 'Subuser parent client not found' }, { status: 400 })

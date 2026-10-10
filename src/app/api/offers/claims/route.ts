@@ -1,9 +1,11 @@
+import { users } from '@/src/db/schema/profile'
 import { NextRequest, NextResponse } from "next/server"
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { and, desc, eq } from "drizzle-orm"
 import { db } from "@/src/db"
 import { offerClaims, offers } from "@/src/db/schema/offer"
 import { profiles } from "@/src/db/schema/profile"
-import { createClient } from "@/src/lib/supabase/server"
+import { createClient } from "@/src/lib/auth/server"
 import { isValidRoleForType } from "@/src/lib/auth/role"
 import { type OfferClaimRecord } from "@/src/lib/offers"
 
@@ -100,13 +102,13 @@ export async function GET() {
         offerDiscount: offers.discount,
         clientName: profiles.fullName,
         labName: profiles.labName,
-        email: profiles.email,
+        email: users.email,
         phone: profiles.phone,
         status: offerClaims.status,
       })
       .from(offerClaims)
       .innerJoin(offers, eq(offerClaims.offerId, offers.id))
-      .innerJoin(profiles, eq(offerClaims.clientId, profiles.id))
+      .innerJoin(profiles, eq(offerClaims.clientId, profiles.id)).innerJoin(users, eq(users.id, profiles.id))
 
     const rows = isAdmin
       ? await baseQuery.orderBy(desc(offerClaims.createdAt))
@@ -161,13 +163,13 @@ export async function POST(req: NextRequest) {
         offerDiscount: offers.discount,
         clientName: profiles.fullName,
         labName: profiles.labName,
-        email: profiles.email,
+        email: users.email,
         phone: profiles.phone,
         status: offerClaims.status,
       })
       .from(offerClaims)
       .innerJoin(offers, eq(offerClaims.offerId, offers.id))
-      .innerJoin(profiles, eq(offerClaims.clientId, profiles.id))
+      .innerJoin(profiles, eq(offerClaims.clientId, profiles.id)).innerJoin(users, eq(users.id, profiles.id))
       .where(and(eq(offerClaims.offerId, offerId), eq(offerClaims.clientId, clientId)))
       .limit(1)
 
@@ -194,13 +196,13 @@ export async function POST(req: NextRequest) {
         offerDiscount: offers.discount,
         clientName: profiles.fullName,
         labName: profiles.labName,
-        email: profiles.email,
+        email: users.email,
         phone: profiles.phone,
         status: offerClaims.status,
       })
       .from(offerClaims)
       .innerJoin(offers, eq(offerClaims.offerId, offers.id))
-      .innerJoin(profiles, eq(offerClaims.clientId, profiles.id))
+      .innerJoin(profiles, eq(offerClaims.clientId, profiles.id)).innerJoin(users, eq(users.id, profiles.id))
       .where(eq(offerClaims.id, inserted.id))
       .limit(1)
 
@@ -218,7 +220,7 @@ export async function POST(req: NextRequest) {
               offerDiscount: offer.discount,
               clientName: userContext.profile.fullName,
               labName: userContext.profile.labName,
-              email: userContext.profile.email,
+              email: (await getEmail(userContext.profile.id)),
               phone: userContext.profile.phone,
               status: inserted.status,
             }),
@@ -283,13 +285,13 @@ export async function PATCH(req: NextRequest) {
         offerDiscount: offers.discount,
         clientName: profiles.fullName,
         labName: profiles.labName,
-        email: profiles.email,
+        email: users.email,
         phone: profiles.phone,
         status: offerClaims.status,
       })
       .from(offerClaims)
       .innerJoin(offers, eq(offerClaims.offerId, offers.id))
-      .innerJoin(profiles, eq(offerClaims.clientId, profiles.id))
+      .innerJoin(profiles, eq(offerClaims.clientId, profiles.id)).innerJoin(users, eq(users.id, profiles.id))
       .where(eq(offerClaims.id, updated.id))
       .limit(1)
 

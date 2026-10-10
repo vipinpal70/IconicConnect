@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache'
 import { logActivity } from '@/src/lib/activity-log'
 import { deleteClientCompletely } from '@/src/lib/admin/delete-client'
@@ -111,7 +112,7 @@ export async function PATCH(
       await logActivity({
         actor: auth.profile,
         action: updates.status === 'active' ? 'client.activated' : 'client.deactivated',
-        details: { clientId: id, labName: client.labName, email: client.email },
+        details: { clientId: id, labName: client.labName, email: (await getEmail(client.id)) },
       }).catch((err) => console.error('[client status logActivity]', err))
     }
 
@@ -161,7 +162,7 @@ export async function DELETE(
       details: {
         clientId: id,
         labName: client.labName,
-        email: client.email,
+        email: (await getEmail(client.id)),
         casesDeleted: result.casesDeleted,
         subUsersDeleted: result.subUserProfileIds.length,
         authDeleteErrors: result.authDeleteErrors,

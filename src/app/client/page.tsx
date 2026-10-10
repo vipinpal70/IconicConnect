@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/server";
+import { createClient } from "@/src/lib/auth/server";
 import { db } from "@/src/db";
 import { profiles } from "@/src/db/schema/profile";
 import { eq } from "drizzle-orm";

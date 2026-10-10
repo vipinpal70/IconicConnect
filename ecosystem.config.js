@@ -51,21 +51,6 @@ module.exports = {
       },
     },
     {
-      name: 'iconic-connect-cleanup',
-      cwd: __dirname, // run from the project folder no matter where `pm2 start` is typed
-      script: 'npx',
-      args: 'tsx src/lib/queue/cleanup-scheduler.ts',
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '200M',
-      env: {
-        NODE_ENV: 'production',
-        DB_POOL_MAX: DB_POOL_SCHEDULER,
-      },
-    },
-    {
       name: 'iconic-connect-auto-approve',
       cwd: __dirname, // run from the project folder no matter where `pm2 start` is typed
       script: 'npx',

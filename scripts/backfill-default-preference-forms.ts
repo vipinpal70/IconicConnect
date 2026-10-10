@@ -1,3 +1,4 @@
+import { users } from '@/src/db/schema/profile'
 import 'dotenv/config'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../src/db'
@@ -20,8 +21,8 @@ async function main() {
   console.log(`\n=== Backfill: seed "${DEFAULT_PREFERENCE_FORM_NAME}" for existing clients (${apply ? 'APPLY' : 'DRY RUN'}) ===\n`)
 
   const clients = await db
-    .select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: profiles.email })
-    .from(profiles)
+    .select({ id: profiles.id, labName: profiles.labName, fullName: profiles.fullName, email: users.email })
+    .from(profiles).innerJoin(users, eq(users.id, profiles.id))
     .where(and(eq(profiles.role, 'client'), eq(profiles.status, 'active')))
 
   console.log(`Found ${clients.length} active client(s).\n`)

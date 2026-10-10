@@ -72,7 +72,6 @@ export const SENSITIVE_PATH_LIMITS: Array<{ match: (p: string) => boolean; name:
   { name: 'sign-up', match: (p) => p === '/api/sign-up', limit: 5, windowSeconds: 300 },
   { name: 'forgot-password', match: (p) => p.startsWith('/api/auth/'), limit: 5, windowSeconds: 300 },
   { name: 'admin-create', match: (p) => p === '/api/admin/user', limit: 5, windowSeconds: 600 },
-  { name: 'admin-activate', match: (p) => p === '/api/admin/activate', limit: 8, windowSeconds: 300 },
   { name: 'upload', match: (p) => p.includes('/upload') || p.includes('/files'), limit: 120, windowSeconds: 60 },
   { name: 'bulk', match: (p) => p.startsWith('/api/cases/bulk'), limit: 10, windowSeconds: 60 },
 ]

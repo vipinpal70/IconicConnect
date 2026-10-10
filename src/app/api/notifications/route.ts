@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { notifications } from '@/src/db/schema/notification';
-import { createClient } from '@/src/lib/supabase/server';
+import { createClient } from '@/src/lib/auth/server';
 import { eq, and, desc } from 'drizzle-orm';
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache';
 

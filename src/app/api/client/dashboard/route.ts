@@ -4,7 +4,7 @@ import { db } from "@/src/db";
 import { cases } from "@/src/db/schema/case";
 import { profiles } from "@/src/db/schema/profile";
 import { activityLogs } from "@/src/db/schema/activity-log";
-import { createClient } from "@/src/lib/supabase/server";
+import { createClient } from "@/src/lib/auth/server";
 import { eq, notInArray, desc, and, isNotNull, gte, sql } from "drizzle-orm";
 import { formatActivityLabel } from "@/src/lib/activity-log";
 import { getCachedData, setCachedData } from "@/src/lib/redis-cache";

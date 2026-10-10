@@ -1,9 +1,10 @@
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import { invoices } from '@/src/db/schema/invoice'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { formatInvoiceRow } from '@/src/lib/invoice'
 import { getCachedData, setCachedData, invalidateInvoiceCache } from '@/src/lib/redis-cache'
 
@@ -41,7 +42,8 @@ export async function GET(
     if (inv.clientId !== clientId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
-    const result = formatInvoiceRow(inv, client)
+    const clientEmail = await getEmail(client.id)
+    const result = formatInvoiceRow(inv, client, clientEmail)
     await setCachedData(cacheKey, result, INVOICE_TTL)
     return NextResponse.json(result)
   } catch (err) {
@@ -97,7 +99,7 @@ export async function PATCH(
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
     await invalidateInvoiceCache(clientId, id)
-    return NextResponse.json(formatInvoiceRow(updated, client))
+    return NextResponse.json(formatInvoiceRow(updated, client, await getEmail(client.id)))
   } catch (err) {
     console.error('[api/client/invoices/[id] PATCH]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

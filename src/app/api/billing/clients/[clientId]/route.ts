@@ -6,12 +6,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db'
 import { cases, caseFiles } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
 import { eq, and, gte, lte, inArray, asc } from 'drizzle-orm'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/src/lib/auth/server'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 
 const BILLING_TTL = 1800 // 30 minutes
@@ -253,7 +254,7 @@ export async function GET(
             id: clientProfile.id,
             fullName: clientProfile.fullName,
             labName: clientProfile.labName,
-            email: clientProfile.email,
+            email: (await getEmail(clientProfile.id)),
             phone: clientProfile.phone,
             city: clientProfile.city,
             state: clientProfile.state,

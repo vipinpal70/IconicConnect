@@ -1,11 +1,12 @@
 import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-password-link'
+import { getEmail } from '@/src/lib/auth/auth-service'
 import { escapeHtml } from '@/src/lib/security/html'
 import { validatePasswordStrength } from '@/src/lib/security/password'
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
-import { supabaseAdmin } from '@/src/lib/supabase/admin';
-import { createClient } from '@/src/lib/supabase/server';
+import { setPassword } from '@/src/lib/auth/auth-service';
+import { createClient } from '@/src/lib/auth/server';
 import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
 import { queueEmailSafely } from '@/src/lib/queue/jobs';
@@ -49,30 +50,24 @@ export async function POST(
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
-    // 2. Update password in Supabase Auth
-    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, {
-      password,
-    });
-
-    if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 });
-    }
+    // 2. Hash + store; every existing session of that user is revoked.
+    await setPassword(id, password);
 
     // 3. Send email with new credentials via Queue — queueEmailSafely never
     // throws, so a queue/Redis failure here can't 500 a request whose primary
     // action (the password change above) already succeeded.
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const setLink = await createSetPasswordLink(profile.email);
+    const setLink = await createSetPasswordLink((await getEmail(profile.id)));
     const { queued: emailQueued, error: emailError } = await queueEmailSafely({
-      to: profile.email,
+      to: (await getEmail(profile.id)),
       subject: 'Your IconicConnect Password has been Reset',
       type: 'credentials',
       html: `
         <h1>New Password Generated</h1>
-        <p>Hello ${escapeHtml(profile.fullName || profile.email)},</p>
+        <p>Hello ${escapeHtml(profile.fullName || (await getEmail(profile.id)))},</p>
         <p>Your password for IconicConnect has been reset by an administrator.</p>
         <p><strong>Login URL:</strong> ${appUrl}/auth/sign-in</p>
-        <p><strong>Email:</strong> ${escapeHtml(profile.email)}</p>
+        <p><strong>Email:</strong> ${escapeHtml((await getEmail(profile.id)))}</p>
         ${setPasswordBlock(setLink, appUrl)}
       `
     });
@@ -85,7 +80,7 @@ export async function POST(
       action: 'member.password_reset',
       details: {
         memberId: id,
-        email: profile.email,
+        email: (await getEmail(profile.id)),
         role: profile.role,
         emailQueued,
       },

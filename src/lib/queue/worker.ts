@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
 import { createWorkerConnection } from './client';
 import { resend } from '../resend';
-import { runCleanup } from './cleanup-task';
 
 export interface EmailJobData {
   to: string;
@@ -23,16 +22,6 @@ if (process.env.NODE_ENV === 'production') {
     (global as any).emailWorker = createWorker((global as any).emailWorkerConnection);
   }
   worker = (global as any).emailWorker;
-
-  if (!(global as any).cleanupInterval) {
-    setTimeout(() => {
-      runCleanup().catch(console.error);
-    }, 5000);
-
-    (global as any).cleanupInterval = setInterval(() => {
-      runCleanup().catch(console.error);
-    }, 60 * 60 * 1000);
-  }
 }
 
 function createWorker(conn = createWorkerConnection()) {
