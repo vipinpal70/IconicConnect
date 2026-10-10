@@ -5,7 +5,7 @@ import { caseBulkDownloads } from '@/src/db/schema/bulk-download';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseDetails, EDITABLE_STATUSES } from '@/src/db/schema/case';
+import { cases, caseDetails, EDITABLE_STATUSES, NON_DELETABLE_STATUSES } from '@/src/db/schema/case';
 import { buildCaseDetail } from '@/src/lib/case-detail';
 import { insertFiles, listByCase, pickPerCase, deleteByCases } from '@/src/lib/files-repo';
 import { files as fileRegistry } from '@/src/db/schema/files';
@@ -816,6 +816,17 @@ export async function DELETE(
       if (!EDITABLE_STATUSES.includes(caseRecord.status as typeof EDITABLE_STATUSES[number])) {
         return NextResponse.json({ error: 'Forbidden: Cannot delete case once work has started' }, { status: 403 });
       }
+    }
+
+    // Billable / in-client-review cases are never deletable (any role): cancel them instead.
+    if (NON_DELETABLE_STATUSES.includes(caseRecord.status as typeof NON_DELETABLE_STATUSES[number])) {
+      return NextResponse.json({
+        error: caseRecord.status === 'submitted_to_client'
+          ? 'This case is waiting for the client\'s approval and cannot be deleted. Cancel it instead.'
+          : 'Approved and delivered cases are part of billing and cannot be deleted.',
+        code: 'case_not_deletable',
+        status: caseRecord.status,
+      }, { status: 409 });
     }
 
     // A billed case cannot vanish silently (invoice_cases -> cases is RESTRICT by design). Say so clearly

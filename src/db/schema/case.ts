@@ -105,6 +105,18 @@ export const EDITABLE_STATUSES: Array<typeof caseStatusEnum.enumValues[number]> 
   'scan_not_verified',
 ]
 
+/**
+ * Statuses a case may NOT be deleted in, for ANY role (admin included):
+ *  - approved / delivered : billable (case_status_meta.is_billable) — deleting would lose revenue and analytics;
+ *  - submitted_to_client  : the lab is reviewing it and the 7-day auto-approve clock is running.
+ * Cancel the case instead (it keeps the history). Clients are additionally limited to EDITABLE_STATUSES.
+ */
+export const NON_DELETABLE_STATUSES: Array<typeof caseStatusEnum.enumValues[number]> = [
+  'approved',
+  'delivered',
+  'submitted_to_client',
+]
+
 export type CaseTimelineEvent = {
   id: string
   action: string
