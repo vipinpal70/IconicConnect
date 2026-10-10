@@ -30,7 +30,11 @@
     "r2:clean:schedule": "tsx src/lib/queue/r2-cleanup-scheduler.ts",
     "r2:retention": "tsx src/lib/queue/r2-retention-task.ts",
     "r2:retention:dry": "tsx src/lib/queue/r2-retention-task.ts --dry-run",
-    "r2:retention:schedule": "tsx src/lib/queue/r2-retention-scheduler.ts"
+    "r2:retention:schedule": "tsx src/lib/queue/r2-retention-scheduler.ts",
+    "db:new": "dbmate --migrations-dir db/migrations new",
+    "db:up": "dbmate --env-file .env.local --migrations-dir db/migrations --no-dump-schema up",
+    "db:down": "dbmate --env-file .env.local --migrations-dir db/migrations --no-dump-schema rollback",
+    "db:status": "dbmate --env-file .env.local --migrations-dir db/migrations status"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1077.0",
