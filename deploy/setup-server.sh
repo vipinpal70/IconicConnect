@@ -141,6 +141,9 @@ install -m 0644 "$SRC_DIR/docker-compose.prod.yml" "$INSTALL_DIR/docker-compose.
 install -m 0750 "$SRC_DIR/render-secrets.sh"  "$INSTALL_DIR/bin/render-secrets.sh"
 install -m 0750 "$SRC_DIR/backup-postgres.sh" "$INSTALL_DIR/bin/backup-postgres.sh"
 install -m 0750 "$SRC_DIR/verify-server.sh"   "$INSTALL_DIR/bin/verify-server.sh"
+install -m 0640 "$SRC_DIR/lib-r2.sh"          "$INSTALL_DIR/bin/lib-r2.sh"
+install -m 0750 "$SRC_DIR/backup-to-r2.sh"    "$INSTALL_DIR/bin/backup-to-r2.sh"
+install -m 0750 "$SRC_DIR/restore-from-r2.sh" "$INSTALL_DIR/bin/restore-from-r2.sh"
 # Non-secret tunables only; passwords live in secrets/ and redis.conf.
 [ -f "$INSTALL_DIR/.env" ] || cat > "$INSTALL_DIR/.env" <<'ENVF'
 # Non-secret settings for docker-compose.yml (override here, then re-run the provision workflow).
@@ -185,6 +188,67 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now iconic-backup.timer >/dev/null 2>&1
 ok "iconic-backup.timer → /var/backups/iconic (02:15 daily)"
+
+# ───────────────────────────── 6b. off-site backups → Cloudflare R2 ─────────
+# Daily: dump → upload → verify → ONLY THEN delete older backups (R2_KEEP_BACKUPS, default 1). Credentials live in
+# r2-backup.env (root-only). The timer is enabled only once that file is filled in, so an unconfigured server
+# does not produce a failing unit every night.
+log "Off-site backups to Cloudflare R2"
+R2_ENV="$INSTALL_DIR/r2-backup.env"
+if [ ! -f "$R2_ENV" ]; then
+  cat > "$R2_ENV" <<'R2ENV'
+# Cloudflare R2 off-site backup settings (root-only). Use a DEDICATED bucket and an API token scoped to ONLY that
+# bucket with "Object Read & Write". Do NOT reuse the app's file bucket: the app's R2 orphan-cleanup job deletes every
+# object the database does not reference — it would delete your backups.
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BACKUP_BUCKET=
+R2_BACKUP_PREFIX=db-backups/
+# How many backups to keep in R2 after a successful upload (1 = only the newest). 3 is a safer default.
+R2_KEEP_BACKUPS=1
+# Optional: client-side AES-256 encryption (key file path). KEEP A COPY OF THE KEY OFF THIS SERVER or the backups are unrecoverable.
+#BACKUP_ENCRYPTION_KEY_FILE=/opt/iconic/secrets/backup_key
+# Optional dead-man's switch (healthchecks.io etc.): pinged on success, <url>/fail on failure.
+#HEALTHCHECK_URL=
+R2ENV
+fi
+chmod 600 "$R2_ENV"
+cat > /etc/systemd/system/iconic-backup-r2.service <<UNIT
+[Unit]
+Description=IconicConnect off-site PostgreSQL backup to Cloudflare R2
+After=docker.service iconic-backup.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+[Service]
+Type=oneshot
+Environment=INSTALL_DIR=${INSTALL_DIR}
+Environment=BACKUP_DIR=/var/backups/iconic
+ExecStart=${INSTALL_DIR}/bin/backup-to-r2.sh
+TimeoutStartSec=2h
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+UNIT
+cat > /etc/systemd/system/iconic-backup-r2.timer <<'UNIT'
+[Unit]
+Description=Daily off-site IconicConnect backup to R2
+[Timer]
+OnCalendar=*-*-* 02:45:00
+RandomizedDelaySec=300
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+if grep -Eq '^R2_BACKUP_BUCKET=.+' "$R2_ENV" && grep -Eq '^R2_ACCESS_KEY_ID=.+' "$R2_ENV" && grep -Eq '^R2_SECRET_ACCESS_KEY=.+' "$R2_ENV"; then
+  systemctl enable --now iconic-backup-r2.timer >/dev/null 2>&1
+  ok "iconic-backup-r2.timer enabled (02:45 daily → R2)"
+else
+  systemctl disable --now iconic-backup-r2.timer >/dev/null 2>&1 || true
+  warn "R2 off-site backup NOT active yet — fill in ${R2_ENV} (or set the R2_BACKUP_* GitHub secrets) and re-run."
+fi
 
 # ───────────────────────────── 7. hand the URLs to the app ──────────────────
 set_env_key() { # file key value — replace or append, keep owner/mode, one backup per run

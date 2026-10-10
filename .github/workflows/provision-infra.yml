@@ -30,6 +30,8 @@ concurrency:
 
 env:
   APP_DIR: /home/ubuntu/iconicconnect
+  # `secrets` cannot be used in step conditions directly, so expose only the boolean.
+  HAS_R2_BACKUP: ${{ secrets.R2_BACKUP_BUCKET != '' }}
 
 jobs:
   validate:
@@ -43,6 +45,11 @@ jobs:
         run: |
           bash -n deploy/*.sh
           shellcheck -S warning deploy/*.sh
+
+      - name: R2 backup integration test (fake S3)
+        run: |
+          python3 -m pip install --quiet "moto[server]==5.2.3"
+          bash deploy/tests/test-backup-to-r2.sh
 
       - name: Compose file is valid
         run: |
@@ -92,6 +99,38 @@ jobs:
           tar -czf - deploy | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" \
             -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes \
             "$SSH_USER@$HOST" 'rm -rf /tmp/iconic-deploy && mkdir -p /tmp/iconic-deploy && tar -xzf - -C /tmp/iconic-deploy'
+
+      # Optional: off-site backups to Cloudflare R2. Credentials travel over SSH on STDIN (never as command-line
+      # arguments, so they cannot show up in the server's process list) and land in a root-only mode-600 file.
+      - name: Write R2 backup credentials (optional)
+        if: env.HAS_R2_BACKUP == 'true'
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USERNAME }}
+          SSH_PORT: ${{ secrets.VPS_PORT }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_BACKUP_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
+          R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+          R2_KEEP_BACKUPS: ${{ secrets.R2_KEEP_BACKUPS }}
+          HEALTHCHECK_URL: ${{ secrets.BACKUP_HEALTHCHECK_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          SSH="ssh -i $HOME/.ssh/deploy_key -p ${SSH_PORT:-22} -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes $SSH_USER@$HOST"
+          $SSH 'sudo install -d -m 750 /opt/iconic && sudo install -d -m 700 /opt/iconic/secrets'
+          {
+            echo "R2_ACCOUNT_ID=$R2_ACCOUNT_ID"
+            echo "R2_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID"
+            echo "R2_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY"
+            echo "R2_BACKUP_BUCKET=$R2_BACKUP_BUCKET"
+            echo "R2_BACKUP_PREFIX=db-backups/"
+            echo "R2_KEEP_BACKUPS=${R2_KEEP_BACKUPS:-1}"
+            [ -z "$BACKUP_ENCRYPTION_KEY" ] || echo "BACKUP_ENCRYPTION_KEY_FILE=/opt/iconic/secrets/backup_key"
+            [ -z "$HEALTHCHECK_URL" ] || echo "HEALTHCHECK_URL=$HEALTHCHECK_URL"
+          } | $SSH 'sudo tee /opt/iconic/r2-backup.env >/dev/null && sudo chmod 600 /opt/iconic/r2-backup.env'
+          if [ -n "$BACKUP_ENCRYPTION_KEY" ]; then
+            printf '%s' "$BACKUP_ENCRYPTION_KEY" | $SSH 'sudo tee /opt/iconic/secrets/backup_key >/dev/null && sudo chmod 600 /opt/iconic/secrets/backup_key'
+          fi
 
       - name: Run setup-server.sh as root
         env:

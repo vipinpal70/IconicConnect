@@ -37,6 +37,17 @@ else
   skip "no $INSTALL_DIR/secrets (stack not provisioned on this machine)"
 fi
 
+echo "Backups:"
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files iconic-backup.timer >/dev/null 2>&1; then
+  systemctl is-active --quiet iconic-backup.timer && pass "local nightly backup timer active" || fail "iconic-backup.timer is not active"
+  if systemctl is-active --quiet iconic-backup-r2.timer; then
+    pass "off-site (R2) backup timer active"
+    systemctl is-failed --quiet iconic-backup-r2.service && fail "last R2 backup run FAILED — journalctl -u iconic-backup-r2.service" || pass "last R2 backup run did not fail"
+  else
+    skip "off-site (R2) backup not configured — backups exist only on this server's disk"
+  fi
+else skip "backup timers not installed"; fi
+
 echo "Host:"
 if command -v ufw >/dev/null 2>&1; then
   ufw status 2>/dev/null | grep -q "Status: active" && pass "ufw is active" || fail "ufw is not active"

@@ -98,9 +98,47 @@ sudo bash -c 'export PGPASSWORD=$(cat /opt/iconic/secrets/postgres_password)
 **Upgrade Postgres/Redis images:** edit `POSTGRES_IMAGE` / `REDIS_IMAGE` in `/opt/iconic/.env` (pin by digest), re-run the
 provision workflow. A *major* Postgres upgrade (16 → 17) needs dump/restore — take a backup first.
 
+## Off-site backups → Cloudflare R2 (daily, upload first, then delete the old one)
+Every night at ~02:45 `iconic-backup-r2.timer` runs `backup-to-r2.sh`:
+
+1. take (or reuse tonight's) verified `pg_dump` → 2. *(optional)* encrypt → 3. upload with `Content-MD5` and re-check
+size + MD5 on R2 → 4. **only then** delete older backups, keeping the newest `R2_KEEP_BACKUPS` (default **1**).
+
+If any step fails the script stops *before* the delete step, so the previous backup is never removed on a bad night,
+and `HEALTHCHECK_URL` (if set) receives `/fail`. Only objects named `db-backups/iconic_connect_<timestamp>.dump[.enc]`
+are ever deleted; anything else in the bucket is left alone (max 50 deletions per run as a sanity guard).
+
+**Set up (5 minutes)**
+1. Cloudflare → R2 → **Create a NEW bucket** (e.g. `iconic-db-backups`). ⚠️ *Never* reuse the app's file bucket: the app's
+   `r2-cleanup` job deletes every object the database doesn't reference, which would include your backups.
+2. R2 → *Manage API tokens* → create a token with **Object Read & Write**, scoped to **only that bucket**. Note the
+   Account ID, Access Key ID and Secret.
+3. Give them to the server — either way:
+   * GitHub secrets `R2_BACKUP_ACCOUNT_ID`, `R2_BACKUP_ACCESS_KEY_ID`, `R2_BACKUP_SECRET_ACCESS_KEY`, `R2_BACKUP_BUCKET`
+     (optional: `R2_KEEP_BACKUPS`, `BACKUP_HEALTHCHECK_URL`, `BACKUP_ENCRYPTION_KEY`) → re-run *Provision server*; or
+   * edit `/opt/iconic/r2-backup.env` on the server, then `sudo systemctl enable --now iconic-backup-r2.timer`.
+4. Test it now: `sudo systemctl start iconic-backup-r2.service && journalctl -u iconic-backup-r2.service -n 20`.
+
+**Recommended:** set `R2_KEEP_BACKUPS=3`. With 1, a backup that uploads fine but turns out to be bad (logical
+corruption you only notice a week later) replaces your last good copy. R2 storage for three small dumps costs almost nothing.
+Add a free [healthchecks.io](https://healthchecks.io) URL as `HEALTHCHECK_URL` so you are *told* if backups stop running.
+
+**Encryption (optional).** `BACKUP_ENCRYPTION_KEY_FILE` enables client-side AES-256 so Cloudflare can't read the dump
+(it contains customer data). Generate with `openssl rand -hex 32`. **Store a copy of the key somewhere that is not this
+server (password manager)** — if the server dies with the only copy of the key, the backups are unreadable.
+
+**Restore (test this once, now — an untested backup is a hope, not a backup)**
+```bash
+sudo /opt/iconic/bin/restore-from-r2.sh --list                 # what is in R2
+sudo /opt/iconic/bin/restore-from-r2.sh                        # newest → scratch database "restore_check" (live DB untouched)
+sudo BACKUP_ENCRYPTION_KEY_FILE=/path/to/key /opt/iconic/bin/restore-from-r2.sh db-backups/<object>.dump.enc
+```
+Disaster recovery on a new server: provision it, restore into a scratch DB, check the data, then
+`pg_dump`/`pg_restore` into `iconic_connect` (or restore with `--clean` after stopping the app).
+
 ## Honest limits (read once)
-* **Backups live on the same disk.** A dead disk loses the DB *and* its backups. Copy `/var/backups/iconic` off the
-  server (rclone → R2/S3 is a 10-line addition) before you rely on it.
+* **Local backups share the disk with the database.** That is why the R2 off-site job above exists — make sure it is
+  configured (`verify-server.sh` prints SKIP until it is).
 * **One database role.** The app and migrations share the `iconic` role (a superuser *inside the container*). That is
   acceptable while the DB is loopback-only and queries are parameterised, but a split (owner for migrations, DML-only
   role for the app) is the next hardening step.
