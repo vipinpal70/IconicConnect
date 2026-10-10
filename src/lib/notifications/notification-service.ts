@@ -4,7 +4,7 @@ import { notifications } from '@/src/db/schema/notification';
 import { loadPreference, loadPreferences } from './preferences';
 import { profiles } from '@/src/db/schema/profile';
 import { eq, inArray } from 'drizzle-orm';
-import { connection } from '@/src/lib/queue/client';
+import { redis as connection } from '@/src/lib/redis';
 import { queueEmail } from '@/src/lib/queue/jobs';
 import { NotificationEventPayload, NotificationType } from './notification-events';
 

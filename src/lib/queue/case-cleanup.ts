@@ -2,7 +2,7 @@ import { inArray, or, eq, like, sql } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { files } from '@/src/db/schema/files'
 import { notifications } from '@/src/db/schema/notification'
-import { caseCleanupQueue } from './client'
+import { caseCleanupQueue, connection } from './client'
 import { deleteKeys } from '../r2-objects'
 
 /**
@@ -23,6 +23,8 @@ const KEYS_PER_JOB = 2000 // keeps Redis payloads small; ~2 DeleteObjects calls 
 
 /** Fire-and-forget. Never throws: if Redis is down the orphan sweep (r2-cleanup) still reclaims the objects. */
 export async function enqueueCaseCleanup(job: CaseCleanupJob): Promise<void> {
+  // The queue connection retries forever by design; never let a request-path caller wait on it.
+  if (connection.status !== 'ready') { console.error('[case-cleanup] Redis not ready — skipping enqueue; the orphan sweep will reclaim the objects'); return }
   try {
     const keys = job.keys.filter((k) => !/^https?:\/\//i.test(k)) // legacy absolute URLs are not R2 keys
     const chunks: string[][] = []

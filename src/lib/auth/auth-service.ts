@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { users, profiles, type NewProfile } from '@/src/db/schema/profile'
-import { connection as redis } from '@/src/lib/queue/client'
+import { redis, guarded } from '@/src/lib/redis'
 import { hashPassword, verifyPassword } from './password-hash'
 import { createSession, destroyAllSessions } from './session'
 
@@ -100,12 +100,12 @@ const resetKey = (t: string) => `pw_reset:${createHash('sha256').update(t).diges
 
 export async function createResetToken(userId: string): Promise<string> {
   const token = randomBytes(32).toString('base64url')
-  await redis.set(resetKey(token), userId, 'EX', RESET_TTL)
+  await guarded(() => redis.set(resetKey(token), userId, 'EX', RESET_TTL))
   return token
 }
 export async function consumeResetToken(token: string): Promise<string | null> {
   if (!token || token.length > 100) return null
-  return redis.getdel(resetKey(token))
+  return guarded(() => redis.getdel(resetKey(token)))
 }
 
 export async function findUserIdByEmail(emailRaw: string) {

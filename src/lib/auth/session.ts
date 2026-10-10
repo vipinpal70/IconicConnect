@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { connection as redis } from '@/src/lib/queue/client'
+import { redis, guarded } from '@/src/lib/redis'
 
 /**
  * Opaque-cookie sessions stored in Redis. One GET per request resolves the user AND the authz facts
@@ -28,17 +28,17 @@ export async function createSession(data: Omit<SessionData, 'csrf' | 'createdAt'
   const sid = randomBytes(32).toString('base64url')
   const full: SessionData = { ...data, csrf: randomBytes(16).toString('base64url'), createdAt: Date.now() }
   const key = sessKey(sid)
-  await redis.multi()
+  await guarded(() => redis.multi()
     .set(key, JSON.stringify(full), 'EX', SESSION_TTL_SECONDS)
     .sadd(userKey(data.userId), key)
     .expire(userKey(data.userId), SESSION_TTL_SECONDS)
-    .exec()
+    .exec())
   return { sid, session: full }
 }
 
 export async function getSession(sid: string | undefined): Promise<SessionData | null> {
   if (!sid || sid.length > 64) return null
-  const raw = await redis.get(sessKey(sid))
+  const raw = await guarded(() => redis.get(sessKey(sid)))
   return raw ? (JSON.parse(raw) as SessionData) : null
 }
 
@@ -47,14 +47,14 @@ export async function destroySession(sid: string | undefined, userId?: string) {
   const key = sessKey(sid)
   const m = redis.multi().del(key)
   if (userId) m.srem(userKey(userId), key)
-  await m.exec()
+  await guarded(() => m.exec())
 }
 
 /** Revoke every device — call on password reset, suspension and role/clientId change. */
 export async function destroyAllSessions(userId: string) {
-  const keys = await redis.smembers(userKey(userId))
-  if (keys.length) await redis.del(...keys)
-  await redis.del(userKey(userId))
+  const keys = await guarded(() => redis.smembers(userKey(userId)))
+  if (keys.length) await guarded(() => redis.del(...keys))
+  await guarded(() => redis.del(userKey(userId)))
 }
 
 export const sessionCookieOptions = {

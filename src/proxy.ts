@@ -26,7 +26,19 @@ export async function proxy(request: NextRequest) {
   // no external auth call on the request path. Exposed via Server-Timing so slow requests are traceable.
   const tAuth = performance.now()
   const sid = request.cookies.get(SESSION_COOKIE)?.value
-  const session = await getSession(sid)
+  let session: Awaited<ReturnType<typeof getSession>> = null
+  try {
+    session = await getSession(sid)
+  } catch (err) {
+    // Redis (the session store) is unreachable/timing out. Answer FAST and honestly (503 + Retry-After) instead of
+    // throwing — an unhandled error here would 500 every page and API call, and a hang would stall them all.
+    if (sid) {
+      console.error('[proxy] session store unavailable:', (err as Error)?.message)
+      return request.nextUrl.pathname.startsWith('/api')
+        ? NextResponse.json({ error: 'Service temporarily unavailable', code: 'session_store_unavailable' }, { status: 503, headers: { 'Retry-After': '10' } })
+        : new NextResponse('Service temporarily unavailable. Please retry in a few seconds.', { status: 503, headers: { 'Retry-After': '10', 'content-type': 'text/plain; charset=utf-8' } })
+    }
+  }
   const user = session ? { id: session.userId } : null
   const authMs = Math.round(performance.now() - tAuth)
 
@@ -71,6 +83,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/sign-in') ||
     pathname.startsWith('/api/sign-up') ||
+    pathname === '/api/health' ||            // diagnostics endpoint: booleans only unless a secret token is sent
     pathname === '/api/admin/user'
 
   // 1. Handle unauthorized access

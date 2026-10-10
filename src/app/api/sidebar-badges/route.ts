@@ -14,6 +14,7 @@ import { createClient } from '@/src/lib/auth/server'
 import { eq, gt, and, count, sql } from 'drizzle-orm'
 import { isValidRoleForType } from '@/src/lib/auth/role'
 import { resolveClientId, isLabUser } from '@/src/lib/auth/resolve-client-id'
+import { describeDbError } from '@/src/lib/db-error'
 
 async function getOne(query: Promise<{ count: number }[]>): Promise<boolean> {
   const [row] = await query
@@ -44,9 +45,15 @@ export async function GET() {
 
     const badge: Record<string, boolean> = {}
     // The badge counts are independent — run them concurrently instead of one Mumbai round trip each.
+    // They are also purely cosmetic (a dot on a menu item), so ONE failing count must never take the whole poll
+    // down: it degrades to "no dot" for that item, is logged with its real cause, and the rest still render.
     const pending: Promise<void>[] = []
+    const degraded: Record<string, ReturnType<typeof describeDbError>> = {}
     const setBadge = (key: string, query: Promise<{ count: number }[]>) => {
-      pending.push(getOne(query).then((v) => { badge[key] = v }))
+      pending.push(getOne(query).then(
+        (v) => { badge[key] = v },
+        (err) => { badge[key] = false; degraded[key] = describeDbError(err) },
+      ))
     }
 
     if (isValidRoleForType('admin_portal', profile.role)) {
@@ -149,11 +156,21 @@ export async function GET() {
     }
 
     await Promise.all(pending)
+    const failed = Object.keys(degraded)
+    if (failed.length) {
+      console.error('[sidebar-badges GET] degraded badges:', JSON.stringify(degraded))
+      // Do not cache a partial answer for the full TTL; retry soon.
+      await setCachedData(cacheKey, badge, 3)
+      return NextResponse.json(badge, { headers: { 'X-Badge-Degraded': failed.join(',') } })
+    }
     await setCachedData(cacheKey, badge, 15)
     return NextResponse.json(badge)
   } catch (err) {
-    console.error('[sidebar-badges GET]', err)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    // Core failure (session store, profile lookup, …). Say WHY in the log (code + Postgres message, no SQL params)
+    // and tell clients to back off briefly instead of hammering a struggling backend.
+    const info = describeDbError(err)
+    console.error('[sidebar-badges GET] FAILED:', JSON.stringify(info))
+    return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503, headers: { 'Retry-After': '15' } })
   }
 }
 

@@ -1,7 +1,7 @@
 import { isIP } from 'node:net'
 import { db } from '@/src/db'
 import { authAuditLog } from '@/src/db/schema/auth-audit'
-import { connection as redis } from '@/src/lib/queue/client'
+import { redis, guarded } from '@/src/lib/redis'
 import { getClientIp } from '@/src/lib/security/client-ip'
 
 /**
@@ -76,7 +76,7 @@ export function logAuthEvent(input: AuthEventInput): void {
  */
 export async function shouldLogLockout(email: string): Promise<boolean> {
   try {
-    return (await redis.set(`audit:locked:${email.trim().toLowerCase().slice(0, MAX_EMAIL)}`, '1', 'EX', 900, 'NX')) === 'OK'
+    return (await guarded(() => redis.set(`audit:locked:${email.trim().toLowerCase().slice(0, MAX_EMAIL)}`, '1', 'EX', 900, 'NX'))) === 'OK'
   } catch {
     return false
   }

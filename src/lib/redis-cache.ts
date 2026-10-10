@@ -1,4 +1,4 @@
-import { connection } from './queue/client';
+import { redis as connection, guarded } from './redis';
 
 const DEFAULT_TTL = 3600; // 1 hour default cache time
 
@@ -37,8 +37,8 @@ export async function getCachedData<T>(key: string): Promise<T | null> {
   try {
     const domain = epochDomain(key);
     const cached = domain
-      ? ((await connection.eval(GET_LUA, 1, domain, key)) as string | null)
-      : await connection.get(key);
+      ? ((await guarded(() => connection.eval(GET_LUA, 1, domain, key))) as string | null)
+      : await guarded(() => connection.get(key));
     if (cached) {
       return JSON.parse(cached) as T;
     }
@@ -58,8 +58,8 @@ export async function setCachedData<T>(
   }
   try {
     const domain = epochDomain(key);
-    if (domain) await connection.eval(SET_LUA, 1, domain, key, JSON.stringify(data), String(ttlSeconds));
-    else await connection.set(key, JSON.stringify(data), 'EX', ttlSeconds);
+    if (domain) await guarded(() => connection.eval(SET_LUA, 1, domain, key, JSON.stringify(data), String(ttlSeconds)));
+    else await guarded(() => connection.set(key, JSON.stringify(data), 'EX', ttlSeconds));
   } catch (error) {
     console.error(`[Redis Cache SET Error] Key: ${key}`, error);
   }

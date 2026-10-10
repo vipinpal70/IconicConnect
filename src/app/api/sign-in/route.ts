@@ -2,6 +2,7 @@ import { logAuthEvent, shouldLogLockout } from '@/src/lib/auth/audit'
 import { NextRequest, NextResponse } from 'next/server'
 import { signIn, normalizeEmail } from '@/src/lib/auth/auth-service'
 import { SESSION_COOKIE, sessionCookieOptions } from '@/src/lib/auth/session'
+import { isRedisProblem } from '@/src/lib/redis'
 import { getClientIp } from '@/src/lib/security/client-ip'
 import { clearLoginFailures, loginAttemptStatus, recordLoginFailure } from '@/src/lib/security/rate-limit'
 
@@ -58,7 +59,8 @@ export async function POST(req: NextRequest) {
     response.cookies.set(SESSION_COOKIE, result.sid, sessionCookieOptions)
     return response
   } catch (err) {
-    console.error('[sign-in POST]', err)
+    console.error('[sign-in POST]', (err as Error)?.message)
+    if (isRedisProblem(err)) return NextResponse.json({ error: 'Sign-in is temporarily unavailable. Please try again in a few seconds.' }, { status: 503, headers: { 'Retry-After': '10' } })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

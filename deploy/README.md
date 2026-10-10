@@ -81,6 +81,15 @@ ssh ubuntu@<server-ip> 'cd /opt/iconic && sudo docker compose --profile tools st
 ssh ubuntu@<server-ip> 'sudo cat /opt/iconic/secrets/postgres_password'
 ```
 
+## Health check — "is this deployment wired up correctly?"
+`GET /api/health` (public, no login) answers in milliseconds: `{ "ok": true, "db": true, "redis": true, "schema": true }`
+with HTTP 200, or 503 with the failing part set to `false`. Set `HEALTH_TOKEN=<random string>` in the app's `.env` and send
+it as header `x-health-token` to also get the precise reason, timings and `applied/expected` migration counts:
+```bash
+curl -s -H "x-health-token: $HEALTH_TOKEN" https://connectapp.theiconicdental.com/api/health
+```
+`deploy.yml` calls it after every deploy and **fails the pipeline** if the app is unhealthy. Point an uptime monitor at it too.
+
 ## Everyday operations
 ```bash
 sudo /opt/iconic/bin/verify-server.sh                 # security + health self-check

@@ -144,3 +144,22 @@ jobs:
             
             # Save PM2 state
             pm2 save
+
+            # Deploy gate: the app must report itself healthy (database reachable, Redis reachable, every migration
+            # applied). A deployment that "started" but cannot serve requests fails HERE, with the reason, instead
+            # of surfacing as a 500 in users' browsers.
+            echo "Waiting for /api/health ..."
+            code=000
+            for _ in $(seq 1 30); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/api/health || true)
+              [ "$code" = "200" ] && break
+              sleep 2
+            done
+            if [ "$code" != "200" ]; then
+              echo "Health check FAILED (HTTP $code). Details:"
+              curl -s -H "x-health-token: ${HEALTH_TOKEN:-}" http://127.0.0.1:4000/api/health || true
+              echo
+              pm2 logs --nostream --lines 60 || true
+              exit 1
+            fi
+            echo "Health check passed."

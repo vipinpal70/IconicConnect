@@ -1,4 +1,4 @@
-import { connection } from '@/src/lib/queue/client'
+import { redis as connection } from '@/src/lib/redis'
 
 export const MAX_CASES_PER_DOWNLOAD = 20
 export const MAX_TOTAL_BYTES = (Number(process.env.BULK_DOWNLOAD_MAX_BYTES) || 10 * 1024 * 1024 * 1024)
