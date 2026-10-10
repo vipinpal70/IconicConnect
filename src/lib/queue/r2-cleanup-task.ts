@@ -1,10 +1,9 @@
 import 'dotenv/config';
 import { db } from '../../db';
-import { caseFiles, casePreviewFiles, caseReferenceFiles, caseHoldFiles, cases } from '../../db/schema/case';
-import { chatMessages } from '../../db/schema/chat';
-import { isNotNull } from 'drizzle-orm';
+import { files } from '../../db/schema/files';
+import { ne } from 'drizzle-orm';
 import { R2_BUCKET } from '../r2';
-import { listAllR2Objects, deleteKeys, keyFromProxyUrl } from '../r2-objects';
+import { listAllR2Objects, deleteKeys } from '../r2-objects';
 
 /**
  * R2 orphan cleanup.
@@ -56,40 +55,11 @@ export async function runR2Cleanup(
   );
 
   // 1. Collect every R2 key referenced anywhere in the database.
-  const [attachmentRows, previewFileRows, referenceImageRows, holdFileRows, caseRows, chatRows] = await Promise.all([
-    db.select({ fileUrl: caseFiles.fileUrl }).from(caseFiles),
-    db.select({ fileUrl: casePreviewFiles.fileUrl }).from(casePreviewFiles),
-    db.select({ fileUrl: caseReferenceFiles.fileUrl }).from(caseReferenceFiles),
-    db.select({ fileUrl: caseHoldFiles.fileUrl }).from(caseHoldFiles),
-    db
-      .select({
-        outputFile: cases.outputFile,
-        previewFile: cases.previewFile,
-        teethLibraryFileUrl: cases.teethLibraryFileUrl,
-      })
-      .from(cases),
-    db
-      .select({ fileUrl: chatMessages.fileUrl })
-      .from(chatMessages)
-      .where(isNotNull(chatMessages.fileUrl)),
-  ]);
-
+  // `files` is the single registry of every R2 object (scans, previews, reference/hold, output, teeth library,
+  // chat attachments). Rows whose object the retention job already removed (purged) need no protection.
   const referencedKeys = new Set<string>();
-  const protect = (url: string | null | undefined) => {
-    const key = keyFromProxyUrl(url);
-    if (key) referencedKeys.add(key);
-  };
-
-  attachmentRows.forEach((r) => protect(r.fileUrl));
-  previewFileRows.forEach((r) => protect(r.fileUrl));
-  referenceImageRows.forEach((r) => protect(r.fileUrl));
-  holdFileRows.forEach((r) => protect(r.fileUrl));
-  caseRows.forEach((r) => {
-    protect(r.outputFile);
-    protect(r.previewFile);
-    protect(r.teethLibraryFileUrl);
-  });
-  chatRows.forEach((r) => protect(r.fileUrl));
+  const rows = await db.select({ key: files.r2Key }).from(files).where(ne(files.status, 'purged'));
+  for (const r of rows) referencedKeys.add(r.key);
 
   console.log(`[R2 Cleanup] ${referencedKeys.size} R2 keys are referenced by the database.`);
 

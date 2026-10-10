@@ -1,3 +1,4 @@
+import { countInvoiceCases } from '@/src/lib/invoice-cases';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/src/db";
 import { invoices } from "@/src/db/schema/invoice";
@@ -37,7 +38,6 @@ export async function GET(req: NextRequest) {
         invoiceNumber: invoices.invoiceNumber,
         startDate: invoices.startDate,
         endDate: invoices.endDate,
-        caseIds: invoices.caseIds,
         total: invoices.total,
         status: invoices.status,
       })
@@ -46,11 +46,12 @@ export async function GET(req: NextRequest) {
       .orderBy(desc(invoices.createdAt))
       .limit(5);
 
+    const counts = await countInvoiceCases(rows.map((r) => r.id));
     const result = rows.map((r) => ({
       id: r.id,
       invoiceNumber: r.invoiceNumber,
       period: `${r.startDate} – ${r.endDate}`,
-      caseCount: Array.isArray(r.caseIds) ? r.caseIds.length : 0,
+      caseCount: counts.get(r.id) ?? 0,
       amount: Number(r.total),
       status: r.status,
     }));

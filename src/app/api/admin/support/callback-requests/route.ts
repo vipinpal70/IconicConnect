@@ -22,7 +22,7 @@ async function requireInternal() {
     return { error: NextResponse.json({ error: 'Profile not found' }, { status: 404 }) }
   }
 
-  if (!['admin', 'qc', 'account_manager', 'consultant'].includes(profile.role)) {
+  if (!['admin', 'qc', 'account_manager'].includes(profile.role)) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 
@@ -38,13 +38,14 @@ export async function GET() {
       .select({
         id: supportCallbackRequests.id,
         clientId: supportCallbackRequests.clientId,
-        clientName: supportCallbackRequests.clientName,
-        labName: supportCallbackRequests.labName,
+        clientName: profiles.fullName,
+        labName: profiles.labName,
         phone: supportCallbackRequests.phone,
         email: supportCallbackRequests.email,
         requestedAt: supportCallbackRequests.requestedAt,
       })
       .from(supportCallbackRequests)
+      .leftJoin(profiles, eq(profiles.id, supportCallbackRequests.clientId))
       .orderBy(desc(supportCallbackRequests.requestedAt))
 
     return NextResponse.json({ data: rows })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, casePreviewFiles } from '@/src/db/schema/case';
+import { cases } from '@/src/db/schema/case';
+import { listByCase, insertFiles, deleteOne } from '@/src/lib/files-repo';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
 import { eq, and } from 'drizzle-orm';
@@ -42,15 +43,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
-    // The synthetic legacy row (id 'legacy') has no backing DB row — nothing to delete.
-    // A real replacement upload naturally supersedes it since the table becomes non-empty.
-    if (fileId === 'legacy') {
-      return NextResponse.json({ data: { id: 'legacy' } });
-    }
-
-    const deleted = await db.delete(casePreviewFiles)
-      .where(and(eq(casePreviewFiles.id, fileId), eq(casePreviewFiles.caseId, id)))
-      .returning();
+    const removed = await deleteOne(fileId, id, 'preview');
+    const deleted = removed ? [removed] : [];
 
     if (deleted.length === 0) {
       return NextResponse.json({ error: 'Preview file not found' }, { status: 404 });

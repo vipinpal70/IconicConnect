@@ -1,15 +1,7 @@
-import { caseBulkDownloads } from '@/src/db/schema/bulk-download'
 import { and, eq, inArray, or } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import {
-  cases,
-  caseMessages,
-  caseFiles,
-  casePreviewFiles,
-  caseReferenceFiles,
-  caseHoldFiles,
-} from '@/src/db/schema/case'
+import { cases } from '@/src/db/schema/case'
 import { invoices } from '@/src/db/schema/invoice'
 import { supportTickets } from '@/src/db/schema/support-ticket'
 import { supportCallbackRequests } from '@/src/db/schema/support-callback-request'
@@ -55,19 +47,12 @@ export async function deleteClientCompletely(clientId: string): Promise<DeleteCl
           : inArray(activityLogs.userId, allProfileIds)
       )
 
-    if (caseIds.length > 0) {
-      await tx.delete(caseMessages).where(inArray(caseMessages.caseId, caseIds))
-      await tx.delete(caseFiles).where(inArray(caseFiles.caseId, caseIds))
-      await tx.delete(casePreviewFiles).where(inArray(casePreviewFiles.caseId, caseIds))
-      await tx.delete(caseReferenceFiles).where(inArray(caseReferenceFiles.caseId, caseIds))
-      await tx.delete(caseHoldFiles).where(inArray(caseHoldFiles.caseId, caseIds))
-      await tx.delete(caseBulkDownloads).where(inArray(caseBulkDownloads.caseId, caseIds))
-    }
+    // chat, files, case_details, bulk-download rows and activity cascade from the cases (FK ON DELETE CASCADE).
+    // Invoices go first: invoice_cases -> cases is RESTRICT by design, so a billed case can't vanish silently.
+    await tx.delete(invoices).where(eq(invoices.clientId, clientId))
 
     await tx.delete(supportTickets).where(eq(supportTickets.clientId, clientId))
     await tx.delete(supportCallbackRequests).where(eq(supportCallbackRequests.clientId, clientId))
-    await tx.delete(invoices).where(eq(invoices.clientId, clientId))
-
     if (caseIds.length > 0) {
       await tx.delete(cases).where(eq(cases.clientId, clientId))
     }

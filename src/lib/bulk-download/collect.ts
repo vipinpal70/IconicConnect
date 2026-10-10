@@ -1,11 +1,9 @@
 import { isOurSupabaseStorageUrl } from '@/src/lib/security/safe-url'
-import { and, asc, eq, inArray, notInArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, notInArray } from 'drizzle-orm'
 import { db } from '@/src/db'
-import {
-  caseFiles,
-  casePreviewFiles,
-  caseReferenceFiles,
-} from '@/src/db/schema/case'
+import { caseDetails } from '@/src/db/schema/case'
+import { files } from '@/src/db/schema/files'
+import { listByCases, pickPerCase, toProxyUrl } from '@/src/lib/files-repo'
 import { profiles } from '@/src/db/schema/profile'
 import { keyFromProxyUrl } from '@/src/lib/r2-objects'
 import { fileNameFromUrl, sanitizeSegment } from './names'
@@ -59,24 +57,27 @@ function makeCollector(): Collector {
 }
 
 async function addOutputs(col: Collector, rows: CaseRow[], outputFolder: string, previewFolder: string) {
-  const previews = await db
-    .select()
-    .from(casePreviewFiles)
-    .where(inArray(casePreviewFiles.caseId, rows.map((r) => r.id)))
-    .orderBy(asc(casePreviewFiles.createdAt))
+  const ids = rows.map((r) => r.id)
+  const [previews, outputs, notes] = await Promise.all([
+    listByCases(ids, 'preview'),
+    pickPerCase(ids, 'output', 'latest'),
+    db.select({ caseId: caseDetails.caseId, outputNote: caseDetails.outputNote }).from(caseDetails).where(inArray(caseDetails.caseId, ids)),
+  ])
+  const noteByCase = new Map(notes.map((n) => [n.caseId, n.outputNote]))
   for (const c of rows) {
-    const casePreviews = previews.filter((x) => x.caseId === c.id)
-    if (c.outputFile) col.add(c, outputFolder, fileNameFromUrl(c.outputFile), c.outputFile, null)
-    if (c.outputNote?.trim()) {
+    const out = outputs.get(c.id)
+    if (out) col.add(c, outputFolder, out.fileName || fileNameFromUrl(out.fileUrl), out.fileUrl, out.fileSize)
+    const note = noteByCase.get(c.id)
+    if (note?.trim()) {
       col.entries.push({
         caseId: c.id,
         caseNumber: c.caseNumber ?? c.id,
         path: `${outputFolder}output-note.txt`,
-        source: { kind: 'text', content: c.outputNote.trim() + '\n' },
-        size: Buffer.byteLength(c.outputNote),
+        source: { kind: 'text', content: note.trim() + '\n' },
+        size: Buffer.byteLength(note),
       })
     }
-    for (const p of casePreviews) col.add(c, previewFolder, p.fileName, p.fileUrl, p.fileSize ?? null)
+    for (const p of previews.filter((x) => x.caseId === c.id)) col.add(c, previewFolder, p.fileName, p.fileUrl, p.fileSize ?? null)
   }
 }
 
@@ -98,27 +99,26 @@ export async function collectInternalEntries(rows: CaseRow[], include: InternalI
   if (!rows.length) return { entries: col.entries, skipped: col.skipped }
   const ids = rows.map((r) => r.id)
 
-  const [scanFiles, refFiles] = await Promise.all([
+  const [scanFiles, refFiles, teethLibs] = await Promise.all([
     include.scan
       ? db
           .select({
-            caseId: caseFiles.caseId,
-            fileName: caseFiles.fileName,
-            fileUrl: caseFiles.fileUrl,
-            fileSize: caseFiles.fileSize,
+            caseId: files.caseId,
+            fileName: files.fileName,
+            fileUrl: files.r2Key,
+            fileSize: files.sizeBytes,
           })
-          .from(caseFiles)
-          .innerJoin(profiles, eq(caseFiles.uploadedBy, profiles.id))
-          .where(and(inArray(caseFiles.caseId, ids), notInArray(profiles.role, [...NON_LAB_UPLOADER_ROLES])))
-          .orderBy(asc(caseFiles.createdAt))
+          .from(files)
+          .innerJoin(profiles, eq(files.uploadedBy, profiles.id))
+          .where(and(
+            inArray(files.caseId, ids), eq(files.kind, 'scan'), isNull(files.deletedAt),
+            notInArray(profiles.role, [...NON_LAB_UPLOADER_ROLES]),
+          ))
+          .orderBy(asc(files.createdAt))
+          .then((r) => r.map((x) => ({ ...x, fileUrl: toProxyUrl(x.fileUrl) })))
       : Promise.resolve([]),
-    include.reference
-      ? db
-          .select()
-          .from(caseReferenceFiles)
-          .where(inArray(caseReferenceFiles.caseId, ids))
-          .orderBy(asc(caseReferenceFiles.createdAt))
-      : Promise.resolve([]),
+    include.reference ? listByCases(ids, 'reference') : Promise.resolve([]),
+    include.teethLibrary ? pickPerCase(ids, 'teeth_library', 'latest') : Promise.resolve(new Map()),
   ])
 
   for (const c of rows) {
@@ -128,9 +128,8 @@ export async function collectInternalEntries(rows: CaseRow[], include: InternalI
     for (const f of refFiles.filter((x) => x.caseId === c.id)) {
       col.add(c, 'reference/', f.fileName, f.fileUrl, f.fileSize ?? null)
     }
-    if (include.teethLibrary && c.teethLibraryFileUrl) {
-      col.add(c, 'teeth-library/', c.teethLibraryFileName || fileNameFromUrl(c.teethLibraryFileUrl), c.teethLibraryFileUrl, null)
-    }
+    const lib = teethLibs.get(c.id)
+    if (lib) col.add(c, 'teeth-library/', lib.fileName || fileNameFromUrl(lib.fileUrl), lib.fileUrl, null)
   }
 
   if (include.outputs) await addOutputs(col, rows, 'output/', 'preview/')

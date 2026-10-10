@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
 import {
   cases,
-  caseFiles,
   caseStatusEnum,
   CASE_STATUS_TO_LIFECYCLE_STEP,
 } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
+import { pickPerCase } from '@/src/lib/files-repo'
 import { createClient } from '@/src/lib/auth/server'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { getProfileLabName } from '@/src/lib/profile-utils'
@@ -166,19 +166,8 @@ export async function POST(req: NextRequest) {
         .where(and(eq(cases.clientId, clientId), inArray(cases.status, ACTIVE_CASE_STATUSES)))
 
       const caseIds = activeRows.map((r) => r.id)
-      const earliestFileName = new Map<string, string>()
-      if (caseIds.length > 0) {
-        const fileRows = await db
-          .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
-          .from(caseFiles)
-          .where(inArray(caseFiles.caseId, caseIds))
-          .orderBy(asc(caseFiles.createdAt))
-        for (const row of fileRows) {
-          if (row.caseId && !earliestFileName.has(row.caseId)) {
-            earliestFileName.set(row.caseId, row.fileName)
-          }
-        }
-      }
+      const firstScans = await pickPerCase(caseIds, 'scan', 'first')
+      const earliestFileName = new Map<string, string>(Array.from(firstScans, ([k, v]) => [k, v.fileName] as [string, string]))
 
       const byName = new Map<string, Array<{ caseId: string; caseNumber: string | null; status: string; teeth: Set<number> }>>()
       for (const row of activeRows) {

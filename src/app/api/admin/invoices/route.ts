@@ -1,7 +1,8 @@
+import { getInvoiceCaseIds, findDuplicateBilling } from '@/src/lib/invoice-cases'
 import { getEmail, getEmails } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
-import { invoices } from '@/src/db/schema/invoice'
+import { invoices, invoiceCases } from '@/src/db/schema/invoice'
 import { profiles } from '@/src/db/schema/profile'
 import { eq, desc } from 'drizzle-orm'
 import { createClient } from '@/src/lib/auth/server'
@@ -9,7 +10,6 @@ import {
   buildInvoiceItems,
   computeAdjustment,
   computeTotal,
-  generateInvoiceNumber,
   formatInvoiceRow,
 } from '@/src/lib/invoice'
 import type { AdjustmentType } from '@/src/db/schema/invoice'
@@ -55,11 +55,12 @@ export async function GET() {
 
     const clientMap = new Map(clientRows.map((c) => [c.id, c]))
     const emailMap = await getEmails(clientRows.map((c) => c.id))
+    const caseMap = await getInvoiceCaseIds(rows.map((r) => r.id))
 
     const result = rows.map((inv) => {
       const client = clientMap.get(inv.clientId)
       if (!client) return null
-      return formatInvoiceRow(inv, client, emailMap.get(client.id) ?? '')
+      return formatInvoiceRow(inv, client, emailMap.get(client.id) ?? '', caseMap.get(inv.id) ?? [])
     }).filter(Boolean)
 
     await setCachedData(cacheKey, result, INVOICE_TTL)
@@ -122,17 +123,24 @@ export async function POST(req: NextRequest) {
     const extraAmt = computeAdjustment(subtotal, Number(extraChargesValue), extraChargesType as AdjustmentType)
     const total = computeTotal(subtotal, taxAmt, discountAmt, extraAmt)
 
-    const invoiceNumber = await generateInvoiceNumber()
+    // Re-billing is allowed, but the admin must confirm it (no UNIQUE(case_id) by design).
+    const duplicates = await findDuplicateBilling(caseIds)
+    if (duplicates.length > 0 && body.confirmDuplicateBilling !== true) {
+      return NextResponse.json({
+        error: 'Some selected cases are already on another invoice.',
+        requiresConfirmation: true,
+        warnings: duplicates,
+      }, { status: 409 })
+    }
 
-    const [saved] = await db
+    const saved = await db.transaction(async (tx) => {
+      const [inv] = await tx
       .insert(invoices)
       .values({
-        invoiceNumber,
         clientId,
         startDate,
         endDate,
         items,
-        caseIds,
         subtotal: String(subtotal),
         taxType,
         taxValue: String(taxValue),
@@ -151,6 +159,10 @@ export async function POST(req: NextRequest) {
       })
       .returning()
 
+      await tx.insert(invoiceCases).values(caseIds.map((caseId: string) => ({ invoiceId: inv.id, caseId, addedBy: auth.profile.id })))
+      return inv
+    })
+
     await invalidateInvoiceCache(clientId, saved.id)
 
     await logActivity({
@@ -161,12 +173,13 @@ export async function POST(req: NextRequest) {
         invoiceNumber: saved.invoiceNumber,
         clientId,
         caseCount: caseIds.length,
+        duplicateBillingConfirmed: duplicates.length > 0,
         subtotal: String(subtotal),
         total: String(total),
       },
     }).catch((err) => console.error('[invoice.created logActivity]', err))
 
-    return NextResponse.json(formatInvoiceRow(saved, client, await getEmail(client.id)), { status: 201 })
+    return NextResponse.json(formatInvoiceRow(saved, client, await getEmail(client.id), caseIds), { status: 201 })
   } catch (err) {
     console.error('[api/admin/invoices POST]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

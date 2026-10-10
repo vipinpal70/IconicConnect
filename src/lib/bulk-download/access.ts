@@ -83,7 +83,7 @@ export async function loadDownloadableCases(
   const byId = new Map(rows.map((r) => [r.id, r]))
 
   const effectiveClientId =
-    profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id
+    profile.clientId ?? profile.id
 
   const ok: CaseRow[] = []
   const skipped: SkippedItem[] = []

@@ -1,10 +1,11 @@
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, casePreviewFiles } from '@/src/db/schema/case';
+import { cases } from '@/src/db/schema/case';
+import { listByCase, insertFiles, deleteOne } from '@/src/lib/files-repo';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
 import { invalidateCasesCache } from '@/src/lib/redis-cache';
 
@@ -14,18 +15,6 @@ const MAX_PREVIEW_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error';
-}
-
-function legacyFileNameFromUrl(url: string): string {
-  try {
-    const decoded = decodeURIComponent(url);
-    const match = decoded.match(/[?&]fileName=([^&]+)/);
-    if (match?.[1]) return match[1];
-    const withoutQuery = decoded.split('?')[0];
-    return withoutQuery.split('/').pop() || 'preview';
-  } catch {
-    return 'preview';
-  }
 }
 
 export async function GET(
@@ -54,32 +43,13 @@ export async function GET(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
-    const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+    const effectiveClientId = profile.clientId ?? profile.id;
     if ((profile.role === 'client' || profile.role === 'subuser') && caseRecord.clientId !== effectiveClientId) {
       return NextResponse.json({ error: 'Forbidden: You can only view preview files for cases from your lab' }, { status: 403 });
     }
 
-    const previewFiles = await db.select().from(casePreviewFiles)
-      .where(eq(casePreviewFiles.caseId, id))
-      .orderBy(desc(casePreviewFiles.createdAt));
-
-    // Legacy fallback: cases uploaded before multi-preview support only have
-    // cases.preview_file set, with no rows in this table. Synthesize one entry
-    // so those cases keep rendering without a data migration.
-    if (previewFiles.length === 0 && caseRecord.previewFile) {
-      return NextResponse.json({
-        data: [{
-          id: 'legacy',
-          caseId: id,
-          uploadedBy: null,
-          fileName: legacyFileNameFromUrl(caseRecord.previewFile),
-          fileUrl: caseRecord.previewFile,
-          fileType: null,
-          fileSize: null,
-          createdAt: caseRecord.updatedAt,
-        }],
-      });
-    }
+    // Newest first, as before. Pre-multi-preview data is moved into `files` by the data migration.
+    const previewFiles = (await listByCase(id, 'preview')).reverse();
 
     return NextResponse.json({ data: previewFiles });
   } catch (error: unknown) {
@@ -136,23 +106,21 @@ export async function POST(
       return NextResponse.json({ error: 'Preview file exceeds the 1GB limit' }, { status: 400 });
     }
 
-    const existingCount = await db.select({ count: sql<number>`count(*)::int` })
-      .from(casePreviewFiles)
-      .where(eq(casePreviewFiles.caseId, id))
-      .then(res => res[0]?.count ?? 0);
-    const legacyCount = existingCount === 0 && caseRecord.previewFile ? 1 : 0;
-    if (existingCount + legacyCount >= MAX_PREVIEW_FILES) {
+    const existingCount = (await listByCase(id, 'preview')).length;
+    if (existingCount >= MAX_PREVIEW_FILES) {
       return NextResponse.json({ error: `A case can have at most ${MAX_PREVIEW_FILES} preview files` }, { status: 400 });
     }
 
-    const inserted = await db.insert(casePreviewFiles).values({
+    const inserted = await insertFiles([{
+      clientId: caseRecord.clientId,
       caseId: id,
+      kind: 'preview',
       uploadedBy: user.id,
       fileName: body.fileName,
       fileUrl: body.fileUrl,
       fileType: body.fileType ?? null,
       fileSize: body.fileSize ?? null,
-    }).returning();
+    }]);
 
     await logActivity({
       actor: profile,

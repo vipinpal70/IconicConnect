@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseHoldFiles } from '@/src/db/schema/case';
+import { cases } from '@/src/db/schema/case';
+import { listByCase, deleteOne } from '@/src/lib/files-repo';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
 import { eq, and } from 'drizzle-orm';
@@ -53,9 +54,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden: Only Admin or the QC/Designer assigned to this case can remove hold images' }, { status: 403 });
     }
 
-    const deleted = await db.delete(caseHoldFiles)
-      .where(and(eq(caseHoldFiles.id, fileId), eq(caseHoldFiles.caseId, id)))
-      .returning();
+    const deleted = [await deleteOne(fileId, id, 'hold')].filter((x): x is NonNullable<typeof x> => x !== null);
 
     if (deleted.length === 0) {
       return NextResponse.json({ error: 'Hold image not found' }, { status: 404 });

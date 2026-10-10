@@ -1,3 +1,4 @@
+import { getInvoiceCaseIds } from '@/src/lib/invoice-cases'
 import { NextRequest, NextResponse } from 'next/server'
 import { getEmail } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db'
@@ -134,7 +135,7 @@ export async function GET(
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
     const clientName = client?.labName || client?.fullName || (await getEmail(client?.id)) || '—'
     const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    const caseIds = (inv.caseIds as string[] | null) ?? []
+    const caseIds = (await getInvoiceCaseIds([inv.id])).get(inv.id) ?? []
 
     const csvLines: string[] = []
     csvLines.push(row('Invoice Number', inv.invoiceNumber))

@@ -127,13 +127,11 @@ export async function markCaseChatRead(caseId: string, userId: string) {
       caseId,
       userId,
       lastReadAt: now,
-      updatedAt: now,
     })
     .onConflictDoUpdate({
       target: [chatReadStates.caseId, chatReadStates.userId],
       set: {
         lastReadAt: now,
-        updatedAt: now,
       },
     })
 }

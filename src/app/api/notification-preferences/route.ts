@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/src/db';
-import { notificationPreferences } from '@/src/db/schema/notification';
 import { createClient } from '@/src/lib/auth/server';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
-import { eq } from 'drizzle-orm';
+import { PREFERENCE_KEYS, setPreference } from '@/src/lib/notifications/preferences';
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,47 +37,11 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Key (string) and Value (boolean) are required' }, { status: 400 });
     }
 
-    // Ensure the row exists
-    await NotificationService.getPreferences(user.id);
-
-    // Build the updates object dynamically checking against allowed column names
-    const allowedKeys = [
-      'emailEnabled',
-      'inAppEnabled',
-      'caseAssignedEmail',
-      'caseAssignedInApp',
-      'caseFeedbackEmail',
-      'caseFeedbackInApp',
-      'caseApprovedEmail',
-      'caseApprovedInApp',
-      'caseRejectedEmail',
-      'caseRejectedInApp',
-      'caseHoldEmail',
-      'caseHoldInApp',
-      'caseCancelEmail',
-      'caseCancelInApp',
-      'caseReminderEmail',
-      'caseReminderInApp',
-      'chatMessageEmail',
-      'chatMessageInApp'
-    ];
-
-    if (!allowedKeys.includes(key)) {
+    if (!PREFERENCE_KEYS.includes(key)) {
       return NextResponse.json({ error: `Invalid preference key: ${key}` }, { status: 400 });
     }
 
-    const updateFields = { [key]: value };
-
-    const [updated] = await db
-      .update(notificationPreferences)
-      .set(updateFields)
-      .where(eq(notificationPreferences.userId, user.id))
-      .returning();
-
-    if (!updated) {
-      return NextResponse.json({ error: 'Preference not found' }, { status: 404 });
-    }
-
+    const updated = await setPreference(user.id, key, value);
     return NextResponse.json({ data: updated });
   } catch (error: unknown) {
     console.error('Update notification preference error:', error);

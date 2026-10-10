@@ -2,7 +2,8 @@ import { getProfileLabName } from '@/src/lib/profile-utils';
 import { putLabFile } from '@/src/lib/r2-put';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles } from '@/src/db/schema/case';
+import { cases,  } from '@/src/db/schema/case';
+import { insertFiles, listByCase } from '@/src/lib/files-repo';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
 import { eq } from 'drizzle-orm';
@@ -40,7 +41,7 @@ export async function POST(
     }
 
     // Role checks for uploading files — sub-users share parent client's cases
-    const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+    const effectiveClientId = profile.clientId ?? profile.id;
     if ((profile.role === 'client' || profile.role === 'subuser') && caseRecord.clientId !== effectiveClientId) {
       return NextResponse.json({ error: 'Forbidden: You can only upload files to cases from your lab' }, { status: 403 });
     }
@@ -65,15 +66,17 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to upload file to storage' }, { status: 500 });
     }
 
-    const insertedFile = await db.insert(caseFiles).values({
+    const insertedFile = await insertFiles([{
+      clientId: caseRecord.clientId,
       caseId: id,
+      kind: 'scan',
       uploadedBy: user.id,
       fileName: file.name,
       fileUrl,
       note: note || null,
       fileType: file.type,
       fileSize: file.size,
-    }).returning();
+    }]);
 
     await logActivity({
       actor: profile,
@@ -124,14 +127,12 @@ export async function GET(
     }
 
     // Role checks for viewing files — sub-users share parent client's cases
-    const effectiveClientIdGet = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+    const effectiveClientIdGet = profile.clientId ?? profile.id;
     if ((profile.role === 'client' || profile.role === 'subuser') && caseRecord.clientId !== effectiveClientIdGet) {
       return NextResponse.json({ error: 'Forbidden: You can only view files for cases from your lab' }, { status: 403 });
     }
 
-    const files = await db.select().from(caseFiles).where(eq(caseFiles.caseId, id));
-
-    return NextResponse.json({ data: files });
+    return NextResponse.json({ data: await listByCase(id, 'scan') });
   } catch (error: unknown) {
     console.error('Get case files error:', error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });

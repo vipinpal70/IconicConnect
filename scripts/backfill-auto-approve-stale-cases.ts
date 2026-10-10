@@ -1,8 +1,8 @@
 import 'dotenv/config'
-import { randomUUID } from 'node:crypto'
 import { db } from '../src/db'
-import { cases, type CaseTimelineEvent } from '../src/db/schema/case'
-import { eq, sql } from 'drizzle-orm'
+import { cases } from '../src/db/schema/case'
+import { activityLogs } from '../src/db/schema/activity-log'
+import { eq } from 'drizzle-orm'
 
 /**
  * One-off backfill for cases stuck at status='submitted_to_client' whose
@@ -16,21 +16,10 @@ import { eq, sql } from 'drizzle-orm'
  */
 
 const AUTO_APPROVE_DAYS = 7
-const SUBMITTED_LABEL = 'Submitted for client approval'
 
-function resolveSubmittedDate(c: typeof cases.$inferSelect): { date: Date; source: 'timeline' | 'updatedAt' } {
-  const timeline = (c.timeline ?? []) as CaseTimelineEvent[]
-  const submitEvents = timeline.filter(
-    (e) => e.action === 'case.updated' && e.label === SUBMITTED_LABEL
-  )
-
-  if (submitEvents.length > 0) {
-    const latest = submitEvents.reduce((a, b) =>
-      new Date(a.actionAt) > new Date(b.actionAt) ? a : b
-    )
-    return { date: new Date(latest.actionAt), source: 'timeline' }
-  }
-
+function resolveSubmittedDate(c: typeof cases.$inferSelect): { date: Date; source: 'submittedToClientAt' | 'updatedAt' } {
+  // submitted_to_client_at is stamped on every transition into client review; fall back to the last update.
+  if (c.submittedToClientAt) return { date: c.submittedToClientAt, source: 'submittedToClientAt' }
   return { date: c.updatedAt, source: 'updatedAt' }
 }
 
@@ -72,27 +61,25 @@ async function main() {
         ? Math.round((deliveredTime.getTime() - c.startTime.getTime()) / 60000)
         : null
 
-      const timelineEvent: CaseTimelineEvent = {
-        id: randomUUID(),
-        action: 'case.auto_approved',
-        label: 'Auto-approved by system',
-        actor: 'System',
-        actionAt: new Date().toISOString(),
-        actionTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-      }
-
-      await db
-        .update(cases)
-        .set({
-          status: 'approved',
-          autoApproved: true,
-          submittedToClientAt: c.submittedToClientAt ?? date,
-          deliveredTime,
-          tat,
-          updatedAt: new Date(),
-          timeline: sql`coalesce(${cases.timeline}, '[]'::jsonb) || ${JSON.stringify([timelineEvent])}::jsonb`,
+      await db.transaction(async (tx) => {
+        await tx
+          .update(cases)
+          .set({
+            status: 'approved',
+            autoApproved: true,
+            submittedToClientAt: c.submittedToClientAt ?? date,
+            deliveredTime,
+            tat,
+          })
+          .where(eq(cases.id, c.id))
+        await tx.insert(activityLogs).values({
+          caseId: c.id,
+          actorName: 'System',
+          action: 'case.auto_approved',
+          label: 'Auto-approved by system',
+          clientVisible: true,
         })
-        .where(eq(cases.id, c.id))
+      })
 
       approvedCount++
       console.log(`  -> approved.`)

@@ -1,3 +1,4 @@
+import { getInvoiceCaseIds } from '@/src/lib/invoice-cases'
 import { getEmail } from '@/src/lib/auth/auth-service'
 import { NextResponse } from 'next/server'
 import { db } from '@/src/db'
@@ -39,7 +40,8 @@ export async function GET() {
     if (!client) return NextResponse.json([])
 
     const clientEmail = await getEmail(client.id)
-    const result = rows.map((inv) => formatInvoiceRow(inv, client, clientEmail))
+    const caseMap = await getInvoiceCaseIds(rows.map((r) => r.id))
+    const result = rows.map((inv) => formatInvoiceRow(inv, client, clientEmail, caseMap.get(inv.id) ?? []))
     await setCachedData(cacheKey, result, INVOICE_TTL)
     return NextResponse.json(result)
   } catch (err) {

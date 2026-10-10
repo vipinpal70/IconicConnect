@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseReferenceFiles } from '@/src/db/schema/case';
+import { cases } from '@/src/db/schema/case';
+import { listByCase, deleteOne } from '@/src/lib/files-repo';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
 import { eq, desc } from 'drizzle-orm';
@@ -42,14 +43,12 @@ export async function GET(
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
 
-    const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+    const effectiveClientId = profile.clientId ?? profile.id;
     if ((profile.role === 'client' || profile.role === 'subuser') && caseRecord.clientId !== effectiveClientId) {
       return NextResponse.json({ error: 'Forbidden: You can only view reference images for cases from your lab' }, { status: 403 });
     }
 
-    const images = await db.select().from(caseReferenceFiles)
-      .where(eq(caseReferenceFiles.caseId, id))
-      .orderBy(desc(caseReferenceFiles.createdAt));
+    const images = (await listByCase(id, 'reference')).reverse();
 
     return NextResponse.json({ data: images });
   } catch (error: unknown) {

@@ -7,9 +7,8 @@ import {
   boolean,
   timestamp,
   text,
-  index,
-  unique,
   pgEnum,
+  unique,
 } from 'drizzle-orm/pg-core'
 import { profiles } from './profile'
 
@@ -22,19 +21,13 @@ export const serviceCatalog = pgTable(
     category: varchar('category', { length: 100 }).notNull(),
     subCategory: varchar('sub_category', { length: 100 }).notNull(),
     unitType: unitTypeEnum('unit_type').notNull(),
-    defaultPrice: numeric('default_price', { precision: 10, scale: 2 }).notNull(),
+    defaultPrice: numeric('default_price', { precision: 12, scale: 2 }).notNull(),
     sortOrder: integer('sort_order').default(0).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => ({
-    categorySubCategoryUniq: unique('service_catalog_category_sub_category_uniq').on(
-      table.category,
-      table.subCategory
-    ),
-    categoryIdx: index('service_catalog_category_idx').on(table.category),
-  })
+  (table) => ({ uq: unique('service_catalog_cat_sub_uq').on(table.category, table.subCategory) })
 )
 
 export const clientPriceList = pgTable(
@@ -47,23 +40,17 @@ export const clientPriceList = pgTable(
     catalogItemId: uuid('catalog_item_id')
       .references(() => serviceCatalog.id, { onDelete: 'cascade' })
       .notNull(),
-    price: numeric('price', { precision: 10, scale: 2 }).notNull(),
+    price: numeric('price', { precision: 12, scale: 2 }).notNull(),
     notes: text('notes'),
     // Client-level override of serviceCatalog.isActive — a service is
     // available to a client only if both are true. System isActive=false
     // always wins over isEnabled=true.
     isEnabled: boolean('is_enabled').default(true).notNull(),
     createdBy: uuid('created_by').references(() => profiles.id),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => ({
-    clientCatalogUniq: unique('client_price_list_client_catalog_uniq').on(
-      table.clientId,
-      table.catalogItemId
-    ),
-    clientIdx: index('client_price_list_client_id_idx').on(table.clientId),
-  })
+  (table) => ({ uq: unique('client_price_list_uq').on(table.clientId, table.catalogItemId) })
 )
 
 export type ServiceCatalogItem = typeof serviceCatalog.$inferSelect

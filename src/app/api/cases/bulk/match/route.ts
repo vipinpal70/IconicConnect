@@ -1,7 +1,8 @@
 import { users } from '@/src/db/schema/profile'
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles } from '@/src/db/schema/case';
+import { cases,  } from '@/src/db/schema/case';
+import { pickPerCase } from '@/src/lib/files-repo';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
 import { eq, inArray, asc } from 'drizzle-orm';
@@ -68,19 +69,8 @@ export async function POST(req: NextRequest) {
 
     // 2. First (earliest) scan file name per case — mirrors /api/cases GET scanFileName logic.
     const caseIds = eligibleRows.map(r => r.id);
-    const scanFileMap = new Map<string, string>();
-    if (caseIds.length > 0) {
-      const fileRows = await db
-        .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
-        .from(caseFiles)
-        .where(inArray(caseFiles.caseId, caseIds))
-        .orderBy(asc(caseFiles.createdAt));
-      for (const row of fileRows) {
-        if (row.caseId && !scanFileMap.has(row.caseId)) {
-          scanFileMap.set(row.caseId, row.fileName);
-        }
-      }
-    }
+    const firstScans = await pickPerCase(caseIds, 'scan', 'first');
+    const scanFileMap = new Map<string, string>(Array.from(firstScans, ([k, v]) => [k, v.fileName] as [string, string]));
 
     // 3. Client display names.
     const clientIds = Array.from(new Set(eligibleRows.map(r => r.clientId).filter(Boolean)));

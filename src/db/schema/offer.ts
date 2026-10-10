@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core"
+import { pgTable, uuid, varchar, text, timestamp, boolean, date, uniqueIndex } from "drizzle-orm/pg-core"
 import { profiles } from "./profile"
 
 export const offers = pgTable(
@@ -10,22 +10,15 @@ export const offers = pgTable(
     category: varchar("category", { length: 50 }).notNull(),
     description: text("description").notNull(),
     discount: varchar("discount", { length: 120 }).notNull(),
-    startDate: varchar("start_date", { length: 20 }),
-    validTill: varchar("valid_till", { length: 20 }).notNull(),
-    targetClients: jsonb("target_clients").$type<string[]>().notNull().default([]),
-    targetLocations: jsonb("target_locations").$type<string[]>().notNull().default([]),
+    startDate: date("start_date"),
+    validTill: date("valid_till").notNull(),
+    targetClients: uuid("target_client_ids").array().notNull().default([]),
+    targetLocations: text("target_locations").array().notNull().default([]),
     sponsored: boolean("sponsored").default(false).notNull(),
     active: boolean("active").default(true).notNull(),
     createdBy: uuid("created_by").references(() => profiles.id),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  },
-  (table) => {
-    return {
-      categoryIdx: index("offers_category_idx").on(table.category),
-      createdAtIdx: index("offers_created_at_idx").on(table.createdAt),
-      sponsoredIdx: index("offers_sponsored_idx").on(table.sponsored),
-    }
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   }
 )
 
@@ -43,13 +36,11 @@ export const offerClaims = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: "cascade" }),
     status: varchar("status", { length: 50 }).default("claimed").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => {
     return {
-      offerClientUniqueIdx: uniqueIndex("offer_claims_offer_client_idx").on(table.offerId, table.clientId),
-      createdAtIdx: index("offer_claims_created_at_idx").on(table.createdAt),
-      clientIdIdx: index("offer_claims_client_id_idx").on(table.clientId),
+      offerClientUniqueIdx: uniqueIndex("offer_claims_uq").on(table.offerId, table.clientId),
     }
   }
 )

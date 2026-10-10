@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { db } from '@/src/db';
-import { notifications, notificationPreferences } from '@/src/db/schema/notification';
+import { notifications, notificationPreferences, notificationSettings } from '@/src/db/schema/notification';
 import { profiles } from '@/src/db/schema/profile';
 import { NotificationService } from './notification-service';
 import { NotificationType } from './notification-events';
@@ -63,6 +63,7 @@ async function main() {
     await db.delete(notifications).where(eq(notifications.link, '/cases/dummy-case-id'));
     // Check if we seeded new preferences, delete if so, or keep it clean
     await db.delete(notificationPreferences).where(eq(notificationPreferences.userId, target.id));
+    await db.delete(notificationSettings).where(eq(notificationSettings.userId, target.id));
     console.log('Database cleanup completed successfully.');
   } else {
     console.error('Verification Assertion: FAILED (No notifications found in database!)');

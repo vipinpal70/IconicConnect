@@ -6,13 +6,13 @@ import {
   pgEnum,
   text,
   integer,
-  bigint,
   jsonb,
   boolean,
-  index,
+  smallint,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { profiles } from './profile'
+import { profiles, userRoleEnum } from './profile'
 
 export const caseStatusEnum = pgEnum('case_status', [
   'scan_received',           // 1. Scan received
@@ -112,164 +112,89 @@ export type CaseTimelineEvent = {
   actor: string
   actionAt: string
   actionTime?: string
-  // Optional client-facing override — some internal events are staff-only or
-  // worded differently for the dental lab. Defaults to `label` when absent.
   clientLabel?: string
   clientHidden?: boolean
 }
 
+const tstz = (name: string) => timestamp(name, { withTimezone: true })
+
+/**
+ * Hot, narrow row: only what list screens read. Cold fields live in `case_details`, history in
+ * `activity_logs` (the old `timeline` jsonb), files in `files`.
+ * Property names that were merely renamed in SQL (startTime, deliveredTime, tat) keep their old TS names.
+ */
 export const cases = pgTable('cases', {
   id: uuid('id').primaryKey().defaultRandom(),
+  caseNumber: varchar('case_number', { length: 50 }).notNull().unique(),
 
-  // Ownership
-  clientId: uuid('client_id').references(() => profiles.id).notNull(),
-  subuserId: uuid('subuser_id').references(() => profiles.id),
-  createdBy: varchar('created_by', { length: 255 }),
+  clientId: uuid('client_id').references(() => profiles.id, { onDelete: 'restrict' }).notNull(),
+  subuserId: uuid('subuser_id').references(() => profiles.id, { onDelete: 'set null' }),
+  createdById: uuid('created_by_id').references(() => profiles.id, { onDelete: 'set null' }),
 
-  caseNumber: varchar('case_number', { length: 50 }).unique(),
+  category: varchar('category', { length: 100 }).notNull(),
+  caseType: varchar('case_type', { length: 100 }), // trigger-maintained from sub_type_data
+  subTypeData: jsonb('sub_type_data').$type<Record<string, any>>().default(sql`'{}'::jsonb`).notNull(),
+  teeth: smallint('teeth').array().default(sql`'{}'`).notNull(),
+  teethCount: integer('teeth_count'), // GENERATED ALWAYS — read-only
 
-  // Dynamic Type
-  category: varchar('category', { length: 100 }),
-  subTypeData: jsonb('sub_type_data'),
-
-  // Status
   status: caseStatusEnum('status').default('scan_received').notNull(),
   holdReason: text('hold_reason'),
   cancelReason: text('cancel_reason'),
   feedbackReason: text('feedback_reason'),
   rejectReason: text('reject_reason'),
-  clientMassage: text('client_massage'),
-  approvalChecklist: jsonb('approval_checklist').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
 
-  // Assignments (Operational Roles)
-  designerId: uuid('designer_id').references(() => profiles.id),
-  qcId: uuid('qc_id').references(() => profiles.id),
-  accountManagerId: uuid('account_manager_id').references(() => profiles.id),
+  designerId: uuid('designer_id').references(() => profiles.id, { onDelete: 'set null' }),
+  qcId: uuid('qc_id').references(() => profiles.id, { onDelete: 'set null' }),
+  accountManagerId: uuid('account_manager_id').references(() => profiles.id, { onDelete: 'set null' }),
 
-  // Dates
   autoApproved: boolean('auto_approved').default(false).notNull(),
-  submittedToClientAt: timestamp('submitted_to_client_at'),
+  submittedToClientAt: tstz('submitted_to_client_at'),
+  startTime: tstz('started_at'),
+  deliveredTime: tstz('completed_at'),
+  tat: integer('tat_minutes'), // minutes (completed - started)
+  dueDate: tstz('due_date'),
 
-  startTime: timestamp('start_time'),
-  deliveredTime: timestamp('delivered_time'),
-  tat: integer('tat'), // Turn Around Time in minutes (deliveredTime - startTime)
-  dueDate: timestamp('due_date'),
-  timeline: jsonb('timeline').$type<CaseTimelineEvent[]>().default(sql`'[]'::jsonb`).notNull(),
-  // Bulk-download tracking cache (source of truth: case_bulk_downloads). NULL = never downloaded.
-  // client_output_downloaded_at is lab-visible; internal_files_downloaded_at is staff-only and must be
-  // stripped from every lab-role response.
-  clientOutputDownloadedAt: timestamp('client_output_downloaded_at'),
-  internalFilesDownloadedAt: timestamp('internal_files_downloaded_at'),
-  outputFile: text('output_file'),
-  previewFile: text('preview_file'),
-  outputNote: text('output_note'),
+  // Bulk-download cache (source of truth: case_bulk_downloads). internal_* is staff-only.
+  clientOutputDownloadedAt: tstz('client_output_downloaded_at'),
+  internalFilesDownloadedAt: tstz('internal_files_downloaded_at'),
   preferredTeethLibrary: varchar('preferred_teeth_library', { length: 50 }).default('default').notNull(),
-  teethLibraryFileUrl: text('teeth_library_file_url'),
-  teethLibraryFileName: varchar('teeth_library_file_name', { length: 255 }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => ({
-  clientIdCreatedAtIdx: index('cases_client_id_created_at_idx').on(table.clientId, table.createdAt),
-  createdAtIdx: index('cases_created_at_idx').on(table.createdAt),
-  createdAtIdIdx: index('cases_created_at_id_idx').on(table.createdAt.desc(), table.id.desc()),
-  clientIdCreatedAtIdIdx: index('cases_client_id_created_at_id_idx').on(table.clientId, table.createdAt.desc(), table.id.desc()),
-  updatedAtIdx: index('cases_updated_at_idx').on(table.updatedAt),
-  designerIdIdx: index('cases_designer_id_idx').on(table.designerId),
-  qcIdIdx: index('cases_qc_id_idx').on(table.qcId),
-}))
 
-export const caseMessages = pgTable('case_messages', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  caseId: uuid('case_id').references(() => cases.id).notNull(),
-  senderId: uuid('sender_id').references(() => profiles.id).notNull(),
-  message: text('message').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  searchText: text('search_text').default('').notNull(), // trigger-maintained — never write
+  rowVersion: integer('row_version').default(1).notNull(), // trigger-bumped
+
+  createdAt: tstz('created_at').defaultNow().notNull(),
+  updatedAt: tstz('updated_at').defaultNow().notNull(),
 })
 
-export const caseFiles = pgTable('case_files', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  caseId: uuid('case_id').references(() => cases.id),
-  uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
-  fileName: varchar('file_name', { length: 255 }).notNull(),
-  fileUrl: text('file_url').notNull(),
-  note: text('note'),
-  fileType: varchar('file_type', { length: 100 }),
-  // bigint: file_size can exceed the 2.14GB int4 max for multi-GB uploads
-  fileSize: bigint('file_size', { mode: 'number' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  caseIdIdx: index('case_files_case_id_idx').on(table.caseId),
-  caseIdCreatedAtIdx: index('case_files_case_id_created_at_idx').on(table.caseId, table.createdAt),
-  // Backs the case-list Universal Search's `lower(file_name) LIKE '%term%'`
-  // full/partial file-name match — see migration 0052. Requires pg_trgm.
-  fileNameTrgmIdx: index('case_files_file_name_trgm_idx').using(
-    'gin',
-    sql`lower(${table.fileName}) gin_trgm_ops`,
-  ),
-}))
+/** Cold / large fields, fetched only by the case-detail endpoint. */
+export const caseDetails = pgTable('case_details', {
+  caseId: uuid('case_id').primaryKey().references(() => cases.id, { onDelete: 'cascade' }),
+  approvalChecklist: jsonb('approval_checklist').$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+  outputNote: text('output_note'),
+  clientMessage: text('client_message'),
+  updatedAt: tstz('updated_at').defaultNow().notNull(),
+})
 
-// Separate from `caseFiles` on purpose: caseFiles backs the client-facing "Case Files"
-// (input scans) list, while preview files are design deliverables — mixing them in would
-// wrongly surface previews there (see bulk/confirm/route.ts).
-export const casePreviewFiles = pgTable('case_preview_files', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  caseId: uuid('case_id').references(() => cases.id).notNull(),
-  uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
-  fileName: varchar('file_name', { length: 255 }).notNull(),
-  fileUrl: text('file_url').notNull(),
-  fileType: varchar('file_type', { length: 100 }),
-  fileSize: bigint('file_size', { mode: 'number' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  caseIdIdx: index('case_preview_files_case_id_idx').on(table.caseId),
-}))
+/** Static status metadata + flow flags (see migration 0300/1600). */
+export const caseStatusMeta = pgTable('case_status_meta', {
+  status: caseStatusEnum('status').primaryKey(),
+  adminLabel: text('admin_label').notNull(),
+  clientLabel: text('client_label').notNull(),
+  lifecycleStep: text('lifecycle_step').notNull(),
+  stepOrder: smallint('step_order').notNull(),
+  isFinished: boolean('is_finished').notNull(),
+  isBillable: boolean('is_billable').default(false).notNull(),
+})
 
-// Reference images uploaded by the client/lab at case-creation time (up to
-// 5, optional — case-modification-plan.md §2). Kept as its own table, not
-// reusing case_files, so reference images never leak into the client-facing
-// "Case Files" (input scans) list or the file-name duplicate-detection check
-// in POST /api/cases — same reasoning as casePreviewFiles above.
-export const caseReferenceFiles = pgTable('case_reference_files', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  caseId: uuid('case_id').references(() => cases.id).notNull(),
-  uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
-  fileName: varchar('file_name', { length: 255 }).notNull(),
-  fileUrl: text('file_url').notNull(),
-  fileType: varchar('file_type', { length: 100 }),
-  fileSize: bigint('file_size', { mode: 'number' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  caseIdIdx: index('case_reference_files_case_id_idx').on(table.caseId),
-}))
-
-// Images explaining why a case was put on hold (hold_images-plan.md). Its own
-// table for the same reason as casePreviewFiles/caseReferenceFiles above — kept
-// out of case_files so these never leak into the client-facing "Case Files"
-// list or its duplicate-detection check. Flat/unscoped by hold event on purpose:
-// mirrors how cases.holdReason itself accumulates text across repeat holds
-// rather than resetting — see hold_images-plan.md §4.4 for the trade-off.
-export const caseHoldFiles = pgTable('case_hold_files', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  caseId: uuid('case_id').references(() => cases.id).notNull(),
-  uploadedBy: uuid('uploaded_by').references(() => profiles.id).notNull(),
-  fileName: varchar('file_name', { length: 255 }).notNull(),
-  fileUrl: text('file_url').notNull(),
-  fileType: varchar('file_type', { length: 100 }),
-  fileSize: bigint('file_size', { mode: 'number' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  caseIdIdx: index('case_hold_files_case_id_idx').on(table.caseId),
-}))
+export const caseStatusTransitions = pgTable('case_status_transitions', {
+  role: userRoleEnum('role').notNull(),
+  fromStatus: caseStatusEnum('from_status').notNull(),
+  toStatus: caseStatusEnum('to_status').notNull(),
+  needsAssignment: boolean('needs_assignment').default(false).notNull(),
+  needsOutputFile: boolean('needs_output_file').default(false).notNull(),
+  needsQcLead: boolean('needs_qc_lead').default(false).notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.role, t.fromStatus, t.toStatus] }) }))
 
 export type Case = typeof cases.$inferSelect
 export type NewCase = typeof cases.$inferInsert
-export type CaseMessage = typeof caseMessages.$inferSelect
-export type NewCaseMessage = typeof caseMessages.$inferInsert
-export type CaseFile = typeof caseFiles.$inferSelect
-export type NewCaseFile = typeof caseFiles.$inferInsert
-export type CasePreviewFile = typeof casePreviewFiles.$inferSelect
-export type NewCasePreviewFile = typeof casePreviewFiles.$inferInsert
-export type CaseReferenceFile = typeof caseReferenceFiles.$inferSelect
-export type NewCaseReferenceFile = typeof caseReferenceFiles.$inferInsert
-export type CaseHoldFile = typeof caseHoldFiles.$inferSelect
-export type NewCaseHoldFile = typeof caseHoldFiles.$inferInsert
+export type CaseDetails = typeof caseDetails.$inferSelect

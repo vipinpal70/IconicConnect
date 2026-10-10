@@ -10,7 +10,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 // Mirrors db/migrations (dbmate owns the DDL; this file only types the queries).
-const citext = customType<{ data: string }>({ dataType: () => 'citext' })
+export const citext = customType<{ data: string }>({ dataType: () => 'citext' })
 
 export const userTypeEnum = pgEnum('user_type', ['lab_portal', 'admin_portal'])
 export const userRoleEnum = pgEnum('user_role', ['client', 'subuser', 'admin', 'qc', 'account_manager', 'designer'])

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
-import { cases } from '@/src/db/schema/case'
+import { cases, caseDetails } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/auth/server'
 import { logActivity } from '@/src/lib/activity-log'
@@ -53,7 +53,8 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden: QC can only view approval checklists for assigned cases' }, { status: 403 })
     }
 
-    return NextResponse.json({ data: caseRecord.approvalChecklist ?? [] })
+    const [detail] = await db.select().from(caseDetails).where(eq(caseDetails.caseId, id)).limit(1)
+    return NextResponse.json({ data: detail?.approvalChecklist ?? [] })
   } catch (error) {
     console.error('Get case approval checklist error:', error)
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
@@ -94,15 +95,16 @@ export async function POST(
       return NextResponse.json({ error: 'Please complete all QC checklist items before approving.' }, { status: 400 })
     }
 
-    const [updatedCase] = await db
-      .update(cases)
-      .set({
-        approvalChecklist: normalizedChecklist,
-        status: 'submitted_to_client',
-        submittedToClientAt: new Date(),
-      })
-      .where(eq(cases.id, id))
-      .returning()
+    const [beforeDetail] = await db.select().from(caseDetails).where(eq(caseDetails.caseId, id)).limit(1)
+    const [updatedCase] = await db.transaction(async (tx) => {
+      await tx.insert(caseDetails).values({ caseId: id, approvalChecklist: normalizedChecklist })
+        .onConflictDoUpdate({ target: caseDetails.caseId, set: { approvalChecklist: normalizedChecklist } })
+      return tx
+        .update(cases)
+        .set({ status: 'submitted_to_client', submittedToClientAt: new Date() })
+        .where(eq(cases.id, id))
+        .returning()
+    })
 
     if (!updatedCase) {
       return NextResponse.json({ error: 'Failed to approve case' }, { status: 500 })
@@ -134,7 +136,7 @@ export async function POST(
         caseNumber,
         before: {
           status: caseRecord.status,
-          approvalChecklist: caseRecord.approvalChecklist ?? [],
+          approvalChecklist: beforeDetail?.approvalChecklist ?? [],
         },
         changes: {
           status: finalCase.status,

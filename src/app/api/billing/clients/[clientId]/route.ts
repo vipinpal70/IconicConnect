@@ -8,7 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getEmail } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db'
-import { cases, caseFiles } from '@/src/db/schema/case'
+import { cases } from '@/src/db/schema/case'
+import { pickPerCase } from '@/src/lib/files-repo'
 import { profiles } from '@/src/db/schema/profile'
 import { serviceCatalog, clientPriceList } from '@/src/db/schema/price-list'
 import { eq, and, gte, lte, inArray, asc } from 'drizzle-orm'
@@ -217,19 +218,8 @@ export async function GET(
 
     // Fetch first uploaded scan file name for each case in one batch query
     const caseIdList = clientCases.map(c => c.id)
-    const scanFileMap = new Map<string, string>()
-    if (caseIdList.length > 0) {
-      const fileRows = await db
-        .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
-        .from(caseFiles)
-        .where(inArray(caseFiles.caseId, caseIdList))
-        .orderBy(asc(caseFiles.createdAt))
-      for (const row of fileRows) {
-        if (row.caseId && !scanFileMap.has(row.caseId)) {
-          scanFileMap.set(row.caseId, row.fileName)
-        }
-      }
-    }
+    const firstScans = await pickPerCase(caseIdList, 'scan', 'first')
+    const scanFileMap = new Map<string, string>(Array.from(firstScans, ([k, v]) => [k, v.fileName] as [string, string]))
 
     let totalPrice = 0
     const detailedCases = clientCases.map(c => {

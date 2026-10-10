@@ -2,10 +2,13 @@ import { users } from '@/src/db/schema/profile'
 import { isValidUploadFileName } from '@/src/lib/security/file-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, casePreviewFiles } from '@/src/db/schema/case';
+import { cases,  } from '@/src/db/schema/case';
+import { caseDetails } from '@/src/db/schema/case';
+import { insertFiles, listByCase, deleteByCases } from '@/src/lib/files-repo';
+import { files as fileRegistry } from '@/src/db/schema/files';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
 import { logActivity } from '@/src/lib/activity-log';
@@ -148,10 +151,7 @@ export async function POST(req: NextRequest) {
               throw new Error(`Preview file "${preview.fileName}" exceeds the 1GB limit`);
             }
           }
-          const [{ count: existingPreviewCount }] = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(casePreviewFiles)
-            .where(eq(casePreviewFiles.caseId, item.caseId));
+          const existingPreviewCount = (await listByCase(item.caseId, 'preview')).length;
           if (existingPreviewCount + previewFiles.length > MAX_PREVIEW_FILES) {
             throw new Error(`A case can have at most ${MAX_PREVIEW_FILES} preview files`);
           }
@@ -192,9 +192,18 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        await db.transaction(async (tx) => {
+          // Single design output: replace any previous one.
+          await tx.delete(fileRegistry).where(and(eq(fileRegistry.caseId, item.caseId), eq(fileRegistry.kind, 'output')));
+          await insertFiles([{
+            clientId: caseRecord.clientId, caseId: item.caseId, kind: 'output', uploadedBy: profile.id,
+            fileName: item.fileName, fileUrl,
+          }], tx);
+          await tx.insert(caseDetails).values({ caseId: item.caseId, outputNote: note })
+            .onConflictDoUpdate({ target: caseDetails.caseId, set: { outputNote: note } });
+        });
+
         await db.update(cases).set({
-          outputFile: fileUrl,
-          outputNote: note,
           status: targetStatus,
           ...(targetStatus === 'internal_qc' ? { qcId: finalQcId } : {}),
           ...(targetStatus === 'submitted_to_client' ? { submittedToClientAt: new Date() } : {}),
@@ -202,9 +211,11 @@ export async function POST(req: NextRequest) {
         }).where(eq(cases.id, item.caseId));
 
         if (movedPreviewFiles.length > 0) {
-          await db.insert(casePreviewFiles).values(
+          await insertFiles(
             movedPreviewFiles.map((p) => ({
+              clientId: caseRecord.clientId,
               caseId: item.caseId,
+              kind: 'preview' as const,
               uploadedBy: profile.id,
               fileName: p.fileName,
               fileUrl: p.fileUrl,

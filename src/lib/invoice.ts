@@ -29,26 +29,7 @@ export function computeTotal(
 
 // ── Invoice number generation ────────────────────────────────────────────────
 
-export async function generateInvoiceNumber(): Promise<string> {
-  const year = new Date().getFullYear()
-  const prefix = `Inv_${year}_`
-
-  const [latest] = await db
-    .select({ invoiceNumber: invoices.invoiceNumber })
-    .from(invoices)
-    .where(like(invoices.invoiceNumber, `${prefix}%`))
-    .orderBy(desc(invoices.invoiceNumber))
-    .limit(1)
-
-  let seq = 1
-  if (latest?.invoiceNumber) {
-    const parts = latest.invoiceNumber.split('_')
-    const lastSeq = parseInt(parts[parts.length - 1], 10)
-    if (!isNaN(lastSeq)) seq = lastSeq + 1
-  }
-
-  return `${prefix}${String(seq).padStart(4, '0')}`
-}
+// Invoice numbers come from the DB (next_invoice_number(): atomic per-year counter) — no read-then-increment race.
 
 // ── Unit count extraction from subTypeData ──────────────────────────────────
 
@@ -394,6 +375,7 @@ export function formatInvoiceRow(
   inv: typeof invoices.$inferSelect,
   client: typeof profiles.$inferSelect,
   clientEmail = '',
+  caseIds: string[] = [],
 ): InvoiceWithClient {
   return {
     id: inv.id,
@@ -410,7 +392,7 @@ export function formatInvoiceRow(
     startDate: inv.startDate,
     endDate: inv.endDate,
     items: (inv.items as InvoiceLineItem[]) ?? [],
-    caseIds: (inv.caseIds as string[]) ?? [],
+    caseIds,
     subtotal: parseFloat(String(inv.subtotal)),
     taxType: inv.taxType,
     taxValue: parseFloat(String(inv.taxValue)),

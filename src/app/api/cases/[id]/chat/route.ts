@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { chatMessages } from '@/src/db/schema/chat';
+import { insertFiles } from '@/src/lib/files-repo';
+import { loadChatMessages, toChatPayload } from '@/src/lib/chat-messages';
 import { profiles } from '@/src/db/schema/profile';
 import { cases } from '@/src/db/schema/case';
 import { and, desc, eq } from 'drizzle-orm';
@@ -41,16 +43,12 @@ export async function GET(
     }
 
     // Load messages sorted by createdAt descending (latest first)
-    const messages = await db
-      .select()
-      .from(chatMessages)
-      .where(eq(chatMessages.caseId, caseId))
-      .orderBy(desc(chatMessages.createdAt));
+    const messages = await loadChatMessages(caseId);
 
     await markCaseChatRead(caseId, profile.id);
     await db
       .update(notifications)
-      .set({ read: true, updatedAt: new Date() })
+      .set({ read: true, readAt: new Date() })
       .where(and(
         eq(notifications.userId, profile.id),
         eq(notifications.type, NotificationType.CHAT_MESSAGE),
@@ -122,14 +120,17 @@ export async function POST(
         caseId,
         senderId: profile.id,
         senderRole: profile.role,
-        senderName: profile.fullName || 'User',
         messageText: messageText?.trim() || '',
-        fileUrl: fileUrl || null,
-        fileName: fileName || null,
-        fileType: fileType || null,
-        fileSize: fileSize ? String(fileSize) : null,
       })
       .returning();
+
+    // Attachment = a `files` row of kind 'chat' owned by the message (not the case).
+    const [attachment] = fileUrl
+      ? await insertFiles([{
+          clientId: caseRecord.clientId, caseId: null, messageId: newMessage.id, kind: 'chat', uploadedBy: profile.id,
+          fileName: fileName || 'attachment', fileUrl, fileType: fileType || null, fileSize: fileSize ? Number(fileSize) : null,
+        }])
+      : [];
 
     await markCaseChatRead(caseId, profile.id);
 
@@ -155,7 +156,7 @@ export async function POST(
       console.error('[ChatNotificationTrigger] Error resolving target participants:', e);
     }
 
-    return NextResponse.json({ data: newMessage });
+    return NextResponse.json({ data: toChatPayload(newMessage, profile.fullName || 'User', attachment ?? null) });
   } catch (error: unknown) {
     console.error('Post chat message error:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 });

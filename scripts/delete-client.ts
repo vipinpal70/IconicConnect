@@ -5,8 +5,6 @@ import { db } from '../src/db';
 import {
   profiles,
   cases,
-  caseFiles,
-  caseMessages,
   chatMessages,
   chatReadStates,
   notifications,
@@ -105,25 +103,7 @@ async function main() {
     console.error(`❌ Error deleting invoices: ${err.message || err}`);
   }
 
-  // b. Case Files
-  if (caseIds.length > 0) {
-    try {
-      await db.delete(caseFiles).where(inArray(caseFiles.caseId, caseIds));
-      console.log(`✅ Deleted case files records for ${caseIds.length} cases`);
-    } catch (err: any) {
-      console.error(`❌ Error deleting case files: ${err.message || err}`);
-    }
-  }
-
-  // c. Case Messages
-  if (caseIds.length > 0) {
-    try {
-      await db.delete(caseMessages).where(inArray(caseMessages.caseId, caseIds));
-      console.log(`✅ Deleted case messages for ${caseIds.length} cases`);
-    } catch (err: any) {
-      console.error(`❌ Error deleting case messages: ${err.message || err}`);
-    }
-  }
+  // (files, chat, activity and case_details cascade from the cases)
 
   // d. Chat Messages
   if (caseIds.length > 0) {

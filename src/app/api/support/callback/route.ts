@@ -54,8 +54,6 @@ export async function POST() {
 
     const [request] = await db.insert(supportCallbackRequests).values({
       clientId,
-      clientName,
-      labName,
       phone: clientProfile?.phone || null,
       email: (await getEmail(clientProfile?.id)) || requester,
       createdBy: profile.id,

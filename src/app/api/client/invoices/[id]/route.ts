@@ -1,3 +1,4 @@
+import { getInvoiceCaseIds } from '@/src/lib/invoice-cases'
 import { getEmail } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
@@ -43,7 +44,7 @@ export async function GET(
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
     const clientEmail = await getEmail(client.id)
-    const result = formatInvoiceRow(inv, client, clientEmail)
+    const result = formatInvoiceRow(inv, client, clientEmail, (await getInvoiceCaseIds([id])).get(id) ?? [])
     await setCachedData(cacheKey, result, INVOICE_TTL)
     return NextResponse.json(result)
   } catch (err) {
@@ -99,7 +100,7 @@ export async function PATCH(
 
     const [client] = await db.select().from(profiles).where(eq(profiles.id, clientId)).limit(1)
     await invalidateInvoiceCache(clientId, id)
-    return NextResponse.json(formatInvoiceRow(updated, client, await getEmail(client.id)))
+    return NextResponse.json(formatInvoiceRow(updated, client, await getEmail(client.id), (await getInvoiceCaseIds([id])).get(id) ?? []))
   } catch (err) {
     console.error('[api/client/invoices/[id] PATCH]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

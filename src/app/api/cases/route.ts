@@ -1,4 +1,6 @@
 import { putLabFile } from '@/src/lib/r2-put';
+import { files as fileRegistry } from '@/src/db/schema/files';
+import { insertFiles, pickPerCase } from '@/src/lib/files-repo';
 import { users } from '@/src/db/schema/profile'
 import { getRequestUser } from '@/src/lib/auth/request-user';
 import { getEmail } from '@/src/lib/auth/auth-service'
@@ -8,10 +10,10 @@ import { getProfileCached } from '@/src/lib/profile-lookup';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, caseFiles, caseReferenceFiles, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum } from '@/src/db/schema/case';
+import { cases, caseDetails, CASE_STATUS_TO_LIFECYCLE_STEP, CLIENT_STATUS_LABELS, caseStatusEnum } from '@/src/db/schema/case';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
-import { eq, and, or, inArray, ilike, gte, lte, sql, asc, desc, type SQL } from 'drizzle-orm';
+import { eq, and, or, inArray, isNull, ilike, gte, lte, sql, asc, desc, type SQL } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
@@ -54,14 +56,10 @@ const caseListSelection = {
   dueDate: cases.dueDate,
   createdAt: cases.createdAt,
   updatedAt: cases.updatedAt,
-  outputFile: cases.outputFile,
   clientOutputDownloadedAt: cases.clientOutputDownloadedAt,
   internalFilesDownloadedAt: cases.internalFilesDownloadedAt,
-  previewFile: cases.previewFile,
   preferredTeethLibrary: cases.preferredTeethLibrary,
-  teethLibraryFileUrl: cases.teethLibraryFileUrl,
-  teethLibraryFileName: cases.teethLibraryFileName,
-  createdBy: cases.createdBy,
+  createdById: cases.createdById,
 };
 
 function getErrorMessage(error: unknown) {
@@ -191,11 +189,13 @@ export async function POST(req: NextRequest) {
       ));
       if (strictFileNames.length > 0) {
         const duplicate = await db
-          .select({ fileName: caseFiles.fileName, caseNumber: cases.caseNumber, status: cases.status })
-          .from(caseFiles)
-          .innerJoin(cases, eq(caseFiles.caseId, cases.id))
+          .select({ fileName: fileRegistry.fileName, caseNumber: cases.caseNumber, status: cases.status })
+          .from(fileRegistry)
+          .innerJoin(cases, eq(fileRegistry.caseId, cases.id))
           .where(and(
-            inArray(caseFiles.fileName, strictFileNames),
+            eq(fileRegistry.kind, 'scan'),
+            isNull(fileRegistry.deletedAt),
+            inArray(fileRegistry.fileName, strictFileNames),
             eq(cases.clientId, clientId),
             inArray(cases.status, ACTIVE_CASE_STATUSES)
           ))
@@ -225,10 +225,10 @@ export async function POST(req: NextRequest) {
         const earliestName = new Map<string, string>();
         if (activeIds.length > 0) {
           const rows = await db
-            .select({ caseId: caseFiles.caseId, fileName: caseFiles.fileName })
-            .from(caseFiles)
-            .where(inArray(caseFiles.caseId, activeIds))
-            .orderBy(asc(caseFiles.createdAt));
+            .select({ caseId: fileRegistry.caseId, fileName: fileRegistry.fileName })
+            .from(fileRegistry)
+            .where(and(eq(fileRegistry.kind, 'scan'), isNull(fileRegistry.deletedAt), inArray(fileRegistry.caseId, activeIds)))
+            .orderBy(asc(fileRegistry.createdAt));
           for (const row of rows) {
             if (row.caseId && !earliestName.has(row.caseId)) earliestName.set(row.caseId, row.fileName);
           }
@@ -368,14 +368,22 @@ export async function POST(req: NextRequest) {
         caseNumber,
         dueDate: caseData.dueDate ? new Date(caseData.dueDate) : null,
         category: caseData.category,
-        subTypeData: caseData.subTypeData,
+        subTypeData: (caseData.subTypeData ?? {}) as Record<string, any>,
         preferredTeethLibrary: caseData.preferredTeethLibrary || 'default',
-        teethLibraryFileUrl: caseData.teethLibraryFileUrl || null,
-        teethLibraryFileName: caseData.teethLibraryFileName || null,
-        createdBy: profile.fullName || (await getEmail(profile.id)) || 'System',
+        createdById: profile.id,
       };
 
-      const insertedCase = await db.insert(cases).values(newCase).returning().then(res => res[0]);
+      const insertedCase = await db.insert(cases).values({ ...newCase, category: newCase.category! }).returning().then(res => res[0]);
+
+      // Cold fields live in case_details (1:1).
+      await db.insert(caseDetails).values({ caseId: insertedCase.id }).onConflictDoNothing();
+
+      if (caseData.teethLibraryFileUrl) {
+        await insertFiles([{
+          clientId, caseId: insertedCase.id, kind: 'teeth_library', uploadedBy: user.id,
+          fileName: caseData.teethLibraryFileName || 'teeth-library', fileUrl: caseData.teethLibraryFileUrl,
+        }]);
+      }
 
       notifyCaseSubmitted({
         actorUserId: user.id,
@@ -387,8 +395,10 @@ export async function POST(req: NextRequest) {
 
       if (caseData.uploadedFiles && Array.isArray(caseData.uploadedFiles)) {
         if (caseData.uploadedFiles.length > 0) {
-          await db.insert(caseFiles).values(caseData.uploadedFiles.map((uf) => ({
+          await insertFiles(caseData.uploadedFiles.map((uf) => ({
+            clientId,
             caseId: insertedCase.id,
+            kind: 'scan' as const,
             uploadedBy: user.id,
             fileName: uf.fileName,
             fileUrl: uf.fileUrl,
@@ -398,14 +408,16 @@ export async function POST(req: NextRequest) {
         }
       } else if (caseData.uploadedFile) {
         // Already uploaded immediately by client (fallback single file)
-        await db.insert(caseFiles).values({
+        await insertFiles([{
+          clientId,
           caseId: insertedCase.id,
+          kind: 'scan',
           uploadedBy: user.id,
           fileName: caseData.uploadedFile.fileName,
           fileUrl: caseData.uploadedFile.fileUrl,
           fileType: caseData.uploadedFile.fileType ?? null,
           fileSize: caseData.uploadedFile.fileSize ? Number(caseData.uploadedFile.fileSize) : null,
-        });
+        }]);
       } else if (file) {
         // Legacy/Direct fallback upload
         let fileUrl: string | null = null;
@@ -415,21 +427,25 @@ export async function POST(req: NextRequest) {
           console.error(`Failed to upload file for case ${caseNumber}:`, uploadError);
         }
         if (fileUrl) {
-          await db.insert(caseFiles).values({
+          await insertFiles([{
+            clientId,
             caseId: insertedCase.id,
+            kind: 'scan',
             uploadedBy: user.id,
             fileName: file.name,
             fileUrl,
             fileType: file.type,
             fileSize: file.size,
-          });
+          }]);
         }
       }
 
       if (Array.isArray(caseData.referenceImages)) {
         if (caseData.referenceImages.length > 0) {
-          await db.insert(caseReferenceFiles).values(caseData.referenceImages.map((img) => ({
+          await insertFiles(caseData.referenceImages.map((img) => ({
+            clientId,
             caseId: insertedCase.id,
+            kind: 'reference' as const,
             uploadedBy: user.id,
             fileName: img.fileName,
             fileUrl: img.fileUrl,
@@ -496,7 +512,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     const isAdmin = isValidRoleForType('admin_portal', profile.role)
-    const cacheClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id
+    const cacheClientId = profile.clientId ?? profile.id
 
     // Page-based loading with no overall cap: every page is `limit` rows (default 100, which is
     // what all the cases pages request), `page` walks through the whole result set.
@@ -572,9 +588,9 @@ export async function GET(req: NextRequest) {
       const likePatternLower = likePattern.toLowerCase();
 
       const [fileCaseIdRows, clientIdRows] = await Promise.all([
-        db.selectDistinct({ caseId: caseFiles.caseId })
-          .from(caseFiles)
-          .where(sql`lower(${caseFiles.fileName}) like ${likePatternLower}`)
+        db.selectDistinct({ caseId: fileRegistry.caseId })
+          .from(fileRegistry)
+          .where(and(eq(fileRegistry.kind, 'scan'), isNull(fileRegistry.deletedAt), sql`lower(${fileRegistry.fileName}) like ${likePatternLower}`))
           .limit(5000),
         db.select({ id: profiles.id })
           .from(profiles)
@@ -592,9 +608,8 @@ export async function GET(req: NextRequest) {
       const matchedClientIds = clientIdRows.map((r) => r.id);
 
       searchCondition = or(
-        ilike(cases.caseNumber, likePattern),
-        ilike(cases.category, likePattern),
-        sql`${cases.subTypeData}::text ilike ${likePattern}`,
+        // search_text = lower(case no + category + type + sub-type values), trigram-indexed (idx_cases_search_trgm)
+        sql`${cases.searchText} like ${likePatternLower}`,
         matchedFileCaseIds.length ? inArray(cases.id, matchedFileCaseIds) : undefined,
         matchedClientIds.length ? inArray(cases.clientId, matchedClientIds) : undefined,
       );
@@ -660,7 +675,8 @@ export async function GET(req: NextRequest) {
 
     // Every lookup below depends only on `results`, so they all run in ONE parallel step (one network round
     // trip of latency instead of three sequential ones).
-    const [designersProfiles, clientsProfiles, chatMetadata, fileRows, staffDownloads, labDownloads] = await Promise.all([
+    const creatorIds = Array.from(new Set(results.map(r => r.createdById).filter(Boolean))) as string[];
+    const [designersProfiles, clientsProfiles, chatMetadata, firstScans, outputs, previews, teethLibs, creators, staffDownloads, labDownloads] = await Promise.all([
       designerIds.length > 0
         ? db.select({ id: profiles.id, fullName: profiles.fullName, email: users.email })
             .from(profiles).innerJoin(users, eq(users.id, profiles.id)).where(inArray(profiles.id, designerIds))
@@ -670,13 +686,14 @@ export async function GET(req: NextRequest) {
             .from(profiles).innerJoin(users, eq(users.id, profiles.id)).where(inArray(profiles.id, clientIds))
         : Promise.resolve([]),
       getCasesChatMetadata(caseIds, profile.id),
-      caseIds.length > 0
-        ? // One row per case (its first uploaded file) instead of every file of every case on the page.
-          db.selectDistinctOn([caseFiles.caseId], { caseId: caseFiles.caseId, fileName: caseFiles.fileName })
-            .from(caseFiles)
-            .where(inArray(caseFiles.caseId, caseIds))
-            .orderBy(caseFiles.caseId, asc(caseFiles.createdAt))
-        : Promise.resolve([]),
+      // One row per case (its first uploaded scan) instead of every file of every case on the page.
+      pickPerCase(caseIds, 'scan', 'first'),
+      pickPerCase(caseIds, 'output', 'latest'),
+      pickPerCase(caseIds, 'preview', 'latest'),
+      pickPerCase(caseIds, 'teeth_library', 'latest'),
+      creatorIds.length > 0
+        ? db.select({ id: profiles.id, fullName: profiles.fullName }).from(profiles).where(inArray(profiles.id, creatorIds))
+        : Promise.resolve([] as { id: string; fullName: string | null }[]),
       getLatestCompleted(staffDownloadCaseIds, 'internal_files'),
       getLatestCompleted(labDownloadCaseIds, 'client_output'),
     ]);
@@ -691,13 +708,7 @@ export async function GET(req: NextRequest) {
       clientsMap.set(p.id, p.labName || p.fullName || p.email || '—');
     });
 
-    // Fetch first uploaded scan file name for each case
-    const scanFileMap = new Map<string, string>();
-    for (const row of fileRows) {
-      if (row.caseId && !scanFileMap.has(row.caseId)) {
-        scanFileMap.set(row.caseId, row.fileName);
-      }
-    }
+    const creatorMap = new Map(creators.map((c) => [c.id, c.fullName]));
 
 
     const mappedResults = results.map(r => stripStaffOnlyCaseFields({
@@ -708,7 +719,12 @@ export async function GET(req: NextRequest) {
       clientDisplayName: r.clientId ? (clientsMap.get(r.clientId) || null) : null,
       todayMessagesCount: chatMetadata.get(r.id)?.todayMessagesCount ?? 0,
       hasUnreadChat: chatMetadata.get(r.id)?.hasUnreadChat ?? false,
-      scanFileName: scanFileMap.get(r.id) ?? null,
+      scanFileName: firstScans.get(r.id)?.fileName ?? null,
+      outputFile: outputs.get(r.id)?.fileUrl ?? null,
+      previewFile: previews.get(r.id)?.fileUrl ?? null,
+      teethLibraryFileUrl: teethLibs.get(r.id)?.fileUrl ?? null,
+      teethLibraryFileName: teethLibs.get(r.id)?.fileName ?? null,
+      createdBy: r.createdById ? (creatorMap.get(r.createdById) ?? null) : null,
     }, profile.role));
 
     const payload = { data: mappedResults, hasMore }

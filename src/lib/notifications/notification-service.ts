@@ -1,6 +1,7 @@
 import { users } from '@/src/db/schema/profile'
 import { db } from '@/src/db';
-import { notifications, notificationPreferences } from '@/src/db/schema/notification';
+import { notifications } from '@/src/db/schema/notification';
+import { loadPreference, loadPreferences } from './preferences';
 import { profiles } from '@/src/db/schema/profile';
 import { eq, inArray } from 'drizzle-orm';
 import { connection } from '@/src/lib/queue/client';
@@ -14,66 +15,7 @@ export class NotificationService {
    * with all defaults enabled.
    */
   static async getPreferences(userId: string) {
-    // 1. Fetch preferences
-    const [prefs] = await db
-      .select()
-      .from(notificationPreferences)
-      .where(eq(notificationPreferences.userId, userId))
-      .limit(1);
-
-    if (prefs) {
-      return prefs;
-    }
-
-    // 2. Transactional fallback insertion if not found (default true for all settings)
-    try {
-      const [newPrefs] = await db
-        .insert(notificationPreferences)
-        .values({
-          userId,
-          emailEnabled: true,
-          inAppEnabled: true,
-          caseAssignedEmail: true,
-          caseAssignedInApp: true,
-          caseFeedbackEmail: true,
-          caseFeedbackInApp: true,
-          caseApprovedEmail: true,
-          caseApprovedInApp: true,
-          caseRejectedEmail: true,
-          caseRejectedInApp: true,
-          caseHoldEmail: true,
-          caseHoldInApp: true,
-          caseCancelEmail: true,
-          caseCancelInApp: true,
-          caseReminderEmail: true,
-          caseReminderInApp: true,
-          chatMessageEmail: true,
-          chatMessageInApp: true,
-          caseCreatedEmail: true,
-          caseCreatedInApp: true,
-          offerCreatedEmail: true,
-          offerCreatedInApp: true,
-          tutorialCreatedEmail: true,
-          tutorialCreatedInApp: true,
-          supportTicketCreatedEmail: true,
-          supportTicketCreatedInApp: true,
-          supportTicketUpdatedEmail: true,
-          supportTicketUpdatedInApp: true,
-          supportCallbackEmail: true,
-          supportCallbackInApp: true,
-        })
-        .returning();
-      return newPrefs;
-    } catch (error) {
-      // Handle race conditions where another thread inserted concurrently
-      const [existingPrefs] = await db
-        .select()
-        .from(notificationPreferences)
-        .where(eq(notificationPreferences.userId, userId))
-        .limit(1);
-      if (existingPrefs) return existingPrefs;
-      throw error;
-    }
+    return loadPreference(userId);
   }
 
   /**
@@ -103,11 +45,10 @@ export class NotificationService {
     const targetIds = Array.from(new Set(items.map((p) => p.targetUserId)));
     const [targetProfiles, prefRows] = await Promise.all([
       db.select({ id: profiles.id, email: users.email }).from(profiles).innerJoin(users, eq(users.id, profiles.id)).where(inArray(profiles.id, targetIds)),
-      db.select().from(notificationPreferences).where(inArray(notificationPreferences.userId, targetIds)),
+      loadPreferences(targetIds),
     ]);
     const emailById = new Map(targetProfiles.map((r) => [r.id, r.email]));
-    const prefsById = new Map(prefRows.map((r) => [r.userId, r]));
-    const allOn = new Proxy({}, { get: () => true }) as any;
+    const prefsById = prefRows; // already defaulted to all-enabled for users with no rows
 
     const outcomes = new Map<NotificationEventPayload, { success: boolean; channels: string[] }>();
     const inserts: (typeof notifications.$inferInsert)[] = [];
@@ -118,7 +59,7 @@ export class NotificationService {
         outcomes.set(payload, { success: false, channels: [] });
         continue;
       }
-      const prefs = prefsById.get(payload.targetUserId) ?? allOn;
+      const prefs = prefsById.get(payload.targetUserId)!;
       const channels: string[] = [];
       outcomes.set(payload, { success: true, channels });
 

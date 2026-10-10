@@ -5,6 +5,7 @@ import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { timelineForClient, isLabRole } from '@/src/lib/case-access'
 import { createClient } from '@/src/lib/auth/server'
+import { getCaseTimeline } from '@/src/lib/activity-log'
 
 export async function GET(
   req: NextRequest,
@@ -33,13 +34,14 @@ export async function GET(
     }
 
     // Sub-users share their parent client's cases (same rule as every other case route).
-    const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id
+    const effectiveClientId = profile.clientId ?? profile.id
     if (isLabRole(profile.role) && caseRecord.clientId !== effectiveClientId) {
       return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 })
     }
 
+    const timeline = await getCaseTimeline(id)
     return NextResponse.json({
-      data: isLabRole(profile.role) ? timelineForClient(caseRecord.timeline) : (caseRecord.timeline ?? []),
+      data: isLabRole(profile.role) ? timelineForClient(timeline) : timeline,
     })
   } catch (error) {
     console.error('Get case activity error:', error)

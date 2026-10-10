@@ -1,3 +1,4 @@
+import { pickPerCase } from '@/src/lib/files-repo'
 import { Readable } from 'node:stream'
 import { NextResponse } from 'next/server'
 import { ZipArchive, type Archiver } from 'archiver'
@@ -429,7 +430,7 @@ export async function recordSingleOutputDownload(
   const { cases: rows } = await loadDownloadableCases(profile, 'client_output', [caseId])
   const row = rows[0]
   if (!row) return { recorded: false, reason: 'not_accessible' }
-  if (!row.outputFile) return { recorded: false, reason: 'no_output' }
+  if (!(await pickPerCase([row.id], 'output', 'latest')).has(row.id)) return { recorded: false, reason: 'no_output' }
 
   const latest = await getLatestCompleted([row.id], 'client_output')
   if (latest.has(row.id)) return { recorded: false, reason: 'already_recorded' }

@@ -1,3 +1,4 @@
+import { getInvoiceCaseIds } from '@/src/lib/invoice-cases'
 import { getEmail } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
@@ -48,7 +49,7 @@ export async function GET(
     if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
 
     const clientEmail = await getEmail(client.id)
-    const result = formatInvoiceRow(inv, client, clientEmail)
+    const result = formatInvoiceRow(inv, client, clientEmail, (await getInvoiceCaseIds([id])).get(id) ?? [])
     await setCachedData(cacheKey, result, INVOICE_TTL)
     return NextResponse.json(result)
   } catch (err) {
@@ -171,7 +172,7 @@ export async function PATCH(
       },
     }).catch((err) => console.error('[invoice.updated logActivity]', err))
 
-    return NextResponse.json(formatInvoiceRow(updated, client, await getEmail(client.id)))
+    return NextResponse.json(formatInvoiceRow(updated, client, await getEmail(client.id), (await getInvoiceCaseIds([id])).get(id) ?? []))
   } catch (err) {
     console.error('[api/admin/invoices/[id] PATCH]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -191,7 +192,8 @@ export async function DELETE(
     const [inv] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1)
     if (!inv) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
 
-    await db.delete(invoices).where(eq(invoices.id, id))
+    const deletedCaseIds = (await getInvoiceCaseIds([id])).get(id) ?? []
+    await db.delete(invoices).where(eq(invoices.id, id)) // invoice_cases rows cascade
     await invalidateInvoiceCache(inv.clientId, id)
 
     await logActivity({
@@ -206,7 +208,7 @@ export async function DELETE(
         status: inv.status,
         startDate: inv.startDate,
         endDate: inv.endDate,
-        caseIds: inv.caseIds,
+        caseIds: deletedCaseIds,
       },
     }).catch((err) => console.error('[invoice.deleted logActivity]', err))
 

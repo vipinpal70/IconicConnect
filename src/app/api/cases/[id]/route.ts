@@ -2,10 +2,13 @@ import { caseBulkDownloads } from '@/src/db/schema/bulk-download';
 import { isSafeStoredFileUrl } from '@/src/lib/security/safe-url';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases, EDITABLE_STATUSES, caseMessages, caseFiles, caseHoldFiles, casePreviewFiles, caseReferenceFiles } from '@/src/db/schema/case';
+import { cases, caseDetails, EDITABLE_STATUSES } from '@/src/db/schema/case';
+import { buildCaseDetail } from '@/src/lib/case-detail';
+import { insertFiles, listByCase, pickPerCase, deleteByCases } from '@/src/lib/files-repo';
+import { files as fileRegistry } from '@/src/db/schema/files';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
-import { eq, and, or, like, sql } from 'drizzle-orm';
+import { eq, and, or, like, sql, isNull } from 'drizzle-orm';
 import { isValidRoleForType } from '@/src/lib/auth/role';
 import { logActivity } from '@/src/lib/activity-log';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
@@ -26,7 +29,7 @@ type CaseUpdateData = {
   caseNumber?: string
   dueDate?: Date
   category?: string
-  subTypeData?: unknown
+  subTypeData?: Record<string, any>
   status?:
   | 'scan_received'
   | 'allocated_to_designer'
@@ -54,10 +57,6 @@ type CaseUpdateData = {
   cancelReason?: string | null
   feedbackReason?: string | null
   rejectReason?: string | null
-  clientMassage?: string | null
-  outputFile?: string | null
-  previewFile?: string | null
-  outputNote?: string | null
 }
 
 function getErrorMessage(error: unknown) {
@@ -99,7 +98,7 @@ export async function GET(
     const cachedDetail = await getCachedData<Record<string, unknown>>(detailCacheKey)
     if (cachedDetail) {
       // Enforce ownership even on cache hit
-      const effectiveClientIdCheck = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+      const effectiveClientIdCheck = profile.clientId ?? profile.id;
       if ((profile.role === 'client' || profile.role === 'subuser') && cachedDetail.clientId !== effectiveClientIdCheck) {
         return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 });
       }
@@ -115,30 +114,12 @@ export async function GET(
     }
 
     // Role checks for GET — sub-users share parent client's cases
-    const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+    const effectiveClientId = profile.clientId ?? profile.id;
     if ((profile.role === 'client' || profile.role === 'subuser') && caseRecord.clientId !== effectiveClientId) {
       return NextResponse.json({ error: 'Forbidden: You can only view cases from your lab' }, { status: 403 });
     }
 
-    let designerName: string | null = null;
-    if (caseRecord.designerId) {
-      const [designerProfile] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.designerId)).limit(1);
-      designerName = designerProfile?.fullName || null;
-    }
-
-    let qcName: string | null = null;
-    if (caseRecord.qcId) {
-      const [qcProfile] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.qcId)).limit(1);
-      qcName = qcProfile?.fullName || null;
-    }
-
-    let accountManagerName: string | null = null;
-    if (caseRecord.accountManagerId) {
-      const [amProfile] = await db.select().from(profiles).where(eq(profiles.id, caseRecord.accountManagerId)).limit(1);
-      accountManagerName = amProfile?.fullName || null;
-    }
-
-    const detailPayload = { ...caseRecord, designerName, qcName, accountManagerName }
+    const detailPayload = await buildCaseDetail(caseRecord)
     await setCachedData(detailCacheKey, detailPayload, CASE_DETAIL_TTL)
     return NextResponse.json({
       data: isLabRole(profile.role) ? stripStaffOnlyCaseFields({ ...detailPayload, timeline: timelineForClient(detailPayload.timeline) }, profile.role) : detailPayload,
@@ -192,6 +173,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Bad Request: Invalid file reference' }, { status: 400 });
     }
     const updateData: CaseUpdateData = {};
+    // Cold fields (case_details) and file references (files registry) are written in the same transaction.
+    const detailsUpdate: { outputNote?: string | null; clientMessage?: string | null } = {};
+    const fileOps: { outputFile?: string | null; previewFile?: string | null } = {};
+    const caseHasOutput = (await pickPerCase([id], 'output', 'latest')).has(id);
+    const [detailRow] = await db.select().from(caseDetails).where(eq(caseDetails.caseId, id)).limit(1);
 
     // Status guard, layered on top of the detailed per-role logic below
     // (not a replacement for it) — rejects statuses outside the Design flow.
@@ -218,7 +204,7 @@ export async function PUT(
     // Validate and build updates based on role
     if (profile.role === 'client' || profile.role === 'subuser') {
       // Sub-users share parent client's cases — verify ownership via createdBy
-      const effectiveClientId = profile.role === 'subuser' ? (profile.createdBy ?? profile.id) : profile.id;
+      const effectiveClientId = profile.clientId ?? profile.id;
       if (caseRecord.clientId !== effectiveClientId) {
         return NextResponse.json({ error: 'Forbidden: You can only update cases from your lab' }, { status: 403 });
       }
@@ -286,7 +272,7 @@ export async function PUT(
       }
 
       if (body.clientMassage !== undefined) {
-        updateData.clientMassage = body.clientMassage;
+        detailsUpdate.clientMessage = body.clientMassage;
       }
     } else if (isValidRoleForType('admin_portal', profile.role)) {
       if (profile.role === 'admin') {
@@ -299,15 +285,15 @@ export async function PUT(
         if (body.accountManagerId !== undefined) updateData.accountManagerId = body.accountManagerId;
         if (body.status) {
           if (body.status === 'internal_qc') {
-            const hasOutputFile = Boolean(body.outputFile || caseRecord.outputFile);
+            const hasOutputFile = Boolean(body.outputFile || caseHasOutput);
             if (!hasOutputFile) {
               return NextResponse.json({ error: 'Bad Request: Cannot send to QC without uploading a design output file' }, { status: 400 });
             }
           }
           updateData.status = body.status;
         }
-        if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
-        if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
+        if (body.outputFile !== undefined) fileOps.outputFile = body.outputFile;
+        if (body.previewFile !== undefined) fileOps.previewFile = body.previewFile;
 
         const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
         if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
@@ -321,7 +307,7 @@ export async function PUT(
         const nextRejectReason = appendCaseReason(caseRecord.rejectReason, body.rejectReason);
         if (nextRejectReason !== undefined) updateData.rejectReason = nextRejectReason;
 
-        if (body.clientMassage !== undefined) updateData.clientMassage = body.clientMassage;
+        if (body.clientMassage !== undefined) detailsUpdate.clientMessage = body.clientMassage;
       } else if (profile.role === 'qc') {
         const current = caseRecord.status;
         const target = body.status;
@@ -353,7 +339,7 @@ export async function PUT(
             if (!finalQcId) {
               return NextResponse.json({ error: 'Bad Request: Cannot send to QC without assigning a QC Lead first' }, { status: 400 });
             }
-            const hasOutputFile = Boolean(body.outputFile || updateData.outputFile || caseRecord.outputFile);
+            const hasOutputFile = Boolean(body.outputFile || fileOps.outputFile || caseHasOutput);
             if (!hasOutputFile) {
               return NextResponse.json({ error: 'Bad Request: Cannot send to QC without uploading a design output file first' }, { status: 400 });
             }
@@ -390,10 +376,10 @@ export async function PUT(
         const nextRejectReason = appendCaseReason(caseRecord.rejectReason, body.rejectReason);
         if (nextRejectReason !== undefined) updateData.rejectReason = nextRejectReason;
 
-        if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
-        if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
-        if (body.outputNote !== undefined) updateData.outputNote = body.outputNote;
-        if (body.clientMassage !== undefined) updateData.clientMassage = body.clientMassage;
+        if (body.outputFile !== undefined) fileOps.outputFile = body.outputFile;
+        if (body.previewFile !== undefined) fileOps.previewFile = body.previewFile;
+        if (body.outputNote !== undefined) detailsUpdate.outputNote = body.outputNote;
+        if (body.clientMassage !== undefined) detailsUpdate.clientMessage = body.clientMassage;
       } else if (profile.role === 'designer') {
         const current = caseRecord.status;
         const target = body.status;
@@ -426,9 +412,9 @@ export async function PUT(
             updateData.qcId = body.qcId;
           }
 
-          if (body.outputFile !== undefined) updateData.outputFile = body.outputFile;
-          if (body.previewFile !== undefined) updateData.previewFile = body.previewFile;
-          if (body.outputNote !== undefined) updateData.outputNote = body.outputNote;
+          if (body.outputFile !== undefined) fileOps.outputFile = body.outputFile;
+          if (body.previewFile !== undefined) fileOps.previewFile = body.previewFile;
+          if (body.outputNote !== undefined) detailsUpdate.outputNote = body.outputNote;
 
           const nextHoldReason = appendCaseReason(caseRecord.holdReason, body.holdReason);
           if (nextHoldReason !== undefined) updateData.holdReason = nextHoldReason;
@@ -453,7 +439,7 @@ export async function PUT(
               if (!finalQcId) {
                 return NextResponse.json({ error: 'Bad Request: Cannot send to QC without assigning a QC Lead first' }, { status: 400 });
               }
-              const hasOutputFile = Boolean(body.outputFile || updateData.outputFile || caseRecord.outputFile);
+              const hasOutputFile = Boolean(body.outputFile || fileOps.outputFile || caseHasOutput);
               if (!hasOutputFile) {
                 return NextResponse.json({ error: 'Bad Request: Cannot send to QC without uploading a design output file first' }, { status: 400 });
               }
@@ -534,9 +520,7 @@ export async function PUT(
       }
 
       // De-dupe against images already attached to this case (any earlier hold).
-      const existingHoldFiles = await db.select({ fileName: caseHoldFiles.fileName, fileSize: caseHoldFiles.fileSize })
-        .from(caseHoldFiles)
-        .where(eq(caseHoldFiles.caseId, id));
+      const existingHoldFiles = await listByCase(id, 'hold');
       const existingKeys = new Set(existingHoldFiles.map((f) => `${f.fileName}::${f.fileSize ?? ''}`));
 
       holdImagesToInsert = withinBatch.filter((img) => !existingKeys.has(`${img.fileName}::${img.fileSize ?? ''}`));
@@ -546,7 +530,8 @@ export async function PUT(
       }
     }
 
-    if (Object.keys(updateData).length === 0 && holdImagesToInsert.length === 0) {
+    const hasDetailOps = Object.keys(detailsUpdate).length > 0 || Object.keys(fileOps).length > 0;
+    if (Object.keys(updateData).length === 0 && holdImagesToInsert.length === 0 && !hasDetailOps) {
       return NextResponse.json({ error: 'No updates permitted or values provided to set' }, { status: 400 });
     }
 
@@ -556,16 +541,34 @@ export async function PUT(
         : [caseRecord];
 
       if (holdImagesToInsert.length > 0) {
-        await tx.insert(caseHoldFiles).values(
-          holdImagesToInsert.map((img) => ({
-            caseId: id,
-            uploadedBy: user.id,
-            fileName: img.fileName,
-            fileUrl: img.fileUrl,
-            fileType: img.fileType ?? null,
-            fileSize: img.fileSize ?? null,
-          }))
-        );
+        await insertFiles(holdImagesToInsert.map((img) => ({
+          clientId: caseRecord.clientId,
+          caseId: id,
+          kind: 'hold' as const,
+          uploadedBy: user.id,
+          fileName: img.fileName,
+          fileUrl: img.fileUrl,
+          fileType: img.fileType ?? null,
+          fileSize: img.fileSize ?? null,
+        })), tx);
+      }
+
+      if (Object.keys(detailsUpdate).length > 0) {
+        await tx.insert(caseDetails).values({ caseId: id, ...detailsUpdate })
+          .onConflictDoUpdate({ target: caseDetails.caseId, set: detailsUpdate });
+      }
+
+      // Single design output / legacy single preview: replace semantics, null clears.
+      for (const [kind, value] of [['output', fileOps.outputFile], ['preview', fileOps.previewFile]] as const) {
+        if (value === undefined) continue;
+        if (kind === 'output') await tx.delete(fileRegistry).where(and(eq(fileRegistry.caseId, id), eq(fileRegistry.kind, 'output')));
+        if (value) {
+          await insertFiles([{
+            clientId: caseRecord.clientId, caseId: id, kind, uploadedBy: user.id,
+            fileName: (decodeURIComponent(value.split('fileName=')[1] ?? '') || value.split('/').pop() || kind).split('/').pop()!,
+            fileUrl: value,
+          }], tx);
+        }
       }
 
       return updated;
@@ -726,7 +729,7 @@ export async function PUT(
           cancelReason: caseRecord.cancelReason,
           feedbackReason: caseRecord.feedbackReason,
           rejectReason: caseRecord.rejectReason,
-          clientMassage: caseRecord.clientMassage,
+          clientMassage: detailRow?.clientMessage ?? null,
         },
         changes: {
           caseNumber: updateData.caseNumber,
@@ -741,7 +744,7 @@ export async function PUT(
           cancelReason: updateData.cancelReason,
           feedbackReason: updateData.feedbackReason,
           rejectReason: updateData.rejectReason,
-          clientMassage: updateData.clientMassage,
+          clientMassage: detailsUpdate.clientMessage,
         },
       },
     }).catch((err) => console.error('[CaseActivityLog] Failed to log activity:', err));
@@ -848,19 +851,10 @@ export async function DELETE(
       // 4. Delete chat messages
       await tx.delete(chatMessages).where(eq(chatMessages.caseId, id));
 
-      // 5. Delete case messages
-      await tx.delete(caseMessages).where(eq(caseMessages.caseId, id));
+      // 5. Files, chat, activity logs, bulk-download rows and case_details cascade from the case (FK ON DELETE CASCADE).
+      //    (The R2 objects become orphans and are reaped by the R2 cleanup scheduler.)
 
-      // 6. Delete every file record that points at the case. These FKs are NO ACTION (not cascading), so a
-      //    case with preview files, reference images or hold images could not be deleted before.
-      //    (The R2 objects themselves become orphans and are reaped by the R2 cleanup scheduler.)
-      await tx.delete(caseBulkDownloads).where(eq(caseBulkDownloads.caseId, id));
-      await tx.delete(casePreviewFiles).where(eq(casePreviewFiles.caseId, id));
-      await tx.delete(caseReferenceFiles).where(eq(caseReferenceFiles.caseId, id));
-      await tx.delete(caseHoldFiles).where(eq(caseHoldFiles.caseId, id));
-      await tx.delete(caseFiles).where(eq(caseFiles.caseId, id));
-
-      // 7. Finally delete the case
+      // 6. Finally delete the case
       await tx.delete(cases).where(eq(cases.id, id));
     });
 

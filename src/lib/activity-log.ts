@@ -1,9 +1,8 @@
-import { randomUUID } from 'node:crypto'
 import { db } from '@/src/db'
 import { activityLogs } from '@/src/db/schema/activity-log'
-import { cases, type CaseTimelineEvent } from '@/src/db/schema/case'
+import type { CaseTimelineEvent } from '@/src/db/schema/case'
 import type { Profile } from '@/src/db/schema/profile'
-import { eq, sql } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 
 export type ActivityDetails = Record<string, unknown> | null
 
@@ -26,7 +25,6 @@ export function formatActivityActor(actor: Pick<Profile, 'fullName' | 'labName' 
   if (actor.role === 'qc') return `QC${actor.fullName ? ` — ${actor.fullName}` : ''}`
   if (actor.role === 'designer') return actor.fullName || 'Designer'
   if (actor.role === 'account_manager') return actor.fullName || 'Account Manager'
-  if (actor.role === 'consultant') return actor.fullName || 'Consultant'
   return actor.fullName || actor.labName || 'System'
 }
 
@@ -130,58 +128,28 @@ function getClientTimelineOverride(
   return null
 }
 
-function buildCaseTimelineEvent({
-  actor,
-  action,
-  details,
-}: Omit<LogActivityInput, 'caseId'> & { details?: ActivityDetails }): CaseTimelineEvent {
-  return {
-    id: randomUUID(),
-    action,
-    label: formatActivityLabel(action, details ?? null, actor.role),
-    actor: formatActivityActor(actor),
-    actionAt: new Date().toISOString(),
-    ...getClientTimelineOverride(action, details ?? null),
-  }
-}
-
+/**
+ * One insert per event. The same row is the audit trail AND the case timeline (the old design also
+ * rewrote the whole `cases.timeline` jsonb on every event — row bloat + a hot-row write per update).
+ */
 export async function logActivity({
   actor,
   action,
   caseId,
   details = null,
 }: LogActivityInput) {
-  if (caseId) {
-    const timelineEvent = buildCaseTimelineEvent({
-      actor,
-      action,
-      details,
-    })
-
-    try {
-      await db
-        .update(cases)
-        .set({
-          timeline: sql`coalesce(${cases.timeline}, '[]'::jsonb) || ${JSON.stringify([timelineEvent])}::jsonb`,
-        })
-        .where(eq(cases.id, caseId))
-    } catch (error) {
-      console.error('Case timeline append failed:', {
-        action,
-        caseId,
-        userId: actor.id,
-        error,
-      })
-    }
-  }
-
+  const override = getClientTimelineOverride(action, details ?? null)
   try {
     await db.insert(activityLogs).values({
       caseId: caseId ?? null,
       userId: actor.id,
       userType: actor.userType,
       userRole: actor.role,
+      actorName: formatActivityActor(actor),
       action,
+      label: formatActivityLabel(action, details ?? null, actor.role),
+      clientLabel: override?.clientLabel ?? null,
+      clientVisible: !override?.clientHidden,
       details,
     })
   } catch (error) {
@@ -192,4 +160,30 @@ export async function logActivity({
       error,
     })
   }
+}
+
+/** Case timeline in the shape the UI already consumes (idx_activity_case_time). */
+export async function getCaseTimeline(caseId: string): Promise<CaseTimelineEvent[]> {
+  const rows = await db
+    .select({
+      id: activityLogs.id,
+      action: activityLogs.action,
+      label: activityLogs.label,
+      actor: activityLogs.actorName,
+      actionAt: activityLogs.actionAt,
+      clientLabel: activityLogs.clientLabel,
+      clientVisible: activityLogs.clientVisible,
+    })
+    .from(activityLogs)
+    .where(eq(activityLogs.caseId, caseId))
+    .orderBy(asc(activityLogs.actionAt))
+  return rows.map((r) => ({
+    id: r.id,
+    action: r.action,
+    label: r.label ?? r.action,
+    actor: r.actor ?? 'System',
+    actionAt: r.actionAt.toISOString(),
+    ...(r.clientLabel ? { clientLabel: r.clientLabel } : {}),
+    ...(r.clientVisible ? {} : { clientHidden: true }),
+  }))
 }
