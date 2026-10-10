@@ -1,76 +1,78 @@
-import IORedis from 'ioredis'
+import { connection as redis } from '@/src/lib/queue/client'
 
 /**
- * Fixed-window rate limiter. Redis-backed (shared by every PM2 process and survives restarts),
- * with a bounded in-memory fallback when Redis is unavailable so limits still apply.
+ * Sliding-window-counter rate limiter (two adjacent fixed buckets weighted by overlap): O(1) memory per key,
+ * one Redis round trip (Lua), no burst-at-boundary hole of a plain fixed window.
+ * Repeat offenders get an escalating ban (`rl:ban:*`) so a flood is rejected with a single cheap GET.
+ * Falls back to a bounded in-memory limiter when Redis is down, so limits still apply (fail-closed-ish).
  */
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
-
-let redis: IORedis | null = null
-function getRedis(): IORedis | null {
-  if (redis) return redis
-  try {
-    redis = new IORedis(REDIS_URL, {
-      tls: REDIS_URL.startsWith('rediss://') ? {} : undefined,
-      maxRetriesPerRequest: 1,
-      enableOfflineQueue: false,
-      connectTimeout: 1000,
-      lazyConnect: false,
-    })
-    redis.on('error', () => { /* handled by fallback */ })
-  } catch {
-    redis = null
-  }
-  return redis
-}
+const SLIDING = `
+local cur = redis.call('INCR', KEYS[1])
+if cur == 1 then redis.call('EXPIRE', KEYS[1], ARGV[2] * 2) end
+local prev = tonumber(redis.call('GET', KEYS[2]) or '0')
+local frac = tonumber(ARGV[1])
+local est = prev * (1 - frac) + cur
+return {math.floor(est), cur}
+`
 
 const memory = new Map<string, { count: number; resetAt: number }>()
-const MEMORY_MAX_KEYS = 10_000
-
 function memoryHit(key: string, windowMs: number): number {
   const now = Date.now()
-  if (memory.size > MEMORY_MAX_KEYS) {
+  if (memory.size > 10_000) {
     for (const [k, v] of memory) if (v.resetAt <= now) memory.delete(k)
-    // still too big → drop oldest entries so the map can't grow without bound
-    if (memory.size > MEMORY_MAX_KEYS) {
-      for (const k of Array.from(memory.keys()).slice(0, memory.size - MEMORY_MAX_KEYS / 2)) memory.delete(k)
-    }
+    if (memory.size > 10_000) memory.clear()
   }
   const rec = memory.get(key)
-  if (!rec || rec.resetAt <= now) {
-    memory.set(key, { count: 1, resetAt: now + windowMs })
-    return 1
-  }
-  rec.count += 1
-  return rec.count
+  if (!rec || rec.resetAt <= now) { memory.set(key, { count: 1, resetAt: now + windowMs }); return 1 }
+  return ++rec.count
 }
 
 export type RateLimitResult = { limited: boolean; count: number; retryAfterSeconds: number }
 
 export async function rateLimit(key: string, limit: number, windowSeconds: number): Promise<RateLimitResult> {
-  const fullKey = `rl:${key}`
-  const client = getRedis()
-  if (client && client.status === 'ready') {
-    try {
-      // One pipelined round trip (INCR + EXPIRE NX) instead of INCR then a second EXPIRE on first hit.
-      const res = await client.multi().incr(fullKey).expire(fullKey, windowSeconds, 'NX').exec()
-      const count = Number(res?.[0]?.[1])
-      if (!Number.isFinite(count)) throw new Error('bad rate-limit reply')
-      return { limited: count > limit, count, retryAfterSeconds: windowSeconds }
-    } catch {
-      // fall through to memory
+  const nowSec = Date.now() / 1000
+  const bucket = Math.floor(nowSec / windowSeconds)
+  const frac = (nowSec % windowSeconds) / windowSeconds
+  try {
+    const banTtl = await redis.ttl(`rl:ban:${key}`)
+    if (banTtl > 0) return { limited: true, count: limit + 1, retryAfterSeconds: banTtl }
+    const [est] = (await redis.eval(
+      SLIDING, 2, `rl:${key}:${bucket}`, `rl:${key}:${bucket - 1}`, String(frac), String(windowSeconds),
+    )) as [number, number]
+    if (est > limit) {
+      // Escalate: sustained abuse (3x the limit) earns a 10-minute ban.
+      if (est > limit * 3) await redis.set(`rl:ban:${key}`, '1', 'EX', 600)
+      return { limited: true, count: est, retryAfterSeconds: Math.max(1, Math.ceil(windowSeconds * (1 - frac))) }
     }
+    return { limited: false, count: est, retryAfterSeconds: windowSeconds }
+  } catch {
+    const count = memoryHit(`rl:${key}:${bucket}`, windowSeconds * 1000)
+    return { limited: count > limit, count, retryAfterSeconds: windowSeconds }
   }
-  const count = memoryHit(fullKey, windowSeconds * 1000)
-  return { limited: count > limit, count, retryAfterSeconds: windowSeconds }
 }
 
-/** Sensitive public endpoints get their own, much tighter budget than the global limit. */
+/** Credential-stuffing guard: counts failures per email AND per IP; success clears the email counter. */
+export async function loginAttemptStatus(email: string, ip: string) {
+  const [e, i] = await redis.mget(`login_fail:${email}`, `login_fail_ip:${ip}`)
+  const byEmail = Number(e ?? 0), byIp = Number(i ?? 0)
+  return { locked: byEmail >= 5 || byIp >= 30, byEmail, byIp }
+}
+export async function recordLoginFailure(email: string, ip: string) {
+  await redis.multi()
+    .incr(`login_fail:${email}`).expire(`login_fail:${email}`, 900)
+    .incr(`login_fail_ip:${ip}`).expire(`login_fail_ip:${ip}`, 900)
+    .exec()
+}
+export const clearLoginFailures = (email: string) => redis.del(`login_fail:${email}`)
+
+/** Per-route budgets, always keyed by IP (attackers can't dodge by rotating accounts). */
 export const SENSITIVE_PATH_LIMITS: Array<{ match: (p: string) => boolean; name: string; limit: number; windowSeconds: number }> = [
   { name: 'sign-in', match: (p) => p === '/api/sign-in', limit: 10, windowSeconds: 60 },
   { name: 'sign-up', match: (p) => p === '/api/sign-up', limit: 5, windowSeconds: 300 },
   { name: 'forgot-password', match: (p) => p.startsWith('/api/auth/'), limit: 5, windowSeconds: 300 },
   { name: 'admin-create', match: (p) => p === '/api/admin/user', limit: 5, windowSeconds: 600 },
   { name: 'admin-activate', match: (p) => p === '/api/admin/activate', limit: 8, windowSeconds: 300 },
+  { name: 'upload', match: (p) => p.includes('/upload') || p.includes('/files'), limit: 120, windowSeconds: 60 },
+  { name: 'bulk', match: (p) => p.startsWith('/api/cases/bulk'), limit: 10, windowSeconds: 60 },
 ]
