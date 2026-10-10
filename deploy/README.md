@@ -131,6 +131,14 @@ The key is generated once at `~/.config/iconic/backup_key` — **copy it somewhe
 The app's R2 orphan-cleanup and 3-month retention jobs are hard-blocked from `db-backups/` (`src/lib/r2-objects.ts`),
 so sharing the app bucket is safe — a dedicated bucket + scoped token is still the better long-term setup.
 
+### One-time archive of the old Supabase database
+`npx tsx scripts/supabase-archive.ts` (already run once) takes a **read-only** consistent snapshot of the live Supabase
+project (auth, public, storage, realtime, vault, drizzle), restores it into a NEW local database `supabase_legacy`,
+proves it identical (row counts + per-table content checksums + structure), then uploads ONE AES-256-encrypted copy
+to `db-backups/supabase-legacy/` in R2 (never auto-deleted) and re-downloads it to prove it decrypts to the same bytes.
+It never uses `pg_dump` (the live server is Postgres 17, local is 16), never writes to Supabase, and refuses to touch
+`iconic_connect`. The archive is plain SQL: see `RESTORE.txt` inside it — `gunzip -c file.sql.gz | psql` is all you need.
+
 **Recommended:** set `R2_KEEP_BACKUPS=3`. With 1, a backup that uploads fine but turns out to be bad (logical
 corruption you only notice a week later) replaces your last good copy. R2 storage for three small dumps costs almost nothing.
 Add a free [healthchecks.io](https://healthchecks.io) URL as `HEALTHCHECK_URL` so you are *told* if backups stop running.
