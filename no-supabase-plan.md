@@ -22,8 +22,13 @@ auth.users bcrypt hashes are migrated and re-hashed to argon2id on first login. 
 - Replace supabase.from(...) in ~112 files with Drizzle repositories (one API route per UI section — see memory).
 - Cache epochs (`ver:client:{id}`) per design §7; mv rollups for analytics.
 
-## Phase 5 — data migration + cutover
+## Phase 5 — data migration (DONE) + cutover (remaining: switch .env DATABASE_URL/REDIS_URL, delete SUPABASE_* vars and supabase/ dir once you are happy)
 - scripts/migrate-from-supabase.ts: public.* + auth.users(id,email,encrypted_password) -> new schema; row-count verification.
 - Remove @supabase/* deps, env vars, supabase/ dir.
 
 Risks: Supabase-only features in use (RPC get_case_price, PostgREST lockdown migration 0056) must be ported; `consultant` role removal needs a data check first.
+
+## Running the data copy
+`npm run db:migrate-from-supabase`            dry run (rolled back)
+`npm run db:migrate-from-supabase -- --apply` commit;  add `--wipe` to replace a previous copy.
+OLD = DATABASE_URL in .env (opened only as BEGIN READ ONLY). NEW = DATABASE_URL in .env.local (must be localhost).

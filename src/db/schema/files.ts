@@ -21,7 +21,7 @@ export const files = pgTable('files', {
   kind: fileKindEnum('kind').notNull(),
   uploadedBy: uuid('uploaded_by').references(() => profiles.id, { onDelete: 'set null' }),
   fileName: varchar('file_name', { length: 255 }).notNull(),
-  r2Key: text('r2_key').notNull().unique(),
+  r2Key: text('r2_key').notNull(), // NOT unique: one object can back several logical files (see migration 1700)
   contentType: varchar('content_type', { length: 150 }),
   sizeBytes: bigint('size_bytes', { mode: 'number' }),
   sha256: char('sha256', { length: 64 }),

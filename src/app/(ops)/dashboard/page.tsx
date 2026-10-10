@@ -87,7 +87,7 @@ export default function Dashboard() {
     ? tatData.avgTatDays.toFixed(1)
     : null;
 
-  const OPS_ROLES = ["qc", "designer", "account_manager", "consultant"];
+  const OPS_ROLES = ["qc", "designer", "account_manager"];
   const greetingName = !profile
     ? null
     : OPS_ROLES.includes(profile.role ?? "")

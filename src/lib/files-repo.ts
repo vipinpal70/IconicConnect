@@ -105,7 +105,7 @@ export async function insertFiles(rows: NewLegacyFile[], d: Db = db): Promise<Le
     status: 'ready' as const,
     readyAt: now,
     purgeAfter,
-  }))).onConflictDoNothing({ target: files.r2Key }).returning()
+  }))).onConflictDoNothing().returning() // uq_files_key_kind_owner
   return inserted.map(toLegacy)
 }
 

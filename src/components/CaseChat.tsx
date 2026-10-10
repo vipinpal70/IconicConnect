@@ -264,7 +264,7 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
         ) : (
           <div className="space-y-2">
             {sortedMessages.map((m) => {
-              const isAdminColumn = ["admin", "qc", "designer", "account_manager", "consultant"].includes(m.senderRole)
+              const isAdminColumn = ["admin", "qc", "designer", "account_manager"].includes(m.senderRole)
               const alignment = isAdminColumn ? "justify-end" : "justify-start"
 
               return (

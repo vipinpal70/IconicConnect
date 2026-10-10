@@ -40,7 +40,6 @@ const FILTER_ROLES = [
   { id: 'qc', name: 'QC' },
   { id: 'account_manager', name: 'Account Manager' },
   { id: 'designer', name: 'Designer' },
-  { id: 'consultant', name: 'Consultant' },
 ]
 
 export default function TeamPage() {

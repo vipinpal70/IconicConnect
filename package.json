@@ -34,7 +34,8 @@
     "db:new": "dbmate --migrations-dir db/migrations new",
     "db:up": "dbmate --env-file .env.local --migrations-dir db/migrations --no-dump-schema up",
     "db:down": "dbmate --env-file .env.local --migrations-dir db/migrations --no-dump-schema rollback",
-    "db:status": "dbmate --env-file .env.local --migrations-dir db/migrations status"
+    "db:status": "dbmate --env-file .env.local --migrations-dir db/migrations status",
+    "db:migrate-from-supabase": "tsx scripts/migrate-from-supabase.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1077.0",
