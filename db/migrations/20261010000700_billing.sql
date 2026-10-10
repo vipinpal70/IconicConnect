@@ -51,7 +51,20 @@ CREATE TABLE invoices (
   CONSTRAINT invoices_amounts_ck CHECK (subtotal >= 0 AND tax_amount >= 0 AND discount_amount >= 0 AND extra_charges_amount >= 0)
 );
 
+-- A case MAY appear on more than one invoice, but the API must warn the admin first
+-- (see "Duplicate-billing warning" below).
+CREATE TABLE invoice_cases (
+  invoice_id  uuid NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  case_id     uuid NOT NULL REFERENCES cases(id)    ON DELETE RESTRICT,
+  added_by    uuid REFERENCES profiles(id) ON DELETE SET NULL,
+  added_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (invoice_id, case_id)
+);
+CREATE INDEX idx_invoice_cases_case ON invoice_cases (case_id);     -- "which invoices already contain this case?" + FK
+
 -- migrate:down
+DROP INDEX IF EXISTS idx_invoice_cases_case;
+DROP TABLE IF EXISTS invoice_cases;
 DROP TABLE IF EXISTS invoices;
 DROP FUNCTION IF EXISTS next_invoice_number();
 DROP TABLE IF EXISTS invoice_counters;

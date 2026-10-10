@@ -1,14 +1,44 @@
 import { connection } from './queue/client';
-import { OPS_DASHBOARD_CACHE_KEYS } from './ops-dashboard-keys';
 
 const DEFAULT_TTL = 3600; // 1 hour default cache time
+
+/**
+ * Epoch-versioned cache.
+ *
+ * Keys that depend on mutable data live in an "epoch domain" (e.g. every case list/dashboard of one lab). The
+ * stored key is `<key>@<epoch>`; invalidating the whole domain is ONE `INCR ver:<domain>` — O(1) — instead of
+ * SCAN + DEL over the keyspace (O(total keys), slow on managed Redis, and racy). Old-epoch entries are never
+ * read again and simply expire by TTL. Reads/writes are a single Lua round trip (epoch lookup + GET/SET).
+ */
+const GET_LUA = `
+local v = redis.call('GET', KEYS[1]) or '0'
+return redis.call('GET', ARGV[1] .. '@' .. v)
+`;
+const SET_LUA = `
+local v = redis.call('GET', KEYS[1]) or '0'
+return redis.call('SET', ARGV[1] .. '@' .. v, ARGV[2], 'EX', ARGV[3])
+`;
+
+/** key -> epoch-domain counter key (null = plain, TTL/explicit-DEL key). */
+export function epochDomain(key: string): string | null {
+  let m: RegExpMatchArray | null;
+  if ((m = key.match(/^(?:cases:list:client|dashboard:client|cases:base:client):([^:]+)/))) return `ver:cases:${m[1]}`;
+  if ((m = key.match(/^analytics:client:([^:]+):/))) return `ver:analytics:${m[1]}`;
+  if ((m = key.match(/^billing:client:([^:]+):/))) return `ver:billing:${m[1]}`;
+  if (/^(?:cases:list:admin|dashboard:admin|cases:base:admin|dashboard:ops:)/.test(key)) return 'ver:cases:staff';
+  if (key === 'analytics:admin') return 'ver:analytics:staff';
+  return null;
+}
 
 export async function getCachedData<T>(key: string): Promise<T | null> {
   if (connection.status !== 'ready') {
     return null;
   }
   try {
-    const cached = await connection.get(key);
+    const domain = epochDomain(key);
+    const cached = domain
+      ? ((await connection.eval(GET_LUA, 1, domain, key)) as string | null)
+      : await connection.get(key);
     if (cached) {
       return JSON.parse(cached) as T;
     }
@@ -27,7 +57,9 @@ export async function setCachedData<T>(
     return;
   }
   try {
-    await connection.set(key, JSON.stringify(data), 'EX', ttlSeconds);
+    const domain = epochDomain(key);
+    if (domain) await connection.eval(SET_LUA, 1, domain, key, JSON.stringify(data), String(ttlSeconds));
+    else await connection.set(key, JSON.stringify(data), 'EX', ttlSeconds);
   } catch (error) {
     console.error(`[Redis Cache SET Error] Key: ${key}`, error);
   }
@@ -38,16 +70,16 @@ export async function deleteCachedData(key: string): Promise<void> {
     return;
   }
   try {
-    await connection.del(key);
+    // Epoch-domain keys are invalidated by bumping the epoch (stale entries just expire).
+    const domain = epochDomain(key);
+    if (domain) await connection.incr(domain);
+    else await connection.del(key);
   } catch (error) {
     console.error(`[Redis Cache DEL Error] Key: ${key}`, error);
   }
 }
 
-/**
- * Scan and delete all keys matching a specific pattern.
- * Note: Uses SCAN rather than KEYS to avoid blocking the Redis server thread.
- */
+/** Kept for ad-hoc maintenance only — nothing on the request path scans the keyspace any more. */
 export async function deleteKeysByPattern(pattern: string): Promise<void> {
   if (connection.status !== 'ready') {
     return;
@@ -80,8 +112,12 @@ export async function invalidateInvoiceCache(clientId: string, invoiceId?: strin
       `invoices:client:${clientId}`,
     ]
     if (invoiceId) keys.push(`invoice:${invoiceId}`)
-    await connection.del(...keys)
-    await deleteKeysByPattern(`billing:client:${clientId}:*`)
+    await connection.multi()
+      .del(...keys)
+      .incr(`ver:billing:${clientId}`)    // billing:client:<id>:* pages
+      .incr(`ver:analytics:${clientId}`)  // monthly-billing / recent-invoices analytics
+      .incr('ver:analytics:staff')
+      .exec()
   } catch (error) {
     console.error('[invalidateInvoiceCache]', error)
   }
@@ -107,7 +143,8 @@ export async function invalidateNotificationCache(userId: string): Promise<void>
 }
 
 /**
- * Invalidates cases and dashboard caches for clients and admins
+ * Invalidates cases, dashboards and analytics after a case write: 3-4 INCRs in one MULTI, no keyspace scan.
+ * Staff views refresh on any lab's change; a lab's views refresh only on its own.
  */
 export async function invalidateCasesCache(clientId?: string | null): Promise<void> {
   if (connection.status !== 'ready') {
@@ -115,28 +152,9 @@ export async function invalidateCasesCache(clientId?: string | null): Promise<vo
     return;
   }
   try {
-    const keysToDelete: string[] = ['cases:base:admin', 'dashboard:admin:v2', 'analytics:admin', ...OPS_DASHBOARD_CACHE_KEYS];
-
-    if (clientId) {
-      keysToDelete.push(`cases:base:client:${clientId}`);
-      keysToDelete.push(`dashboard:client:${clientId}`);
-      await Promise.all([
-        connection.del(...keysToDelete),
-        deleteKeysByPattern(`cases:list:client:${clientId}:*`),
-        deleteKeysByPattern('cases:list:admin:*'),   // admin view must also refresh
-        deleteKeysByPattern(`analytics:client:${clientId}:*`),
-      ]);
-    } else {
-      await connection.del(...keysToDelete);
-      await Promise.all([
-        deleteKeysByPattern('cases:list:client:*'),
-        deleteKeysByPattern('cases:list:admin:*'),
-        deleteKeysByPattern('dashboard:client:*'),
-        deleteKeysByPattern('analytics:client:*'),
-      ]);
-    }
-
-    console.log(`[Redis Cache Invalidation] Invalidated cache for Client: ${clientId || 'ALL'}`);
+    const m = connection.multi().incr('ver:cases:staff').incr('ver:analytics:staff');
+    if (clientId) m.incr(`ver:cases:${clientId}`).incr(`ver:analytics:${clientId}`);
+    await m.exec();
   } catch (error) {
     console.error('[Redis Cache Invalidation Error]', error);
   }
