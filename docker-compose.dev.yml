@@ -1,0 +1,64 @@
+# LOCAL DEVELOPMENT data services: PostgreSQL 16 + Redis 7 (+ Adminer on demand).
+#
+#   docker compose -f docker-compose.dev.yml up -d          # start Postgres + Redis
+#   docker compose -f docker-compose.dev.yml ps             # status (both should be "healthy")
+#   docker compose -f docker-compose.dev.yml down           # stop (data is kept in Docker volumes)
+#   docker compose -f docker-compose.dev.yml down -v        # stop AND DELETE all local data
+#   docker compose -f docker-compose.dev.yml --profile tools up -d adminer   # DB web UI on http://localhost:8081
+#
+# Ports are bound to 127.0.0.1 only: reachable from this machine, never from the network.
+# The matching .env values (defaults below):
+#   DATABASE_URL=postgresql://postgres:postgres@localhost:5433/iconic_connect?sslmode=disable
+#   REDIS_URL=redis://localhost:6380
+# (For a SERVER use deploy/docker-compose.prod.yml — it has passwords, secrets as files and hardening.)
+name: iconic-dev
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: iconic_dev_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-iconic_connect}
+    ports:
+      - "127.0.0.1:${PG_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: iconic_dev_redis
+    restart: unless-stopped
+    # noeviction: sessions + job queues must never be evicted. appendonly: logins survive a restart.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  adminer:
+    image: ${ADMINER_IMAGE:-adminer:4}
+    container_name: iconic_dev_adminer
+    profiles: ["tools"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ADMINER_PORT:-8081}:8080"
+
+volumes:
+  pgdata:
+  redisdata:

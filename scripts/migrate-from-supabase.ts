@@ -5,8 +5,9 @@
  *   npx tsx scripts/migrate-from-supabase.ts --apply         same, but COMMITS
  *   npx tsx scripts/migrate-from-supabase.ts --apply --wipe  first empties the NEW database's app tables (re-run)
  *
- * OLD  = OLD_DATABASE_URL, else DATABASE_URL from .env      (only ever opened as `BEGIN READ ONLY`)
- * NEW  = NEW_DATABASE_URL, else DATABASE_URL from .env.local (must be localhost — the script refuses anything else)
+ * OLD  = OLD_DATABASE_URL, else SUPABASE_DB_URL, else the commented `# DATABASE_URL=…<ref>…` line in .env
+ *        (only ever opened as `BEGIN READ ONLY`; the session pooler port 5432 is used)
+ * NEW  = NEW_DATABASE_URL, else DATABASE_URL from .env     (must be localhost — the script refuses anything else)
  *
  * Nothing is ever written to, updated in, or deleted from the OLD database.
  */
@@ -23,9 +24,22 @@ function envFile(path: string, key: string): string | undefined {
   const line = fs.readFileSync(path, 'utf8').split('\n').find((l) => l.startsWith(`${key}=`))
   return line?.slice(key.length + 1).trim().replace(/^["']|["']$/g, '')
 }
-const OLD_URL = process.env.OLD_DATABASE_URL ?? envFile('.env', 'DATABASE_URL')
-const NEW_URL = process.env.NEW_DATABASE_URL ?? envFile('.env.local', 'DATABASE_URL')
-if (!OLD_URL || !NEW_URL) throw new Error('Need OLD_DATABASE_URL (.env) and NEW_DATABASE_URL (.env.local)')
+function findSupabaseUrl(): string | undefined {
+  const explicit = process.env.OLD_DATABASE_URL ?? process.env.SUPABASE_DB_URL
+  const ref = (envFile('.env', 'NEXT_PUBLIC_SUPABASE_URL') ?? '').replace(/^https?:\/\/([^.]+)\..*$/, '$1')
+  const fromFile = fs.existsSync('.env') && ref
+    ? fs.readFileSync('.env', 'utf8').split('\n').find((l) => /^#?\s*DATABASE_URL=/.test(l) && l.includes(ref))?.replace(/^#?\s*DATABASE_URL=/, '').trim()
+    : undefined
+  const url = explicit ?? fromFile
+  if (!url) return undefined
+  const u = new URL(url)
+  if (u.port === '6543') u.port = '5432'   // session pooler: a long consistent read needs session semantics
+  return u.toString()
+}
+const OLD_URL = findSupabaseUrl()
+const NEW_URL = process.env.NEW_DATABASE_URL ?? envFile('.env', 'DATABASE_URL')
+if (!OLD_URL) throw new Error("Supabase connection string not found. Export it first:  export SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@<host>:5432/postgres'")
+if (!NEW_URL) throw new Error('No local DATABASE_URL in .env (or NEW_DATABASE_URL)')
 const newHost = new URL(NEW_URL).hostname
 if (!['localhost', '127.0.0.1', '::1'].includes(newHost)) throw new Error(`Refusing: NEW database host is "${newHost}", not localhost`)
 if (OLD_URL === NEW_URL) throw new Error('Refusing: OLD and NEW are the same database')
