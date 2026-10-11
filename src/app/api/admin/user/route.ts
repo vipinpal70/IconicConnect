@@ -20,10 +20,18 @@ export async function GET() {
     // check the requested user should be admin only
 }
 
+const MIN_SECRET_LENGTH = 32
+
 function secretMatches(provided: string | null): boolean {
     const expected = process.env.ADMIN_SIGNUP_SECRET
     // Fail closed: no configured secret, or no secret supplied, means NO bootstrap access.
     if (!expected || !provided) return false
+    // This endpoint is reachable WITHOUT logging in and can mint an administrator, so the secret must be strong.
+    // A short/guessable value (a word, a username, "admin123"…) is treated exactly like "not configured".
+    if (expected.length < MIN_SECRET_LENGTH) {
+        console.error(`[admin/register] ADMIN_SIGNUP_SECRET is shorter than ${MIN_SECRET_LENGTH} characters — bootstrap disabled. Generate one with: openssl rand -hex 32`)
+        return false
+    }
     const a = Buffer.from(provided)
     const b = Buffer.from(expected)
     return a.length === b.length && timingSafeEqual(a, b)
