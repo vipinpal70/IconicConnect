@@ -78,7 +78,8 @@ function envFileValue(file: string, key: string): string | undefined {
 
 // ───────────────────────────── 0. resolve connections (read-only source, local target) ─────────────────────────────
 function resolveSource(): { url: string; ref: string; appRef: string } {
-  let url = process.env.SUPABASE_DB_URL
+  const names = ['SUPABASE_DB_URL', 'OLD_DB_URL', 'OLD_DATABASE_URL']   // environment first, then .env
+  let url = names.map((n) => process.env[n]).find(Boolean) ?? names.map((n) => envFileValue('.env', n)).find(Boolean)
   const appRef = (envFileValue('.env', 'NEXT_PUBLIC_SUPABASE_URL') ?? '').replace(/^https?:\/\/([^.]+)\..*$/, '$1')
   const wanted = opt('ref') ?? appRef            // only used to PICK a commented line from .env when no URL was exported
   if (!url) {

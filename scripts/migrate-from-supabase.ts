@@ -5,9 +5,9 @@
  *   npx tsx scripts/migrate-from-supabase.ts --apply         same, but COMMITS
  *   npx tsx scripts/migrate-from-supabase.ts --apply --wipe  first empties the NEW database's app tables (re-run)
  *
- * OLD  = OLD_DATABASE_URL, else SUPABASE_DB_URL, else the commented `# DATABASE_URL=…<ref>…` line in .env
+ * OLD  = OLD_DATABASE_URL | OLD_DB_URL | SUPABASE_DB_URL (env or .env), else the commented `# DATABASE_URL=…<ref>…` line in .env
  *        (only ever opened as `BEGIN READ ONLY`; the session pooler port 5432 is used)
- * NEW  = NEW_DATABASE_URL, else DATABASE_URL from .env     (must be localhost — the script refuses anything else)
+ * NEW  = NEW_DATABASE_URL | NEW_DB_URL (env or .env), else DATABASE_URL from .env     (must be localhost — the script refuses anything else)
  *
  * Nothing is ever written to, updated in, or deleted from the OLD database.
  */
@@ -25,7 +25,9 @@ function envFile(path: string, key: string): string | undefined {
   return line?.slice(key.length + 1).trim().replace(/^["']|["']$/g, '')
 }
 function findSupabaseUrl(): string | undefined {
-  const explicit = process.env.OLD_DATABASE_URL ?? process.env.SUPABASE_DB_URL
+  // Accepted names (environment first, then .env): OLD_DATABASE_URL | OLD_DB_URL | SUPABASE_DB_URL
+  const names = ['OLD_DATABASE_URL', 'OLD_DB_URL', 'SUPABASE_DB_URL']
+  const explicit = names.map((n) => process.env[n]).find(Boolean) ?? names.map((n) => envFile('.env', n)).find(Boolean)
   const ref = (envFile('.env', 'NEXT_PUBLIC_SUPABASE_URL') ?? '').replace(/^https?:\/\/([^.]+)\..*$/, '$1')
   const fromFile = fs.existsSync('.env') && ref
     ? fs.readFileSync('.env', 'utf8').split('\n').find((l) => /^#?\s*DATABASE_URL=/.test(l) && l.includes(ref))?.replace(/^#?\s*DATABASE_URL=/, '').trim()
@@ -37,7 +39,8 @@ function findSupabaseUrl(): string | undefined {
   return u.toString()
 }
 const OLD_URL = findSupabaseUrl()
-const NEW_URL = process.env.NEW_DATABASE_URL ?? envFile('.env', 'DATABASE_URL')
+// Accepted names (environment first, then .env): NEW_DATABASE_URL | NEW_DB_URL, falling back to DATABASE_URL
+const NEW_URL = process.env.NEW_DATABASE_URL ?? process.env.NEW_DB_URL ?? envFile('.env', 'NEW_DATABASE_URL') ?? envFile('.env', 'NEW_DB_URL') ?? envFile('.env', 'DATABASE_URL')
 if (!OLD_URL) throw new Error("Supabase connection string not found. Export it first:  export SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@<host>:5432/postgres'")
 if (!NEW_URL) throw new Error('No local DATABASE_URL in .env (or NEW_DATABASE_URL)')
 const newHost = new URL(NEW_URL).hostname
@@ -45,8 +48,11 @@ if (!['localhost', '127.0.0.1', '::1'].includes(newHost)) throw new Error(`Refus
 if (OLD_URL === NEW_URL) throw new Error('Refusing: OLD and NEW are the same database')
 process.env.DATABASE_URL = NEW_URL // for src/lib imports below
 
-const oldDb = postgres(OLD_URL, { max: 1, prepare: false })
-const newDb = postgres(NEW_URL, { max: 1, prepare: false })
+// keep_alive: the pooler drops silent connections during long downloads over slow links
+const mkOld = () => postgres(OLD_URL!, { max: 1, prepare: false, keep_alive: 10, connect_timeout: 30, idle_timeout: 0, max_lifetime: null })
+const mkNew = () => postgres(NEW_URL!, { max: 1, prepare: false })
+let oldDb = mkOld()
+let newDb = mkNew()
 
 type Row = Record<string, any>
 const report: Array<{ table: string; old: number; neu: number; note?: string }> = []
@@ -71,9 +77,12 @@ async function main() {
   const { keyFromProxyUrl } = await import('../src/lib/r2-objects')
   const keyOf = (url: string) => keyFromProxyUrl(url) ?? url
 
+  const pr = (u: string) => { const x = new URL(u); return `${decodeURIComponent(x.username)}@${x.hostname}:${x.port || '5432'}${x.pathname}` }
   console.log(`\n=== Supabase -> local migration (${APPLY ? 'APPLY' : 'DRY RUN'}${WIPE ? ', WIPE' : ''}) ===`)
+  console.log(`  reading (read-only): ${pr(OLD_URL!)}\n  writing            : ${pr(NEW_URL!)}`)
 
-  await oldDb.begin('read only', async (old) => {
+  await oldDb.begin('isolation level repeatable read read only', async (old) => {
+    await old`set local statement_timeout = 0`   // Supabase pooler default (~2 min) cuts the big case reads
     await newDb.begin(async (tx) => {
       // ── guards on NEW ───────────────────────────────────────────────────────
       const [{ n: existing }] = await tx`select count(*)::int n from users`
@@ -83,7 +92,16 @@ async function main() {
         console.log('  wiped NEW app tables (reference/seed rules in case_status_* are kept)')
       }
 
-      const sel = async (q: string): Promise<Row[]> => [...(await old.unsafe(q))]
+      const sel = async (q: string): Promise<Row[]> => {
+        const t0 = Date.now()
+        const m = /from\s+([\w.]+)/i.exec(q)
+        process.stdout.write(`  reading ${m?.[1] ?? 'query'} …`)
+        // server-side cursor: many short FETCHes instead of one long query (the pooler cuts long statements on slow links)
+        const rows: Row[] = []
+        await old.unsafe(q).cursor(25, (batch: Row[]) => { rows.push(...batch); process.stdout.write('.') })
+        process.stdout.write(` ${rows.length} rows (${((Date.now() - t0) / 1000).toFixed(1)}s)\n`)
+        return rows
+      }
       const ownerOf = new Map<string, string>() // case id -> client id
 
       // ── 1. users + profiles ─────────────────────────────────────────────────
@@ -103,7 +121,10 @@ async function main() {
       report.push({ table: 'auth.users -> users', old: authUsers.length, neu: userRows.length, note: 'bcrypt hashes copied verbatim (re-hashed to argon2id on first login)' })
 
       const subOf = new Map((await sel(`select profile_id, client_id from public.sub_users`)).map((r) => [r.profile_id, r.client_id]))
-      const profileRows = oldProfiles.filter((p) => userRows.some((u) => u.id === p.id)).map((p) => ({
+      // profiles whose auth.users row is missing cannot be copied (users FK) — drop them from every later lookup too
+      const haveUser = new Set(userRows.map((u) => u.id))
+      for (const id of [...byId.keys()]) if (!haveUser.has(id)) { warn.push(`profile ${id} (${byId.get(id)!.lab_name ?? byId.get(id)!.full_name ?? '?'}) has no auth.users row — skipped`); byId.delete(id) }
+      const profileRows = oldProfiles.filter((p) => haveUser.has(p.id)).map((p) => ({
         id: p.id, user_type: p.user_type, user_role: p.user_role, user_status: p.user_status,
         plan_status: p.user_type === 'lab_portal' ? lower(p.plan_status) : null,
         client_id: p.user_role === 'client' ? p.id : p.user_role === 'subuser' ? (subOf.get(p.id) ?? p.created_by) : null,
@@ -323,4 +344,22 @@ async function main() {
 }
 
 class RollbackSignal extends Error {}
-main().then(async () => { await oldDb.end(); await newDb.end() }).catch(async (e) => { console.error('\nFAILED (nothing committed):', e.message ?? e); await oldDb.end(); await newDb.end(); process.exit(1) })
+async function run(attempt = 1): Promise<void> {
+  try {
+    await main()
+    await oldDb.end({ timeout: 5 }); await newDb.end({ timeout: 5 })
+  } catch (e: any) {
+    await oldDb.end({ timeout: 2 }).catch(() => {}); await newDb.end({ timeout: 2 }).catch(() => {})
+    const transient = /CONNECTION_CLOSED|CONNECTION_ENDED|ECONNRESET|ETIMEDOUT|CONNECT_TIMEOUT/.test(String(e?.code ?? '') + String(e?.message ?? ''))
+    if (transient && attempt < 4) {
+      console.error(`\nSupabase connection dropped (${e.code ?? e.message}). Nothing was committed; retrying from scratch (attempt ${attempt + 1}/4)…`)
+      report.length = 0; warn.length = 0
+      oldDb = mkOld(); newDb = mkNew()
+      return run(attempt + 1)
+    }
+    console.error('\nFAILED (nothing committed):', e.message ?? e)
+    process.exit(1)
+  }
+}
+process.on('uncaughtException', (e: any) => { console.error('\nFAILED (nothing committed):', e?.message ?? e); process.exit(1) })
+run()
