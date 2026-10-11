@@ -57,3 +57,6 @@ referencecode/
 
 # local deploy-script notes (not for git history)
 /script.md
+
+# keep the documented template (placeholders only) in git
+!.env.example
