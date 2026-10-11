@@ -82,7 +82,7 @@ npx tsx scripts/supabase-archive.ts          # prints the inventory, asks you to
 ```
 Creates a new local database `supabase_legacy`, **proves** it is identical (row counts + per-table content checksums),
 then uploads one AES-256-encrypted copy to R2 (`db-backups/supabase-legacy/`). It never touches `iconic_connect`.
-Re-run: add `--replace-target`. Inspect it: `docker exec -it iconic_dev_postgres psql -U postgres -d supabase_legacy`.
+Re-run: add `--replace-target`. It prints progress per table (a 28k-row database takes seconds); if the Supabase connection stops responding it aborts after 90 s with a clear message (`ARCHIVE_STALL_SECONDS` changes that). The archive is always labelled with the project of the connection string actually used, and it warns if that differs from `NEXT_PUBLIC_SUPABASE_URL`. Inspect it: `docker exec -it iconic_dev_postgres psql -U postgres -d supabase_legacy`.
 **Copy `~/.config/iconic/backup_key` somewhere safe** — the R2 copy cannot be decrypted without it.
 
 ### 5b. Load the data into the app's schema (`iconic_connect`)
@@ -149,5 +149,7 @@ deploy. The deploy workflow calls `/api/health` and fails if the app is unhealth
 | Every page hangs / returns 503 | Redis is down → `docker compose … ps`; `/api/health` shows `"redis":false` |
 | `relation "…" does not exist` / `/api/health` → `"schema":false` | Migrations not applied → `npm run db:up` |
 | `Supabase connection string not found` | `export SUPABASE_DB_URL='postgresql://postgres.<ref>:<pw>@<host>:5432/postgres'` |
+| `STALLED: no progress …` during the archive | The connection to Supabase is stuck → re-run; use the **Session pooler (port 5432)** or the direct connection string; check the server's outbound firewall |
+| `PROJECT MISMATCH` warning | The connection string is for a different Supabase project than `NEXT_PUBLIC_SUPABASE_URL` → make sure you exported the URL of the project you really want to archive |
 | Admin sign-up returns 403 | `ADMIN_SIGNUP_SECRET` shorter than 32 chars → `openssl rand -hex 32` |
 | Logged out after restarting Redis | Redis started without persistence → use the compose file (it enables `appendonly`) |

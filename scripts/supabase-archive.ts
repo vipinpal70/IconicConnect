@@ -27,7 +27,10 @@
  *   --out-dir <dir>       where the archive is written (default ~/iconic-backups/supabase-legacy)
  *   --schemas a,b,c       schemas to archive (default auth,public,storage,realtime,vault,drizzle)
  *   --key-file <path>     encryption key (default ~/.config/iconic/backup_key; generated if missing)
- *   --ref <project-ref>   Supabase project ref (default: from NEXT_PUBLIC_SUPABASE_URL in .env)
+ *   --ref <project-ref>   only used to pick a commented DATABASE_URL line from .env; the archive is ALWAYS labelled with the
+ *                         project of the connection string actually used
+ *   --accept-project-mismatch  allow --yes when the connection's project differs from NEXT_PUBLIC_SUPABASE_URL
+ * Env: ARCHIVE_STALL_SECONDS (default 90) — abort if the Supabase connection makes no progress for this long
  *
  * Source connection: env SUPABASE_DB_URL, else the commented-out `# DATABASE_URL=…<ref>…` line in .env.
  */
@@ -53,7 +56,11 @@ const TARGET_DB = opt('target-db', 'supabase_legacy') as string
 const OUT_ROOT = opt('out-dir', path.join(os.homedir(), 'iconic-backups', 'supabase-legacy')) as string
 const KEY_FILE = opt('key-file', path.join(os.homedir(), '.config', 'iconic', 'backup_key')) as string
 const ALLOW_ANY_SOURCE = flag('allow-non-supabase') // self-test hook (source = a local DB); never needed in real use
-const SCRIPT_VERSION = '1.0'
+const SCRIPT_VERSION = '1.1'
+const STALL_MS = (Number(process.env.ARCHIVE_STALL_SECONDS) || 90) * 1000   // abort if nothing moves for this long
+let lastProgress = Date.now()
+let current = 'starting'
+const touch = (label?: string) => { lastProgress = Date.now(); if (label) current = label }
 
 const qi = (s: string) => `"${s.replace(/"/g, '""')}"`            // quote identifier
 const ql = (s: string) => `'${s.replace(/'/g, "''")}'`            // quote literal
@@ -70,21 +77,26 @@ function envFileValue(file: string, key: string): string | undefined {
 }
 
 // ───────────────────────────── 0. resolve connections (read-only source, local target) ─────────────────────────────
-function resolveSource(): { url: string; ref: string } {
+function resolveSource(): { url: string; ref: string; appRef: string } {
   let url = process.env.SUPABASE_DB_URL
-  let ref = opt('ref') ?? (envFileValue('.env', 'NEXT_PUBLIC_SUPABASE_URL') ?? '').replace(/^https?:\/\/([^.]+)\..*$/, '$1')
+  const appRef = (envFileValue('.env', 'NEXT_PUBLIC_SUPABASE_URL') ?? '').replace(/^https?:\/\/([^.]+)\..*$/, '$1')
+  const wanted = opt('ref') ?? appRef            // only used to PICK a commented line from .env when no URL was exported
   if (!url) {
     const lines = fs.existsSync('.env') ? fs.readFileSync('.env', 'utf8').split('\n') : []
-    const found = lines.find((l) => /^#?\s*DATABASE_URL=/.test(l) && ref && l.includes(ref))
+    const found = lines.find((l) => /^#?\s*DATABASE_URL=/.test(l) && wanted && l.includes(wanted))
     if (found) url = found.replace(/^#?\s*DATABASE_URL=/, '').trim()
   }
   if (!url) die(`Could not find the Supabase connection string. Export SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@<host>:5432/postgres' and re-run.`)
   const u = new URL(url!)
   if (!ALLOW_ANY_SOURCE && !/supabase\.(com|co)$/.test(u.hostname)) die(`Source host "${u.hostname}" is not a Supabase host — refusing (use --allow-non-supabase only for self-tests).`)
-  if (!ref) ref = decodeURIComponent(u.username).split('.')[1] ?? u.hostname
+  // The project that is shown, confirmed and written into the archive / R2 name MUST be the project of the connection
+  // string actually used (user "postgres.<ref>") — never a guess from some other setting.
+  const urlRef = decodeURIComponent(u.username).split('.')[1] ?? ''
+  if (opt('ref') && urlRef && opt('ref') !== urlRef) die(`--ref ${opt('ref')} does not match the connection string, which belongs to project "${urlRef}".`)
+  const ref = urlRef || opt('ref') || u.hostname
   // pg needs session semantics for a long consistent snapshot: use the session pooler (5432) instead of the transaction pooler (6543)
   if (u.port === '6543') u.port = '5432'
-  return { url: u.toString(), ref }
+  return { url: u.toString(), ref, appRef }
 }
 
 function resolveLocal(): { adminUrl: string; urlFor: (db: string) => string; container: string; user: string; port: string } {
@@ -340,37 +352,66 @@ async function main() {
   log(`local    : container ${local.container} (port ${local.port}) → NEW database "${TARGET_DB}"`)
   log(`archive  : ${outDir}`)
 
-  // ── 1. consistent read-only snapshot ──
-  const sql = postgres(src.url, { max: 1, prepare: false, connect_timeout: 30, idle_timeout: 0, max_lifetime: null, onnotice: () => {} })
+  // ── 0. quick read-only inventory on a SHORT connection, then confirm — before any long-lived snapshot is opened ──
+  //    (the old version asked the question while a transaction sat idle on the pooler; an idle session that a pooler or
+  //     firewall silently drops makes every later query hang forever)
+  step('Inventory of the source (read-only, short connection)')
+  const inv = postgres(src.url, { max: 1, prepare: false, connect_timeout: 30, keep_alive: 15, onnotice: () => {} })
+  let totalRows = 0
+  try {
+    await inv.begin('read only', async (tx) => {
+      if ((await tx`show transaction_read_only`)[0].transaction_read_only !== 'on') die('Safety check failed: the source session is NOT read-only. Aborting before reading anything.')
+      const ver = (await tx`show server_version`)[0].server_version as string
+      const { tables } = await inventory(tx, SCHEMAS)
+      const hasAuth = (await tx`select to_regclass('auth.users') is not null as ok`)[0].ok
+      const users = hasAuth ? (await tx`select count(*)::int n from auth.users`)[0].n : 0
+      const quick: Array<{ t: string; n: number }> = []
+      for (const t of tables) quick.push({ t: `${t.schema}.${t.name}`, n: Number((await tx.unsafe<Row[]>(`select count(*)::bigint n from ${qi(t.schema)}.${qi(t.name)}`))[0].n) })
+      totalRows = quick.reduce((a, b) => a + b.n, 0)
+      ok(`connected: project ${src.ref}, Postgres ${ver}, session read-only`)
+      log(`  schemas: ${SCHEMAS.join(', ')}  |  ${tables.length} tables  |  auth.users = ${users}  |  ${totalRows} rows`)
+      log(`  largest: ${quick.sort((a, b) => b.n - a.n).slice(0, 5).map((q) => `${q.t}=${q.n}`).join(', ')}`)
+    })
+  } finally { await inv.end({ timeout: 5 }) }
+
+  if (src.appRef && src.appRef !== src.ref) {
+    console.log(`\n\x1b[1;33m⚠ PROJECT MISMATCH\x1b[0m  the connection string is for project \x1b[1m${src.ref}\x1b[0m, but NEXT_PUBLIC_SUPABASE_URL in .env says the app uses \x1b[1m${src.appRef}\x1b[0m.`)
+    console.log(`  This archive (folder name AND R2 object name) will be labelled "${src.ref}" — the project you are actually reading.`)
+    if (flag('yes') && !flag('accept-project-mismatch')) die('Refusing to continue non-interactively with a project mismatch. Check the connection string, or add --accept-project-mismatch.')
+  }
+  if (!flag('yes')) {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+    const ans = (await rl.question(`\nThis will READ project "${src.ref}" and create local database "${TARGET_DB}". Type the project ref to continue: `)).trim()
+    rl.close()
+    if (ans !== src.ref) die('Confirmation did not match — nothing was done.')
+  }
+
+  // ── 1. consistent read-only snapshot (opened only now, then used without pauses) ──
+  const sql = postgres(src.url, { max: 1, prepare: false, connect_timeout: 30, keep_alive: 15, idle_timeout: 0, max_lifetime: null, onnotice: () => {} })
   const manifest: Record<string, any> = { script: `supabase-archive.ts v${SCRIPT_VERSION}`, project_ref: src.ref, created_at: new Date().toISOString(), schemas: SCHEMAS, tables: {} }
+
+  // Stall watchdog: if no progress for STALL_MS the connection is stuck (network/pooler) — say so and stop instead of hanging.
+  touch('opening the snapshot')
+  const watchdog = setInterval(() => {
+    if (Date.now() - lastProgress > STALL_MS) {
+      console.error(`\n\x1b[31m✖ STALLED: no progress for ${Math.round(STALL_MS / 1000)}s while: ${current}.\x1b[0m`)
+      console.error('  The connection to Supabase appears stuck (network, firewall or the pooler dropped it). Nothing was written to Supabase.')
+      console.error('  Re-run. If it repeats: use the Session pooler on port 5432 (not 6543) or the direct connection string from Supabase → Connect.')
+      process.exit(2)
+    }
+  }, 1000)
+  watchdog.unref()
 
   try {
     await sql.begin('isolation level repeatable read read only', async (tx) => {
-      const ro = (await tx`show transaction_read_only`)[0].transaction_read_only
-      if (ro !== 'on') die('Safety check failed: the source session is NOT read-only. Aborting before reading anything.')
+      if ((await tx`show transaction_read_only`)[0].transaction_read_only !== 'on') die('Safety check failed: the source session is NOT read-only. Aborting before reading anything.')
       const ver = (await tx`show server_version`)[0].server_version as string
       manifest.source_server_version = ver
       step(`Snapshot of Supabase (Postgres ${ver}) — read-only, consistent`)
-      ok('session verified read-only (transaction_read_only = on)')
-
+      touch('reading the catalog (schema, types, functions)')
       const parts = await buildSchemaParts(tx, SCHEMAS)
-      const hasAuth = (await tx`select to_regclass('auth.users') is not null as ok`)[0].ok   // (a failed query would abort the whole transaction)
-      const user = hasAuth ? (await tx`select count(*)::int n from auth.users`)[0].n : 0
-      log(`  schemas: ${SCHEMAS.join(', ')}  |  ${parts.tables.length} tables  |  auth.users = ${user}`)
+      touch()
       log(`  objects: ${JSON.stringify(parts.counts)}`)
-
-      // Row counts (cheap) for the confirmation screen
-      const quick: Array<{ t: string; n: number }> = []
-      for (const t of parts.tables) quick.push({ t: `${t.schema}.${t.name}`, n: Number((await tx.unsafe<Row[]>(`select count(*)::bigint n from ${qi(t.schema)}.${qi(t.name)}`))[0].n) })
-      const total = quick.reduce((a, b) => a + b.n, 0)
-      log(`  ${total} rows in total. Largest: ${quick.sort((a, b) => b.n - a.n).slice(0, 5).map((q) => `${q.t}=${q.n}`).join(', ')}`)
-
-      if (!flag('yes')) {
-        const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-        const ans = (await rl.question(`\nThis will READ project "${src.ref}" and create local database "${TARGET_DB}". Type the project ref to continue: `)).trim()
-        rl.close()
-        if (ans !== src.ref) die('Confirmation did not match — nothing was done.')
-      }
       for (const s of CHECKSUM_SESSION) await tx.unsafe(s)
 
       // ── 2. write the archive ──
@@ -381,16 +422,21 @@ async function main() {
 
       const data = openGzip(path.join(outDir, '02_data.sql.gz'))
       await data.write(`SET statement_timeout = 0; SET client_encoding = 'UTF8'; SET standard_conforming_strings = on; SET search_path = ''; SET TimeZone = 'UTC';\n`)
+      let tableNo = 0
       for (const t of parts.tables) {
+        const t1 = Date.now(); tableNo++
         const names = parts.cols.filter((c) => c.relid === t.oid && c.attgenerated !== 's').map((c) => qi(c.name))
         const fq = `${qi(t.schema)}.${qi(t.name)}`
+        touch(`copying ${t.schema}.${t.name}`)
         await data.write(`\nCOPY ${fq} (${names.join(', ')}) FROM stdin;\n`)
         const stream = await tx.unsafe(`COPY (SELECT ${names.join(', ')} FROM ${fq}) TO STDOUT`).readable()
-        for await (const chunk of stream) await data.write(chunk as Buffer)
+        for await (const chunk of stream) { await data.write(chunk as Buffer); touch() }
         await data.write('\\.\n')
         const fp = await tableFingerprint(tx, t.schema, t.name)
         const st = await structureCounts(tx, t.schema, t.name)
         manifest.tables[`${t.schema}.${t.name}`] = { ...fp, ...st }
+        touch()
+        log(`  [${String(tableNo).padStart(2)}/${parts.tables.length}] ${`${t.schema}.${t.name}`.padEnd(40)} ${String(fp.rows).padStart(6)} rows  ${((Date.now() - t1) / 1000).toFixed(1)}s`)
       }
       await data.close()
 
@@ -405,6 +451,7 @@ async function main() {
       ok(`${parts.tables.length} tables, ${manifest.total_rows} rows written; fingerprints taken from the SAME snapshot`)
     })
   } finally {
+    clearInterval(watchdog)
     await sql.end({ timeout: 5 })
   }
   ok('Supabase connection closed — nothing was written to it')
