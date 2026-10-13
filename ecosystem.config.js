@@ -1,14 +1,17 @@
-// Server: 4 vCPU / 16 GB RAM (Redis runs in Docker on the same box).
+// Server: 4 vCPU / 16 GB RAM. Postgres + Redis run in Docker on the same box (docker-compose.dev.yml).
+//
+// ONE COMMAND for everything (Postgres + Redis containers -> migrations -> build -> PM2 web/worker/schedulers):
+//     npm run server:up
+// Stop the app processes:  npm run server:down      (the database containers keep running)
 //
 // CPU plan: 2 web processes in cluster mode (they share port 4000), leaving the other cores for the
-// worker, the schedulers, Redis and nginx.
+// worker, the schedulers, Redis and Postgres.
 //
-// Database connections (Supabase pooler): every process has its own pool, sized by DB_POOL_MAX.
-//   web      2 processes x 12 = 24
-//   worker   1 process   x 3  =  3
-//   schedulers 4 x 1          =  4        -> 31 in total
-// Keep the total at or below Supabase "Pool size" (Dashboard -> Database -> Connection pooling) —
-// set that to ~40 BEFORE deploying this file, otherwise requests just queue at the pooler.
+// Database connections (local Postgres, default max_connections = 100): every process has its own pool,
+// sized by DB_POOL_MAX.
+//   web        2 processes x 6 = 12
+//   worker     1 process   x 2 =  2
+//   schedulers 3 x 1           =  3        -> 17 in total (leave headroom for dbmate, psql and backups)
 const WEB_INSTANCES = 2
 const DB_POOL_WEB = '6'
 const DB_POOL_WORKER = '2'
