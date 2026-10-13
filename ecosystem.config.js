@@ -12,6 +12,23 @@
 //   web        2 processes x 6 = 12
 //   worker     1 process   x 2 =  2
 //   schedulers 3 x 1           =  3        -> 17 in total (leave headroom for dbmate, psql and backups)
+// The database / redis URLs come from THIS project's .env and are set explicitly on every process.
+// Otherwise a DATABASE_URL left exported in some shell (pm2 passes its environment on, and Next.js never
+// overrides an existing variable) silently wins over .env and the app talks to the wrong database.
+const fs = require('fs')
+const path = require('path')
+function dotenv(keys) {
+  const out = {}
+  try {
+    for (const line of fs.readFileSync(path.join(__dirname, '.env'), 'utf8').split('\n')) {
+      const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line)
+      if (m && keys.includes(m[1])) out[m[1]] = m[2].replace(/^["']|["']$/g, '')
+    }
+  } catch { /* no .env: processes fall back to their environment */ }
+  return out
+}
+const PINNED = dotenv(['DATABASE_URL', 'REDIS_URL'])
+
 const WEB_INSTANCES = 2
 const DB_POOL_WEB = '6'
 const DB_POOL_WORKER = '2'
@@ -101,3 +118,4 @@ module.exports = {
   ],
 };
 
+for (const app of module.exports.apps) app.env = { ...PINNED, ...app.env }
