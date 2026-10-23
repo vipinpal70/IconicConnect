@@ -268,14 +268,14 @@ export default function ClientProfilePage() {
                 <div>
                   <p className="text-xs font-semibold text-primary/70">Plan</p>
                   <p className="mt-0.5 truncate text-xs font-semibold text-foreground">
-                    {client?.plan || "Trial"}
+                    {client?.plan === "onboarded" ? "Onboarded" : "Trial"}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-[10px] text-muted-foreground font-medium">Trial</span>
                   <Switch
                     className="scale-75 origin-right"
-                    checked={client?.plan === "Onboarded"}
+                    checked={client?.plan === "onboarded"}
                     onCheckedChange={async (checked) => {
                       if (!client) return
                       try {

@@ -257,12 +257,12 @@ export default function AdminDashboard() {
                         </Badge>
                         <Badge
                           variant="outline"
-                          className={`text-[9px] px-1.5 py-0 h-4 font-semibold border-0 ${c.plan === "Trial"
+                          className={`text-[9px] px-1.5 py-0 h-4 font-semibold border-0 ${c.plan !== "onboarded"
                             ? "bg-blue-100 text-blue-700"
                             : "bg-primary/10 text-primary"
                             }`}
                         >
-                          {c.plan || "Trial"}
+                          {c.plan === "onboarded" ? "Onboarded" : "Trial"}
                         </Badge>
                       </div>
                       <p className="text-[9px] text-muted-foreground flex items-center gap-1 shrink-0">

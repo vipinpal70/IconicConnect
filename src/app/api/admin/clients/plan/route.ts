@@ -21,22 +21,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { clientId, plan } = await req.json()
+    const body = await req.json()
+    const clientId = body?.clientId
+    // The DB enum is lowercase ('trial' | 'onboarded'); accept either casing from clients.
+    const plan = typeof body?.plan === 'string' ? body.plan.toLowerCase() : ''
     if (!clientId || !plan) {
       return NextResponse.json({ error: 'Client ID and Plan are required' }, { status: 400 })
     }
 
-    if (!['Trial', 'Onboarded'].includes(plan)) {
+    if (!['trial', 'onboarded'].includes(plan)) {
       return NextResponse.json({ error: 'Invalid plan status' }, { status: 400 })
     }
 
     // Update client plan
     const updateData: any = { 
-      plan: plan as 'Trial' | 'Onboarded', 
+      plan: plan as 'trial' | 'onboarded', 
       updatedAt: new Date() 
     }
 
-    if (plan === 'Onboarded') {
+    if (plan === 'onboarded') {
       updateData.onBoardedAt = new Date()
 
       // Trigger Onboarding/Plan Upgraded Notification
@@ -51,7 +54,7 @@ export async function POST(req: NextRequest) {
           title: 'Account Onboarded!',
           message: 'Welcome to the official onboarded plan! Your trial account has been upgraded and you now have full operational access to IconicConnect.',
           link: '/client/dashboard',
-          metadata: { plan: 'Onboarded' }
+          metadata: { plan: 'onboarded' }
         });
       } catch (notifyError) {
         console.error('Failed to send onboarding notification:', notifyError);
