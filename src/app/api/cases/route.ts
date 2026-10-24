@@ -562,8 +562,8 @@ export async function GET(req: NextRequest) {
 
     // Cache key (role + page + resolved limit)
     const casesCacheKey = isAdmin
-      ? `cases:list:admin:p${page}:l${limit}`
-      : `cases:list:client:${cacheClientId}:p${page}:l${limit}`
+      ? `cases:list:admin:v2:p${page}:l${limit}`
+      : `cases:list:client:${cacheClientId}:v2:p${page}:l${limit}`
 
     // Filtered views bypass the list cache — one entry per filter combination
     // would flood Redis and slip past invalidateCasesCache().
@@ -629,6 +629,12 @@ export async function GET(req: NextRequest) {
     ];
     const filterCondition = and(...filterParts);
 
+    // Rank the role-specific action status before pagination, preserving the
+    // existing newest-first order within each priority group.
+    const statusPriorityOrder = isAdmin
+      ? sql`CASE WHEN ${cases.status} = 'change_requested' THEN 0 ELSE 1 END`
+      : sql`CASE WHEN ${cases.status} = 'submitted_to_client' THEN 0 ELSE 1 END`;
+
     // Fetch one extra row to determine whether another page exists
     const fetchLimit = limit + 1;
 
@@ -637,19 +643,19 @@ export async function GET(req: NextRequest) {
     if (isAdmin) {
       results = await db.select(caseListSelection).from(cases)
         .where(filterCondition)
-        .orderBy(desc(cases.createdAt), desc(cases.id))
+        .orderBy(asc(statusPriorityOrder), desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'client') {
       results = await db.select(caseListSelection).from(cases)
         .where(and(eq(cases.clientId, profile.id), filterCondition))
-        .orderBy(desc(cases.createdAt), desc(cases.id))
+        .orderBy(asc(statusPriorityOrder), desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'subuser') {
       results = await db.select(caseListSelection).from(cases)
         .where(and(eq(cases.clientId, cacheClientId), filterCondition))
-        .orderBy(desc(cases.createdAt), desc(cases.id))
+        .orderBy(asc(statusPriorityOrder), desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
         .offset(offset);
     } else {
