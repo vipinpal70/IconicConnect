@@ -1,22 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'node:crypto'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema'
+import { authCredentials } from '@/src/db/schema/auth-credentials'
 import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone'
 import { handleProfileCreated } from '@/src/lib/price-list'
 import { deleteCachedData } from '@/src/lib/redis-cache'
 import { logActivity } from '@/src/lib/activity-log'
-import { supabaseAdmin } from '@/src/lib/supabase/admin'
 import type { ServiceType } from '@/src/lib/case-status-mapping'
 import { escapeHtml } from '@/src/lib/security/html'
-import { eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
+import { hashPassword } from '@/src/lib/auth/password-hash'
 
 const VALID_SERVICE_TYPES: ServiceType[] = ['design_only', 'design_milling', 'milling_only']
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-// The browser creates the Auth user first, then calls this route — so the user must be brand new.
-const MAX_AUTH_USER_AGE_MS = 30 * 60 * 1000
-
 const clip = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+
+function getDatabaseErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
+  return typeof error.code === 'string' ? error.code : undefined
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
@@ -24,37 +27,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 
-  // ── Verify the claimed identity before touching anything ──────────────────
-  // `body.id` is client-supplied. Without this, anyone could post an existing user's id and (via the
-  // failure cleanup below) get that user's Auth account deleted, or attach a profile to a stranger's id.
-  if (typeof body.id !== 'string' || !UUID_RE.test(body.id) || typeof body.email !== 'string') {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
-  }
-  const { data: authLookup, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(body.id)
-  const authUser = authLookup?.user
-  const createdAtMs = authUser?.created_at ? new Date(authUser.created_at).getTime() : 0
   if (
-    authLookupError ||
-    !authUser ||
-    authUser.email?.toLowerCase() !== body.email.trim().toLowerCase() ||
-    Date.now() - createdAtMs > MAX_AUTH_USER_AGE_MS
+    typeof body.email !== 'string' ||
+    typeof body.password !== 'string' ||
+    body.email.trim().length === 0 ||
+    body.email.length > 254 ||
+    body.password.length < 10 ||
+    body.password.length > 256
   ) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
-  const [existingProfile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.id, body.id)).limit(1)
-  if (existingProfile) {
-    // Never delete an Auth user that already has a profile — it isn't ours to clean up.
+  const email = body.email.trim().toLowerCase()
+  const [existingAccount] = await db.select({ userId: authCredentials.userId })
+    .from(authCredentials)
+    .where(sql`lower(${authCredentials.email}) = ${email}`)
+    .limit(1)
+  const [existingProfile] = await db.select({ id: profiles.id }).from(profiles)
+    .where(sql`lower(${profiles.email}) = ${email}`)
+    .limit(1)
+  if (existingAccount || existingProfile) {
     return NextResponse.json({ error: 'An account with this email already exists. Please sign in instead.' }, { status: 409 })
   }
-  // From here on this request owns a brand-new, profile-less Auth user.
-  body.email = authUser.email
-
-  // Every error path below must delete it — otherwise a failed profile save leaves an orphaned Auth user.
-  const cleanupOrphanedAuthUser = async () => {
-    await supabaseAdmin.auth.admin.deleteUser(body.id).catch((delErr) =>
-      console.error('[sign-up] failed to clean up orphaned auth user', delErr)
-    )
-  }
+  const userId = randomUUID()
+  body.id = userId
+  body.email = email
 
   try {
     body.fullName = clip(body.fullName, 150)
@@ -72,7 +68,6 @@ export async function POST(req: NextRequest) {
       sql`lower(coalesce(nullif(trim(${profiles.labName}), ''), nullif(trim(${profiles.fullName}), ''), ${profiles.email})) = lower(${folderName})`
     ).limit(1)
     if (nameTaken) {
-      await cleanupOrphanedAuthUser()
       return NextResponse.json({ error: 'A lab with this name is already registered. Please use a more specific lab name.' }, { status: 409 })
     }
 
@@ -80,7 +75,6 @@ export async function POST(req: NextRequest) {
     const phoneError = validateNationalPhone(parsedPhone.countryCode, parsedPhone.nationalNumber)
 
     if (phoneError) {
-      await cleanupOrphanedAuthUser()
       return NextResponse.json({ error: phoneError }, { status: 400 })
     }
 
@@ -88,31 +82,38 @@ export async function POST(req: NextRequest) {
     const enabledServiceTypes = rawServiceTypes.filter((t): t is ServiceType => VALID_SERVICE_TYPES.includes(t as ServiceType))
 
     if (enabledServiceTypes.length === 0) {
-      await cleanupOrphanedAuthUser()
       return NextResponse.json({ error: 'Please select at least one service you need (Design, Design + Milling, or Milling).' }, { status: 400 })
     }
 
     try {
-      await db.insert(profiles).values({
-        id: body.id,
-        email: body.email,
-        userType: 'lab_portal',   // ← hardcoded
-        role: 'client',       // ← hardcoded
-        status: 'pending',
-        fullName: body.fullName || null,
-        title: body.title || null,
-        phone: body.phone || null,
-        labName: body.labName?.trim() || body.fullName?.trim() || null,
-        postalCode: body.postalCode || null,
-        city: body.city || null,
-        state: body.state || null,
-        country: body.country || null,
-        enabledServiceTypes,
+      const passwordHash = await hashPassword(body.password)
+      await db.transaction(async (tx) => {
+        await tx.insert(authCredentials).values({
+          userId,
+          email,
+          phone: body.phone || null,
+          passwordHash,
+        })
+        await tx.insert(profiles).values({
+          id: userId,
+          email,
+          userType: 'lab_portal',
+          role: 'client',
+          status: 'pending',
+          fullName: body.fullName || null,
+          title: body.title || null,
+          phone: body.phone || null,
+          labName: body.labName?.trim() || body.fullName?.trim() || null,
+          postalCode: body.postalCode || null,
+          city: body.city || null,
+          state: body.state || null,
+          country: body.country || null,
+          enabledServiceTypes,
+        })
       })
-    } catch (dbError: any) {
+    } catch (dbError) {
       console.error('[sign-up] profile insert failed', dbError)
-      await cleanupOrphanedAuthUser()
-      if (dbError?.code === '23505') {
+      if (getDatabaseErrorCode(dbError) === '23505') {
         return NextResponse.json({ error: 'An account with this email already exists. Please sign in instead.' }, { status: 409 })
       }
       return NextResponse.json({ error: 'Failed to save profile' }, { status: 500 })
@@ -180,7 +181,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true }, { status: 201 })
   } catch (err) {
     console.error('[profiles/POST]', err)
-    await cleanupOrphanedAuthUser()
     return NextResponse.json({ error: 'Failed to save profile' }, { status: 500 })
   }
 }

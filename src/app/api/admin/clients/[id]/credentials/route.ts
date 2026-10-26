@@ -2,7 +2,7 @@ import { createSetPasswordLink, setPasswordBlock } from '@/src/lib/security/set-
 import { escapeHtml } from '@/src/lib/security/html'
 import { validatePasswordStrength } from '@/src/lib/security/password'
 import { NextRequest, NextResponse } from 'next/server'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/supabase/server'
@@ -34,14 +34,7 @@ async function requireAdmin() {
 // password (typed manually or auto-generated on the frontend) and emails
 // them the new credentials.
 //
-// Tries the official Supabase Admin API first. That call only works when
-// SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_URL point at the same
-// Supabase project the client's auth user actually lives in — which isn't
-// always true for client accounts in this repo (see the docstring in
-// scripts/set-client-password.ts, this route's logic mirrors it). Falls back
-// to updating auth.users.encrypted_password directly using the same bcrypt
-// scheme Supabase's own GoTrue uses ($2a$10$..., via pgcrypto), and revokes
-// the client's existing sessions so the old password stops working anywhere.
+// Updates the local credential record and revokes all Redis-backed sessions.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -68,33 +61,8 @@ export async function POST(
     }
 
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { password })
-
     if (authError) {
-      // Fall back to a direct database update — see the file-level comment.
-      try {
-        const result = await db.execute(sql`
-          UPDATE auth.users
-          SET encrypted_password = extensions.crypt(${password}, extensions.gen_salt('bf', 10)),
-              updated_at = now()
-          WHERE id = ${id}
-          RETURNING id
-        `)
-        const resultShape = result as unknown as { rows?: unknown[] } & unknown[]
-        const updatedRows = Array.isArray(result) ? resultShape : (resultShape.rows ?? resultShape)
-        if (!updatedRows || (updatedRows as unknown[]).length === 0) {
-          return NextResponse.json(
-            { error: `No matching login found for ${client.email} in the authentication system.` },
-            { status: 400 }
-          )
-        }
-      } catch (dbError) {
-        console.error('[admin/clients/[id]/credentials] direct DB fallback failed', dbError)
-        return NextResponse.json({ error: authError.message || 'Failed to update password' }, { status: 400 })
-      }
-
-      // Revoke existing sessions so the old password/session can't keep working.
-      await db.execute(sql`DELETE FROM auth.sessions WHERE user_id = ${id}`)
-        .catch((err) => console.error('[admin/clients/[id]/credentials] session revoke failed', err))
+      return NextResponse.json({ error: authError.message }, { status: 400 })
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'

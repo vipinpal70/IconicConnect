@@ -1,4 +1,8 @@
-import { supabaseAdmin } from '@/src/lib/supabase/admin'
+import { createHash, randomBytes } from 'node:crypto'
+import { eq, sql } from 'drizzle-orm'
+import { db } from '@/src/db'
+import { authCredentials, authRecoveryTokens } from '@/src/db/schema'
+import { profiles } from '@/src/db/schema/profile'
 
 /**
  * One-time "set your password" link for new/reset accounts, so credentials emails never contain a
@@ -9,19 +13,36 @@ export async function createSetPasswordLink(email: string): Promise<string | nul
   try {
     const origin = process.env.NEXT_PUBLIC_APP_URL
     if (!origin) return null
-    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email,
-      options: { redirectTo: `${origin}/auth/reset-password` },
-    })
-    const tokenHash = data?.properties?.hashed_token
-    if (error || !tokenHash) {
-      console.error('[set-password-link] generateLink failed:', error)
-      return null
+    const normalizedEmail = email.trim().toLowerCase()
+    const [profile] = await db.select({ userId: profiles.id })
+      .from(profiles)
+      .where(sql`lower(${profiles.email}) = ${normalizedEmail}`)
+      .limit(1)
+    if (!profile) return null
+
+    const [credential] = await db.select({ userId: authCredentials.userId })
+      .from(authCredentials)
+      .where(eq(authCredentials.userId, profile.userId))
+      .limit(1)
+    if (!credential) {
+      await db.insert(authCredentials).values({
+        userId: profile.userId,
+        email: normalizedEmail,
+        passwordHash: null,
+      })
     }
-    return `${origin}/auth/verify?token_hash=${encodeURIComponent(tokenHash)}&type=recovery&next=/auth/reset-password`
-  } catch (err) {
-    console.error('[set-password-link] failed:', err)
+
+    const token = randomBytes(32).toString('base64url')
+    const tokenHash = createHash('sha256').update(token).digest('hex')
+    await db.delete(authRecoveryTokens).where(eq(authRecoveryTokens.userId, profile.userId))
+    await db.insert(authRecoveryTokens).values({
+      tokenHash,
+      userId: profile.userId,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    })
+    return `${origin}/auth/verify?token=${encodeURIComponent(token)}`
+  } catch (error) {
+    console.error('[set-password-link] failed:', error)
     return null
   }
 }

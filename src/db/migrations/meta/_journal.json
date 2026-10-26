@@ -372,6 +372,20 @@
       "when": 1789000500000,
       "tag": "0057_case_bulk_downloads",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793040000000,
+      "tag": "0058_auth_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1793040100000,
+      "tag": "0059_auth_recovery_tokens",
+      "breakpoints": true
     }
   ]
 }

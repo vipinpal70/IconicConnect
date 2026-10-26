@@ -1,22 +1,3 @@
-if (typeof globalThis.WebSocket === 'undefined') {
-  globalThis.WebSocket = class {} as any;
-}
-import { createClient } from '@supabase/supabase-js'
+import { authAdmin } from '@/src/lib/auth/admin'
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_URL')
-}
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Missing env.SUPABASE_SERVICE_ROLE_KEY')
-}
-
-export const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+export const supabaseAdmin = { auth: { admin: authAdmin } }

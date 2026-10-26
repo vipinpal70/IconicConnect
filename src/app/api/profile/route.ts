@@ -3,15 +3,13 @@ import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { createClient } from '@/src/lib/supabase/server'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
 
 const PROFILE_TTL = 3600 // 1 hour
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const user = await getRequestUser(supabase)
+    const user = await getRequestUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

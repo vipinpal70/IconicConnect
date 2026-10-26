@@ -1,17 +1,15 @@
 import { getRequestUser } from '@/src/lib/auth/request-user'
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { db } from '@/src/db';
 import { notifications } from '@/src/db/schema/notification';
-import { createClient } from '@/src/lib/supabase/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache';
 
 const UNREAD_TTL = 60 // 1 minute
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const supabase = await createClient();
-    const user = await getRequestUser(supabase);
+    const user = await getRequestUser();
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

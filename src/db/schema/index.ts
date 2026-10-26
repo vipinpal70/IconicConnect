@@ -1,4 +1,6 @@
 export * from './profile'
+export * from './auth-credentials'
+export * from './auth-recovery-token'
 export * from './case'
 export * from './notification'
 export * from './activity-log'

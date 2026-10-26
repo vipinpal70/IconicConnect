@@ -1,11 +1,10 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { eq } from 'drizzle-orm'
 
-import { LOGIN_STAMP_COOKIE, isLoginStampValid } from '@/src/lib/auth/session-limit'
 import { VERIFIED_USER_HEADER } from '@/src/lib/auth/request-user'
+import { SESSION_COOKIE, getSession } from '@/src/lib/auth/session'
 import { getClientIp } from '@/src/lib/security/client-ip'
 import { rateLimit, SENSITIVE_PATH_LIMITS } from '@/src/lib/security/rate-limit'
 
@@ -43,29 +42,6 @@ async function getGateProfile(userId: string): Promise<GateProfile> {
 }
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          )
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
   // CSRF defence in depth (on top of SameSite cookies): a browser-initiated state-changing API call must
   // come from this site. Requests without an Origin header (server-to-server, curl) are unaffected.
   if (request.nextUrl.pathname.startsWith('/api') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
@@ -80,8 +56,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Inside middleware function
-  const { data: { user } } = await supabase.auth.getUser()
+  const sid = request.cookies.get(SESSION_COOKIE)?.value
+  const session = await getSession(sid)
+  const user = session ? { id: session.userId } : null
 
   // Rate-limit key: user id when logged in, otherwise the real client IP (never the
   // client-controlled first X-Forwarded-For hop). Redis-backed, shared across processes.
@@ -133,21 +110,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/sign-in', request.url))
   }
 
-  // Force a fresh login every SESSION_MAX_AGE_SECONDS (7h), whatever Supabase's refresh tokens allow.
-  // Auth pages are exempt so the sign-in and password-recovery flows still work.
-  if (user && !isPublicApi && !isAuthPage && !isSignUpPage &&
-      !isLoginStampValid(request.cookies.get(LOGIN_STAMP_COOKIE)?.value)) {
-    // scope 'local' revokes only this browser's session, not the user's other devices.
-    await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-    const expired = pathname.startsWith('/api')
-      ? NextResponse.json({ error: 'Session expired', code: 'session_expired' }, { status: 401 })
-      : NextResponse.redirect(new URL('/auth/sign-in?reason=session_expired', request.url))
-    // Carry over the cookie deletions signOut() wrote, and drop our own stamp.
-    supabaseResponse.cookies.getAll().forEach((c) => expired.cookies.set(c))
-    expired.cookies.delete(LOGIN_STAMP_COOKIE)
-    return expired
-  }
-
   if (user && !isPublicApi) {
     // Fetch profile to get role and parent client ID via Drizzle ORM
     const profile = await getGateProfile(user.id)
@@ -186,14 +148,14 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Forward the identity this proxy already verified, so read-only handlers can skip a second Supabase
+  // Forward the identity this proxy already verified, so handlers can skip a second Redis
   // Auth round trip (see src/lib/auth/request-user.ts). Any client-supplied copy is dropped first, so the
   // header can only ever originate from here.
   const forwarded = new Headers(request.headers)
   forwarded.delete(VERIFIED_USER_HEADER)
   if (user) forwarded.set(VERIFIED_USER_HEADER, user.id)
   const finalResponse = NextResponse.next({ request: { headers: forwarded } })
-  supabaseResponse.cookies.getAll().forEach((c) => finalResponse.cookies.set(c))
+  if (!session && sid) finalResponse.cookies.delete(SESSION_COOKIE)
   return finalResponse
 }
 

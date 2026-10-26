@@ -2,7 +2,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
 import { useMutation } from "@tanstack/react-query";
 import { X, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +30,6 @@ const initial: FormData = {
 
 export default function AdminSignUp() {
 	const router = useRouter();
-	const supabase = createClient();
 
 	const [form, setForm] = useState<FormData>(initial);
 	const [showSuccess, setShowSuccess] = useState(false);
@@ -42,13 +40,10 @@ export default function AdminSignUp() {
 
 	const signupMutation = useMutation({
 		mutationFn: async (formData: FormData) => {
-			const { data: { session } } = await supabase.auth.getSession();
-
 			const response = await fetch("/api/admin/user", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
-					"Authorization": `Bearer ${session?.access_token}`,
 					"x-admin-secret": formData.setupKey,
 				},
 				body: JSON.stringify({
@@ -251,4 +246,3 @@ function Field({
 		</div>
 	);
 }
-

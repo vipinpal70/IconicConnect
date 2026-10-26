@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
-import { createClient } from '@/src/lib/supabase/server'
 import { getRequestUser } from '@/src/lib/auth/request-user'
 import { isValidRoleForType } from '@/src/lib/auth/role'
 import { getCachedData, setCachedData } from '@/src/lib/redis-cache'
@@ -16,7 +15,7 @@ const OPS_DASHBOARD_TTL = 60
  */
 export async function opsDashboardSection<T>(section: string, compute: () => Promise<T>) {
   try {
-    const user = await getRequestUser(await createClient())
+    const user = await getRequestUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const [profile] = await db.select({ role: profiles.role }).from(profiles).where(eq(profiles.id, user.id)).limit(1)

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/src/lib/supabase/server'
-import { LOGIN_STAMP_COOKIE, SESSION_MAX_AGE_SECONDS, createLoginStamp } from '@/src/lib/auth/session-limit'
+import { signIn } from '@/src/lib/auth/auth-service'
+import {
+  createSession,
+  SESSION_COOKIE,
+  sessionCookieOptions,
+} from '@/src/lib/auth/session'
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,14 +18,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
+    const result = await signIn(email, password)
+    if (!result.ok && result.reason === 'invalid') {
       // Same message for every failure so responses don't distinguish unknown email / wrong password / etc.
       return NextResponse.json(
         { error: 'Invalid email or password' },
@@ -29,70 +27,50 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Fetch profile to determine redirect URL and status
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('user_role, created_by, user_status')
-      .eq('id', data.user.id)
-      .single()
-
-    if (profile && profile.user_status !== 'active') {
-      // Don't leave a live session behind for a pending/suspended account.
-      await supabase.auth.signOut().catch(() => {})
+    if (!result.ok) {
       return NextResponse.json(
         {
           success: false,
           isBlocked: true,
-          message: profile.user_status === 'pending' 
+          message: result.status === 'pending'
             ? 'Your account is under review. Please wait for admin approval.' 
-            : `Your account is ${profile.user_status}. Please contact support.`
+            : `Your account is ${result.status}. Please contact support.`
         },
         { status: 200 }
       )
     }
 
     let redirectUrl = '/dashboard'
-    if (profile) {
-      switch (profile.user_role) {
-        case 'admin':
-          redirectUrl = '/admin/dashboard'
-          break
-        case 'client':
-          redirectUrl = '/client/dashboard'
-          break
-        case 'subuser':
-          redirectUrl = '/client/dashboard'
-          break
-        case 'qc':
-        case 'designer':
-        case 'account_manager':
-          redirectUrl = '/dashboard'
-          break
-        case 'milling_admin':
-        case 'milling_production':
-        case 'milling_support':
-          redirectUrl = '/milling/dashboard'
-          break
-      }
+    switch (result.role) {
+      case 'admin':
+        redirectUrl = '/admin/dashboard'
+        break
+      case 'client':
+      case 'subuser':
+        redirectUrl = '/client/dashboard'
+        break
+      case 'qc':
+      case 'designer':
+      case 'account_manager':
+      case 'consultant':
+        redirectUrl = '/dashboard'
+        break
+      case 'milling_admin':
+      case 'milling_production':
+      case 'milling_support':
+        redirectUrl = '/milling/dashboard'
+        break
     }
 
     const response = NextResponse.json(
       {
         success: true,
-        // The session is carried by the Supabase auth cookies set above; tokens are deliberately not echoed in the body.
         redirectUrl,
       },
       { status: 200 }
     )
 
-    // Start of the 7-hour login window enforced by src/proxy.ts.
-    response.cookies.set(LOGIN_STAMP_COOKIE, createLoginStamp(), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: SESSION_MAX_AGE_SECONDS,
-    })
+    response.cookies.set(SESSION_COOKIE, await createSession(result.userId), sessionCookieOptions)
     return response
   } catch (err) {
     console.error('[sign-in POST]', err)

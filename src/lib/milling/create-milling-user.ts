@@ -36,8 +36,7 @@ export async function createMillingUser(input: CreateMillingUserInput) {
 
   // Email is unique across every profile (client, admin, milling, etc.) —
   // check up front so a duplicate produces one clear message instead of a
-  // Supabase "already registered" error surfacing after we've already
-  // created the auth user (which would then be orphaned with no profile).
+  // A duplicate error surfacing after creating credentials and leaving an orphan.
   const [existing] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.email, email)).limit(1)
   if (existing) {
     throw new Error(`A user with the email "${email}" already exists.`)
@@ -51,14 +50,13 @@ export async function createMillingUser(input: CreateMillingUserInput) {
   })
 
   if (authError || !authData.user) {
-    // Most common cause here: an auth user for this email exists without a
-    // matching profile row (e.g. left over from an earlier failed attempt).
     throw new Error(authError?.message || 'Failed to create auth user')
   }
+  const userId = authData.user.id
 
   try {
     await db.insert(profiles).values({
-      id: authData.user.id,
+      id: userId,
       email,
       fullName,
       role,
@@ -68,11 +66,8 @@ export async function createMillingUser(input: CreateMillingUserInput) {
       status: 'active',
     })
   } catch (dbError) {
-    // Roll back the auth user so we never leave a login with no profile —
-    // that's exactly the "created in Supabase Auth but not usable" state
-    // this whole check is meant to prevent.
-    await supabaseAdmin.auth.admin.deleteUser(authData.user.id).catch((cleanupErr) =>
-      console.error('[createMillingUser] Failed to roll back orphaned auth user', authData.user.id, cleanupErr)
+    await supabaseAdmin.auth.admin.deleteUser(userId).catch((cleanupErr) =>
+      console.error('[createMillingUser] Failed to roll back orphaned credentials', userId, cleanupErr)
     )
     console.error('[createMillingUser] profile insert failed', dbError)
     throw new Error('Failed to save the user profile — no login was created.')

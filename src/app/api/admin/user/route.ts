@@ -5,20 +5,14 @@
  * */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { db } from '@/src/db'
-import { profiles } from '@/src/db/schema'
+import { authCredentials, profiles } from '@/src/db/schema'
 import { handleProfileCreated } from '@/src/lib/price-list'
-import { timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { validatePasswordStrength } from '@/src/lib/security/password'
-
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-import { createClient as createServerClient } from '@/src/lib/supabase/server'
+import { hashPassword } from '@/src/lib/auth/password-hash'
+import { getRequestUser } from '@/src/lib/auth/request-user'
 
 export async function GET() {
     // check the requested user should be admin only
@@ -33,14 +27,18 @@ function secretMatches(provided: string | null): boolean {
     return a.length === b.length && timingSafeEqual(a, b)
 }
 
+function getDatabaseErrorCode(error: unknown): string | undefined {
+    if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
+    return typeof error.code === 'string' ? error.code : undefined
+}
+
 export async function POST(req: NextRequest) {
     try {
         // Creating an admin requires EITHER an already-authenticated active admin
         // OR the server-side bootstrap secret (first-admin setup). Never neither.
         let authorised = secretMatches(req.headers.get('x-admin-secret'))
         if (!authorised) {
-            const supabase = await createServerClient()
-            const { data: { user } } = await supabase.auth.getUser()
+            const user = await getRequestUser()
             if (user) {
                 const [caller] = await db.select({ role: profiles.role, status: profiles.status })
                     .from(profiles).where(eq(profiles.id, user.id)).limit(1)
@@ -55,7 +53,7 @@ export async function POST(req: NextRequest) {
 
         const { email, password, fullName, phone } = body
 
-        if (!email || !password) {
+        if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
             return NextResponse.json(
                 { error: 'email and password are required' },
                 { status: 400 }
@@ -66,44 +64,32 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: passwordError }, { status: 400 })
         }
 
-        // 3. Create auth user — email_confirm: true skips OTP/confirmation email
-        const { data, error: authError } = await supabaseAdmin.auth.admin.createUser({
-            email,
-            password,
-            phone,
-            email_confirm: true,
-            user_metadata: { name: fullName, phone: phone, role: "admin", userType: "admin_portal" },
-        })
-
-        if (authError || !data.user) {
-            return NextResponse.json(
-                { error: authError?.message ?? 'Auth creation failed' },
-                { status: 400 }
-            )
-        }
-
+        const userId = randomUUID()
+        const normalizedEmail = email.trim().toLowerCase()
         const role = "admin"
 
-        // 4. Insert profile — status active immediately since email is already confirmed
         try {
-            await db.insert(profiles).values({
-                id: data.user.id,
-                email,
-                userType: 'admin_portal',
-                role,
-                status: 'active',
-                fullName: fullName || null,
-                phone: phone || null,
+            await db.transaction(async (tx) => {
+                await tx.insert(authCredentials).values({
+                    userId,
+                    email: normalizedEmail,
+                    phone: typeof phone === 'string' ? phone : null,
+                    passwordHash: await hashPassword(password),
+                    emailVerifiedAt: new Date(),
+                })
+                await tx.insert(profiles).values({
+                    id: userId,
+                    email: normalizedEmail,
+                    userType: 'admin_portal',
+                    role,
+                    status: 'active',
+                    fullName: typeof fullName === 'string' ? fullName : null,
+                    phone: typeof phone === 'string' ? phone : null,
+                })
             })
-        } catch (dbError: any) {
-            // The auth user above was just created — if the profile fails to save,
-            // it's left as an orphaned Auth account with no matching profile. Clean
-            // it up so a duplicate-email attempt doesn't leave a ghost account behind.
+        } catch (dbError) {
             console.error('[admin/register] profile insert failed', dbError)
-            await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch((delErr) =>
-                console.error('[admin/register] failed to clean up orphaned auth user', delErr)
-            )
-            if (dbError?.code === '23505') {
+            if (getDatabaseErrorCode(dbError) === '23505') {
                 return NextResponse.json(
                     { error: 'A user with this email already exists.' },
                     { status: 409 }
@@ -116,13 +102,13 @@ export async function POST(req: NextRequest) {
         }
 
         // Automatically seed default catalog and client price list
-        await handleProfileCreated(data.user.id, role).catch((err) =>
+        await handleProfileCreated(userId, role).catch((err) =>
             console.error('[admin/register handleProfileCreated]', err)
         )
 
-        return NextResponse.json({ success: true, userId: data.user.id }, { status: 201 })
+        return NextResponse.json({ success: true, userId }, { status: 201 })
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('[admin/register POST]', err)
 
         // Return a clean 500 for any other catastrophic failure

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash, randomBytes } from 'node:crypto';
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
-import { createClient } from '@/src/lib/supabase/server';
+import { authCredentials, authRecoveryTokens } from '@/src/db/schema';
 import { eq, ilike } from 'drizzle-orm';
 import { escapeHtml } from '@/src/lib/security/html';
 
@@ -18,40 +19,26 @@ export async function POST(req: NextRequest) {
     // 1. Check if email exists in profiles table
     const results = await db.select().from(profiles).where(ilike(profiles.email, email)).limit(1);
     const profile = results[0];
+    const [credential] = await db.select({
+      userId: authCredentials.userId,
+    }).from(authCredentials).where(ilike(authCredentials.email, email)).limit(1);
 
-    if (!profile) {
+    if (!profile || !credential) {
       // Identical response whether or not the account exists — no email enumeration.
       return NextResponse.json(GENERIC_OK);
     }
 
-    // 2. Generate a recovery link using the Service Role Key
-    // This allows us to bypass Supabase's built-in email templates and use our own robust queue
-    if (typeof globalThis.WebSocket === 'undefined') {
-      globalThis.WebSocket = class {} as any;
-    }
-    const { createClient: createAdminClient } = await import('@supabase/supabase-js');
-    const supabaseAdmin = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    const origin = process.env.NEXT_PUBLIC_APP_URL!;
-
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: email,
-      options: {
-        redirectTo: `${origin}/auth/reset-password`
-      }
+    const token = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await db.delete(authRecoveryTokens).where(eq(authRecoveryTokens.userId, credential.userId));
+    await db.insert(authRecoveryTokens).values({
+      tokenHash,
+      userId: credential.userId,
+      expiresAt,
     });
-
-    if (linkError || !linkData?.properties?.hashed_token) {
-      console.error('Error generating link:', linkError);
-      return NextResponse.json({ error: 'Failed to generate reset link' }, { status: 400 });
-    }
-
-    const tokenHash = linkData.properties.hashed_token;
-    const customResetUrl = `${origin}/auth/verify?token_hash=${tokenHash}&type=recovery&next=/auth/reset-password`;
+    const origin = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin;
+    const customResetUrl = `${origin}/auth/verify?token=${encodeURIComponent(token)}&next=/auth/reset-password`;
 
     // 3. Queue the custom email via our Resend Worker. This is the entire
     // point of the request (unlike an admin-initiated password reset, there
@@ -82,6 +69,7 @@ export async function POST(req: NextRequest) {
 
     if (!queued) {
       console.error('Failed to queue password reset email:', emailError);
+      await db.delete(authRecoveryTokens).where(eq(authRecoveryTokens.tokenHash, tokenHash));
       return NextResponse.json({ error: 'Failed to send the reset email — please try again in a moment.' }, { status: 502 });
     }
 

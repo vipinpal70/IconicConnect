@@ -1,56 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server';
-import type { EmailOtpType } from '@supabase/supabase-js';
-import { createClient } from '@/src/lib/supabase/server';
-
-function getPublicOrigin(request: NextRequest): string {
-  const forwardedProto = request.headers.get('x-forwarded-proto');
-  const forwardedHost = request.headers.get('x-forwarded-host');
-
-  if (forwardedProto && forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`;
-  }
-
-  return process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
-}
-
-function getSafeNextPath(next: string | null): string {
-  if (!next || !next.startsWith('/')) {
-    return '/auth/reset-password';
-  }
-
-  return next;
-}
+import { createHash } from 'node:crypto'
+import { and, eq, gt, isNull } from 'drizzle-orm'
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/src/db'
+import { authRecoveryTokens } from '@/src/db/schema'
 
 export async function GET(request: NextRequest) {
-  const requestUrl = request.nextUrl;
-  const publicOrigin = getPublicOrigin(request);
-  const token_hash = requestUrl.searchParams.get('token_hash');
-  const type = requestUrl.searchParams.get('type') as EmailOtpType | null;
-  const next = getSafeNextPath(requestUrl.searchParams.get('next'));
-
-  if (token_hash && type) {
-    const supabase = await createClient();
-    
-    // Exchange the token_hash for a session
-    const { error } = await supabase.auth.verifyOtp({
-      type,
-      token_hash,
-    });
-
-    if (!error) {
-      // Token verified successfully, redirect to the next page
-      return NextResponse.redirect(new URL(next, publicOrigin));
-    } else {
-      console.error('Verify OTP error:', error.message);
-      // Redirect to the reset password page with an explicit error message
-      return NextResponse.redirect(
-        new URL(`/auth/reset-password?error=${encodeURIComponent(error.message)}`, publicOrigin)
-      );
-    }
+  const token = request.nextUrl.searchParams.get('token')
+  if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    return NextResponse.redirect(new URL('/auth/reset-password?error=Invalid%20recovery%20link.', request.url))
   }
 
-  // If token_hash or type is missing, it's a bad request
-  return NextResponse.redirect(
-    new URL(`/auth/reset-password?error=${encodeURIComponent('Invalid recovery link.')}`, publicOrigin)
-  );
+  const tokenHash = createHash('sha256').update(token).digest('hex')
+  const [recovery] = await db.select({ tokenHash: authRecoveryTokens.tokenHash })
+    .from(authRecoveryTokens)
+    .where(and(
+      eq(authRecoveryTokens.tokenHash, tokenHash),
+      isNull(authRecoveryTokens.consumedAt),
+      gt(authRecoveryTokens.expiresAt, new Date()),
+    ))
+    .limit(1)
+
+  const destination = recovery
+    ? `/auth/reset-password?token=${encodeURIComponent(token)}`
+    : '/auth/reset-password?error=This%20recovery%20link%20is%20invalid%20or%20expired.'
+  const response = NextResponse.redirect(new URL(destination, request.url))
+  response.headers.set('Referrer-Policy', 'no-referrer')
+  return response
 }

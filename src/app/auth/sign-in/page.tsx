@@ -44,8 +44,7 @@ function SignInForm() {
       }
 
       if (data.success) {
-        // The session is carried by the Supabase auth cookies set by /api/sign-in — never mirror a token
-        // into a JS-readable cookie.
+        // The session is carried by the HttpOnly cookie set by /api/sign-in.
         resetPrefetchFlag() // new login -> run the ordered prefetch again
         router.push(data.redirectUrl || '/dashboard')
         router.refresh()

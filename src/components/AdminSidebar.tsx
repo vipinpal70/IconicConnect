@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
+import { createClient } from "@/src/lib/auth/client";
 import { Button } from "@/src/components/ui/button";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { toast } from "sonner";

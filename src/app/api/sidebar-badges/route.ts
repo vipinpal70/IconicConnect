@@ -10,7 +10,6 @@ import { invoices } from '@/src/db/schema/invoice'
 import { tutorials } from '@/src/db/schema/tutorial'
 import { notifications } from '@/src/db/schema/notification'
 import { sidebarSeenAt } from '@/src/db/schema/sidebar-seen'
-import { createClient } from '@/src/lib/supabase/server'
 import { eq, gt, and, count, sql } from 'drizzle-orm'
 import { isValidRoleForType } from '@/src/lib/auth/role'
 import { resolveClientId, isLabUser } from '@/src/lib/auth/resolve-client-id'
@@ -22,8 +21,7 @@ async function getOne(query: Promise<{ count: number }[]>): Promise<boolean> {
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const user = await getRequestUser(supabase)
+    const user = await getRequestUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     // Per-user (key includes the verified user id) 15s cache: the client polls this every 30s per open tab.
@@ -159,8 +157,7 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getRequestUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json().catch(() => ({}))
