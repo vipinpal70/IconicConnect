@@ -55,8 +55,8 @@ referencecode/
 # local case XML extraction scripts
 /scripts/case-xml-extract/
 
-# local deploy-script notes (not for git history)
-/script.md
+# local-only docs / plans / notes (never committed)
+/docs/
 
 # keep the documented template (placeholders only) in git
 !.env.example
