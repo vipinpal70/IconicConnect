@@ -7,7 +7,6 @@ import type {
   AnnotationItem,
   SaveStatus,
   ToolMode,
-  EditorState,
   SaveAnnotationResponse,
   GetAnnotationResponse,
 } from '@/src/types/annotation';
@@ -58,17 +57,20 @@ export function useAnnotationEditor({
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
 
   const [activeTool, setActiveTool] = useState<ToolMode>('orbit');
-  const [activeLayerId, setActiveLayerId] = useState<string>('');
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [activeColor, setActiveColor] = useState<string>('#ef4444'); // Default red for markings
   const [strokeWidth, setStrokeWidth] = useState<number>(2);
+
+  // Undo / Redo count states to avoid reading refs in render
+  const [undoCount, setUndoCount] = useState<number>(0);
+  const [redoCount, setRedoCount] = useState<number>(0);
 
   // Draft recovery state
   const [hasRecoverableDraft, setHasRecoverableDraft] = useState<boolean>(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
   const [recoveredDraftDoc, setRecoveredDraftDoc] = useState<AnnotationDocument | null>(null);
 
-  // Undo / Redo history
+  // Undo / Redo history refs
   const undoStackRef = useRef<AnnotationDocument[]>([]);
   const redoStackRef = useRef<AnnotationDocument[]>([]);
   const lastSavedSnapshotRef = useRef<AnnotationDocument | null>(null);
@@ -77,14 +79,11 @@ export function useAnnotationEditor({
   const savingSnapshotRef = useRef<AnnotationDocument | null>(null);
   const isSavingRef = useRef<boolean>(false);
 
-  // Keep activeLayerId synchronized with available layers
-  useEffect(() => {
-    if (doc.layers.length > 0) {
-      if (!activeLayerId || !doc.layers.some((l) => l.id === activeLayerId)) {
-        setActiveLayerId(doc.layers[0].id);
-      }
-    }
-  }, [doc.layers, activeLayerId]);
+  // Maintain activeLayerId without triggering cascading renders in effects
+  const [rawActiveLayerId, setRawActiveLayerId] = useState<string>('');
+  const activeLayerId = doc.layers.some((l) => l.id === rawActiveLayerId)
+    ? rawActiveLayerId
+    : doc.layers[0]?.id || '';
 
   // Initial load from server + check for IndexedDB draft
   useEffect(() => {
@@ -115,7 +114,6 @@ export function useAnnotationEditor({
         // Check if there is an unsaved local draft in IndexedDB
         const localDraft = await loadDraftFromStorage(caseId, userId);
         if (!cancelled && localDraft && localDraft.document) {
-          // If local draft has annotations or differs from server
           const localAnnotationCount = localDraft.document.layers.reduce(
             (acc, l) => acc + (l.annotations?.length || 0),
             0
@@ -178,7 +176,9 @@ export function useAnnotationEditor({
   const pushState = useCallback((newDoc: AnnotationDocument) => {
     setDoc((prev) => {
       undoStackRef.current.push(prev);
-      redoStackRef.current = []; // Clear redo stack on new action
+      redoStackRef.current = [];
+      setUndoCount(undoStackRef.current.length);
+      setRedoCount(0);
       return newDoc;
     });
     setSaveStatus('dirty');
@@ -190,6 +190,8 @@ export function useAnnotationEditor({
     setDoc((prev) => {
       undoStackRef.current.push(prev);
       redoStackRef.current = [];
+      setUndoCount(undoStackRef.current.length);
+      setRedoCount(0);
 
       const targetLayerId = annotation.layerId || activeLayerId || prev.layers[0]?.id;
       const updatedLayers = prev.layers.map((layer) => {
@@ -212,6 +214,8 @@ export function useAnnotationEditor({
     setDoc((prev) => {
       undoStackRef.current.push(prev);
       redoStackRef.current = [];
+      setUndoCount(undoStackRef.current.length);
+      setRedoCount(0);
 
       const updatedLayers = prev.layers.map((layer) => ({
         ...layer,
@@ -229,6 +233,8 @@ export function useAnnotationEditor({
     setDoc((prev) => {
       undoStackRef.current.push(prev);
       redoStackRef.current = [];
+      setUndoCount(undoStackRef.current.length);
+      setRedoCount(0);
 
       const updatedLayers = prev.layers.map((layer) => ({
         ...layer,
@@ -257,7 +263,7 @@ export function useAnnotationEditor({
       ...doc,
       layers: [...doc.layers, newLayer],
     });
-    setActiveLayerId(newLayerId);
+    setRawActiveLayerId(newLayerId);
   }, [doc, pushState]);
 
   const updateLayer = useCallback((layerId: string, updates: Partial<AnnotationLayer>) => {
@@ -275,7 +281,7 @@ export function useAnnotationEditor({
       layers: filtered,
     });
     if (activeLayerId === layerId) {
-      setActiveLayerId(filtered[0]?.id || '');
+      setRawActiveLayerId(filtered[0]?.id || '');
     }
   }, [doc, activeLayerId, pushState]);
 
@@ -284,6 +290,8 @@ export function useAnnotationEditor({
     if (undoStackRef.current.length === 0) return;
     const previous = undoStackRef.current.pop()!;
     redoStackRef.current.push(doc);
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(redoStackRef.current.length);
     setDoc(previous);
     setSaveStatus('dirty');
   }, [doc]);
@@ -292,6 +300,8 @@ export function useAnnotationEditor({
     if (redoStackRef.current.length === 0) return;
     const next = redoStackRef.current.pop()!;
     undoStackRef.current.push(doc);
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(redoStackRef.current.length);
     setDoc(next);
     setSaveStatus('dirty');
   }, [doc]);
@@ -368,6 +378,8 @@ export function useAnnotationEditor({
     setDoc(JSON.parse(JSON.stringify(lastSavedSnapshotRef.current)));
     undoStackRef.current = [];
     redoStackRef.current = [];
+    setUndoCount(0);
+    setRedoCount(0);
     setSaveStatus('saved');
     setSaveError(undefined);
     void clearDraftFromStorage(caseId, userId);
@@ -378,6 +390,7 @@ export function useAnnotationEditor({
   const recoverDraft = useCallback(() => {
     if (!recoveredDraftDoc) return;
     undoStackRef.current.push(doc);
+    setUndoCount(undoStackRef.current.length);
     setDoc(recoveredDraftDoc);
     setSaveStatus('dirty');
     setHasRecoverableDraft(false);
@@ -397,7 +410,7 @@ export function useAnnotationEditor({
     activeTool,
     setActiveTool,
     activeLayerId,
-    setActiveLayerId,
+    setActiveLayerId: setRawActiveLayerId,
     selectedAnnotationId,
     setSelectedAnnotationId,
     activeColor,
@@ -412,8 +425,8 @@ export function useAnnotationEditor({
     deleteLayer,
     undo,
     redo,
-    canUndo: undoStackRef.current.length > 0,
-    canRedo: redoStackRef.current.length > 0,
+    canUndo: undoCount > 0,
+    canRedo: redoCount > 0,
     saveDocument,
     discardChanges,
     hasRecoverableDraft,

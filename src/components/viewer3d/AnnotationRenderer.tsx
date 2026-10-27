@@ -127,7 +127,7 @@ function BrushItem({
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: (e: any) => void;
+  onClick: (e: { stopPropagation: () => void }) => void;
 }) {
   const points = useMemo(() => {
     if (!annotation.points || annotation.points.length < 2) return null;
@@ -164,7 +164,7 @@ function DistanceItem({
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: (e: any) => void;
+  onClick: (e: { stopPropagation: () => void }) => void;
   onDelete: () => void;
 }) {
   const p1 = useMemo(
@@ -251,7 +251,7 @@ function PinItem({
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: (e: any) => void;
+  onClick: (e: { stopPropagation: () => void }) => void;
   onDelete: () => void;
 }) {
   const pos = useMemo(
@@ -340,7 +340,7 @@ function ArrowItem({
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: (e: any) => void;
+  onClick: (e: { stopPropagation: () => void }) => void;
   onDelete: () => void;
 }) {
   const start = useMemo(

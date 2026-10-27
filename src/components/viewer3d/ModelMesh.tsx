@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import type { ThreeEvent } from '@react-three/fiber';
 import { initBvhAcceleration } from './bvh-setup';
 
 initBvhAcceleration();
@@ -14,9 +15,9 @@ interface ModelMeshProps {
   wireframe?: boolean;
   opacity?: number;
   materialMode?: 'enamel' | 'clay' | 'normal';
-  onPointerDown?: (e: any) => void;
-  onPointerMove?: (e: any) => void;
-  onPointerUp?: (e: any) => void;
+  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
+  onPointerMove?: (e: ThreeEvent<PointerEvent>) => void;
+  onPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
 }
 
 /**
@@ -43,8 +44,8 @@ function createProceduralDentalArch(): THREE.BufferGeometry {
 
   tubeGeometry.computeVertexNormals();
   tubeGeometry.center();
-  if (typeof (tubeGeometry as any).computeBoundsTree === 'function') {
-    (tubeGeometry as any).computeBoundsTree();
+  if (typeof tubeGeometry.computeBoundsTree === 'function') {
+    tubeGeometry.computeBoundsTree();
   }
 
   return tubeGeometry;
@@ -63,7 +64,6 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
   ref
 ) {
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load geometry based on file extension
@@ -73,7 +73,6 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
       return;
     }
 
-    setIsLoading(true);
     setLoadError(null);
 
     const cleanUrl = modelUrl.split('?')[0].toLowerCase();
@@ -102,11 +101,10 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
           if (!isMounted) return;
           geom.computeVertexNormals();
           geom.center();
-          if (typeof (geom as any).computeBoundsTree === 'function') {
-            (geom as any).computeBoundsTree();
+          if (typeof geom.computeBoundsTree === 'function') {
+            geom.computeBoundsTree();
           }
           setGeometry(geom);
-          setIsLoading(false);
         },
         undefined,
         (err) => {
@@ -114,7 +112,6 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
           console.error('Error loading STL:', err);
           setLoadError('Failed to load STL model. Falling back to dental preview.');
           setGeometry(createProceduralDentalArch());
-          setIsLoading(false);
         }
       );
     } else if (isPly) {
@@ -125,11 +122,10 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
           if (!isMounted) return;
           geom.computeVertexNormals();
           geom.center();
-          if (typeof (geom as any).computeBoundsTree === 'function') {
-            (geom as any).computeBoundsTree();
+          if (typeof geom.computeBoundsTree === 'function') {
+            geom.computeBoundsTree();
           }
           setGeometry(geom);
-          setIsLoading(false);
         },
         undefined,
         (err) => {
@@ -137,7 +133,6 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
           console.error('Error loading PLY:', err);
           setLoadError('Failed to load PLY model. Falling back to dental preview.');
           setGeometry(createProceduralDentalArch());
-          setIsLoading(false);
         }
       );
     } else if (isObj) {
@@ -154,16 +149,16 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
           });
 
           if (mergedGeom) {
-            (mergedGeom as THREE.BufferGeometry).computeVertexNormals();
-            (mergedGeom as THREE.BufferGeometry).center();
-            if (typeof (mergedGeom as any).computeBoundsTree === 'function') {
-              (mergedGeom as any).computeBoundsTree();
+            const mg: THREE.BufferGeometry = mergedGeom;
+            mg.computeVertexNormals();
+            mg.center();
+            if (typeof mg.computeBoundsTree === 'function') {
+              mg.computeBoundsTree();
             }
-            setGeometry(mergedGeom);
+            setGeometry(mg);
           } else {
             setGeometry(createProceduralDentalArch());
           }
-          setIsLoading(false);
         },
         undefined,
         (err) => {
@@ -171,13 +166,11 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
           console.error('Error loading OBJ:', err);
           setLoadError('Failed to load OBJ model.');
           setGeometry(createProceduralDentalArch());
-          setIsLoading(false);
         }
       );
     } else {
       // Default / unsupported format preview
       setGeometry(createProceduralDentalArch());
-      setIsLoading(false);
     }
 
     return () => {

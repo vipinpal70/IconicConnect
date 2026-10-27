@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { Line as DreiLine } from '@react-three/drei';
 import type { ToolMode, AnnotationItem, Vector3D } from '@/src/types/annotation';
+
+interface OrbitControlsLike {
+  enabled: boolean;
+}
 
 interface DrawingInteractionProps {
   activeTool: ToolMode;
@@ -13,7 +17,7 @@ interface DrawingInteractionProps {
   activeLayerId: string;
   onAddAnnotation: (annotation: AnnotationItem) => void;
   onRequestPinText: (point: Vector3D, normal?: Vector3D) => void;
-  orbitControlsRef: React.RefObject<any>;
+  orbitControlsRef: React.RefObject<unknown>;
 }
 
 export function DrawingInteraction({
@@ -37,13 +41,14 @@ export function DrawingInteraction({
 
   // Disable OrbitControls when drawing markup tools are active
   useEffect(() => {
-    if (orbitControlsRef.current) {
-      orbitControlsRef.current.enabled = activeTool === 'orbit';
+    const controls = orbitControlsRef.current as OrbitControlsLike | null;
+    if (controls) {
+      controls.enabled = activeTool === 'orbit';
     }
   }, [activeTool, orbitControlsRef]);
 
   // Raycast helper to find intersection on dental mesh
-  const getMeshIntersection = (e: MouseEvent): THREE.Intersection | null => {
+  const getMeshIntersection = useCallback((e: MouseEvent): THREE.Intersection | null => {
     const canvas = e.target as HTMLCanvasElement;
     if (!canvas || !canvas.getBoundingClientRect) return null;
 
@@ -63,7 +68,7 @@ export function DrawingInteraction({
 
     const intersects = raycaster.intersectObjects(meshes, false);
     return intersects[0] || null;
-  };
+  }, [camera, raycaster, scene]);
 
   useEffect(() => {
     const handlePointerDown = (e: MouseEvent) => {
@@ -185,6 +190,7 @@ export function DrawingInteraction({
     activeLayerId,
     onAddAnnotation,
     onRequestPinText,
+    getMeshIntersection,
   ]);
 
   const brushLinePoints = useMemo((): [number, number, number][] | null => {

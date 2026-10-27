@@ -3,7 +3,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
-import * as THREE from 'three';
 import {
   Save,
   RotateCcw,
@@ -28,13 +27,12 @@ import {
   CheckCircle2,
   RefreshCw,
   X,
-  Sliders,
 } from 'lucide-react';
 import { useAnnotationEditor } from '@/src/lib/hooks/useAnnotationEditor';
 import { ModelMesh } from './ModelMesh';
 import { AnnotationRenderer } from './AnnotationRenderer';
 import { DrawingInteraction } from './DrawingInteraction';
-import type { ToolMode, Vector3D, AnnotationVersionItem } from '@/src/types/annotation';
+import type { Vector3D, AnnotationVersionItem } from '@/src/types/annotation';
 import { Button } from '@/src/components/ui/button';
 
 interface Dental3DViewerProps {
@@ -81,13 +79,16 @@ export function Dental3DViewer({
   const [pinTitle, setPinTitle] = useState('');
   const [pinText, setPinText] = useState('');
 
-  const orbitControlsRef = useRef<any>(null);
+  const orbitControlsRef = useRef<{
+    object: { position: { set: (x: number, y: number, z: number) => void } };
+    target: { set: (x: number, y: number, z: number) => void };
+    update: () => void;
+  } | null>(null);
 
   const {
     document: doc,
     saveStatus,
     lastSavedRevision,
-    lastSavedAt,
     saveError,
     activeTool,
     setActiveTool,
@@ -98,7 +99,6 @@ export function Dental3DViewer({
     activeColor,
     setActiveColor,
     strokeWidth,
-    setStrokeWidth,
     addAnnotation,
     deleteAnnotation,
     addLayer,
@@ -118,7 +118,6 @@ export function Dental3DViewer({
     caseId,
     userId,
     onSaveSuccess: () => {
-      // Refresh version history if modal is open
       if (isVersionsOpen) void loadVersions();
     },
   });
@@ -539,6 +538,22 @@ export function Dental3DViewer({
           >
             {materialMode}
           </button>
+
+          <div className="h-3 w-[1px] bg-zinc-700 mx-1" />
+
+          {/* Opacity slider */}
+          <div className="flex items-center gap-1.5 px-1">
+            <span className="text-[10px] text-zinc-400">Opacity</span>
+            <input
+              type="range"
+              min="0.1"
+              max="1"
+              step="0.05"
+              value={modelOpacity}
+              onChange={(e) => setModelOpacity(parseFloat(e.target.value))}
+              className="w-16 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+          </div>
         </div>
 
         {/* ---------------------------------------------------------------- */}
@@ -710,7 +725,7 @@ export function Dental3DViewer({
         >
           <PerspectiveCamera makeDefault position={[0, 20, 35]} fov={45} />
           <OrbitControls
-            ref={orbitControlsRef}
+            ref={orbitControlsRef as never}
             makeDefault
             enableDamping
             dampingFactor={0.08}
@@ -748,7 +763,7 @@ export function Dental3DViewer({
             activeLayerId={activeLayerId}
             onAddAnnotation={addAnnotation}
             onRequestPinText={handleRequestPinText}
-            orbitControlsRef={orbitControlsRef}
+            orbitControlsRef={orbitControlsRef as never}
           />
         </Canvas>
       </div>
