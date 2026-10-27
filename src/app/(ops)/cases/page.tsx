@@ -748,9 +748,9 @@ export default function CasesPage() {
 
   const validatePreviewFile = (file: File): { isValid: boolean; error?: string } => {
     const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
-    const allowed = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico"];
+    const allowed = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico", ".stl", ".ply", ".obj", ".dcm", ".off", ".3mf", ".glb", ".gltf"];
     if (!allowed.includes(ext)) {
-      return { isValid: false, error: "Only HTML, image files are allowed for preview." };
+      return { isValid: false, error: "Only HTML, image, or 3D files (.stl, .ply, .obj, .dcm) are allowed for preview." };
     }
     if (file.size > MAX_PREVIEW_FILE_SIZE) {
       return { isValid: false, error: "Preview file exceeds the 1GB limit." };
@@ -2124,10 +2124,10 @@ export default function CasesPage() {
             </div>
             <div className="grid gap-2 mt-1">
               <Label htmlFor="preview-file" className="text-sm font-semibold text-gray-700">
-                Preview Files (HTML or Image - Optional, up to {MAX_PREVIEW_FILES} total)
+                Preview Files (3D Model, HTML, or Image - Optional, up to {MAX_PREVIEW_FILES} total)
               </Label>
               <Input id="preview-file" ref={previewUploadInputRef} type="file" multiple
-                accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico"
+                accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico,.stl,.ply,.obj,.dcm"
                 disabled={designUploadExistingPreviewCount + designUploadPreviewFiles.length >= MAX_PREVIEW_FILES}
                 onChange={(e) => {
                   const files = Array.from(e.target.files || []);

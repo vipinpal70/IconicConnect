@@ -69,7 +69,7 @@ interface Row {
   previewFiles: PreviewFile[];
 }
 
-const PREVIEW_EXTENSIONS = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico"];
+const PREVIEW_EXTENSIONS = [".html", ".htm", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif", ".ico", ".stl", ".ply", ".obj", ".dcm", ".off", ".3mf", ".glb", ".gltf"];
 const MAX_PREVIEW_FILES = 5;
 const MAX_PREVIEW_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
 
@@ -77,7 +77,7 @@ function validatePreviewFile(file: File): { isValid: boolean; error?: string } {
   const dot = file.name.lastIndexOf(".");
   const ext = dot !== -1 ? file.name.substring(dot).toLowerCase() : "";
   if (!PREVIEW_EXTENSIONS.includes(ext)) {
-    return { isValid: false, error: "Only HTML or image files are allowed for preview." };
+    return { isValid: false, error: "Only HTML, image, or 3D files (.stl, .ply, .obj, .dcm) are allowed for preview." };
   }
   if (file.size > MAX_PREVIEW_FILE_SIZE) {
     return { isValid: false, error: "Preview file exceeds the 1GB limit." };

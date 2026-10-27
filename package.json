@@ -53,6 +53,8 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
     "@tanstack/react-query": "^5.100.10",
     "@tanstack/react-query-devtools": "^5.100.10",
     "archiver": "^8.0.0",
@@ -73,7 +75,9 @@
     "resend": "^6.12.3",
     "rsuite": "^6.1.3",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "three": "^0.186.1",
+    "three-mesh-bvh": "^0.9.16"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -82,6 +86,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.186.0",
     "dbmate": "^2.36.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",

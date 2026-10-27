@@ -49,7 +49,13 @@ import {
 	canClientCancelCase,
 } from "@/src/lib/case-utils";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
-import { Upload, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Upload, Trash2, ChevronLeft, ChevronRight, Box } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const Dental3DViewer = dynamic(
+	() => import("@/src/components/viewer3d/Dental3DViewer").then((mod) => mod.Dental3DViewer),
+	{ ssr: false }
+);
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 
@@ -141,7 +147,7 @@ function ThreeShapeImportPanel({ data }: { data: Record<string, unknown> }) {
 
 const getPreviewFileType = (
 	url: string | null | undefined,
-): "html" | "image" | "zip" | "other" => {
+): "html" | "image" | "zip" | "3d" | "other" => {
 	if (!url) return "other";
 	try {
 		const decoded = decodeURIComponent(url);
@@ -157,6 +163,7 @@ const getPreviewFileType = (
 		const extIdx = target.lastIndexOf(".");
 		if (extIdx !== -1) {
 			const ext = target.substring(extIdx).toLowerCase();
+			if ([".stl", ".ply", ".obj", ".dcm", ".off", ".3mf", ".glb", ".gltf"].includes(ext)) return "3d";
 			if ([".html", ".htm"].includes(ext)) return "html";
 			if (
 				[
@@ -412,6 +419,8 @@ export function CaseDetailView({
 	const chatRef = useRef<HTMLDivElement>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [previewCarouselIndex, setPreviewCarouselIndex] = useState(0);
+	const [is3DViewerModalOpen, setIs3DViewerModalOpen] = useState(false);
+	const [active3DFile, setActive3DFile] = useState<{ url: string; name: string } | null>(null);
 	const [replacingPreviewId, setReplacingPreviewId] = useState<string | null>(
 		null,
 	);
@@ -1374,9 +1383,16 @@ export function CaseDetailView({
 							(caseRecord.outputFile || previewFiles.length > 0) && (
 								<Card className="shadow-card bg-white">
 									<CardHeader className="py-2.5 px-4 border-b border-border/50">
-										<CardTitle className="text-sm font-semibold text-black flex items-center gap-2">
-											{/* <FileText className="h-4 w-4" /> */}
-											Design Deliverables
+										<CardTitle className="text-sm font-semibold text-black flex items-center justify-between gap-2 w-full">
+											<span>Design Deliverables</span>
+											<Button
+												size="sm"
+												variant="outline"
+												onClick={() => setIs3DViewerModalOpen(true)}
+												className="text-xs h-7 gap-1.5 text-blue-700 border-blue-200 bg-blue-50/50 hover:bg-blue-100 font-medium"
+											>
+												<Box className="h-3.5 w-3.5" /> 3D CAD QC Viewer
+											</Button>
 										</CardTitle>
 									</CardHeader>
 									<CardContent className="mt-2 px-4 pb-3 space-y-3">
@@ -1464,11 +1480,24 @@ export function CaseDetailView({
 																			<p className="text-xs text-muted-foreground mt-1">
 																				{fileType === "image"
 																					? "Image preview of the designed case."
-																					: "HTML interactive 3D rendering of the case."}
+																					: fileType === "3d" ? "3D Dental CAD Model (interactive viewing & explicit-save QC markup)." : "HTML interactive 3D rendering of the case."}
 																				{total > 1 ? ` · ${activeIndex + 1} of ${total}` : ""}
 																			</p>
 																		</div>
 																		<div className="flex items-center gap-1.5 shrink-0">
+																			{fileType === "3d" && (
+																				<Button
+																					size="sm"
+																					variant="outline"
+																					onClick={() => {
+																						setActive3DFile({ url: activeFile.fileUrl, name: activeFile.fileName });
+																						setIs3DViewerModalOpen(true);
+																					}}
+																					className="text-xs h-7 gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+																				>
+																					<Box className="h-3.5 w-3.5" /> Fullscreen CAD
+																				</Button>
+																			)}
 																			<a
 																				href={activeFile.fileUrl}
 																				target="_blank"
@@ -1623,7 +1652,7 @@ export function CaseDetailView({
 											<input
 												ref={replacePreviewInputRef}
 												type="file"
-												accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico"
+												accept=".html,.htm,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.svg,.heic,.heif,.ico,.stl,.ply,.obj,.dcm"
 												className="hidden"
 												onChange={(e) => {
 													const file = e.target.files?.[0];
@@ -2055,6 +2084,26 @@ export function CaseDetailView({
 					)}
 				</DialogContent>
 			</Dialog>
+
+			{/* 3D CAD QC Viewer Modal */}
+			{is3DViewerModalOpen && (
+				<div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-2 backdrop-blur-sm">
+					<div className="w-full h-full max-w-7xl max-h-[96vh] rounded-2xl overflow-hidden shadow-2xl border border-zinc-800 bg-zinc-950 flex flex-col">
+						<Dental3DViewer
+							caseId={caseId}
+							caseNumber={caseRecord.caseNumber || undefined}
+							modelUrl={
+								active3DFile?.url ||
+								previewFiles.find((f) => getPreviewFileType(f.fileUrl) === "3d")?.fileUrl ||
+								files.find((f) => /\.(stl|ply|obj|dcm|3mf)$/i.test(f.fileName))?.fileUrl
+							}
+							fileName={active3DFile?.name || "Dental Model Preview"}
+							onClose={() => setIs3DViewerModalOpen(false)}
+							isFullScreenDefault={true}
+						/>
+					</div>
+				</div>
+			)}
 		</div>,
 	);
 }
