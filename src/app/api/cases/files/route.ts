@@ -80,13 +80,33 @@ export async function GET(req: NextRequest) {
     // Optional direct-to-R2 delivery (R2_DIRECT_DOWNLOADS=true): after the authorization above, redirect to a
     // short-lived presigned URL so the bytes go Cloudflare → browser instead of R2 → this server → nginx →
     // browser. Forced download + octet-stream keep the untrusted-content guarantees (and R2 is a different
-    // origin from the app, so nothing can touch our cookies). HTML stays proxied below because it needs the
-    // CSP sandbox. The bucket needs a CORS rule for this origin if any page fetch()es these URLs.
+    // origin from the app, so nothing can touch our cookies). The bucket needs a CORS rule for this origin
+    // if any page fetch()es these URLs.
     // Off by default; not exercised in tests.
+    const ext = fileName.lastIndexOf('.') >= 0 ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : '';
+    const isHtml = ext === '.html' || ext === '.htm';
+
+    // HTML previews (exocad webview, 3Shape viewers) are always served from R2's own origin via a short-lived
+    // presigned URL. These viewers need a real origin (localStorage etc. throw under an opaque-origin sandbox,
+    // which crashes exocad during initialize), and the R2 origin never holds this app's cookies, so the page
+    // still can't read the session or call our API as the viewer.
+    if (isHtml) {
+      const url = await getSignedUrl(
+        r2,
+        new GetObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: key,
+          ResponseContentType: 'text/html; charset=utf-8',
+          ResponseContentDisposition: `inline; filename="${encodeURIComponent(fileName)}"`,
+          ResponseCacheControl: 'private, no-store',
+        }),
+        { expiresIn: 600 },
+      );
+      return new Response(null, { status: 302, headers: { Location: url, 'Cache-Control': 'private, no-store' } });
+    }
+
     {
-      const lower = fileName.toLowerCase();
-      const wantsHtml = lower.endsWith('.html') || lower.endsWith('.htm');
-      if (process.env.R2_DIRECT_DOWNLOADS === 'true' && !wantsHtml) {
+      if (process.env.R2_DIRECT_DOWNLOADS === 'true') {
         const url = await getSignedUrl(
           r2,
           new GetObjectCommand({
@@ -116,22 +136,16 @@ export async function GET(req: NextRequest) {
     }
 
     // User-uploaded content is untrusted. It must never run with this app's origin (session cookies,
-    // same-origin APIs), so:
-    //  - everything except HTML is a forced download with nosniff
-    //  - HTML (3D/preview viewers) is shown in a CSP sandbox WITHOUT allow-same-origin: scripts can run
-    //    but get an opaque origin, so an uploaded page can't read cookies or call our API as the viewer
-    const ext = fileName.lastIndexOf('.') >= 0 ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : '';
-    const isHtml = ext === '.html' || ext === '.htm';
+    // same-origin APIs), so everything proxied here is a forced download with nosniff and a CSP sandbox
+    // (HTML never reaches this point; it is redirected to R2 above).
     const safeName = encodeURIComponent(fileName);
-    const contentType = isHtml ? 'text/html; charset=utf-8' : 'application/octet-stream';
-    const disposition = isHtml ? `inline; filename="${safeName}"` : `attachment; filename="${safeName}"`;
 
     // Stream the R2 object body straight through to the client
     const webStream = (object.Body as any).transformToWebStream() as ReadableStream;
 
     const headers: Record<string, string> = {
-      'Content-Type': contentType,
-      'Content-Disposition': disposition,
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${safeName}"`,
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, no-store',
       'Cross-Origin-Resource-Policy': 'same-origin',
@@ -140,11 +154,7 @@ export async function GET(req: NextRequest) {
       headers['Content-Length'] = object.ContentLength.toString();
     }
 
-    if (isHtml) {
-      headers['Content-Security-Policy'] = "sandbox allow-scripts; frame-ancestors 'self'";
-    } else {
-      headers['Content-Security-Policy'] = "default-src 'none'; sandbox";
-    }
+    headers['Content-Security-Policy'] = "default-src 'none'; sandbox";
 
     return new Response(webStream, { headers });
   } catch (error: any) {

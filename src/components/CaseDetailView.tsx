@@ -1561,7 +1561,9 @@ export function CaseDetailView({
 																				/>
 																			) : (
 																				<iframe
-																					sandbox="allow-scripts"
+																					// allow-same-origin is safe only because HTML previews are redirected to R2's origin
+																					// (see /api/cases/files); exocad viewers crash without a real origin.
+																					sandbox="allow-scripts allow-same-origin"
 																					src={activeFile.fileUrl}
 																					className="w-full h-[500px] border-none bg-white"
 																					title={activeFile.fileName}
