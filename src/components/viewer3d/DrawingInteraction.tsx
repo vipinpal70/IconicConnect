@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { Line as DreiLine } from '@react-three/drei';
@@ -29,11 +29,15 @@ export function DrawingInteraction({
   onRequestPinText,
   orbitControlsRef,
 }: DrawingInteractionProps) {
-  const { camera, raycaster, scene } = useThree();
+  const { camera, raycaster, scene, gl } = useThree();
 
   // In-flight interactive states
   const [isBrushDrawing, setIsBrushDrawing] = useState(false);
   const [brushPoints, setBrushPoints] = useState<THREE.Vector3[]>([]);
+  const brushPointsRef = useRef<THREE.Vector3[]>([]);
+  const isBrushDrawingRef = useRef(false);
+  const brushPreviewFrameRef = useRef<number | null>(null);
+  const meshCacheRef = useRef<THREE.Mesh[]>([]);
   const [distanceStart, setDistanceStart] = useState<THREE.Vector3 | null>(null);
   const [distanceCurrent, setDistanceCurrent] = useState<THREE.Vector3 | null>(null);
   const [arrowTarget, setArrowTarget] = useState<THREE.Vector3 | null>(null);
@@ -48,30 +52,32 @@ export function DrawingInteraction({
   }, [activeTool, orbitControlsRef]);
 
   // Raycast helper to find intersection on dental mesh
-  const getMeshIntersection = useCallback((e: MouseEvent): THREE.Intersection | null => {
-    const canvas = e.target as HTMLCanvasElement;
-    if (!canvas || !canvas.getBoundingClientRect) return null;
-
-    const rect = canvas.getBoundingClientRect();
+  const getMeshIntersection = useCallback((e: PointerEvent): THREE.Intersection | null => {
+    const rect = gl.domElement.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+      return null;
+    }
     const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
 
-    // Filter for mesh objects in scene
-    const meshes: THREE.Mesh[] = [];
-    scene.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh && obj.visible && (obj as THREE.Mesh).geometry) {
-        meshes.push(obj as THREE.Mesh);
-      }
-    });
+    const cachedMeshes = meshCacheRef.current;
+    if (cachedMeshes.length === 0 || cachedMeshes.some((mesh) => !mesh.parent)) {
+      cachedMeshes.length = 0;
+      scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh && mesh.userData.isDentalModel && mesh.geometry) cachedMeshes.push(mesh);
+      });
+    }
 
-    const intersects = raycaster.intersectObjects(meshes, false);
+    const intersects = raycaster.intersectObjects(cachedMeshes.filter((mesh) => mesh.visible), false);
     return intersects[0] || null;
-  }, [camera, raycaster, scene]);
+  }, [camera, gl, raycaster, scene]);
 
   useEffect(() => {
-    const handlePointerDown = (e: MouseEvent) => {
+    const canvas = gl.domElement;
+    const handlePointerDown = (e: PointerEvent) => {
       if (activeTool === 'orbit') return;
 
       const hit = getMeshIntersection(e);
@@ -80,6 +86,10 @@ export function DrawingInteraction({
       const pt = hit.point.clone();
 
       if (activeTool === 'brush') {
+        e.preventDefault();
+        canvas.setPointerCapture(e.pointerId);
+        isBrushDrawingRef.current = true;
+        brushPointsRef.current = [pt];
         setIsBrushDrawing(true);
         setBrushPoints([pt]);
       } else if (activeTool === 'distance') {
@@ -129,22 +139,26 @@ export function DrawingInteraction({
       }
     };
 
-    const handlePointerMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (activeTool === 'orbit') return;
+      if (activeTool === 'brush' && !isBrushDrawingRef.current) return;
 
       const hit = getMeshIntersection(e);
       if (!hit) return;
       const pt = hit.point.clone();
 
-      if (activeTool === 'brush' && isBrushDrawing) {
-        setBrushPoints((prev) => {
-          const last = prev[prev.length - 1];
-          // Sample point only if moved at least 0.3mm from previous point
-          if (!last || last.distanceTo(pt) > 0.3) {
-            return [...prev, pt];
+      if (activeTool === 'brush' && isBrushDrawingRef.current) {
+        const points = brushPointsRef.current;
+        const last = points[points.length - 1];
+        if (!last || last.distanceTo(pt) > 0.2) {
+          points.push(pt);
+          if (brushPreviewFrameRef.current === null) {
+            brushPreviewFrameRef.current = requestAnimationFrame(() => {
+              brushPreviewFrameRef.current = null;
+              setBrushPoints([...brushPointsRef.current]);
+            });
           }
-          return prev;
-        });
+        }
       } else if (activeTool === 'distance' && distanceStart) {
         setDistanceCurrent(pt);
       } else if (activeTool === 'arrow' && arrowTarget) {
@@ -152,10 +166,18 @@ export function DrawingInteraction({
       }
     };
 
-    const handlePointerUp = () => {
-      if (activeTool === 'brush' && isBrushDrawing) {
+    const handlePointerUp = (e: PointerEvent) => {
+      if (activeTool === 'brush' && isBrushDrawingRef.current) {
+        isBrushDrawingRef.current = false;
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        if (brushPreviewFrameRef.current !== null) {
+          cancelAnimationFrame(brushPreviewFrameRef.current);
+          brushPreviewFrameRef.current = null;
+        }
+        const completedPoints = brushPointsRef.current;
+        brushPointsRef.current = [];
         setIsBrushDrawing(false);
-        if (brushPoints.length >= 2) {
+        if (completedPoints.length >= 2) {
           onAddAnnotation({
             id: `brush-${Date.now()}`,
             layerId: activeLayerId,
@@ -163,26 +185,28 @@ export function DrawingInteraction({
             color: activeColor,
             lineWidth: strokeWidth,
             createdAt: new Date().toISOString(),
-            points: brushPoints.map((p) => ({ x: p.x, y: p.y, z: p.z })),
+            points: completedPoints.map((p) => ({ x: p.x, y: p.y, z: p.z })),
           });
         }
         setBrushPoints([]);
       }
     };
 
-    window.addEventListener('mousedown', handlePointerDown);
-    window.addEventListener('mousemove', handlePointerMove);
-    window.addEventListener('mouseup', handlePointerUp);
+    canvas.addEventListener('pointerdown', handlePointerDown, true);
+    canvas.addEventListener('pointermove', handlePointerMove);
+    canvas.addEventListener('pointerup', handlePointerUp);
+    canvas.addEventListener('pointercancel', handlePointerUp);
 
     return () => {
-      window.removeEventListener('mousedown', handlePointerDown);
-      window.removeEventListener('mousemove', handlePointerMove);
-      window.removeEventListener('mouseup', handlePointerUp);
+      canvas.removeEventListener('pointerdown', handlePointerDown, true);
+      canvas.removeEventListener('pointermove', handlePointerMove);
+      canvas.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointercancel', handlePointerUp);
+      if (brushPreviewFrameRef.current !== null) cancelAnimationFrame(brushPreviewFrameRef.current);
     };
   }, [
     activeTool,
-    isBrushDrawing,
-    brushPoints,
+    gl,
     distanceStart,
     arrowTarget,
     activeColor,

@@ -58,6 +58,7 @@ const Dental3DViewer = dynamic(
 );
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
+import { createPortal } from "react-dom";
 
 /**
  * Read-only summary of a case created via 3Shape XML Import. Reads the
@@ -427,6 +428,7 @@ export function CaseDetailView({
 	const [deletingPreviewId, setDeletingPreviewId] = useState<string | null>(
 		null,
 	);
+
 	const replacePreviewInputRef = useRef<HTMLInputElement>(null);
 	const [isHoldDialogOpen, setIsHoldDialogOpen] = useState(false);
 	const [isReferenceImagesOpen, setIsReferenceImagesOpen] = useState(false);
@@ -825,6 +827,12 @@ export function CaseDetailView({
 	const previewFiles = previewFilesResponse?.data || [];
 	const referenceImages = referenceFilesResponse?.data || [];
 	const holdImages = holdImagesResponse?.data || [];
+	const caseModelFiles = files.filter((file) => /\.(stl|ply|obj|dcm|zip)$/i.test(file.fileName));
+	const previewModelFile =
+		previewFiles.find((file) => getPreviewFileType(file.fileUrl) === "3d") ||
+		previewFiles.find((file) => getPreviewFileType(file.fileUrl) === "zip");
+	const caseModelFile = caseModelFiles[0];
+	const has3DViewerSource = Boolean(previewModelFile || caseModelFile);
 
 	// Left/right arrow-key navigation while the reference-images carousel is open.
 	useEffect(() => {
@@ -1376,23 +1384,27 @@ export function CaseDetailView({
 
 					{/* Full Width Section: Attachments & Case Chat */}
 					<div className="space-y-4">
-						{(chatSide === "admin" ||
-							["submitted_to_client", "approved", "delivered"].includes(
-								caseRecord.status,
-							)) &&
-							(caseRecord.outputFile || previewFiles.length > 0) && (
+						{(((chatSide === "admin" ||
+							["submitted_to_client", "approved", "delivered"].includes(caseRecord.status)) &&
+							(caseRecord.outputFile || previewFiles.length > 0)) ||
+							caseModelFiles.length > 0) && (
 								<Card className="shadow-card bg-white">
 									<CardHeader className="py-2.5 px-4 border-b border-border/50">
 										<CardTitle className="text-sm font-semibold text-black flex items-center justify-between gap-2 w-full">
-											<span>Design Deliverables</span>
-											<Button
-												size="sm"
-												variant="outline"
-												onClick={() => setIs3DViewerModalOpen(true)}
-												className="text-xs h-7 gap-1.5 text-blue-700 border-blue-200 bg-blue-50/50 hover:bg-blue-100 font-medium"
-											>
-												<Box className="h-3.5 w-3.5" /> 3D CAD QC Viewer
-											</Button>
+											<span>{caseRecord.outputFile || previewFiles.length > 0 ? "Design Deliverables" : "Case Scan"}</span>
+											{has3DViewerSource && (
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={() => {
+														setActive3DFile(null);
+														setIs3DViewerModalOpen(true);
+													}}
+													className="text-xs h-7 gap-1.5 text-blue-700 border-blue-200 bg-blue-50/50 hover:bg-blue-100 font-medium"
+												>
+													<Box className="h-3.5 w-3.5" /> 3D Scan / CAD Viewer
+												</Button>
+											)}
 										</CardTitle>
 									</CardHeader>
 									<CardContent className="mt-2 px-4 pb-3 space-y-3">
@@ -1609,7 +1621,7 @@ export function CaseDetailView({
 																				{file.fileName}
 																			</h4>
 																			<p className="text-xs text-muted-foreground mt-1">
-																				ZIP archive containing preview assets.
+																				ZIP archive containing 3D scan or preview assets.
 																			</p>
 																		</div>
 																		{chatSide === "admin" && file.id !== "legacy" && (
@@ -1624,13 +1636,24 @@ export function CaseDetailView({
 																			</button>
 																		)}
 																	</div>
-																	<div className="mt-4">
+																	<div className="mt-4 flex gap-2">
+																		<Button
+																			size="sm"
+																			variant="outline"
+																			onClick={() => {
+																				setActive3DFile({ url: file.fileUrl, name: file.fileName });
+																				setIs3DViewerModalOpen(true);
+																			}}
+																			className="flex-1 gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+																		>
+																			<Box className="h-4 w-4" /> View 3D Scan
+																		</Button>
 																		<a
 																			href={file.fileUrl}
 																			download
 																			target="_blank"
 																			rel="noreferrer"
-																			className="w-full block"
+																			className="flex-1 block"
 																		>
 																			<Button
 																				size="sm"
@@ -2086,24 +2109,25 @@ export function CaseDetailView({
 			</Dialog>
 
 			{/* 3D CAD QC Viewer Modal */}
-			{is3DViewerModalOpen && (
-				<div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-2 backdrop-blur-sm">
-					<div className="w-full h-full max-w-7xl max-h-[96vh] rounded-2xl overflow-hidden shadow-2xl border border-zinc-800 bg-zinc-950 flex flex-col">
+			{is3DViewerModalOpen &&
+				typeof document !== "undefined" &&
+				createPortal(
+					<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm">
 						<Dental3DViewer
 							caseId={caseId}
 							caseNumber={caseRecord.caseNumber || undefined}
 							modelUrl={
 								active3DFile?.url ||
-								previewFiles.find((f) => getPreviewFileType(f.fileUrl) === "3d")?.fileUrl ||
-								files.find((f) => /\.(stl|ply|obj|dcm|3mf)$/i.test(f.fileName))?.fileUrl
+								previewModelFile?.fileUrl ||
+								caseModelFile?.fileUrl
 							}
-							fileName={active3DFile?.name || "Dental Model Preview"}
+							fileName={active3DFile?.name || previewModelFile?.fileName || caseModelFile?.fileName || "Dental Model Preview"}
 							onClose={() => setIs3DViewerModalOpen(false)}
 							isFullScreenDefault={true}
 						/>
-					</div>
-				</div>
-			)}
+					</div>,
+					document.body,
+				)}
 		</div>,
 	);
 }

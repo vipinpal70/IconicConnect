@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import {
@@ -54,6 +54,50 @@ const PRESET_COLORS = [
   '#06b6d4', // Cyan
 ];
 
+interface OrbitControlsLike {
+  object: { position: { set: (x: number, y: number, z: number) => void } };
+  target: { set: (x: number, y: number, z: number) => void };
+  minDistance: number;
+  maxDistance: number;
+  update: () => void;
+}
+
+interface ScanFileInfo {
+  name: string;
+  color: string;
+  vertices: number;
+  triangles: number;
+}
+
+interface ModelBounds {
+  center: { x: number; y: number; z: number };
+  radius: number;
+}
+
+function ModelCameraFraming({
+  bounds,
+  controlsRef,
+}: {
+  bounds: ModelBounds | null;
+  controlsRef: React.RefObject<OrbitControlsLike | null>;
+}) {
+  useEffect(() => {
+    if (!bounds) return;
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const { center, radius } = bounds;
+    const distance = Math.max(radius / Math.sin((45 * Math.PI) / 360) * 0.62, 2);
+    controls.minDistance = Math.max(radius * 0.08, 0.2);
+    controls.maxDistance = Math.max(radius * 12, 100);
+    controls.target.set(center.x, center.y, center.z);
+    controls.object.position.set(center.x + distance * 0.16, center.y + distance * 0.38, center.z + distance);
+    controls.update();
+  }, [bounds, controlsRef]);
+
+  return null;
+}
+
 export function Dental3DViewer({
   caseId,
   caseNumber,
@@ -68,6 +112,13 @@ export function Dental3DViewer({
   const [isVersionsOpen, setIsVersionsOpen] = useState(false);
   const [versionsList, setVersionsList] = useState<AnnotationVersionItem[]>([]);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
+  const [modelLoadProgress, setModelLoadProgress] = useState<{ loadedBytes: number; totalBytes: number | null } | null>(null);
+  const pendingLoadProgressRef = useRef<{ loadedBytes: number; totalBytes: number | null } | null>(null);
+  const loadProgressFrameRef = useRef<number | null>(null);
+  const [scanFiles, setScanFiles] = useState<ScanFileInfo[]>([]);
+  const [scanVisibility, setScanVisibility] = useState<Record<string, boolean>>({});
+  const [modelBounds, setModelBounds] = useState<ModelBounds | null>(null);
 
   // Model rendering preferences
   const [wireframe, setWireframe] = useState(false);
@@ -79,11 +130,41 @@ export function Dental3DViewer({
   const [pinTitle, setPinTitle] = useState('');
   const [pinText, setPinText] = useState('');
 
-  const orbitControlsRef = useRef<{
-    object: { position: { set: (x: number, y: number, z: number) => void } };
-    target: { set: (x: number, y: number, z: number) => void };
-    update: () => void;
-  } | null>(null);
+  const orbitControlsRef = useRef<OrbitControlsLike | null>(null);
+
+  const handleScanFilesChange = useCallback((files: ScanFileInfo[]) => {
+    setScanFiles(files);
+    const hasPrimaryScanPair = files.some(({ name }) =>
+      /(?:^|\/)mb antagonist scan\.dcm$/i.test(name.replace(/\\/g, '/')),
+    ) && files.some(({ name }) =>
+      /(?:^|\/)mb preparation scan\.dcm$/i.test(name.replace(/\\/g, '/')),
+    );
+    setScanVisibility((current) =>
+      Object.fromEntries(files.map(({ name }) => {
+        const normalizedName = name.replace(/\\/g, '/');
+        const defaultVisible = hasPrimaryScanPair
+          ? /(?:^|\/)mb (?:antagonist|preparation) scan\.dcm$/i.test(normalizedName)
+          : !/(?:^|\/)(?:raw |pre.?preparation|.*articulatorbitescan)/i.test(normalizedName);
+        return [name, current[name] ?? defaultVisible];
+      })),
+    );
+  }, []);
+
+  const handleModelLoadProgress = useCallback((progress: { loadedBytes: number; totalBytes: number | null } | null) => {
+    pendingLoadProgressRef.current = progress;
+    if (loadProgressFrameRef.current !== null) return;
+    loadProgressFrameRef.current = requestAnimationFrame(() => {
+      loadProgressFrameRef.current = null;
+      setModelLoadProgress(pendingLoadProgressRef.current);
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (loadProgressFrameRef.current !== null) cancelAnimationFrame(loadProgressFrameRef.current);
+    },
+    [],
+  );
 
   const {
     document: doc,
@@ -126,23 +207,25 @@ export function Dental3DViewer({
   const setCameraView = (view: 'top' | 'front' | 'left' | 'right' | 'reset') => {
     if (!orbitControlsRef.current) return;
     const controls = orbitControlsRef.current;
+    const distance = Math.max(modelBounds?.radius ?? 20, 1) * 2.4;
+    const center = modelBounds?.center ?? { x: 0, y: 0, z: 0 };
 
     switch (view) {
       case 'top':
-        controls.object.position.set(0, 45, 0.001);
+        controls.object.position.set(center.x, center.y + distance, center.z + 0.001);
         break;
       case 'front':
-        controls.object.position.set(0, 0, 45);
+        controls.object.position.set(center.x, center.y + distance * 0.15, center.z + distance);
         break;
       case 'left':
-        controls.object.position.set(-45, 0, 0);
+        controls.object.position.set(center.x - distance, center.y + distance * 0.15, center.z);
         break;
       case 'right':
-        controls.object.position.set(45, 0, 0);
+        controls.object.position.set(center.x + distance, center.y + distance * 0.15, center.z);
         break;
       case 'reset':
-        controls.object.position.set(0, 20, 35);
-        controls.target.set(0, 0, 0);
+        controls.object.position.set(center.x + distance * 0.16, center.y + distance * 0.38, center.z + distance);
+        controls.target.set(center.x, center.y, center.z);
         break;
     }
     controls.update();
@@ -192,8 +275,36 @@ export function Dental3DViewer({
 
   const activeLayer = doc.layers.find((l) => l.id === activeLayerId) || doc.layers[0];
 
+  useEffect(() => {
+    if (!isFullScreen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isFullScreen]);
+
+  useEffect(() => {
+    if (!isFullScreen || !onClose) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (saveStatus === 'dirty' && !confirm('You have unsaved changes. Exit anyway?')) return;
+      onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullScreen, onClose, saveStatus]);
+
   return (
     <div
+      role="dialog"
+      aria-modal={isFullScreen}
+      aria-label="3D CAD case viewer"
       className={`relative flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden select-none font-sans ${
         isFullScreen
           ? 'fixed inset-0 z-50 w-screen h-screen'
@@ -398,6 +509,46 @@ export function Dental3DViewer({
       {/* Main Viewport & Floating Controls                                */}
       {/* ---------------------------------------------------------------- */}
       <div className="relative flex-1 w-full h-full overflow-hidden">
+        {modelLoadError && (
+          <div
+            role="alert"
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[min(90%,40rem)] rounded-lg border border-amber-700 bg-amber-950/95 px-4 py-3 text-sm text-amber-100 shadow-lg"
+          >
+            {modelLoadError}
+          </div>
+        )}
+        {modelLoadProgress && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-[min(90%,24rem)] rounded-xl border border-zinc-700 bg-zinc-900/95 px-4 py-3 text-sm text-zinc-100 shadow-xl backdrop-blur"
+          >
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-blue-400" />
+              <span className="font-medium">Loading 3D scan</span>
+              <span className="ml-auto text-xs tabular-nums text-zinc-400">
+                {modelLoadProgress.totalBytes
+                  ? `${Math.min(100, Math.round((modelLoadProgress.loadedBytes / modelLoadProgress.totalBytes) * 100))}%`
+                  : `${(modelLoadProgress.loadedBytes / (1024 * 1024)).toFixed(0)} MB`}
+              </span>
+            </div>
+            {modelLoadProgress.totalBytes && (
+              <div
+                className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-700"
+                role="progressbar"
+                aria-label="3D scan download progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.min(100, Math.round((modelLoadProgress.loadedBytes / modelLoadProgress.totalBytes) * 100))}
+              >
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-[width]"
+                  style={{ width: `${Math.min(100, (modelLoadProgress.loadedBytes / modelLoadProgress.totalBytes) * 100)}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
         {/* Floating Left Toolbar */}
         <div className="absolute left-3 top-3 z-10 flex flex-col gap-1.5 p-1.5 bg-zinc-900/90 border border-zinc-800 rounded-xl shadow-xl backdrop-blur">
           {/* Orbit Navigation Tool */}
@@ -575,6 +726,66 @@ export function Dental3DViewer({
               </button>
             </div>
 
+            <section className="shrink-0 border-b border-zinc-800 px-3 py-3" aria-label="Scan components">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                  <Eye className="h-3.5 w-3.5" />
+                  <span>Scan components</span>
+                  {scanFiles.length > 0 && (
+                    <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-300">
+                      {scanFiles.length}
+                    </span>
+                  )}
+                </div>
+                {scanFiles.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allVisible = scanFiles.every((file) => scanVisibility[file.name] !== false);
+                      setScanVisibility(Object.fromEntries(scanFiles.map(({ name }) => [name, !allVisible])));
+                    }}
+                    className="text-[10px] font-medium text-blue-300 hover:text-blue-200"
+                  >
+                    {scanFiles.every((file) => scanVisibility[file.name] !== false) ? 'Hide all' : 'Show all'}
+                  </button>
+                )}
+              </div>
+              {scanFiles.length === 0 ? (
+                <p className="text-[11px] text-zinc-500">
+                  {modelLoadProgress ? 'Loading scan objects…' : 'No separate scan components for this model.'}
+                </p>
+              ) : (
+                <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
+                  {scanFiles.map((file) => {
+                    const visible = scanVisibility[file.name] !== false;
+                    const label = file.name.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) || file.name;
+                    return (
+                      <button
+                        key={file.name}
+                        type="button"
+                        aria-pressed={visible}
+                        onClick={() => setScanVisibility((current) => ({ ...current, [file.name]: !visible }))}
+                        className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
+                          visible
+                            ? 'border-zinc-700 bg-zinc-800/80 text-zinc-200 hover:bg-zinc-800'
+                            : 'border-transparent bg-zinc-950/50 text-zinc-500 hover:bg-zinc-800/60'
+                        }`}
+                        title={`${file.name} · ${file.vertices.toLocaleString()} vertices · ${file.triangles.toLocaleString()} triangles`}
+                      >
+                        {visible ? (
+                          <Eye className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                        ) : (
+                          <EyeOff className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                        )}
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: file.color }} />
+                        <span className="min-w-0 flex-1 truncate text-[11px]">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
             {/* Layer List */}
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {doc.layers.map((layer) => {
@@ -719,25 +930,28 @@ export function Dental3DViewer({
         {/* Three.js R3F 3D Canvas                                           */}
         {/* ---------------------------------------------------------------- */}
         <Canvas
+          dpr={[1, 1.75]}
           shadows
-          className="w-full h-full cursor-crosshair"
-          gl={{ antialias: true, preserveDrawingBuffer: true }}
+          className={`w-full h-full ${activeTool === 'orbit' ? 'cursor-grab' : 'cursor-crosshair'}`}
+          gl={{ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' }}
         >
           <PerspectiveCamera makeDefault position={[0, 20, 35]} fov={45} />
+          <color attach="background" args={['#171d2b']} />
           <OrbitControls
             ref={orbitControlsRef as never}
             makeDefault
             enableDamping
             dampingFactor={0.08}
             minDistance={2}
-            maxDistance={200}
+            maxDistance={modelBounds ? modelBounds.radius * 12 : 200}
           />
+            <ModelCameraFraming bounds={modelBounds} controlsRef={orbitControlsRef} />
 
           {/* Lighting */}
-          <ambientLight intensity={0.7} />
-          <directionalLight position={[10, 20, 15]} intensity={1.2} castShadow />
-          <directionalLight position={[-10, 10, -10]} intensity={0.6} />
-          <hemisphereLight intensity={0.4} groundColor="#222" />
+          <ambientLight intensity={0.85} />
+          <directionalLight position={[12, 18, 12]} intensity={1.65} />
+          <directionalLight position={[-12, 8, -10]} intensity={0.75} />
+          <hemisphereLight intensity={0.65} groundColor="#444" />
 
           {/* Dental Mesh */}
           <ModelMesh
@@ -745,6 +959,11 @@ export function Dental3DViewer({
             wireframe={wireframe}
             materialMode={materialMode}
             opacity={modelOpacity}
+            onLoadError={setModelLoadError}
+            onLoadProgress={handleModelLoadProgress}
+            visibleScanFiles={scanVisibility}
+            onScanFilesChange={handleScanFilesChange}
+            onModelBoundsChange={setModelBounds}
           />
 
           {/* Render Persistent Markup & Annotations */}
