@@ -14,6 +14,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
 import { getProfileLabName } from '@/src/lib/profile-utils';
+import { displayFileName, uploadStorageName } from '@/src/lib/case-file-keys';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5GB
 
@@ -115,6 +116,10 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
   if (!isValidUploadFileName(fileName)) {
     return NextResponse.json({ error: 'Invalid file name' }, { status: 400 });
   }
+  // Design output / preview folders (case-file-keys.ts) are written by staff only
+  if (/^case-(?:outputs|previews)\//.test(fileName) && !isValidRoleForType('admin_portal', profile.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   if (fileSize > MAX_FILE_SIZE) {
     return NextResponse.json({ error: 'File size exceeds the 5GB limit' }, { status: 400 });
   }
@@ -127,7 +132,12 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
   const ctx = await resolveClientContext(profile, adminClientId);
   if ('error' in ctx) return ctx.error;
 
-  const key = objectKey(ctx.labName, fileName);
+  // Every upload gets its own storage location, so two files with the same name (two cases, a chat
+  // attachment and a scan, a re-upload) can never overwrite each other. `fileName` in the response is
+  // that storage name (sent back on complete); the plain name callers display and store comes back
+  // from `complete`.
+  const storageName = uploadStorageName(fileName);
+  const key = objectKey(ctx.labName, storageName);
   const created = await r2.send(new CreateMultipartUploadCommand({
     Bucket: R2_BUCKET,
     Key: key,
@@ -139,8 +149,9 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
     uploadId: created.UploadId,
     key,
     labName: ctx.labName,
-    fileName,
-    fileUrl: buildFileUrl(ctx.labName, fileName),
+    fileName: storageName,
+    displayName: displayFileName(storageName),
+    fileUrl: buildFileUrl(ctx.labName, storageName),
   });
 }
 
@@ -215,7 +226,9 @@ async function handleComplete(req: NextRequest, profile: AuthedProfile) {
   return NextResponse.json({
     success: true,
     fileUrl: buildFileUrl(labName, fileName),
-    fileName,
+    // The plain original name: what callers show and store (case files, chat, duplicate checks).
+    fileName: displayFileName(fileName),
+    storageName: fileName,
     fileSize: fileSize ?? null,
     fileType: fileType ?? 'application/octet-stream',
     storagePath: key,

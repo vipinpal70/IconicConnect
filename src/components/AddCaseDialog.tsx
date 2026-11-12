@@ -35,7 +35,6 @@ interface AddCaseDialogProps {
 export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSuccess }: AddCaseDialogProps) {
   const router = useRouter()
   const [selectedClientId, setSelectedClientId] = useState<string>("")
-  const [targetLabName, setTargetLabName] = useState<string>("Client")
 
   // Form State
   const [priceList, setPriceList] = useState<PriceListEntryFull[] | null>(null)
@@ -183,7 +182,6 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
   useEffect(() => {
     if (open) {
       setSelectedClientId("")
-      setTargetLabName("Client")
       setPriceList(null)
       setCategory("Crown & Bridge")
       setSubTypeData({})
@@ -391,9 +389,12 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
     )
   }
 
-  const handleDeleteUploadedFile = async (fileName: string) => {
+  // Delete exactly the object that was uploaded (its URL), never a same-named file of another case.
+  // The server also refuses to delete anything a case still references.
+  const handleDeleteUploadedFile = async (fileUrl: string) => {
+    if (!fileUrl.startsWith("/api/cases/files?")) return
     try {
-      await fetch(`/api/cases/files?labName=${encodeURIComponent(targetLabName)}&fileName=${encodeURIComponent(fileName)}`, {
+      await fetch(fileUrl, {
         method: "DELETE"
       })
     } catch (e) {
@@ -597,8 +598,6 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                 value={selectedClientId}
                 onValueChange={(v) => {
                   setSelectedClientId(v)
-                  const client = clients.find(c => c.id === v)
-                  setTargetLabName(client?.labName || "Client")
                 }}
               >
                 <SelectTrigger className="h-9 bg-white border border-gray-300 text-gray-900 rounded-md focus:ring-emerald-500">
@@ -664,7 +663,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                         onClick={async (e) => {
                           e.preventDefault()
                           e.stopPropagation()
-                          await handleDeleteUploadedFile(file.fileName)
+                          await handleDeleteUploadedFile(file.fileUrl)
                           setUploadedFilesList((prev) => prev.filter((_, i) => i !== idx))
                         }}
                         className="h-7 w-7 text-zinc-400 hover:text-red-500 hover:bg-red-50 shrink-0"
@@ -753,7 +752,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                       onClick={async (e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        await handleDeleteUploadedFile(img.fileName)
+                        await handleDeleteUploadedFile(img.fileUrl)
                         setReferenceImages((prev) => prev.filter((_, i) => i !== idx))
                       }}
                       className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
@@ -924,7 +923,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                           onClick={async (e) => {
                             e.preventDefault()
                             e.stopPropagation()
-                            await handleDeleteUploadedFile(uploadedLibraryFile.fileName)
+                            await handleDeleteUploadedFile(uploadedLibraryFile.fileUrl)
                             setUploadedLibraryFile(null)
                           }}
                           className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
@@ -1167,7 +1166,7 @@ export function AddCaseDialog({ open, onOpenChange, role, clients = [], onSucces
                           onClick={async (e) => {
                             e.preventDefault()
                             e.stopPropagation()
-                            await handleDeleteUploadedFile(uploadedLibraryFile.fileName)
+                            await handleDeleteUploadedFile(uploadedLibraryFile.fileUrl)
                             setUploadedLibraryFile(null)
                           }}
                           className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"

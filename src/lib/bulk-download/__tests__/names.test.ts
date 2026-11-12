@@ -21,5 +21,8 @@ describe('bulk-download names', () => {
   it('reads file name from proxy and plain URLs', () => {
     expect(fileNameFromUrl('/api/cases/files?labName=L&fileName=x%20y.stl')).toBe('x y.stl')
     expect(fileNameFromUrl('https://h/p/q/out.zip')).toBe('out.zip')
+    expect(fileNameFromUrl(
+      '/api/cases/files?labName=L&fileName=case-outputs%2F3f2b8c1e-7a4d-4e0b-9c55-1d2e3f4a5b6c%2F0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d%2FSmith%20J.zip',
+    )).toBe('Smith J.zip')
   })
 })

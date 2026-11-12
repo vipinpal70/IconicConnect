@@ -51,6 +51,7 @@ import {
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { Upload, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
+import { withCaseScopedName } from "@/src/lib/case-file-keys";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 
 /**
@@ -693,7 +694,8 @@ export function CaseDetailView({
 				fileSize: number | null;
 			}>((resolve, reject) => {
 				uploadFileInChunks(
-					file,
+					// Case-scoped storage name so a replacement never overwrites another case's (or the scan's) object
+					withCaseScopedName("preview", caseId, file),
 					{ clientId },
 					() => {},
 					(res) => resolve(res),
@@ -705,7 +707,7 @@ export function CaseDetailView({
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					fileUrl: uploaded.fileUrl,
-					fileName: uploaded.fileName,
+					fileName: file.name,
 					fileType: uploaded.fileType,
 					fileSize: uploaded.fileSize,
 				}),

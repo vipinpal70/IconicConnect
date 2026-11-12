@@ -529,9 +529,12 @@ export default function CasesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- availableCategories is derived each render from priceList, already covered
   }, [availableCategories, category]);
 
-  const handleDeleteUploadedFile = async (fileName: string) => {
+  // Delete exactly the object that was uploaded (its URL), never a same-named file of another case.
+  // The server also refuses to delete anything a case still references.
+  const handleDeleteUploadedFile = async (fileUrl: string) => {
+    if (!fileUrl.startsWith("/api/cases/files?")) return;
     try {
-      await fetch(`/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`, {
+      await fetch(fileUrl, {
         method: 'DELETE'
       });
     } catch (e) {
@@ -674,7 +677,7 @@ export default function CasesPage() {
 
     // Clean up old file if it exists
     if (uploadedFile) {
-      await handleDeleteUploadedFile(uploadedFile.fileName);
+      await handleDeleteUploadedFile(uploadedFile.fileUrl);
     }
 
     // Upload the new one
@@ -693,7 +696,7 @@ export default function CasesPage() {
 
     // Clean up old file if it exists
     if (row.uploadedFile) {
-      await handleDeleteUploadedFile(row.uploadedFile.fileName);
+      await handleDeleteUploadedFile(row.uploadedFile.fileUrl);
     }
 
     // Set row to uploading state in the UI
@@ -1114,7 +1117,7 @@ export default function CasesPage() {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 if (uploadedFile) {
-                                  await handleDeleteUploadedFile(uploadedFile.fileName);
+                                  await handleDeleteUploadedFile(uploadedFile.fileUrl);
                                 }
                                 setSingleFile(null);
                                 setUploadedFileUrl(null);
@@ -1184,7 +1187,7 @@ export default function CasesPage() {
                                 onClick={async (e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  await handleDeleteUploadedFile(img.fileName);
+                                  await handleDeleteUploadedFile(img.fileUrl);
                                   setReferenceImages((prev) => prev.filter((_, i) => i !== idx));
                                 }}
                                 className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1353,7 +1356,7 @@ export default function CasesPage() {
                                     onClick={async (e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      await handleDeleteUploadedFile(uploadedLibraryFile.fileName);
+                                      await handleDeleteUploadedFile(uploadedLibraryFile.fileUrl);
                                       setUploadedLibraryFile(null);
                                     }}
                                     className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
@@ -1583,7 +1586,7 @@ export default function CasesPage() {
                                     onClick={async (e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      await handleDeleteUploadedFile(uploadedLibraryFile.fileName);
+                                      await handleDeleteUploadedFile(uploadedLibraryFile.fileUrl);
                                       setUploadedLibraryFile(null);
                                     }}
                                     className="h-9 w-9 text-zinc-500 hover:text-red-500 hover:bg-red-50"
@@ -1710,7 +1713,7 @@ export default function CasesPage() {
                                       className="h-7 w-7 text-zinc-500 hover:text-red-500 hover:bg-red-50"
                                       onClick={async () => {
                                         if (row.uploadedFile) {
-                                          await handleDeleteUploadedFile(row.uploadedFile.fileName);
+                                          await handleDeleteUploadedFile(row.uploadedFile.fileUrl);
                                         }
                                         removeBulkRow(i);
                                       }}

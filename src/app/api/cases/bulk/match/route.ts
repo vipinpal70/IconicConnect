@@ -1,38 +1,26 @@
 import { users } from '@/src/db/schema/profile'
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { cases,  } from '@/src/db/schema/case';
-import { pickPerCase } from '@/src/lib/files-repo';
+import { cases } from '@/src/db/schema/case';
+import { listByCases } from '@/src/lib/files-repo';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
-import { eq, inArray, asc } from 'drizzle-orm';
+import { eq, inArray, desc } from 'drizzle-orm';
+import { BULK_UPLOAD_ROLES, bulkEligibleCasesFilter } from '@/src/lib/bulk-output-eligibility';
+import { matchFile, type MatchableCase } from '@/src/lib/bulk-output-matching';
 
 /**
- * Bulk match — given a list of uploaded output file names, find the eligible case each
- * one belongs to. A case is eligible when its status is `in_progress`; the match key is
- * the case's ORIGINAL scan file name (the earliest `case_files` row), compared without
- * extension and case-insensitively — the same rule the single-upload flow enforces.
+ * Bulk match — given output file NAMES (called before anything is uploaded), find the case each
+ * belongs to among the cases this user may attach outputs to (see bulk-output-eligibility.ts).
  *
- * Independent of the existing case APIs; read-only.
+ * Every scan file of a case and its case number are match keys; the tiers are defined in
+ * bulk-output-matching.ts and shared with the UI. Read-only.
  */
 
-const ALLOWED_ROLES = new Set(['designer', 'qc', 'admin']);
+const MAX_FILES = 500;
 
-/** Strip any directory prefix, drop the extension, trim + lowercase. */
-function normalizeName(name: string): string {
-  const base = name.split(/[\\/]/).pop() ?? name;
-  const lastDot = base.lastIndexOf('.');
-  const stem = lastDot > 0 ? base.substring(0, lastDot) : base;
-  return stem.trim().toLowerCase();
-}
-
-type MatchStatus = 'matched' | 'unmatched' | 'ambiguous' | 'duplicate';
-
-type EligibleCase = {
-  id: string;
-  caseNumber: string | null;
+export type EligibleCase = MatchableCase & {
   category: string | null;
-  scanFileName: string | null;
   clientDisplayName: string | null;
   qcId: string | null;
 };
@@ -45,7 +33,8 @@ export async function POST(req: NextRequest) {
 
     const profile = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1).then(r => r[0]);
     if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-    if (!ALLOWED_ROLES.has(profile.role)) {
+    const eligibility = BULK_UPLOAD_ROLES.has(profile.role) ? bulkEligibleCasesFilter(profile) : undefined;
+    if (!eligibility) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -54,8 +43,14 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(files) || files.length === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
+    if (files.length > MAX_FILES) {
+      return NextResponse.json({ error: `At most ${MAX_FILES} files per batch` }, { status: 400 });
+    }
+    if (files.some((f) => typeof f?.tempId !== 'string' || typeof f?.fileName !== 'string' || f.fileName.length > 255)) {
+      return NextResponse.json({ error: 'Invalid file list' }, { status: 400 });
+    }
 
-    // 1. Load all eligible (in-progress) cases.
+    // 1. Only the cases this user may attach outputs to.
     const eligibleRows = await db
       .select({
         id: cases.id,
@@ -65,12 +60,19 @@ export async function POST(req: NextRequest) {
         qcId: cases.qcId,
       })
       .from(cases)
-      .where(eq(cases.status, 'in_progress'));
+      .where(eligibility)
+      .orderBy(desc(cases.updatedAt));
 
-    // 2. First (earliest) scan file name per case — mirrors /api/cases GET scanFileName logic.
+    // 2. Every scan file name per case (labs often upload several, and the first may be a photo).
     const caseIds = eligibleRows.map(r => r.id);
-    const firstScans = await pickPerCase(caseIds, 'scan', 'first');
-    const scanFileMap = new Map<string, string>(Array.from(firstScans, ([k, v]) => [k, v.fileName] as [string, string]));
+    const scans = await listByCases(caseIds, 'scan');
+    const scanNames = new Map<string, string[]>();
+    for (const s of scans) {
+      if (!s.caseId) continue;
+      const list = scanNames.get(s.caseId);
+      if (list) list.push(s.fileName);
+      else scanNames.set(s.caseId, [s.fileName]);
+    }
 
     // 3. Client display names.
     const clientIds = Array.from(new Set(eligibleRows.map(r => r.clientId).filter(Boolean)));
@@ -89,52 +91,13 @@ export async function POST(req: NextRequest) {
       id: r.id,
       caseNumber: r.caseNumber,
       category: r.category,
-      scanFileName: scanFileMap.get(r.id) ?? null,
+      scanFileNames: scanNames.get(r.id) ?? [],
       clientDisplayName: r.clientId ? (clientMap.get(r.clientId) ?? null) : null,
       qcId: r.qcId ?? null,
     }));
 
-    // 4. Index cases by normalized scan file name.
-    const casesByName = new Map<string, EligibleCase[]>();
-    for (const c of eligibleCases) {
-      if (!c.scanFileName) continue;
-      const key = normalizeName(c.scanFileName);
-      const bucket = casesByName.get(key);
-      if (bucket) bucket.push(c);
-      else casesByName.set(key, [c]);
-    }
-
-    // 5. Match each uploaded file; detect duplicates (two files -> same case / same name).
-    const nameCounts = new Map<string, number>();
-    for (const f of files) nameCounts.set(normalizeName(f.fileName), (nameCounts.get(normalizeName(f.fileName)) ?? 0) + 1);
-
-    const results = files.map(f => {
-      const key = normalizeName(f.fileName);
-      const candidates = casesByName.get(key) ?? [];
-      let status: MatchStatus;
-      let matchedCaseId: string | null = null;
-
-      if (candidates.length === 0) {
-        status = 'unmatched';
-      } else if ((nameCounts.get(key) ?? 0) > 1) {
-        // The same output name was uploaded more than once — force the user to resolve.
-        status = 'duplicate';
-        matchedCaseId = candidates.length === 1 ? candidates[0].id : null;
-      } else if (candidates.length > 1) {
-        status = 'ambiguous';
-      } else {
-        status = 'matched';
-        matchedCaseId = candidates[0].id;
-      }
-
-      return {
-        tempId: f.tempId,
-        fileName: f.fileName,
-        status,
-        matchedCaseId,
-        candidateIds: candidates.map(c => c.id),
-      };
-    });
+    // 4. Match each file. Two files landing on the same case is resolved in the UI, which sees the whole batch.
+    const results = files.map(f => ({ tempId: f.tempId, fileName: f.fileName, ...matchFile(f.fileName, eligibleCases) }));
 
     return NextResponse.json({ results, eligibleCases });
   } catch (error: unknown) {
