@@ -51,11 +51,20 @@ import {
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { Upload, Trash2, ChevronLeft, ChevronRight, Box } from "lucide-react";
 import dynamic from "next/dynamic";
+import { Case3DPreviewPanel } from "@/src/components/viewer3d/Case3DPreviewPanel";
+import {
+	fileNameFromUrl,
+	isPreviewable3DFile,
+	type Model3DSource,
+} from "@/src/components/viewer3d/preview-sources";
 
-const Dental3DViewer = dynamic(
-	() => import("@/src/components/viewer3d/Dental3DViewer").then((mod) => mod.Dental3DViewer),
-	{ ssr: false }
-);
+const loadDental3DViewer = () => import("@/src/components/viewer3d/Dental3DViewer");
+const Dental3DViewer = dynamic(() => loadDental3DViewer().then((mod) => mod.Dental3DViewer), { ssr: false });
+// Fetch the viewer bundle on hover/focus so it is ready by the time the user clicks
+const preloadDental3DViewer = () => void loadDental3DViewer().catch(() => {});
+
+// Statuses at which the final design is released to the lab
+const DESIGN_RELEASED_STATUSES = ["submitted_to_client", "approved", "delivered"];
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 import { createPortal } from "react-dom";
@@ -208,6 +217,9 @@ type CaseRecord = {
 	timeline: CaseActivity[];
 	createdAt: string;
 	outputFile?: string | null;
+	outputFileName?: string | null;
+	outputFileSize?: number | null;
+	outputUploadedAt?: string | null;
 	previewFile?: string | null;
 	outputNote?: string | null;
 	clientOutputDownloadedAt?: string | null;
@@ -226,6 +238,7 @@ type CaseFile = {
 	id: string;
 	fileName: string;
 	fileUrl: string;
+	purged: boolean;
 	note: string | null;
 	fileType: string | null;
 	fileSize: number | null;
@@ -236,6 +249,7 @@ type CasePreviewFile = {
 	id: string;
 	fileName: string;
 	fileUrl: string;
+	purged: boolean;
 	fileType: string | null;
 	fileSize: number | null;
 	createdAt: string;
@@ -421,7 +435,7 @@ export function CaseDetailView({
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [previewCarouselIndex, setPreviewCarouselIndex] = useState(0);
 	const [is3DViewerModalOpen, setIs3DViewerModalOpen] = useState(false);
-	const [active3DFile, setActive3DFile] = useState<{ url: string; name: string } | null>(null);
+	const [active3DSourceId, setActive3DSourceId] = useState<string | null>(null);
 	const [replacingPreviewId, setReplacingPreviewId] = useState<string | null>(
 		null,
 	);
@@ -827,12 +841,60 @@ export function CaseDetailView({
 	const previewFiles = previewFilesResponse?.data || [];
 	const referenceImages = referenceFilesResponse?.data || [];
 	const holdImages = holdImagesResponse?.data || [];
-	const caseModelFiles = files.filter((file) => /\.(stl|ply|obj|dcm|zip)$/i.test(file.fileName));
-	const previewModelFile =
-		previewFiles.find((file) => getPreviewFileType(file.fileUrl) === "3d") ||
-		previewFiles.find((file) => getPreviewFileType(file.fileUrl) === "zip");
-	const caseModelFile = caseModelFiles[0];
-	const has3DViewerSource = Boolean(previewModelFile || caseModelFile);
+	const caseModelFiles = files.filter((file) => isPreviewable3DFile(file.fileName));
+
+	// 3D previews, kept strictly apart so users always know what they are looking at:
+	//   Case Submission – files the lab uploaded with the case
+	//   Design Output   – the final design file and design previews from the designer / QC
+	const canSeeDesignOutput =
+		chatSide === "admin" || (caseRecord ? DESIGN_RELEASED_STATUSES.includes(caseRecord.status) : false);
+	const submission3DSources: Model3DSource[] = caseModelFiles
+		.filter((file) => !file.purged)
+		.map((file, _index, live) => ({
+			id: `submission-${file.id}`,
+			kind: "case-submission",
+			title: live.length > 1 ? "Lab upload" : "Lab scan",
+			fileName: file.fileName,
+			url: file.fileUrl,
+			uploadedAt: file.createdAt,
+			fileSize: file.fileSize,
+		}));
+	const outputFileName = caseRecord?.outputFile
+		? caseRecord.outputFileName || fileNameFromUrl(caseRecord.outputFile)
+		: null;
+	const design3DSources: Model3DSource[] = [
+		...(caseRecord?.outputFile && isPreviewable3DFile(outputFileName)
+			? [
+					{
+						id: "design-final",
+						kind: "design-output" as const,
+						title: "Final design file",
+						fileName: outputFileName!,
+						url: caseRecord.outputFile,
+						uploadedAt: caseRecord.outputUploadedAt,
+						fileSize: caseRecord.outputFileSize,
+					},
+				]
+			: []),
+		...previewFiles
+			.filter((file) => !file.purged && ["3d", "zip"].includes(getPreviewFileType(file.fileUrl)))
+			.map((file) => ({
+				id: `design-preview-${file.id}`,
+				kind: "design-output" as const,
+				title: "Design preview",
+				fileName: file.fileName,
+				url: file.fileUrl,
+				uploadedAt: file.createdAt,
+				fileSize: file.fileSize,
+			})),
+	];
+	const viewer3DSources = [...submission3DSources, ...(canSeeDesignOutput ? design3DSources : [])];
+	const expiredSubmissionCount = caseModelFiles.filter((file) => file.purged).length;
+	const show3DPreviewPanel = caseModelFiles.length > 0 || (canSeeDesignOutput && design3DSources.length > 0);
+	const open3DPreview = (sourceId: string) => {
+		setActive3DSourceId(sourceId);
+		setIs3DViewerModalOpen(true);
+	};
 
 	// Left/right arrow-key navigation while the reference-images carousel is open.
 	useEffect(() => {
@@ -1048,18 +1110,30 @@ export function CaseDetailView({
 											) : (
 												<div className="flex flex-wrap gap-1 justify-end">
 													{files.map((file) => (
-														<a
-															key={file.id}
-															href={file.fileUrl}
-															download={file.fileName}
-															title={file.fileName}
-															className="text-[10px] font-medium text-primary underline underline-offset-2 cursor-pointer hover:text-primary/70 transition-colors"
-															onClick={(e) => e.stopPropagation()}
-														>
-															{file.fileName.length > 15
-																? `${file.fileName.slice(0, 15)}…`
-																: file.fileName}
-														</a>
+														file.purged ? (
+															<span
+																key={file.id}
+																title={`${file.fileName} (expired)`}
+																className="text-[10px] font-medium text-muted-foreground"
+															>
+																{file.fileName.length > 15
+																	? `${file.fileName.slice(0, 15)}… (expired)`
+																	: `${file.fileName} (expired)`}
+															</span>
+														) : (
+															<a
+																key={file.id}
+																href={file.fileUrl}
+																download={file.fileName}
+																title={file.fileName}
+																className="text-[10px] font-medium text-primary underline underline-offset-2 cursor-pointer hover:text-primary/70 transition-colors"
+																onClick={(e) => e.stopPropagation()}
+															>
+																{file.fileName.length > 15
+																	? `${file.fileName.slice(0, 15)}…`
+																	: file.fileName}
+															</a>
+														)
 													))}
 												</div>
 											)
@@ -1384,30 +1458,30 @@ export function CaseDetailView({
 
 					{/* Full Width Section: Attachments & Case Chat */}
 					<div className="space-y-4">
-						{(((chatSide === "admin" ||
-							["submitted_to_client", "approved", "delivered"].includes(caseRecord.status)) &&
-							(caseRecord.outputFile || previewFiles.length > 0)) ||
-							caseModelFiles.length > 0) && (
+						{show3DPreviewPanel && (
+							<Case3DPreviewPanel
+								submissionSources={submission3DSources}
+								designSources={design3DSources}
+								expiredSubmissionCount={expiredSubmissionCount}
+								canSeeDesignOutput={canSeeDesignOutput}
+								isInternal={chatSide === "admin"}
+								onOpen={open3DPreview}
+								onIntent={preloadDental3DViewer}
+							/>
+						)}
+						{canSeeDesignOutput && (caseRecord.outputFile || previewFiles.length > 0) && (
 								<Card className="shadow-card bg-white">
 									<CardHeader className="py-2.5 px-4 border-b border-border/50">
 										<CardTitle className="text-sm font-semibold text-black flex items-center justify-between gap-2 w-full">
-											<span>{caseRecord.outputFile || previewFiles.length > 0 ? "Design Deliverables" : "Case Scan"}</span>
-											{has3DViewerSource && (
-												<Button
-													size="sm"
-													variant="outline"
-													onClick={() => {
-														setActive3DFile(null);
-														setIs3DViewerModalOpen(true);
-													}}
-													className="text-xs h-7 gap-1.5 text-blue-700 border-blue-200 bg-blue-50/50 hover:bg-blue-100 font-medium"
-												>
-													<Box className="h-3.5 w-3.5" /> 3D Scan / CAD Viewer
-												</Button>
-											)}
+											<span>Design Deliverables</span>
 										</CardTitle>
 									</CardHeader>
 									<CardContent className="mt-2 px-4 pb-3 space-y-3">
+										{previewFiles.some((file) => file.purged && ["3d", "zip"].includes(getPreviewFileType(file.fileUrl))) && (
+											<p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+												One or more design preview files have expired and are no longer available. Ask an administrator to upload them again.
+											</p>
+										)}
 										{caseRecord.outputFile && (
 											<div className="flex flex-col justify-between p-4 rounded-lg border border-indigo-100 bg-white shadow-sm hover:shadow-md transition-shadow">
 												<div>
@@ -1458,7 +1532,7 @@ export function CaseDetailView({
 
 										{(() => {
 											const viewablePreviews = previewFiles.filter(
-												(file) => getPreviewFileType(file.fileUrl) !== "zip",
+												(file) => !file.purged && getPreviewFileType(file.fileUrl) !== "zip",
 											);
 											const zipPreviews = previewFiles.filter(
 												(file) => getPreviewFileType(file.fileUrl) === "zip",
@@ -1501,13 +1575,11 @@ export function CaseDetailView({
 																				<Button
 																					size="sm"
 																					variant="outline"
-																					onClick={() => {
-																						setActive3DFile({ url: activeFile.fileUrl, name: activeFile.fileName });
-																						setIs3DViewerModalOpen(true);
-																					}}
+																					onPointerEnter={preloadDental3DViewer}
+																						onClick={() => open3DPreview(`design-preview-${activeFile.id}`)}
 																					className="text-xs h-7 gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
 																				>
-																					<Box className="h-3.5 w-3.5" /> Fullscreen CAD
+																					<Box className="h-3.5 w-3.5" /> View in 3D
 																				</Button>
 																			)}
 																			<a
@@ -1623,7 +1695,9 @@ export function CaseDetailView({
 																				{file.fileName}
 																			</h4>
 																			<p className="text-xs text-muted-foreground mt-1">
-																				ZIP archive containing 3D scan or preview assets.
+																				{file.purged
+																					? "This ZIP archive has expired and is no longer available."
+																					: "ZIP archive containing 3D scan or preview assets."}
 																			</p>
 																		</div>
 																		{chatSide === "admin" && file.id !== "legacy" && (
@@ -1638,17 +1712,15 @@ export function CaseDetailView({
 																			</button>
 																		)}
 																	</div>
-																	<div className="mt-4 flex gap-2">
+																	{!file.purged && <div className="mt-4 flex gap-2">
 																		<Button
 																			size="sm"
 																			variant="outline"
-																			onClick={() => {
-																				setActive3DFile({ url: file.fileUrl, name: file.fileName });
-																				setIs3DViewerModalOpen(true);
-																			}}
+																			onPointerEnter={preloadDental3DViewer}
+																				onClick={() => open3DPreview(`design-preview-${file.id}`)}
 																			className="flex-1 gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
 																		>
-																			<Box className="h-4 w-4" /> View 3D Scan
+																			<Box className="h-4 w-4" /> View in 3D
 																		</Button>
 																		<a
 																			href={file.fileUrl}
@@ -1664,7 +1736,7 @@ export function CaseDetailView({
 																				<Download className="h-4 w-4" /> Download Preview ZIP
 																			</Button>
 																		</a>
-																	</div>
+																	</div>}
 																</div>
 															))}
 														</div>
@@ -2118,12 +2190,8 @@ export function CaseDetailView({
 						<Dental3DViewer
 							caseId={caseId}
 							caseNumber={caseRecord.caseNumber || undefined}
-							modelUrl={
-								active3DFile?.url ||
-								previewModelFile?.fileUrl ||
-								caseModelFile?.fileUrl
-							}
-							fileName={active3DFile?.name || previewModelFile?.fileName || caseModelFile?.fileName || "Dental Model Preview"}
+							sources={viewer3DSources}
+							initialSourceId={active3DSourceId ?? undefined}
 							onClose={() => setIs3DViewerModalOpen(false)}
 							isFullScreenDefault={true}
 						/>

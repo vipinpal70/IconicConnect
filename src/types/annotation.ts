@@ -8,9 +8,13 @@ export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error';
 export type ToolMode =
   | 'orbit'
   | 'brush'
+  | 'highlighter'
+  | 'polyline'
   | 'distance'
+  | 'angle'
   | 'pin'
   | 'arrow'
+  | 'eraser'
   | 'select';
 
 export interface Vector3D {
@@ -22,7 +26,7 @@ export interface Vector3D {
 export interface BaseAnnotation {
   id: string;
   layerId: string;
-  type: 'brush' | 'distance' | 'pin' | 'arrow';
+  type: 'brush' | 'polyline' | 'distance' | 'angle' | 'pin' | 'arrow';
   color: string;
   lineWidth?: number;
   createdAt: string;
@@ -33,6 +37,24 @@ export interface BaseAnnotation {
 export interface BrushAnnotation extends BaseAnnotation {
   type: 'brush';
   points: Vector3D[]; // Model-space 3D coordinates
+  style?: 'pen' | 'highlighter'; // Absent = pen
+}
+
+/** Click-placed path that follows the scan surface (e.g. margin line, outline). */
+export interface PolylineAnnotation extends BaseAnnotation {
+  type: 'polyline';
+  points: Vector3D[]; // Dense surface-following path
+  vertices: Vector3D[]; // User-placed control points
+  closed: boolean;
+  lengthMm: number;
+}
+
+export interface AngleAnnotation extends BaseAnnotation {
+  type: 'angle';
+  startPoint: Vector3D;
+  vertex: Vector3D;
+  endPoint: Vector3D;
+  angleDeg: number;
 }
 
 export interface DistanceAnnotation extends BaseAnnotation {
@@ -61,13 +83,22 @@ export interface ArrowAnnotation extends BaseAnnotation {
 
 export type AnnotationItem =
   | BrushAnnotation
+  | PolylineAnnotation
   | DistanceAnnotation
+  | AngleAnnotation
   | PinAnnotation
   | ArrowAnnotation;
+
+/**
+ * Which 3D preview a layer was drawn on: the lab's case submission or the final design output.
+ * Absent on layers saved before the split (those were drawn on the case submission).
+ */
+export type AnnotationSource = 'case-submission' | 'design-output';
 
 export interface AnnotationLayer {
   id: string;
   name: string;
+  source?: AnnotationSource;
   color: string;
   visible: boolean;
   locked: boolean;

@@ -3,8 +3,22 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
-import { Line as DreiLine } from '@react-three/drei';
+import { Html, Line as DreiLine } from '@react-three/drei';
 import type { ToolMode, AnnotationItem, Vector3D } from '@/src/types/annotation';
+import {
+  MIN_SAMPLE_SPACING_MM,
+  SURFACE_OFFSET_MM,
+  angleAtVertex,
+  pathLength,
+  smoothStroke,
+} from './stroke-smoothing';
+import {
+  HIGHLIGHTER_OPACITY,
+  HIGHLIGHTER_WIDTH_SCALE,
+  OVERLAY_MATERIAL_PROPS,
+  RESERVED_STENCIL_REF,
+  highlighterStencilProps,
+} from './markup-materials';
 
 interface OrbitControlsLike {
   enabled: boolean;
@@ -20,6 +34,31 @@ interface DrawingInteractionProps {
   orbitControlsRef: React.RefObject<unknown>;
 }
 
+type Tuple3 = [number, number, number];
+
+interface PolylineDraft {
+  vertices: THREE.Vector3[];
+  segments: THREE.Vector3[][]; // segments[i] = surface path from vertex i to vertex i + 1
+}
+
+/** Clicking within this many pixels of the first polyline vertex closes the outline. */
+const CLOSE_SNAP_PX = 12;
+/** Spacing of the surface samples between two placed polyline vertices. */
+const TRACE_SPACING_MM = 0.2;
+
+const toTuple = (p: THREE.Vector3): Tuple3 => [p.x, p.y, p.z];
+const toVector3D = (p: THREE.Vector3): Vector3D => ({
+  x: Math.round(p.x * 1000) / 1000,
+  y: Math.round(p.y * 1000) / 1000,
+  z: Math.round(p.z * 1000) / 1000,
+});
+
+function flattenPolyline(draft: PolylineDraft): THREE.Vector3[] {
+  const path = [draft.vertices[0]];
+  for (const segment of draft.segments) path.push(...segment);
+  return path;
+}
+
 export function DrawingInteraction({
   activeTool,
   activeColor,
@@ -29,10 +68,21 @@ export function DrawingInteraction({
   onRequestPinText,
   orbitControlsRef,
 }: DrawingInteractionProps) {
-  const { camera, raycaster, scene, gl } = useThree();
+  const { camera, scene, gl } = useThree();
+
+  // Dedicated raycaster: firstHitOnly lets three-mesh-bvh stop at the nearest triangle,
+  // which keeps per-event picking cheap enough to sample every coalesced pointer event.
+  const raycaster = useMemo(() => {
+    const r = new THREE.Raycaster() as THREE.Raycaster & { firstHitOnly?: boolean };
+    r.firstHitOnly = true;
+    return r;
+  }, []);
+  const ndcRef = useRef(new THREE.Vector2());
+
+  const isFreehandTool = activeTool === 'brush' || activeTool === 'highlighter';
+  const freehandWidth = activeTool === 'highlighter' ? strokeWidth * HIGHLIGHTER_WIDTH_SCALE : strokeWidth;
 
   // In-flight interactive states
-  const [isBrushDrawing, setIsBrushDrawing] = useState(false);
   const [brushPoints, setBrushPoints] = useState<THREE.Vector3[]>([]);
   const brushPointsRef = useRef<THREE.Vector3[]>([]);
   const isBrushDrawingRef = useRef(false);
@@ -42,6 +92,9 @@ export function DrawingInteraction({
   const [distanceCurrent, setDistanceCurrent] = useState<THREE.Vector3 | null>(null);
   const [arrowTarget, setArrowTarget] = useState<THREE.Vector3 | null>(null);
   const [arrowCurrent, setArrowCurrent] = useState<THREE.Vector3 | null>(null);
+  const [polyline, setPolyline] = useState<PolylineDraft | null>(null);
+  const [anglePoints, setAnglePoints] = useState<THREE.Vector3[]>([]);
+  const [hoverPoint, setHoverPoint] = useState<THREE.Vector3 | null>(null);
 
   // Disable OrbitControls when drawing markup tools are active
   useEffect(() => {
@@ -51,17 +104,7 @@ export function DrawingInteraction({
     }
   }, [activeTool, orbitControlsRef]);
 
-  // Raycast helper to find intersection on dental mesh
-  const getMeshIntersection = useCallback((e: PointerEvent): THREE.Intersection | null => {
-    const rect = gl.domElement.getBoundingClientRect();
-    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
-      return null;
-    }
-    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
-
+  const getDentalMeshes = useCallback((): THREE.Mesh[] => {
     const cachedMeshes = meshCacheRef.current;
     if (cachedMeshes.length === 0 || cachedMeshes.some((mesh) => !mesh.parent)) {
       cachedMeshes.length = 0;
@@ -70,28 +113,209 @@ export function DrawingInteraction({
         if (mesh.isMesh && mesh.userData.isDentalModel && mesh.geometry) cachedMeshes.push(mesh);
       });
     }
+    return cachedMeshes.filter((mesh) => mesh.visible);
+  }, [scene]);
 
-    const intersects = raycaster.intersectObjects(cachedMeshes.filter((mesh) => mesh.visible), false);
-    return intersects[0] || null;
-  }, [camera, gl, raycaster, scene]);
+  const raycastNdc = useCallback((ndc: THREE.Vector2): THREE.Intersection | null => {
+    raycaster.setFromCamera(ndc, camera);
+    return raycaster.intersectObjects(getDentalMeshes(), false)[0] || null;
+  }, [camera, getDentalMeshes, raycaster]);
+
+  // Raycast helper to find intersection on dental mesh
+  const getMeshIntersection = useCallback((e: PointerEvent): THREE.Intersection | null => {
+    const rect = gl.domElement.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+      return null;
+    }
+    ndcRef.current.set(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    return raycastNdc(ndcRef.current);
+  }, [gl, raycastNdc]);
+
+  // Hit point lifted along the surface normal so the stroke sits on top of the scan
+  const getSurfacePoint = useCallback((hit: THREE.Intersection): THREE.Vector3 => {
+    const pt = hit.point.clone();
+    if (hit.face) {
+      const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+      pt.addScaledVector(normal, SURFACE_OFFSET_MM);
+    }
+    return pt;
+  }, []);
+
+  // Surface-following path between two placed points: sample the straight segment,
+  // then re-project each sample onto the visible scan surface from the current view.
+  const traceSurface = useCallback((from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3[] => {
+    const steps = Math.min(400, Math.max(1, Math.ceil(from.distanceTo(to) / TRACE_SPACING_MM)));
+    const out: THREE.Vector3[] = [];
+    const sample = new THREE.Vector3();
+    const ndc = new THREE.Vector2();
+    for (let i = 1; i <= steps; i++) {
+      sample.lerpVectors(from, to, i / steps);
+      if (i === steps) {
+        out.push(to.clone());
+        break;
+      }
+      const projected = sample.clone().project(camera);
+      ndc.set(projected.x, projected.y);
+      const hit = raycastNdc(ndc);
+      out.push(hit ? getSurfacePoint(hit) : sample.clone());
+    }
+    return out;
+  }, [camera, getSurfacePoint, raycastNdc]);
+
+  const screenDistancePx = useCallback((a: THREE.Vector3, e: PointerEvent): number => {
+    const rect = gl.domElement.getBoundingClientRect();
+    const p = a.clone().project(camera);
+    const x = ((p.x + 1) / 2) * rect.width + rect.left;
+    const y = ((1 - p.y) / 2) * rect.height + rect.top;
+    return Math.hypot(x - e.clientX, y - e.clientY);
+  }, [camera, gl]);
+
+  const commitPolyline = useCallback((draft: PolylineDraft | null, closed: boolean) => {
+    if (!draft || draft.vertices.length < 2) return;
+    const finalDraft = closed
+      ? { ...draft, segments: [...draft.segments, traceSurface(draft.vertices[draft.vertices.length - 1], draft.vertices[0])] }
+      : draft;
+    const path = flattenPolyline(finalDraft);
+    onAddAnnotation({
+      id: `poly-${Date.now()}`,
+      layerId: activeLayerId,
+      type: 'polyline',
+      color: activeColor,
+      lineWidth: strokeWidth,
+      createdAt: new Date().toISOString(),
+      points: path.map(toVector3D),
+      vertices: draft.vertices.map(toVector3D),
+      closed,
+      lengthMm: pathLength(path),
+    });
+    setPolyline(null);
+  }, [activeColor, activeLayerId, onAddAnnotation, strokeWidth, traceSurface]);
+
+  const resetInFlightRefs = useCallback(() => {
+    isBrushDrawingRef.current = false;
+    brushPointsRef.current = [];
+    if (brushPreviewFrameRef.current !== null) {
+      cancelAnimationFrame(brushPreviewFrameRef.current);
+      brushPreviewFrameRef.current = null;
+    }
+  }, []);
+
+  const resetInFlightState = useCallback(() => {
+    setBrushPoints([]);
+    setDistanceStart(null);
+    setDistanceCurrent(null);
+    setArrowTarget(null);
+    setArrowCurrent(null);
+    setPolyline(null);
+    setAnglePoints([]);
+    setHoverPoint(null);
+  }, []);
+
+  // Switching tools or pressing Escape abandons any half-finished markup
+  const [previousTool, setPreviousTool] = useState(activeTool);
+  if (previousTool !== activeTool) {
+    setPreviousTool(activeTool);
+    resetInFlightState();
+  }
+  useEffect(() => {
+    resetInFlightRefs();
+  }, [activeTool, resetInFlightRefs]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+
+      if (e.key === 'Escape') {
+        resetInFlightRefs();
+        resetInFlightState();
+      } else if (e.key === 'Enter' && polyline) {
+        e.preventDefault();
+        commitPolyline(polyline, false);
+      } else if (e.key === 'Backspace' && polyline) {
+        e.preventDefault();
+        setPolyline(
+          polyline.vertices.length <= 1
+            ? null
+            : { vertices: polyline.vertices.slice(0, -1), segments: polyline.segments.slice(0, -1) },
+        );
+      } else if (e.key === 'Backspace' && anglePoints.length > 0) {
+        e.preventDefault();
+        setAnglePoints(anglePoints.slice(0, -1));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [anglePoints, commitPolyline, polyline, resetInFlightRefs, resetInFlightState]);
 
   useEffect(() => {
     const canvas = gl.domElement;
+
+    const scheduleBrushPreview = () => {
+      if (brushPreviewFrameRef.current !== null) return;
+      brushPreviewFrameRef.current = requestAnimationFrame(() => {
+        brushPreviewFrameRef.current = null;
+        setBrushPoints([...brushPointsRef.current]);
+      });
+    };
+
     const handlePointerDown = (e: PointerEvent) => {
-      if (activeTool === 'orbit') return;
+      if (activeTool === 'orbit' || activeTool === 'eraser' || e.button !== 0) return;
 
       const hit = getMeshIntersection(e);
       if (!hit) return;
 
       const pt = hit.point.clone();
 
-      if (activeTool === 'brush') {
+      if (activeTool === 'brush' || activeTool === 'highlighter') {
         e.preventDefault();
         canvas.setPointerCapture(e.pointerId);
         isBrushDrawingRef.current = true;
-        brushPointsRef.current = [pt];
-        setIsBrushDrawing(true);
-        setBrushPoints([pt]);
+        brushPointsRef.current = [getSurfacePoint(hit)];
+        setBrushPoints([...brushPointsRef.current]);
+      } else if (activeTool === 'polyline') {
+        const surfacePt = getSurfacePoint(hit);
+        if (!polyline) {
+          setPolyline({ vertices: [surfacePt], segments: [] });
+          return;
+        }
+        if (polyline.vertices.length >= 3 && screenDistancePx(polyline.vertices[0], e) < CLOSE_SNAP_PX) {
+          commitPolyline(polyline, true);
+          return;
+        }
+        const last = polyline.vertices[polyline.vertices.length - 1];
+        // The second click of a double-click lands on the same spot; don't add a zero-length segment
+        if (last.distanceTo(surfacePt) < 0.05) return;
+        setPolyline({
+          vertices: [...polyline.vertices, surfacePt],
+          segments: [...polyline.segments, traceSurface(last, surfacePt)],
+        });
+      } else if (activeTool === 'angle') {
+        const next = [...anglePoints, pt];
+        if (next.length < 3) {
+          setAnglePoints(next);
+          return;
+        }
+        const [start, vertex, end] = next;
+        const angleDeg = angleAtVertex(start, vertex, end);
+        if (angleDeg > 0) {
+          onAddAnnotation({
+            id: `angle-${Date.now()}`,
+            layerId: activeLayerId,
+            type: 'angle',
+            color: activeColor,
+            lineWidth: strokeWidth,
+            createdAt: new Date().toISOString(),
+            startPoint: toVector3D(start),
+            vertex: toVector3D(vertex),
+            endPoint: toVector3D(end),
+            angleDeg,
+          });
+        }
+        setAnglePoints([]);
       } else if (activeTool === 'distance') {
         if (!distanceStart) {
           setDistanceStart(pt);
@@ -105,6 +329,7 @@ export function DrawingInteraction({
               layerId: activeLayerId,
               type: 'distance',
               color: activeColor,
+              lineWidth: strokeWidth,
               createdAt: new Date().toISOString(),
               startPoint: { x: distanceStart.x, y: distanceStart.y, z: distanceStart.z },
               endPoint: { x: pt.x, y: pt.y, z: pt.z },
@@ -129,6 +354,7 @@ export function DrawingInteraction({
             layerId: activeLayerId,
             type: 'arrow',
             color: activeColor,
+            lineWidth: strokeWidth,
             createdAt: new Date().toISOString(),
             startPoint: { x: pt.x, y: pt.y, z: pt.z }, // Origin tail
             endPoint: { x: arrowTarget.x, y: arrowTarget.y, z: arrowTarget.z }, // Arrow points to target
@@ -140,34 +366,44 @@ export function DrawingInteraction({
     };
 
     const handlePointerMove = (e: PointerEvent) => {
-      if (activeTool === 'orbit') return;
-      if (activeTool === 'brush' && !isBrushDrawingRef.current) return;
+      if (activeTool === 'orbit' || activeTool === 'eraser') return;
+
+      if (activeTool === 'brush' || activeTool === 'highlighter') {
+        if (!isBrushDrawingRef.current) return;
+        // Coalesced events recover the high-frequency samples the browser batches per frame,
+        // which is what makes fast strokes follow the hand instead of cutting corners.
+        const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
+        const points = brushPointsRef.current;
+        let added = false;
+        for (const ev of events.length > 0 ? events : [e]) {
+          const hit = getMeshIntersection(ev);
+          if (!hit) continue;
+          const pt = getSurfacePoint(hit);
+          const last = points[points.length - 1];
+          if (!last || last.distanceTo(pt) > MIN_SAMPLE_SPACING_MM) {
+            points.push(pt);
+            added = true;
+          }
+        }
+        if (added) scheduleBrushPreview();
+        return;
+      }
 
       const hit = getMeshIntersection(e);
       if (!hit) return;
       const pt = hit.point.clone();
 
-      if (activeTool === 'brush' && isBrushDrawingRef.current) {
-        const points = brushPointsRef.current;
-        const last = points[points.length - 1];
-        if (!last || last.distanceTo(pt) > 0.2) {
-          points.push(pt);
-          if (brushPreviewFrameRef.current === null) {
-            brushPreviewFrameRef.current = requestAnimationFrame(() => {
-              brushPreviewFrameRef.current = null;
-              setBrushPoints([...brushPointsRef.current]);
-            });
-          }
-        }
-      } else if (activeTool === 'distance' && distanceStart) {
+      if (activeTool === 'distance' && distanceStart) {
         setDistanceCurrent(pt);
       } else if (activeTool === 'arrow' && arrowTarget) {
         setArrowCurrent(pt);
+      } else if ((activeTool === 'polyline' && polyline) || (activeTool === 'angle' && anglePoints.length > 0)) {
+        setHoverPoint(pt);
       }
     };
 
     const handlePointerUp = (e: PointerEvent) => {
-      if (activeTool === 'brush' && isBrushDrawingRef.current) {
+      if ((activeTool === 'brush' || activeTool === 'highlighter') && isBrushDrawingRef.current) {
         isBrushDrawingRef.current = false;
         if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
         if (brushPreviewFrameRef.current !== null) {
@@ -176,32 +412,39 @@ export function DrawingInteraction({
         }
         const completedPoints = brushPointsRef.current;
         brushPointsRef.current = [];
-        setIsBrushDrawing(false);
         if (completedPoints.length >= 2) {
+          const isHighlighter = activeTool === 'highlighter';
           onAddAnnotation({
             id: `brush-${Date.now()}`,
             layerId: activeLayerId,
             type: 'brush',
             color: activeColor,
-            lineWidth: strokeWidth,
+            lineWidth: isHighlighter ? strokeWidth * HIGHLIGHTER_WIDTH_SCALE : strokeWidth,
+            style: isHighlighter ? 'highlighter' : undefined,
             createdAt: new Date().toISOString(),
-            points: completedPoints.map((p) => ({ x: p.x, y: p.y, z: p.z })),
+            points: smoothStroke(completedPoints).map(toVector3D),
           });
         }
         setBrushPoints([]);
       }
     };
 
+    const handleDoubleClick = () => {
+      if (activeTool === 'polyline' && polyline) commitPolyline(polyline, false);
+    };
+
     canvas.addEventListener('pointerdown', handlePointerDown, true);
     canvas.addEventListener('pointermove', handlePointerMove);
     canvas.addEventListener('pointerup', handlePointerUp);
     canvas.addEventListener('pointercancel', handlePointerUp);
+    canvas.addEventListener('dblclick', handleDoubleClick);
 
     return () => {
       canvas.removeEventListener('pointerdown', handlePointerDown, true);
       canvas.removeEventListener('pointermove', handlePointerMove);
       canvas.removeEventListener('pointerup', handlePointerUp);
       canvas.removeEventListener('pointercancel', handlePointerUp);
+      canvas.removeEventListener('dblclick', handleDoubleClick);
       if (brushPreviewFrameRef.current !== null) cancelAnimationFrame(brushPreviewFrameRef.current);
     };
   }, [
@@ -209,44 +452,122 @@ export function DrawingInteraction({
     gl,
     distanceStart,
     arrowTarget,
+    polyline,
+    anglePoints,
     activeColor,
     strokeWidth,
     activeLayerId,
     onAddAnnotation,
     onRequestPinText,
     getMeshIntersection,
+    getSurfacePoint,
+    traceSurface,
+    screenDistancePx,
+    commitPolyline,
   ]);
 
-  const brushLinePoints = useMemo((): [number, number, number][] | null => {
-    if (!isBrushDrawing || brushPoints.length < 2) return null;
-    return brushPoints.map((p) => [p.x, p.y, p.z]);
-  }, [isBrushDrawing, brushPoints]);
+  // Live preview uses the same smoothing as the committed stroke, so what you see is what you get
+  const brushLinePoints = useMemo((): Tuple3[] | null => {
+    if (brushPoints.length < 2) return null;
+    return smoothStroke(brushPoints).map(toTuple);
+  }, [brushPoints]);
 
-  const distanceLinePoints = useMemo((): [number, number, number][] | null => {
+  const distanceLinePoints = useMemo((): Tuple3[] | null => {
     if (!distanceStart || !distanceCurrent) return null;
-    return [
-      [distanceStart.x, distanceStart.y, distanceStart.z],
-      [distanceCurrent.x, distanceCurrent.y, distanceCurrent.z],
-    ];
+    return [toTuple(distanceStart), toTuple(distanceCurrent)];
   }, [distanceStart, distanceCurrent]);
 
-  const arrowLinePoints = useMemo((): [number, number, number][] | null => {
+  const arrowLinePoints = useMemo((): Tuple3[] | null => {
     if (!arrowTarget || !arrowCurrent) return null;
-    return [
-      [arrowCurrent.x, arrowCurrent.y, arrowCurrent.z],
-      [arrowTarget.x, arrowTarget.y, arrowTarget.z],
-    ];
+    return [toTuple(arrowCurrent), toTuple(arrowTarget)];
   }, [arrowTarget, arrowCurrent]);
+
+  const polylinePathPoints = useMemo((): Tuple3[] | null => {
+    if (!polyline || polyline.vertices.length < 2) return null;
+    return flattenPolyline(polyline).map(toTuple);
+  }, [polyline]);
+
+  const polylineRubberBand = useMemo((): Tuple3[] | null => {
+    if (!polyline || !hoverPoint) return null;
+    return [toTuple(polyline.vertices[polyline.vertices.length - 1]), toTuple(hoverPoint)];
+  }, [polyline, hoverPoint]);
+
+  const anglePreviewPoints = useMemo((): Tuple3[] | null => {
+    const pts = hoverPoint ? [...anglePoints, hoverPoint] : anglePoints;
+    if (pts.length < 2) return null;
+    return pts.map(toTuple);
+  }, [anglePoints, hoverPoint]);
+
+  const previewAngleDeg = anglePoints.length === 2 && hoverPoint
+    ? angleAtVertex(anglePoints[0], anglePoints[1], hoverPoint)
+    : null;
 
   return (
     <group>
-      {/* Active Brush Line Preview */}
-      {brushLinePoints && (
+      {/* Active Brush / Highlighter Preview */}
+      {brushLinePoints && isFreehandTool && (
         <DreiLine
           points={brushLinePoints}
           color={activeColor}
-          lineWidth={strokeWidth}
+          lineWidth={freehandWidth}
+          transparent={activeTool === 'highlighter'}
+          opacity={activeTool === 'highlighter' ? HIGHLIGHTER_OPACITY : 1}
+          depthWrite={activeTool !== 'highlighter'}
+          {...(activeTool === 'highlighter' ? highlighterStencilProps(RESERVED_STENCIL_REF) : {})}
+          {...OVERLAY_MATERIAL_PROPS}
         />
+      )}
+
+      {/* Active Polyline Preview */}
+      {polyline && (
+        <group>
+          {polylinePathPoints && (
+            <DreiLine points={polylinePathPoints} color={activeColor} lineWidth={strokeWidth} {...OVERLAY_MATERIAL_PROPS} />
+          )}
+          {polylineRubberBand && (
+            <DreiLine
+              points={polylineRubberBand}
+              color={activeColor}
+              lineWidth={Math.max(1, strokeWidth - 1)}
+              dashed
+              dashSize={0.3}
+              gapSize={0.2}
+              depthTest={false}
+            />
+          )}
+          {polyline.vertices.map((v, i) => (
+            <mesh key={i} position={v} renderOrder={10}>
+              <sphereGeometry args={[i === 0 && polyline.vertices.length >= 3 ? 0.3 : 0.18, 16, 16]} />
+              <meshBasicMaterial color={i === 0 ? '#ffffff' : activeColor} depthTest={false} />
+            </mesh>
+          ))}
+        </group>
+      )}
+
+      {/* Active Angle Preview */}
+      {anglePoints.length > 0 && (
+        <group>
+          {anglePreviewPoints && (
+            <DreiLine
+              points={anglePreviewPoints}
+              color={activeColor}
+              lineWidth={strokeWidth}
+              dashed
+              dashSize={0.4}
+              gapSize={0.25}
+              depthTest={false}
+            />
+          )}
+          {anglePoints.map((p, i) => (
+            <mesh key={i} position={p} renderOrder={10}>
+              <sphereGeometry args={[i === 1 ? 0.35 : 0.25, 16, 16]} />
+              <meshBasicMaterial color={activeColor} depthTest={false} />
+            </mesh>
+          ))}
+          {previewAngleDeg !== null && (
+            <AngleBadge position={anglePoints[1]} angleDeg={previewAngleDeg} />
+          )}
+        </group>
       )}
 
       {/* Active Distance Measurement Preview */}
@@ -255,13 +576,17 @@ export function DrawingInteraction({
           <DreiLine
             points={distanceLinePoints}
             color={activeColor}
-            lineWidth={2}
+            lineWidth={strokeWidth}
+            dashed
+            dashSize={0.4}
+            gapSize={0.25}
+            depthTest={false}
           />
-          <mesh position={distanceStart}>
+          <mesh position={distanceStart} renderOrder={10}>
             <sphereGeometry args={[0.3, 16, 16]} />
             <meshBasicMaterial color={activeColor} depthTest={false} />
           </mesh>
-          <mesh position={distanceCurrent}>
+          <mesh position={distanceCurrent} renderOrder={10}>
             <sphereGeometry args={[0.3, 16, 16]} />
             <meshBasicMaterial color={activeColor} depthTest={false} />
           </mesh>
@@ -274,14 +599,28 @@ export function DrawingInteraction({
           <DreiLine
             points={arrowLinePoints}
             color={activeColor}
-            lineWidth={2}
+            lineWidth={strokeWidth}
+            dashed
+            dashSize={0.4}
+            gapSize={0.25}
+            depthTest={false}
           />
-          <mesh position={arrowTarget}>
+          <mesh position={arrowTarget} renderOrder={10}>
             <sphereGeometry args={[0.3, 16, 16]} />
             <meshBasicMaterial color={activeColor} depthTest={false} />
           </mesh>
         </group>
       )}
     </group>
+  );
+}
+
+function AngleBadge({ position, angleDeg }: { position: THREE.Vector3; angleDeg: number }) {
+  return (
+    <Html position={position} center distanceFactor={25} style={{ pointerEvents: 'none' }}>
+      <div className="px-2 py-0.5 rounded-full text-[11px] font-semibold shadow-md whitespace-nowrap bg-zinc-900/90 text-zinc-100 -translate-y-5">
+        {angleDeg.toFixed(1)}°
+      </div>
+    </Html>
   );
 }

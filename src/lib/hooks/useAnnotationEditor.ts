@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type {
   AnnotationDocument,
   AnnotationLayer,
@@ -9,6 +9,7 @@ import type {
   ToolMode,
   SaveAnnotationResponse,
   GetAnnotationResponse,
+  AnnotationSource,
 } from '@/src/types/annotation';
 import {
   saveDraftToStorage,
@@ -18,36 +19,57 @@ import {
 
 const DEFAULT_LAYER_COLOR = '#3b82f6'; // Blue
 
+const DEFAULT_LAYER_NAMES: Record<AnnotationSource, string> = {
+  'case-submission': 'Case Submission Review',
+  'design-output': 'Design Output Review',
+};
+
+/** Layers saved before markup was split per preview were all drawn on the case submission. */
+export const layerSource = (layer: AnnotationLayer): AnnotationSource => layer.source ?? 'case-submission';
+
 function createInitialDocument(caseId: string): AnnotationDocument {
-  const initialLayerId = `layer-${Date.now()}`;
   return {
     id: `doc-${caseId}`,
     caseId,
     schemaVersion: 1,
     revision: 0,
-    layers: [
-      {
-        id: initialLayerId,
-        name: 'Default Layer',
-        color: DEFAULT_LAYER_COLOR,
-        visible: true,
-        locked: false,
-        opacity: 1,
-        annotations: [],
-      },
-    ],
+    layers: [],
   };
+}
+
+/**
+ * Placeholder shown until the first mark is drawn on a preview, so an untouched preview
+ * doesn't make the document dirty. It is materialized into the document on first use.
+ */
+function defaultLayerFor(source: AnnotationSource): AnnotationLayer {
+  return {
+    id: `layer-default-${source}`,
+    name: DEFAULT_LAYER_NAMES[source],
+    color: DEFAULT_LAYER_COLOR,
+    visible: true,
+    locked: false,
+    opacity: 1,
+    source,
+    annotations: [],
+  };
+}
+
+function withLayer(doc: AnnotationDocument, layer: AnnotationLayer): AnnotationDocument {
+  return doc.layers.some((l) => l.id === layer.id) ? doc : { ...doc, layers: [...doc.layers, layer] };
 }
 
 interface UseAnnotationEditorProps {
   caseId: string;
   userId?: string;
+  /** Which preview is open; markup is kept separate per preview because the models differ. */
+  source?: AnnotationSource;
   onSaveSuccess?: (revision: number) => void;
 }
 
 export function useAnnotationEditor({
   caseId,
   userId,
+  source = 'case-submission',
   onSaveSuccess,
 }: UseAnnotationEditorProps) {
   const [doc, setDoc] = useState<AnnotationDocument>(() => createInitialDocument(caseId));
@@ -59,7 +81,7 @@ export function useAnnotationEditor({
   const [activeTool, setActiveTool] = useState<ToolMode>('orbit');
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [activeColor, setActiveColor] = useState<string>('#ef4444'); // Default red for markings
-  const [strokeWidth, setStrokeWidth] = useState<number>(2);
+  const [strokeWidth, setStrokeWidth] = useState<number>(4);
 
   // Undo / Redo count states to avoid reading refs in render
   const [undoCount, setUndoCount] = useState<number>(0);
@@ -81,9 +103,15 @@ export function useAnnotationEditor({
 
   // Maintain activeLayerId without triggering cascading renders in effects
   const [rawActiveLayerId, setRawActiveLayerId] = useState<string>('');
-  const activeLayerId = doc.layers.some((l) => l.id === rawActiveLayerId)
+  const sourceLayers = useMemo(() => {
+    const scoped = doc.layers.filter((l) => layerSource(l) === source);
+    return scoped.length > 0 ? scoped : [defaultLayerFor(source)];
+  }, [doc.layers, source]);
+  const activeLayerId = sourceLayers.some((l) => l.id === rawActiveLayerId)
     ? rawActiveLayerId
-    : doc.layers[0]?.id || '';
+    : sourceLayers[0].id;
+  // The placeholder layer, if that's what is active and it isn't in the document yet
+  const pendingDefaultLayer = doc.layers.some((l) => l.id === activeLayerId) ? null : sourceLayers[0];
 
   // Initial load from server + check for IndexedDB draft
   useEffect(() => {
@@ -193,8 +221,9 @@ export function useAnnotationEditor({
       setUndoCount(undoStackRef.current.length);
       setRedoCount(0);
 
-      const targetLayerId = annotation.layerId || activeLayerId || prev.layers[0]?.id;
-      const updatedLayers = prev.layers.map((layer) => {
+      const base = pendingDefaultLayer ? withLayer(prev, pendingDefaultLayer) : prev;
+      const targetLayerId = base.layers.some((l) => l.id === annotation.layerId) ? annotation.layerId : activeLayerId;
+      const updatedLayers = base.layers.map((layer) => {
         if (layer.id === targetLayerId) {
           return {
             ...layer,
@@ -204,11 +233,11 @@ export function useAnnotationEditor({
         return layer;
       });
 
-      return { ...prev, layers: updatedLayers };
+      return { ...base, layers: updatedLayers };
     });
     setSaveStatus('dirty');
     setSaveError(undefined);
-  }, [activeLayerId]);
+  }, [activeLayerId, pendingDefaultLayer]);
 
   const updateAnnotation = useCallback((id: string, updates: Partial<AnnotationItem>) => {
     setDoc((prev) => {
@@ -251,39 +280,43 @@ export function useAnnotationEditor({
     const newLayerId = `layer-${Date.now()}`;
     const newLayer: AnnotationLayer = {
       id: newLayerId,
-      name: name || `Layer ${doc.layers.length + 1}`,
+      name: name || `Layer ${sourceLayers.length + 1}`,
       color: color || DEFAULT_LAYER_COLOR,
       visible: true,
       locked: false,
       opacity: 1,
+      source,
       annotations: [],
     };
 
+    const base = pendingDefaultLayer ? withLayer(doc, pendingDefaultLayer) : doc;
     pushState({
-      ...doc,
-      layers: [...doc.layers, newLayer],
+      ...base,
+      layers: [...base.layers, newLayer],
     });
     setRawActiveLayerId(newLayerId);
-  }, [doc, pushState]);
+  }, [doc, pendingDefaultLayer, pushState, source, sourceLayers.length]);
 
   const updateLayer = useCallback((layerId: string, updates: Partial<AnnotationLayer>) => {
+    const placeholder = sourceLayers.find((l) => l.id === layerId && !doc.layers.includes(l));
+    const base = placeholder ? withLayer(doc, placeholder) : doc;
     pushState({
-      ...doc,
-      layers: doc.layers.map((l) => (l.id === layerId ? { ...l, ...updates } : l)),
+      ...base,
+      layers: base.layers.map((l) => (l.id === layerId ? { ...l, ...updates } : l)),
     });
-  }, [doc, pushState]);
+  }, [doc, pushState, sourceLayers]);
 
   const deleteLayer = useCallback((layerId: string) => {
-    if (doc.layers.length <= 1) return; // Must keep at least one layer
+    if (sourceLayers.length <= 1) return; // Each preview keeps at least one layer
     const filtered = doc.layers.filter((l) => l.id !== layerId);
     pushState({
       ...doc,
       layers: filtered,
     });
     if (activeLayerId === layerId) {
-      setRawActiveLayerId(filtered[0]?.id || '');
+      setRawActiveLayerId(sourceLayers.find((l) => l.id !== layerId)?.id || '');
     }
-  }, [doc, activeLayerId, pushState]);
+  }, [doc, activeLayerId, pushState, sourceLayers]);
 
   // Undo / Redo
   const undo = useCallback(() => {
@@ -403,6 +436,8 @@ export function useAnnotationEditor({
 
   return {
     document: doc,
+    // Layers belonging to the open preview (what the viewer should render and list)
+    layers: sourceLayers,
     saveStatus,
     lastSavedRevision,
     lastSavedAt,

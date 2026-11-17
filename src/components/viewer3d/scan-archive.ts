@@ -1,16 +1,25 @@
-import { parse } from '3shape-dcm'
 import { Unzip, UnzipInflate, UnzipPassThrough } from 'fflate'
 
 const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
-const MAX_DCM_FILE_BYTES = 128 * 1024 * 1024
-const MAX_TOTAL_DCM_BYTES = 256 * 1024 * 1024
-const MAX_DCM_FILES = 24
+const MAX_MESH_FILE_BYTES = 128 * 1024 * 1024
+const MAX_TOTAL_MESH_BYTES = 320 * 1024 * 1024
+const MAX_MESH_FILES = 48
 
-export type ParsedDcmMesh = ReturnType<typeof parse>
+/** Which preview a model is opened for; decides what part of an archive is shown. */
+export type ModelPurpose = 'case-submission' | 'design-output'
 
-export interface ScanMeshFile {
+/**
+ * scan  – 3Shape DCM in a Scans/ folder (intraoral or model scans)
+ * cad   – 3Shape DCM in a CAD/ folder (designed restorations)
+ * mesh  – STL / PLY / OBJ anywhere (exocad and most CAD exports)
+ * other – DCM outside those folders (libraries, misc); used only when nothing else exists
+ */
+export type MeshCategory = 'scan' | 'cad' | 'mesh' | 'other'
+
+export interface ArchiveEntry {
   name: string
-  mesh: ParsedDcmMesh
+  category: MeshCategory
+  bytes: Uint8Array
 }
 
 export interface ScanArchiveProgress {
@@ -18,50 +27,111 @@ export interface ScanArchiveProgress {
   totalBytes: number | null
 }
 
-function isDcmInFolder(name: string, folders: ReadonlySet<string>): boolean {
+const SCAN_FOLDERS = new Set(['scans', 'scan'])
+const CAD_FOLDERS = new Set(['cad'])
+const MESH_EXTENSIONS = new Set(['stl', 'ply', 'obj'])
+
+export function fileExtension(name: string): string {
+  const base = name.replace(/\\/g, '/').split('/').pop() ?? ''
+  const dot = base.lastIndexOf('.')
+  return dot >= 0 ? base.slice(dot + 1).toLowerCase() : ''
+}
+
+export function classifyArchiveEntry(name: string): MeshCategory | null {
   const parts = name.replace(/\\/g, '/').split('/').filter(Boolean)
-  const baseName = parts[parts.length - 1]?.toLowerCase()
-  return !!baseName?.endsWith('.dcm') && parts.slice(0, -1).some((part) => folders.has(part.toLowerCase()))
-}
+  const baseName = parts[parts.length - 1]
+  if (!baseName || baseName.startsWith('.') || parts.some((p) => p === '__MACOSX')) return null
 
-function archiveSizeError(): Error {
-  return new Error(`3D archive is larger than the viewer limit of ${Math.round(MAX_ARCHIVE_BYTES / 1024 / 1024)} MB.`)
-}
-
-async function readResponse(response: Response, maxBytes: number): Promise<Uint8Array> {
-  const contentLengthHeader = response.headers.get('content-length')
-  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : Number.NaN
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    throw new Error(`3D file is larger than the viewer limit of ${Math.round(maxBytes / 1024 / 1024)} MB.`)
+  const ext = fileExtension(baseName)
+  const folders = parts.slice(0, -1).map((p) => p.toLowerCase())
+  if (ext === 'dcm') {
+    if (folders.some((f) => SCAN_FOLDERS.has(f))) return 'scan'
+    if (folders.some((f) => CAD_FOLDERS.has(f))) return 'cad'
+    return 'other'
   }
+  return MESH_EXTENSIONS.has(ext) ? 'mesh' : null
+}
+
+/**
+ * Case submissions show the lab's scans (falling back to whatever meshes exist).
+ * Design outputs show the designed restoration together with the scans it sits on,
+ * so reviewers see the design in context.
+ */
+export function selectEntries<T extends { category: MeshCategory }>(entries: T[], purpose: ModelPurpose): T[] {
+  const of = (c: MeshCategory) => entries.filter((e) => e.category === c)
+  const scans = of('scan')
+  const design = [...of('cad'), ...of('mesh')]
+  const other = of('other')
+
+  if (purpose === 'design-output') {
+    if (design.length > 0) return [...scans, ...design]
+    return scans.length > 0 ? scans : other
+  }
+  if (scans.length > 0) return scans
+  if (design.length > 0) return design
+  return other
+}
+
+function sizeError(maxBytes: number): Error {
+  return new Error(`3D file is larger than the viewer limit of ${Math.round(maxBytes / 1024 / 1024)} MB.`)
+}
+
+export async function fetchFileResponse(url: string, signal: AbortSignal): Promise<Response> {
+  const response = await fetch(url, { signal })
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('This 3D file is no longer available. Ask an administrator to upload it again.')
+    }
+    throw new Error(`Could not load 3D file (HTTP ${response.status}).`)
+  }
+  return response
+}
+
+function contentLengthOf(response: Response): number | null {
+  const header = response.headers.get('content-length')
+  const value = header ? Number(header) : Number.NaN
+  return Number.isFinite(value) ? value : null
+}
+
+/** Read a whole (non-archive) model file, reporting download progress. */
+export async function readResponse(
+  response: Response,
+  maxBytes: number,
+  onProgress?: (progress: ScanArchiveProgress) => void,
+): Promise<Uint8Array> {
+  const totalBytes = contentLengthOf(response)
+  if (totalBytes !== null && totalBytes > maxBytes) throw sizeError(maxBytes)
 
   if (!response.body) {
     const bytes = new Uint8Array(await response.arrayBuffer())
-    if (bytes.byteLength > maxBytes) {
-      throw new Error(`3D file is larger than the viewer limit of ${Math.round(maxBytes / 1024 / 1024)} MB.`)
-    }
+    if (bytes.byteLength > maxBytes) throw sizeError(maxBytes)
     return bytes
   }
 
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
-  let totalBytes = 0
+  let loadedBytes = 0
   try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      totalBytes += value.byteLength
-      if (totalBytes > maxBytes) {
+      loadedBytes += value.byteLength
+      if (loadedBytes > maxBytes) {
         await reader.cancel()
-        throw new Error(`3D file is larger than the viewer limit of ${Math.round(maxBytes / 1024 / 1024)} MB.`)
+        throw sizeError(maxBytes)
       }
       chunks.push(value)
+      onProgress?.({ loadedBytes, totalBytes })
     }
   } finally {
     reader.releaseLock()
   }
+  return concat(chunks, loadedBytes)
+}
 
-  const bytes = new Uint8Array(totalBytes)
+function concat(chunks: Uint8Array[], total: number): Uint8Array {
+  if (chunks.length === 1) return chunks[0]
+  const bytes = new Uint8Array(total)
   let offset = 0
   for (const chunk of chunks) {
     bytes.set(chunk, offset)
@@ -70,47 +140,42 @@ async function readResponse(response: Response, maxBytes: number): Promise<Uint8
   return bytes
 }
 
-async function fetchFileResponse(url: string, signal: AbortSignal): Promise<Response> {
-  const response = await fetch(url, { signal })
-  if (!response.ok) {
-    throw new Error(`Could not load 3D file (HTTP ${response.status}).`)
-  }
-  return response
-}
+/** Standalone model files use the same per-file cap as meshes inside archives. */
+export const MAX_SINGLE_FILE_BYTES = MAX_MESH_FILE_BYTES
 
-async function fetchFile(url: string, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
-  return readResponse(await fetchFileResponse(url, signal), maxBytes)
-}
-
-async function extractDcmFiles(
+/**
+ * Stream-unzip an archive in a single pass, keeping every mesh-like entry with its category.
+ * Unlike a two-pass "scans first, then CAD" approach, the archive is only downloaded once.
+ */
+export async function extractMeshEntries(
   response: Response,
-  folderNames: string[],
   onProgress?: (progress: ScanArchiveProgress) => void,
-): Promise<Array<[string, Uint8Array]>> {
-  const contentLengthHeader = response.headers.get('content-length')
-  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : Number.NaN
-  if (Number.isFinite(contentLength) && contentLength > MAX_ARCHIVE_BYTES) throw archiveSizeError()
+): Promise<ArchiveEntry[]> {
+  const contentLength = contentLengthOf(response)
+  if (contentLength !== null && contentLength > MAX_ARCHIVE_BYTES) throw sizeError(MAX_ARCHIVE_BYTES)
   if (!response.body) {
     throw new Error('The browser cannot stream this 3D archive.')
   }
 
-  const folders = new Set(folderNames.map((name) => name.toLowerCase()))
-  const entries: Array<[string, Uint8Array]> = []
-  let totalDcmBytes = 0
-  let dcmCount = 0
+  const entries: ArchiveEntry[] = []
+  let totalMeshBytes = 0
+  let meshCount = 0
   let limitError: Error | null = null
+  const tooMuchData = () => new Error('The archive contains more 3D data than the viewer can safely load at once.')
+
   const unzip = new Unzip((file) => {
-    if (!isDcmInFolder(file.name, folders) || limitError) return
+    const category = classifyArchiveEntry(file.name)
+    if (!category || limitError) return
     const declaredSize = file.originalSize
-    if (typeof declaredSize === 'number' && declaredSize > MAX_DCM_FILE_BYTES) {
-      limitError = new Error(`A scan mesh exceeds the ${Math.round(MAX_DCM_FILE_BYTES / 1024 / 1024)} MB per-file viewer limit.`)
+    if (typeof declaredSize === 'number' && declaredSize > MAX_MESH_FILE_BYTES) {
+      limitError = new Error(`A mesh exceeds the ${Math.round(MAX_MESH_FILE_BYTES / 1024 / 1024)} MB per-file viewer limit.`)
       return
     }
-    if (dcmCount >= MAX_DCM_FILES || (typeof declaredSize === 'number' && totalDcmBytes + declaredSize > MAX_TOTAL_DCM_BYTES)) {
-      limitError = new Error('The archive contains more scan data than the viewer can safely load at once.')
+    if (meshCount >= MAX_MESH_FILES || (typeof declaredSize === 'number' && totalMeshBytes + declaredSize > MAX_TOTAL_MESH_BYTES)) {
+      limitError = tooMuchData()
       return
     }
-    dcmCount += 1
+    meshCount += 1
 
     const chunks: Uint8Array[] = []
     let fileBytes = 0
@@ -121,24 +186,18 @@ async function extractDcmFiles(
         return
       }
       fileBytes += chunk.byteLength
-      if (fileBytes > MAX_DCM_FILE_BYTES || totalDcmBytes + chunk.byteLength > MAX_TOTAL_DCM_BYTES) {
-        limitError = new Error('The archive contains more scan data than the viewer can safely load at once.')
+      if (fileBytes > MAX_MESH_FILE_BYTES || totalMeshBytes + chunk.byteLength > MAX_TOTAL_MESH_BYTES) {
+        limitError = tooMuchData()
         return
       }
-      totalDcmBytes += chunk.byteLength
+      totalMeshBytes += chunk.byteLength
       chunks.push(chunk)
       if (final) {
         if (typeof declaredSize === 'number' && declaredSize !== fileBytes) {
           limitError = new Error(`The extracted size of ${file.name} does not match the ZIP directory.`)
           return
         }
-        const bytes = new Uint8Array(fileBytes)
-        let offset = 0
-        for (const part of chunks) {
-          bytes.set(part, offset)
-          offset += part.byteLength
-        }
-        entries.push([file.name, bytes])
+        entries.push({ name: file.name, category, bytes: concat(chunks, fileBytes) })
       }
     }
 
@@ -160,10 +219,10 @@ async function extractDcmFiles(
       loadedBytes += value.byteLength
       if (loadedBytes > MAX_ARCHIVE_BYTES) {
         await reader.cancel()
-        throw archiveSizeError()
+        throw sizeError(MAX_ARCHIVE_BYTES)
       }
       unzip.push(value)
-      onProgress?.({ loadedBytes, totalBytes: Number.isFinite(contentLength) ? contentLength : null })
+      onProgress?.({ loadedBytes, totalBytes: contentLength })
       if (limitError) {
         await reader.cancel()
         throw limitError
@@ -175,46 +234,5 @@ async function extractDcmFiles(
   }
 
   if (limitError) throw limitError
-  return entries.sort(([a], [b]) => a.localeCompare(b))
-}
-
-function parseMeshes(entries: Array<[string, Uint8Array]>): ScanMeshFile[] {
-  const meshes: ScanMeshFile[] = []
-  const errors: string[] = []
-
-  for (const [name, bytes] of entries) {
-    try {
-      meshes.push({ name, mesh: parse(bytes) })
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : 'Unknown DCM parsing error')
-    }
-  }
-
-  if (meshes.length === 0) {
-    throw new Error(errors[0] || 'No readable 3Shape DCM scan meshes were found.')
-  }
-  if (errors.length > 0) {
-    throw new Error(`Could not decode ${errors.length} of ${entries.length} 3Shape scan mesh files: ${errors[0]}`)
-  }
-  return meshes
-}
-
-export async function load3ShapeDcmFile(url: string, signal: AbortSignal): Promise<ScanMeshFile[]> {
-  const bytes = await fetchFile(url, signal, MAX_DCM_FILE_BYTES)
-  return parseMeshes([['scan.dcm', bytes]])
-}
-
-export async function load3ShapeScanArchive(
-  url: string,
-  signal: AbortSignal,
-  onProgress?: (progress: ScanArchiveProgress) => void,
-): Promise<ScanMeshFile[]> {
-  let entries = await extractDcmFiles(await fetchFileResponse(url, signal), ['scans', 'scan'], onProgress)
-  if (entries.length === 0) {
-    entries = await extractDcmFiles(await fetchFileResponse(url, signal), ['cad'], onProgress)
-  }
-  if (entries.length === 0) {
-    throw new Error('No DCM scan meshes were found in the ZIP archive.')
-  }
-  return parseMeshes(entries)
+  return entries.sort((a, b) => a.name.localeCompare(b.name))
 }

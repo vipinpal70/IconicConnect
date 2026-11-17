@@ -1,23 +1,29 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useRef, forwardRef } from 'react';
+import React, { useEffect, useState, useMemo, forwardRef } from 'react';
 import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { MeshBVH } from 'three-mesh-bvh';
 import type { ThreeEvent } from '@react-three/fiber';
 import { initBvhAcceleration } from './bvh-setup';
-import {
-  load3ShapeDcmFile,
-  load3ShapeScanArchive,
-  type ScanArchiveProgress,
-  type ScanMeshFile,
-} from './scan-archive';
+import { loadModel } from './model-cache';
+import type { LoadedMesh } from './model-pipeline';
+import type { MeshCategory, ModelPurpose, ScanArchiveProgress } from './scan-archive';
 
 initBvhAcceleration();
 
+export interface ScanFileInfo {
+  name: string;
+  category: MeshCategory;
+  color: string;
+  vertices: number;
+  triangles: number;
+}
+
 interface ModelMeshProps {
   modelUrl?: string | null;
+  /** Real file name, used to detect the format when the URL doesn't carry the extension. */
+  fileName?: string;
+  purpose?: ModelPurpose;
   wireframe?: boolean;
   opacity?: number;
   materialMode?: 'enamel' | 'clay' | 'normal';
@@ -27,7 +33,7 @@ interface ModelMeshProps {
   onLoadError?: (error: string | null) => void;
   onLoadProgress?: (progress: ScanArchiveProgress | null) => void;
   visibleScanFiles?: Record<string, boolean>;
-  onScanFilesChange?: (files: Array<{ name: string; color: string; vertices: number; triangles: number }>) => void;
+  onScanFilesChange?: (files: ScanFileInfo[]) => void;
   onModelBoundsChange?: (bounds: { center: { x: number; y: number; z: number }; radius: number } | null) => void;
 }
 
@@ -63,16 +69,25 @@ function createProceduralDentalArch(): THREE.BufferGeometry {
   return tubeGeometry;
 }
 
-function createScanGeometry(file: ScanMeshFile): THREE.BufferGeometry {
+/**
+ * Wrap worker-produced arrays in a BufferGeometry. Normals, bounds and the BVH were all computed
+ * in the worker, so this is O(1) work on the main thread.
+ */
+function createMeshGeometry(mesh: LoadedMesh): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(file.mesh.vertices, 3));
-  geometry.setIndex(new THREE.BufferAttribute(file.mesh.indices, 1));
-  if (file.mesh.colors) {
-    geometry.setAttribute('color', new THREE.BufferAttribute(file.mesh.colors, 3, true));
+  geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3));
+  if (mesh.colors) {
+    // DCM colors are 0–255 bytes; PLY colors are already 0–1 floats
+    geometry.setAttribute('color', new THREE.BufferAttribute(mesh.colors, 3, mesh.colors instanceof Uint8Array));
   }
-  geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
-  if (typeof geometry.computeBoundsTree === 'function') {
+  if (mesh.index) geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+  const [minX, minY, minZ, maxX, maxY, maxZ] = mesh.bbox;
+  geometry.boundingBox = new THREE.Box3(new THREE.Vector3(minX, minY, minZ), new THREE.Vector3(maxX, maxY, maxZ));
+  geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
+  if (mesh.bvh) {
+    geometry.boundsTree = MeshBVH.deserialize(mesh.bvh, geometry, { setIndex: true });
+  } else if (typeof geometry.computeBoundsTree === 'function') {
     geometry.computeBoundsTree();
   }
   return geometry;
@@ -83,12 +98,12 @@ function disposeGeometry(geometry: THREE.BufferGeometry): void {
   geometry.dispose();
 }
 
-function scanColor(name: string, index: number): string {
+function scanColor(name: string, category: MeshCategory, index: number): string {
   const lowerName = name.toLowerCase();
   if (/antagonist|opposing|opposite/.test(lowerName)) return '#d9b887';
   if (/articulator|bitescan/.test(lowerName)) return '#9db9b2';
   if (/preparation|preparation scan/.test(lowerName)) return '#d8d4c8';
-  if (/cad|crown|bridge|restoration|waxup/.test(lowerName)) return '#b88762';
+  if (category === 'cad' || /cad|crown|bridge|restoration|waxup|coping|veneer|inlay|onlay|abutment/.test(lowerName)) return '#b88762';
   if (/gingiva|tissue/.test(lowerName)) return '#c7857e';
   if (/raw|prepreparation/.test(lowerName)) return '#a9afb8';
   return ['#d8d4c8', '#c8c8c0', '#e3d8c6', '#bbc7c5'][index % 4];
@@ -155,9 +170,18 @@ function ScanMesh({
   );
 }
 
+interface SceneMesh {
+  name: string;
+  geometry: THREE.BufferGeometry;
+  color: string;
+  hasVertexColors: boolean;
+}
+
 export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMesh(
   {
     modelUrl,
+    fileName = '',
+    purpose = 'case-submission',
     wireframe = false,
     opacity = 1.0,
     materialMode = 'enamel',
@@ -172,257 +196,96 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
   },
   ref
 ) {
-  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
-  const [geometryUrl, setGeometryUrl] = useState<string | null>(null);
-  const [scanGeometries, setScanGeometries] = useState<
-    Array<{ name: string; geometry: THREE.BufferGeometry; color: string; hasVertexColors: boolean }>
-  >([]);
-  const [scanGeometriesUrl, setScanGeometriesUrl] = useState<string | null>(null);
-  const [scanCenter, setScanCenter] = useState<THREE.Vector3 | null>(null);
-  const geometryRef = useRef<THREE.BufferGeometry | null>(null);
-  const scanGeometriesRef = useRef<Array<{ geometry: THREE.BufferGeometry }>>([]);
+  const loadKey = modelUrl ? `${purpose}|${modelUrl}` : null;
+  const [loaded, setLoaded] = useState<{ key: string; meshes: SceneMesh[]; center: THREE.Vector3 } | null>(null);
   const proceduralGeometry = useMemo(() => createProceduralDentalArch(), []);
-  const activeScanBounds = useMemo(() => {
-    if (!scanCenter || scanGeometriesUrl !== modelUrl || scanGeometries.length === 0) return null;
+  useEffect(() => () => proceduralGeometry.dispose(), [proceduralGeometry]);
+
+  const active = loaded && loaded.key === loadKey ? loaded : null;
+
+  const activeBounds = useMemo(() => {
+    if (!active) return null;
     const bounds = new THREE.Box3();
-    for (const item of scanGeometries) {
+    for (const item of active.meshes) {
       if (visibleScanFiles[item.name] !== false && item.geometry.boundingBox) bounds.union(item.geometry.boundingBox);
     }
     if (bounds.isEmpty()) return null;
-    const center = bounds.getCenter(new THREE.Vector3()).sub(scanCenter);
+    const center = bounds.getCenter(new THREE.Vector3()).sub(active.center);
     return {
       center: { x: center.x, y: center.y, z: center.z },
       radius: Math.max(bounds.getBoundingSphere(new THREE.Sphere()).radius, 1),
     };
-  }, [modelUrl, scanCenter, scanGeometries, scanGeometriesUrl, visibleScanFiles]);
+  }, [active, visibleScanFiles]);
 
-  useEffect(() => () => proceduralGeometry.dispose(), [proceduralGeometry]);
   useEffect(() => {
     onModelBoundsChange?.(
       modelUrl
-        ? geometryUrl === modelUrl && geometry?.boundingSphere
-          ? {
-              center: { x: 0, y: 0, z: 0 },
-              radius: geometry.boundingSphere.radius,
-            }
-          : activeScanBounds
+        ? activeBounds
         : proceduralGeometry.boundingSphere
-          ? {
-              center: { x: 0, y: 0, z: 0 },
-              radius: proceduralGeometry.boundingSphere.radius,
-            }
+          ? { center: { x: 0, y: 0, z: 0 }, radius: proceduralGeometry.boundingSphere.radius }
           : null,
     );
-  }, [activeScanBounds, geometry, geometryUrl, modelUrl, onModelBoundsChange, proceduralGeometry]);
+  }, [activeBounds, modelUrl, onModelBoundsChange, proceduralGeometry]);
 
-  // Load geometry based on file extension
+  // Load through the shared worker-backed cache (instant when already loaded or prefetched)
   useEffect(() => {
-    if (!modelUrl) {
-      onScanFilesChange?.([]);
-      onLoadError?.(null);
-      onLoadProgress?.(null);
-      return;
-    }
-
     onScanFilesChange?.([]);
-    onModelBoundsChange?.(null);
     onLoadError?.(null);
     onLoadProgress?.(null);
-
-    const cleanUrl = modelUrl.split('?')[0].toLowerCase();
-    let isStl = cleanUrl.endsWith('.stl');
-    let isPly = cleanUrl.endsWith('.ply');
-    let isObj = cleanUrl.endsWith('.obj');
-    let isDcm = cleanUrl.endsWith('.dcm');
-    let isZip = cleanUrl.endsWith('.zip');
-
-    // If query string has fileName parameter
-    if (modelUrl.includes('fileName=')) {
-      const match = modelUrl.match(/fileName=([^&]+)/i);
-      if (match && match[1]) {
-        const fn = decodeURIComponent(match[1]).toLowerCase();
-        if (fn.endsWith('.stl')) isStl = true;
-        if (fn.endsWith('.ply')) isPly = true;
-        if (fn.endsWith('.obj')) isObj = true;
-        if (fn.endsWith('.dcm')) isDcm = true;
-        if (fn.endsWith('.zip')) isZip = true;
-      }
-    }
+    if (!modelUrl || !loadKey) return;
 
     let isMounted = true;
-    const controller = new AbortController();
+    let created: SceneMesh[] = [];
+    const load = loadModel({ url: modelUrl, fileName, purpose });
+    const unsubscribe = load.subscribe((progress) => {
+      if (isMounted) onLoadProgress?.(progress);
+    });
 
-    if (isZip || isDcm) {
-      onLoadProgress?.({ loadedBytes: 0, totalBytes: null });
-      const loadMeshes = isZip
-        ? load3ShapeScanArchive(modelUrl, controller.signal, onLoadProgress)
-        : load3ShapeDcmFile(modelUrl, controller.signal);
-      void loadMeshes
-        .then((files) => {
-          if (!isMounted) return;
-          const nextGeometries = files.map((file, index) => ({
-            name: file.name,
-            geometry: createScanGeometry(file),
-            color: scanColor(file.name, index),
-            hasVertexColors: file.mesh.colors !== null,
-          }));
-          scanGeometriesRef.current = nextGeometries;
-          const bounds = new THREE.Box3();
-          for (const item of nextGeometries) {
-            if (item.geometry.boundingBox) bounds.union(item.geometry.boundingBox);
-          }
-          const center = bounds.getCenter(new THREE.Vector3());
-          setScanGeometries(nextGeometries);
-          setScanGeometriesUrl(modelUrl);
-          setScanCenter(center);
-          onScanFilesChange?.(
-            files.map((file, index) => ({
-              name: file.name,
-              color: nextGeometries[index].color,
-              vertices: file.mesh.vertices.length / 3,
-              triangles: file.mesh.indices.length / 3,
-            })),
-          );
-          onLoadProgress?.(null);
-        })
-        .catch((err: unknown) => {
-          if (!isMounted || controller.signal.aborted) return;
-          const message = err instanceof Error ? err.message : 'Failed to load the 3Shape scan.';
-          console.error('Error loading 3Shape scan:', err);
-          onLoadError?.(message);
-          onLoadProgress?.(null);
-        });
-    } else if (isStl) {
-      const loader = new STLLoader();
-      loader.load(
-        modelUrl,
-        (geom) => {
-          if (!isMounted) return;
-          geom.computeVertexNormals();
-          geom.center();
-          if (typeof geom.computeBoundsTree === 'function') {
-            geom.computeBoundsTree();
-          }
-          geom.computeBoundingSphere();
-          setGeometry(geom);
-          geometryRef.current = geom;
-          setGeometryUrl(modelUrl);
-        },
-        undefined,
-        (err) => {
-          if (!isMounted) return;
-          console.error('Error loading STL:', err);
-          const message = 'Failed to load STL model.';
-          onLoadError?.(message);
-        }
-      );
-    } else if (isPly) {
-      const loader = new PLYLoader();
-      loader.load(
-        modelUrl,
-        (geom) => {
-          if (!isMounted) return;
-          geom.computeVertexNormals();
-          geom.center();
-          if (typeof geom.computeBoundsTree === 'function') {
-            geom.computeBoundsTree();
-          }
-          geom.computeBoundingSphere();
-          setGeometry(geom);
-          geometryRef.current = geom;
-          setGeometryUrl(modelUrl);
-        },
-        undefined,
-        (err) => {
-          if (!isMounted) return;
-          console.error('Error loading PLY:', err);
-          const message = 'Failed to load PLY model.';
-          onLoadError?.(message);
-        }
-      );
-    } else if (isObj) {
-      const loader = new OBJLoader();
-      loader.load(
-        modelUrl,
-        (obj) => {
-          if (!isMounted) return;
-          let mergedGeom: THREE.BufferGeometry | null = null;
-          obj.traverse((child) => {
-            if ((child as THREE.Mesh).isMesh && !mergedGeom) {
-              mergedGeom = (child as THREE.Mesh).geometry.clone();
-            }
-          });
-
-          if (mergedGeom) {
-            const mg: THREE.BufferGeometry = mergedGeom;
-            mg.computeVertexNormals();
-            mg.center();
-            if (typeof mg.computeBoundsTree === 'function') {
-              mg.computeBoundsTree();
-            }
-            mg.computeBoundingSphere();
-            setGeometry(mg);
-            geometryRef.current = mg;
-            setGeometryUrl(modelUrl);
-          } else {
-            if (!isMounted) return;
-            const message = 'The OBJ file does not contain a mesh.';
-            onLoadError?.(message);
-          }
-        },
-        undefined,
-        (err) => {
-          if (!isMounted) return;
-          console.error('Error loading OBJ:', err);
-          const message = 'Failed to load OBJ model.';
-          onLoadError?.(message);
-        }
-      );
-    } else {
-      const message = 'This 3D file format is not supported by the viewer.';
-      onLoadError?.(message);
-    }
+    load.promise
+      .then((model) => {
+        if (!isMounted) return;
+        created = model.meshes.map((mesh, index) => ({
+          name: mesh.name,
+          geometry: createMeshGeometry(mesh),
+          color: scanColor(mesh.name, mesh.category, index),
+          hasVertexColors: mesh.colors !== null,
+        }));
+        const bounds = new THREE.Box3();
+        for (const item of created) if (item.geometry.boundingBox) bounds.union(item.geometry.boundingBox);
+        setLoaded({ key: loadKey, meshes: created, center: bounds.getCenter(new THREE.Vector3()) });
+        onScanFilesChange?.(
+          model.meshes.map((mesh, index) => ({
+            name: mesh.name,
+            category: mesh.category,
+            color: created[index].color,
+            vertices: mesh.vertexCount,
+            triangles: mesh.triangleCount,
+          })),
+        );
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return;
+        console.error('Error loading 3D model:', err);
+        onLoadError?.(err instanceof Error ? err.message : 'Failed to load the 3D model.');
+      });
 
     return () => {
       isMounted = false;
-      controller.abort();
-      if (geometryRef.current) {
-        disposeGeometry(geometryRef.current);
-        geometryRef.current = null;
-      }
-      for (const item of scanGeometriesRef.current) {
-        disposeGeometry(item.geometry);
-      }
-      scanGeometriesRef.current = [];
+      unsubscribe();
+      // GPU buffers only; the typed arrays stay in the session cache for instant reopen
+      for (const item of created) disposeGeometry(item.geometry);
     };
-  }, [modelUrl, onLoadError, onLoadProgress, onScanFilesChange, onModelBoundsChange]);
+  }, [modelUrl, fileName, purpose, loadKey, onLoadError, onLoadProgress, onScanFilesChange]);
 
-  // Dental Tooth Enamel Material
+  // Procedural placeholder material (no model URL)
   const material = useMemo(() => {
     if (materialMode === 'normal') {
-      return new THREE.MeshNormalMaterial({
-        wireframe,
-        transparent: opacity < 1.0,
-        opacity,
-      });
+      return new THREE.MeshNormalMaterial({ wireframe, transparent: opacity < 1.0, opacity });
     }
-
-    if (materialMode === 'clay') {
-      return new THREE.MeshStandardMaterial({
-        color: '#e2d9cc',
-        roughness: 0.7,
-        metalness: 0.05,
-        wireframe,
-        transparent: opacity < 1.0,
-        opacity,
-      });
-    }
-
-    // Default dental porcelain / enamel look
     return new THREE.MeshStandardMaterial({
-      color: '#f8f6f0',
-      roughness: 0.25,
-      metalness: 0.1,
+      color: materialMode === 'clay' ? '#e2d9cc' : '#f8f6f0',
+      roughness: materialMode === 'clay' ? 0.7 : 0.25,
+      metalness: materialMode === 'clay' ? 0.05 : 0.1,
       wireframe,
       transparent: opacity < 1.0,
       opacity,
@@ -430,30 +293,31 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
   }, [materialMode, wireframe, opacity]);
   useEffect(() => () => material.dispose(), [material]);
 
-  const activeGeometry = modelUrl ? (geometryUrl === modelUrl ? geometry : null) : proceduralGeometry;
-  const activeScanGeometries = scanGeometriesUrl === modelUrl ? scanGeometries : [];
-  const activeScanCenter = scanGeometriesUrl === modelUrl ? scanCenter : null;
+  if (!modelUrl) {
+    return (
+      <mesh
+        ref={ref}
+        name="Dental model"
+        userData={{ isDentalModel: true }}
+        geometry={proceduralGeometry}
+        material={material}
+        castShadow
+        receiveShadow
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+      />
+    );
+  }
+
+  if (!active) return null;
 
   return (
-    <group position={activeScanCenter ? [-activeScanCenter.x, -activeScanCenter.y, -activeScanCenter.z] : undefined}>
-      {activeGeometry && (
-        <mesh
-          ref={ref}
-          name="Dental model"
-          userData={{ isDentalModel: true }}
-          geometry={activeGeometry}
-          material={material}
-          castShadow
-          receiveShadow
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-        />
-      )}
-      {activeScanGeometries.map((item) => (
+    <group position={[-active.center.x, -active.center.y, -active.center.z]}>
+      {active.meshes.map((item, index) => (
         <ScanMesh
           key={item.name}
-          meshRef={item === activeScanGeometries[0] ? ref : undefined}
+          meshRef={index === 0 ? ref : undefined}
           name={item.name}
           geometry={item.geometry}
           color={item.color}

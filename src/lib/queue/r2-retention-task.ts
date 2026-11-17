@@ -1,23 +1,24 @@
 import 'dotenv/config';
+import { and, inArray, ne } from 'drizzle-orm';
+import { db } from '../../db';
+import { files } from '../../db/schema/files';
 import { R2_BUCKET } from '../r2';
-import { listAllR2Objects, deleteKeys } from '../r2-objects';
+import { listAllR2Objects, deleteKeysWithResults } from '../r2-objects';
 
 /**
  * R2 age-based retention.
  *
  * Deletes EVERY object in the bucket that has been stored for at least
- * RETENTION_MONTHS (default 3) — R2 storage only, no database reads or writes.
+ * RETENTION_MONTHS (default 3).
  * It doesn't distinguish by file type (case files, reference images, hold
  * images, preview files, output files, chat attachments, milling contracts,
  * etc. all go through the same objectKey() scheme in R2_BUCKET), so every
- * type is covered by construction, uniformly, with no per-table logic needed
- * or wanted here — deliberately kept simple and storage-only rather than
- * reaching into the DB to clean up references, which is a separate concern.
+ * type is covered by construction, uniformly.
  *
  * This is an unconditional retention policy — old files are removed even if a
- * case (or chat message, or milling centre) still links to them, which will
- * break those downloads once the object is gone; the DB row/column is left
- * exactly as-is. Runs quarterly via r2-retention-scheduler.ts.
+ * case (or chat message, or milling centre) still links to them. The file
+ * registry is marked purged so clients can show an expired-file state rather
+ * than linking to a missing object. Runs quarterly via r2-retention-scheduler.ts.
  *
  * Age is measured from each object's R2 LastModified timestamp.
  *
@@ -79,8 +80,13 @@ export async function runR2Retention(options: { dryRun?: boolean } = {}): Promis
     return;
   }
 
-  const deleted = await deleteKeys(toDelete);
-  console.log(`[R2 Retention] Complete — deleted ${deleted}/${toDelete.length} object(s).`);
+  const { deletedKeys } = await deleteKeysWithResults(toDelete);
+  if (deletedKeys.length > 0) {
+    await db.update(files)
+      .set({ status: 'purged', purgedAt: new Date() })
+      .where(and(inArray(files.r2Key, deletedKeys), ne(files.status, 'purged')));
+  }
+  console.log(`[R2 Retention] Complete — deleted ${deletedKeys.length}/${toDelete.length} object(s).`);
 }
 
 // Support running directly: npx tsx src/lib/queue/r2-retention-task.ts [--dry-run]

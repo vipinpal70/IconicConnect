@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/src/lib/r2', () => ({ r2: { send: vi.fn(async () => ({ Errors: [] })) }, R2_BUCKET: 'test' }))
 
-import { isProtectedKey, deleteKeys } from '../r2-objects'
+import { isProtectedKey, deleteKeys, deleteKeysWithResults } from '../r2-objects'
 import { r2 } from '../r2'
 
 describe('protected backup prefix', () => {
@@ -26,5 +26,15 @@ describe('protected backup prefix', () => {
     send.mockClear()
     await deleteKeys(['db-backups/only.dump'])
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('reports only keys that R2 successfully deleted', async () => {
+    const send = vi.mocked(r2.send)
+    send.mockResolvedValueOnce({ Errors: [{ Key: 'Lab/failed.png', Code: 'AccessDenied' }] } as never)
+
+    await expect(deleteKeysWithResults(['Lab/deleted.png', 'Lab/failed.png'])).resolves.toEqual({
+      deletedKeys: ['Lab/deleted.png'],
+      refusedKeys: [],
+    })
   })
 })

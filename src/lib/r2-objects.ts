@@ -56,11 +56,12 @@ export async function listAllR2Objects(): Promise<Array<{ key: string; lastModif
   return objects;
 }
 
-/** Delete keys in batches of 1000 (the DeleteObjects limit). Returns the count actually deleted. */
-export async function deleteKeys(requested: string[]): Promise<number> {
+/** Delete keys in batches of 1000 (the DeleteObjects limit). */
+export async function deleteKeysWithResults(requested: string[]): Promise<{ deletedKeys: string[]; refusedKeys: string[] }> {
   const keys = requested.filter((k) => !isProtectedKey(k)); // never delete backups, whoever asks
-  if (keys.length !== requested.length) console.error(`[R2] refused to delete ${requested.length - keys.length} protected key(s)`);
-  let deleted = 0;
+  const refusedKeys = requested.filter(isProtectedKey);
+  if (refusedKeys.length) console.error(`[R2] refused to delete ${refusedKeys.length} protected key(s)`);
+  const deletedKeys: string[] = [];
   for (let i = 0; i < keys.length; i += 1000) {
     const batch = keys.slice(i, i + 1000);
     const res = await r2.send(
@@ -69,11 +70,18 @@ export async function deleteKeys(requested: string[]): Promise<number> {
         Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
       })
     );
-    deleted += batch.length - (res.Errors?.length ?? 0);
+    const failedKeys = new Set((res.Errors ?? []).flatMap((err) => err.Key ? [err.Key] : []));
+    deletedKeys.push(...batch.filter((key) => !failedKeys.has(key)));
     for (const err of res.Errors ?? []) {
       console.error(`[R2] Failed to delete ${err.Key}: ${err.Code} ${err.Message}`);
     }
   }
+  return { deletedKeys, refusedKeys };
+}
+
+/** Returns the count handled; protected keys count as handled to avoid endless retries. */
+export async function deleteKeys(requested: string[]): Promise<number> {
+  const { deletedKeys, refusedKeys } = await deleteKeysWithResults(requested);
   // Protected keys were refused on purpose; they count as handled so callers do not retry forever.
-  return deleted + (requested.length - keys.length);
+  return deletedKeys.length + refusedKeys.length;
 }

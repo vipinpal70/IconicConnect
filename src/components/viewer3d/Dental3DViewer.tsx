@@ -9,9 +9,13 @@ import {
   Undo2,
   Redo2,
   Paintbrush,
+  Highlighter,
+  Spline,
   Ruler,
+  DraftingCompass,
   MapPin,
   MoveRight,
+  Eraser,
   Eye,
   EyeOff,
   Lock,
@@ -29,30 +33,67 @@ import {
   X,
 } from 'lucide-react';
 import { useAnnotationEditor } from '@/src/lib/hooks/useAnnotationEditor';
-import { ModelMesh } from './ModelMesh';
+import { ModelMesh, type ScanFileInfo } from './ModelMesh';
+import { prefetchModel } from './model-cache';
+import { PREVIEW_KIND_META, type Model3DSource } from './preview-sources';
 import { AnnotationRenderer } from './AnnotationRenderer';
 import { DrawingInteraction } from './DrawingInteraction';
-import type { Vector3D, AnnotationVersionItem } from '@/src/types/annotation';
+import { DrawingStylePanel, MAX_STROKE_WIDTH, MIN_STROKE_WIDTH } from './DrawingStylePanel';
+import type { Vector3D, AnnotationVersionItem, ToolMode } from '@/src/types/annotation';
 import { Button } from '@/src/components/ui/button';
 
 interface Dental3DViewerProps {
   caseId: string;
   caseNumber?: string;
-  modelUrl?: string | null;
-  fileName?: string;
+  /** Every 3D file the user may open for this case; the header switches between them. */
+  sources: Model3DSource[];
+  initialSourceId?: string;
   userId?: string;
   onClose?: () => void;
   isFullScreenDefault?: boolean;
 }
 
-const PRESET_COLORS = [
-  '#ef4444', // Red
-  '#3b82f6', // Blue
-  '#10b981', // Green
-  '#f59e0b', // Amber
-  '#8b5cf6', // Purple
-  '#06b6d4', // Cyan
+interface ToolDefinition {
+  id: ToolMode;
+  label: string;
+  shortcut: string;
+  icon: React.ReactNode;
+  /** Shown in the hint bar while the tool is active. */
+  hint?: string;
+}
+
+// Grouped as: navigate · draw · measure · annotate · erase
+const TOOL_GROUPS: ToolDefinition[][] = [
+  [{ id: 'orbit', label: 'Orbit & Pan', shortcut: 'v', icon: <Camera className="w-4 h-4" /> }],
+  [
+    { id: 'brush', label: 'Freehand Pen', shortcut: 'b', icon: <Paintbrush className="w-4 h-4" />, hint: 'Drag on the scan to draw' },
+    { id: 'highlighter', label: 'Highlighter', shortcut: 'h', icon: <Highlighter className="w-4 h-4" />, hint: 'Drag to highlight an area' },
+    {
+      id: 'polyline',
+      label: 'Surface Line / Margin',
+      shortcut: 'l',
+      icon: <Spline className="w-4 h-4" />,
+      hint: 'Click to place points · click the first point to close · Enter or double-click to finish · Backspace removes a point',
+    },
+    { id: 'arrow', label: 'Arrow Pointer', shortcut: 'a', icon: <MoveRight className="w-4 h-4" />, hint: 'Click the target, then click where the arrow starts' },
+  ],
+  [
+    { id: 'distance', label: 'Distance Measurement', shortcut: 'm', icon: <Ruler className="w-4 h-4" />, hint: 'Click two points to measure' },
+    {
+      id: 'angle',
+      label: 'Angle Measurement',
+      shortcut: 'n',
+      icon: <DraftingCompass className="w-4 h-4" />,
+      hint: 'Click start, vertex, then end point · Backspace removes a point',
+    },
+  ],
+  [{ id: 'pin', label: 'Comment Pin', shortcut: 'p', icon: <MapPin className="w-4 h-4" />, hint: 'Click the scan to drop a comment' }],
+  [{ id: 'eraser', label: 'Eraser', shortcut: 'e', icon: <Eraser className="w-4 h-4" />, hint: 'Click or drag across marks to erase · locked layers are protected' }],
 ];
+const ALL_TOOLS = TOOL_GROUPS.flat();
+
+/** Tools that draw with the current color/thickness (and so show the style bar). */
+const STYLED_TOOLS = new Set<ToolMode>(['brush', 'highlighter', 'polyline', 'arrow', 'distance', 'angle', 'pin']);
 
 interface OrbitControlsLike {
   object: { position: { set: (x: number, y: number, z: number) => void } };
@@ -60,13 +101,6 @@ interface OrbitControlsLike {
   minDistance: number;
   maxDistance: number;
   update: () => void;
-}
-
-interface ScanFileInfo {
-  name: string;
-  color: string;
-  vertices: number;
-  triangles: number;
 }
 
 interface ModelBounds {
@@ -101,12 +135,16 @@ function ModelCameraFraming({
 export function Dental3DViewer({
   caseId,
   caseNumber,
-  modelUrl,
-  fileName,
+  sources,
+  initialSourceId,
   userId,
   onClose,
   isFullScreenDefault = false,
 }: Dental3DViewerProps) {
+  const [activeSourceId, setActiveSourceId] = useState(initialSourceId ?? sources[0]?.id);
+  const activeSource = sources.find((s) => s.id === activeSourceId) ?? sources[0] ?? null;
+  const previewKind = activeSource?.kind ?? 'case-submission';
+  const previewMeta = PREVIEW_KIND_META[previewKind];
   const [isFullScreen, setIsFullScreen] = useState(isFullScreenDefault);
   const [isLayersOpen, setIsLayersOpen] = useState(true);
   const [isVersionsOpen, setIsVersionsOpen] = useState(false);
@@ -140,9 +178,12 @@ export function Dental3DViewer({
       /(?:^|\/)mb preparation scan\.dcm$/i.test(name.replace(/\\/g, '/')),
     );
     setScanVisibility((current) =>
-      Object.fromEntries(files.map(({ name }) => {
+      Object.fromEntries(files.map(({ name, category }) => {
         const normalizedName = name.replace(/\\/g, '/');
-        const defaultVisible = hasPrimaryScanPair
+        // Designed restorations are what a design output is about — always show them
+        const defaultVisible = category === 'cad' || category === 'mesh'
+          ? true
+          : hasPrimaryScanPair
           ? /(?:^|\/)mb (?:antagonist|preparation) scan\.dcm$/i.test(normalizedName)
           : !/(?:^|\/)(?:raw |pre.?preparation|.*articulatorbitescan)/i.test(normalizedName);
         return [name, current[name] ?? defaultVisible];
@@ -167,7 +208,7 @@ export function Dental3DViewer({
   );
 
   const {
-    document: doc,
+    layers,
     saveStatus,
     lastSavedRevision,
     saveError,
@@ -180,6 +221,7 @@ export function Dental3DViewer({
     activeColor,
     setActiveColor,
     strokeWidth,
+    setStrokeWidth,
     addAnnotation,
     deleteAnnotation,
     addLayer,
@@ -198,6 +240,7 @@ export function Dental3DViewer({
   } = useAnnotationEditor({
     caseId,
     userId,
+    source: previewKind,
     onSaveSuccess: () => {
       if (isVersionsOpen) void loadVersions();
     },
@@ -273,7 +316,8 @@ export function Dental3DViewer({
     }
   };
 
-  const activeLayer = doc.layers.find((l) => l.id === activeLayerId) || doc.layers[0];
+  const activeLayer = layers.find((l) => l.id === activeLayerId) || layers[0];
+  const activeToolHint = ALL_TOOLS.find((t) => t.id === activeTool)?.hint;
 
   useEffect(() => {
     if (!isFullScreen) return;
@@ -284,6 +328,37 @@ export function Dental3DViewer({
       document.body.style.overflow = previousOverflow;
     };
   }, [isFullScreen]);
+
+  // Markup shortcuts: tools, undo/redo, and [ / ] to change stroke thickness
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      if (pinDialogPoint) return;
+
+      const key = event.key.toLowerCase();
+      if (event.ctrlKey || event.metaKey) {
+        if (key === 'z' && !event.shiftKey) {
+          event.preventDefault();
+          undo();
+        } else if (key === 'y' || (key === 'z' && event.shiftKey)) {
+          event.preventDefault();
+          redo();
+        }
+        return;
+      }
+      if (event.altKey) return;
+
+      if (event.key === '[') setStrokeWidth((w) => Math.max(MIN_STROKE_WIDTH, w - 1));
+      else if (event.key === ']') setStrokeWidth((w) => Math.min(MAX_STROKE_WIDTH, w + 1));
+      else {
+        const tool = ALL_TOOLS.find((t) => t.shortcut === key);
+        if (tool) setActiveTool(tool.id);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pinDialogPoint, undo, redo, setStrokeWidth, setActiveTool]);
 
   useEffect(() => {
     if (!isFullScreen || !onClose) return;
@@ -316,19 +391,28 @@ export function Dental3DViewer({
       {/* ---------------------------------------------------------------- */}
       <header className="flex items-center justify-between px-4 py-2.5 bg-zinc-900/95 border-b border-zinc-800 backdrop-blur z-20 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-sm tracking-wide text-zinc-100">
-              3D CAD QC Preview
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold text-sm tracking-wide text-zinc-100 whitespace-nowrap">
+              3D Preview
             </span>
             {caseNumber && (
-              <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
+              <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono whitespace-nowrap">
                 Case #{caseNumber}
               </span>
             )}
-            {fileName && (
-              <span className="text-xs text-zinc-400 truncate max-w-[180px]" title={fileName}>
-                {fileName}
-              </span>
+            {activeSource && (
+              <>
+                <span
+                  className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${previewMeta.badgeClass}`}
+                  title={previewMeta.description}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${previewMeta.dotClass}`} />
+                  {previewMeta.label}
+                </span>
+                <span className="text-xs text-zinc-400 truncate max-w-[220px]" title={activeSource.fileName}>
+                  {activeSource.fileName}
+                </span>
+              </>
             )}
           </div>
 
@@ -474,6 +558,50 @@ export function Dental3DViewer({
       </header>
 
       {/* ---------------------------------------------------------------- */}
+      {/* Preview Source Switcher (case submission ↔ design output)        */}
+      {/* ---------------------------------------------------------------- */}
+      {sources.length > 1 && (
+        <div
+          role="tablist"
+          aria-label="Choose which 3D files to preview"
+          className="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-900/80 border-b border-zinc-800 overflow-x-auto shrink-0 z-20"
+        >
+          {sources.map((source) => {
+            const meta = PREVIEW_KIND_META[source.kind];
+            const selected = source.id === activeSource?.id;
+            const request = { url: source.url, fileName: source.fileName, purpose: source.kind };
+            return (
+              <button
+                key={source.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                title={`${meta.description}\n${source.fileName}`}
+                onClick={() => {
+                  setActiveSourceId(source.id);
+                  setSelectedAnnotationId(null);
+                }}
+                // Warm the cache on intent so the switch is instant
+                onPointerEnter={() => prefetchModel(request)}
+                onFocus={() => prefetchModel(request)}
+                className={`flex items-center gap-2 px-3 py-1 rounded-lg text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+                  selected ? 'bg-zinc-800 text-zinc-100 ring-1 ring-zinc-600' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${meta.dotClass}`} />
+                <span className="font-semibold">{meta.label}</span>
+                <span className="text-zinc-500">·</span>
+                <span>{source.title}</span>
+              </button>
+            );
+          })}
+          <span className="ml-auto pl-3 text-[11px] text-zinc-500 whitespace-nowrap hidden md:inline">
+            Markup is saved separately for each preview
+          </span>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------------------- */}
       {/* Draft Recovery Alert Banner                                      */}
       {/* ---------------------------------------------------------------- */}
       {hasRecoverableDraft && (
@@ -525,7 +653,11 @@ export function Dental3DViewer({
           >
             <div className="flex items-center gap-2">
               <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-blue-400" />
-              <span className="font-medium">Loading 3D scan</span>
+              <span className="font-medium">
+                {modelLoadProgress.totalBytes && modelLoadProgress.loadedBytes >= modelLoadProgress.totalBytes
+                  ? `Preparing ${previewMeta.label}…`
+                  : `Loading ${previewMeta.label}`}
+              </span>
               <span className="ml-auto text-xs tabular-nums text-zinc-400">
                 {modelLoadProgress.totalBytes
                   ? `${Math.min(100, Math.round((modelLoadProgress.loadedBytes / modelLoadProgress.totalBytes) * 100))}%`
@@ -551,63 +683,39 @@ export function Dental3DViewer({
         )}
         {/* Floating Left Toolbar */}
         <div className="absolute left-3 top-3 z-10 flex flex-col gap-1.5 p-1.5 bg-zinc-900/90 border border-zinc-800 rounded-xl shadow-xl backdrop-blur">
-          {/* Orbit Navigation Tool */}
-          <ToolbarButton
-            icon={<Camera className="w-4 h-4" />}
-            label="Orbit & Pan (Camera)"
-            active={activeTool === 'orbit'}
-            onClick={() => setActiveTool('orbit')}
-          />
-
-          {/* 3D Brush Drawing Tool */}
-          <ToolbarButton
-            icon={<Paintbrush className="w-4 h-4" />}
-            label="3D Surface Brush / Freehand"
-            active={activeTool === 'brush'}
-            onClick={() => setActiveTool('brush')}
-          />
-
-          {/* Distance Measurement Tool */}
-          <ToolbarButton
-            icon={<Ruler className="w-4 h-4" />}
-            label="Distance Measurement (mm)"
-            active={activeTool === 'distance'}
-            onClick={() => setActiveTool('distance')}
-          />
-
-          {/* Comment Pin Tool */}
-          <ToolbarButton
-            icon={<MapPin className="w-4 h-4" />}
-            label="Drop Comment Pin"
-            active={activeTool === 'pin'}
-            onClick={() => setActiveTool('pin')}
-          />
-
-          {/* Arrow Pointer Tool */}
-          <ToolbarButton
-            icon={<MoveRight className="w-4 h-4" />}
-            label="Arrow Pointer"
-            active={activeTool === 'arrow'}
-            onClick={() => setActiveTool('arrow')}
-          />
-
+          {TOOL_GROUPS.map((group, groupIndex) => (
+            <React.Fragment key={groupIndex}>
+              {groupIndex > 0 && <div className="h-[1px] bg-zinc-700 my-0.5" />}
+              {group.map((tool) => (
+                <ToolbarButton
+                  key={tool.id}
+                  icon={tool.icon}
+                  label={`${tool.label} (${tool.shortcut.toUpperCase()})`}
+                  active={activeTool === tool.id}
+                  onClick={() => setActiveTool(tool.id)}
+                />
+              ))}
+            </React.Fragment>
+          ))}
           <div className="h-[1px] bg-zinc-700 my-1" />
 
-          {/* Color Palettes */}
-          <div className="flex flex-col gap-1 items-center px-1 py-1">
-            {PRESET_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setActiveColor(c)}
-                className={`w-4 h-4 rounded-full transition-transform ${
-                  activeColor === c ? 'scale-125 ring-2 ring-white' : 'hover:scale-110 opacity-80'
-                }`}
-                style={{ backgroundColor: c }}
-                title={`Select color ${c}`}
-              />
-            ))}
-          </div>
+          {/* Current stroke style — opens the brush to edit it */}
+          <button
+            type="button"
+            title={`Stroke: ${activeColor}, ${strokeWidth}px`}
+            aria-label="Current stroke style"
+            onClick={() => activeTool === 'orbit' && setActiveTool('brush')}
+            className="w-8 h-8 mx-auto rounded-lg flex items-center justify-center hover:bg-zinc-800"
+          >
+            <span
+              className="rounded-full ring-1 ring-white/30"
+              style={{
+                width: Math.min(22, Math.max(6, strokeWidth * 1.6)),
+                height: Math.min(22, Math.max(6, strokeWidth * 1.6)),
+                backgroundColor: activeColor,
+              }}
+            />
+          </button>
 
           <div className="h-[1px] bg-zinc-700 my-1" />
 
@@ -625,6 +733,28 @@ export function Dental3DViewer({
             onClick={redo}
           />
         </div>
+
+        {/* Contextual how-to for the active tool */}
+        {activeToolHint && (
+          <div
+            role="status"
+            className="absolute bottom-14 left-1/2 -translate-x-1/2 z-10 max-w-[min(90%,40rem)] px-3 py-1.5 rounded-full bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 shadow-lg backdrop-blur text-center"
+          >
+            {activeToolHint} · Esc to cancel
+          </div>
+        )}
+
+        {/* Stroke style bar for markup tools */}
+        {STYLED_TOOLS.has(activeTool) && (
+          <div className={`absolute left-16 top-3 z-10 overflow-x-auto ${isLayersOpen ? 'max-w-[calc(100%-24rem)]' : 'max-w-[calc(100%-5rem)]'}`}>
+            <DrawingStylePanel
+              color={activeColor}
+              width={strokeWidth}
+              onColorChange={setActiveColor}
+              onWidthChange={setStrokeWidth}
+            />
+          </div>
+        )}
 
         {/* Floating Bottom View Presets & Settings */}
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900/90 border border-zinc-800 rounded-full shadow-xl backdrop-blur text-xs">
@@ -788,7 +918,7 @@ export function Dental3DViewer({
 
             {/* Layer List */}
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
-              {doc.layers.map((layer) => {
+              {layers.map((layer) => {
                 const isActive = layer.id === activeLayerId;
 
                 return (
@@ -841,7 +971,7 @@ export function Dental3DViewer({
                         </button>
 
                         {/* Delete layer */}
-                        {doc.layers.length > 1 && (
+                        {layers.length > 1 && (
                           <button
                             type="button"
                             onClick={() => deleteLayer(layer.id)}
@@ -892,16 +1022,33 @@ export function Dental3DViewer({
                           }`}
                         >
                           <div className="flex items-center gap-1.5 truncate">
-                            {ann.type === 'brush' && <Paintbrush className="w-3 h-3 text-zinc-400" />}
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: ann.color || activeLayer.color }}
+                            />
+                            {ann.type === 'brush' &&
+                              (ann.style === 'highlighter' ? (
+                                <Highlighter className="w-3 h-3 text-zinc-400" />
+                              ) : (
+                                <Paintbrush className="w-3 h-3 text-zinc-400" />
+                              ))}
+                            {ann.type === 'polyline' && <Spline className="w-3 h-3 text-zinc-400" />}
                             {ann.type === 'distance' && <Ruler className="w-3 h-3 text-zinc-400" />}
+                            {ann.type === 'angle' && <DraftingCompass className="w-3 h-3 text-zinc-400" />}
                             {ann.type === 'pin' && <MapPin className="w-3 h-3 text-zinc-400" />}
                             {ann.type === 'arrow' && <MoveRight className="w-3 h-3 text-zinc-400" />}
                             <span className="truncate">
                               {ann.type === 'distance'
                                 ? `${ann.distanceMm.toFixed(2)} mm`
+                                : ann.type === 'angle'
+                                ? `Angle ${ann.angleDeg.toFixed(1)}°`
+                                : ann.type === 'polyline'
+                                ? `${ann.closed ? 'Outline' : 'Line'} ${ann.lengthMm.toFixed(1)} mm`
                                 : ann.type === 'pin'
                                 ? ann.title || ann.text.slice(0, 15)
-                                : `${ann.type} markup`}
+                                : ann.type === 'brush'
+                                ? ann.style === 'highlighter' ? 'Highlight' : 'Freehand stroke'
+                                : 'Arrow'}
                             </span>
                           </div>
 
@@ -933,7 +1080,8 @@ export function Dental3DViewer({
           dpr={[1, 1.75]}
           shadows
           className={`w-full h-full ${activeTool === 'orbit' ? 'cursor-grab' : 'cursor-crosshair'}`}
-          gl={{ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' }}
+          // Stencil buffer lets translucent highlighter strokes render evenly (see markup-materials.ts)
+          gl={{ antialias: true, stencil: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' }}
         >
           <PerspectiveCamera makeDefault position={[0, 20, 35]} fov={45} />
           <color attach="background" args={['#171d2b']} />
@@ -955,7 +1103,9 @@ export function Dental3DViewer({
 
           {/* Dental Mesh */}
           <ModelMesh
-            modelUrl={modelUrl}
+            modelUrl={activeSource?.url}
+            fileName={activeSource?.fileName}
+            purpose={previewKind}
             wireframe={wireframe}
             materialMode={materialMode}
             opacity={modelOpacity}
@@ -968,10 +1118,11 @@ export function Dental3DViewer({
 
           {/* Render Persistent Markup & Annotations */}
           <AnnotationRenderer
-            layers={doc.layers}
+            layers={layers}
             selectedId={selectedAnnotationId}
             onSelect={setSelectedAnnotationId}
             onDelete={deleteAnnotation}
+            isErasing={activeTool === 'eraser'}
           />
 
           {/* Active Drawing Tool Interactivity */}

@@ -34,6 +34,10 @@ export async function buildCaseDetail(c: Case) {
     outputNote: detail?.outputNote ?? null,
     clientMassage: detail?.clientMessage ?? null, // legacy response key (UI contract)
     outputFile: outputs.get(c.id)?.fileUrl ?? null,
+    // Lets the UI label/size the final design and decide whether it can be previewed in 3D
+    outputFileName: outputs.get(c.id)?.fileName ?? null,
+    outputFileSize: outputs.get(c.id)?.fileSize ?? null,
+    outputUploadedAt: outputs.get(c.id)?.createdAt ?? null,
     previewFile: previews.get(c.id)?.fileUrl ?? null,
     teethLibraryFileUrl: teeth.get(c.id)?.fileUrl ?? null,
     teethLibraryFileName: teeth.get(c.id)?.fileName ?? null,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
+import { files } from '@/src/db/schema/files';
 import { profiles } from '@/src/db/schema/profile';
 import { createClient } from '@/src/lib/auth/server';
 import { eq } from 'drizzle-orm';
@@ -126,6 +127,9 @@ export async function GET(req: NextRequest) {
       object = await r2.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }));
     } catch (err: any) {
       if (err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404) {
+        await db.update(files)
+          .set({ status: 'purged', purgedAt: new Date() })
+          .where(eq(files.r2Key, key));
         return NextResponse.json({ error: 'File not found' }, { status: 404 });
       }
       throw err;
