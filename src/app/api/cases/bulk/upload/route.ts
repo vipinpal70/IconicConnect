@@ -81,7 +81,8 @@ async function handleInit(req: NextRequest, profile: AuthedProfile) {
   if (!fileName) {
     return NextResponse.json({ error: 'File Name is required' }, { status: 400 });
   }
-  if (!isValidUploadFileName(fileName)) {
+  // Staging names are plain: the case-scoped key is chosen by bulk/confirm, not the uploader
+  if (!isValidUploadFileName(fileName) || fileName.includes('/')) {
     return NextResponse.json({ error: 'Invalid file name' }, { status: 400 });
   }
   if (fileSize > MAX_FILE_SIZE) {

@@ -63,6 +63,20 @@ describe('isValidUploadFileName', () => {
       `hold-images/${id}/${u}-x\\y.jpg`,          // backslash
     ]) expect(isValidUploadFileName(bad)).toBe(false)
   })
+  it('allows only the exact case-output / case-preview key shape', () => {
+    const id = '3f2b8c1e-7a4d-4e0b-9c55-1d2e3f4a5b6c'
+    const u = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
+    expect(isValidUploadFileName(`case-outputs/${id}/${u}/Smith J (1).zip`)).toBe(true)
+    expect(isValidUploadFileName(`case-previews/${id}/${u}/view.html`)).toBe(true)
+    for (const bad of [
+      `case-outputs/${id}/${u}/..`,              // dot segment as the name
+      `case-outputs/${id}/${u}/a/b.zip`,         // extra segment
+      `case-outputs/${id}/x.zip`,                // missing upload folder
+      `case-scans/${id}/${u}/x.zip`,             // unknown folder
+      `case-outputs/../${u}/x.zip`,              // not a uuid folder
+      `/case-outputs/${id}/${u}/x.zip`,          // absolute
+    ]) expect(isValidUploadFileName(bad)).toBe(false)
+  })
 })
 
 describe('isSafeStoredFileUrl', () => {

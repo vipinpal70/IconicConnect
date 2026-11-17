@@ -10,6 +10,7 @@ import { pickPerCase } from '@/src/lib/files-repo'
 import { createClient } from '@/src/lib/auth/server'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { getProfileLabName } from '@/src/lib/profile-utils'
+import { keyFromProxyUrl } from '@/src/lib/r2-objects'
 import { logActivity } from '@/src/lib/activity-log'
 import { extractPackage, r2RangeReader } from '@/src/lib/three-shape'
 import type { ExtractResult } from '@/src/lib/three-shape/package'
@@ -124,8 +125,7 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         )
       }
-      // If a fileUrl is supplied it must point at THIS lab's namespace; the R2
-      // key is always rebuilt server-side from labName + fileName regardless.
+      // If a fileUrl is supplied it must point at THIS lab's namespace.
       if (f.fileUrl && typeof f.fileUrl === 'string') {
         const m = /[?&]labName=([^&]+)/.exec(f.fileUrl)
         if (m && decodeURIComponent(m[1]) !== labName) {
@@ -134,12 +134,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // New uploads live in a per-upload folder (`<lab>/uploads/<id>/<name>`), so the key comes from the
+    // uploaded file's URL — pinned to this lab. Older clients that send no URL keep the flat `<lab>/<name>`.
+    const keyFor = (f: IncomingFile): string => {
+      const fromUrl = typeof f.fileUrl === 'string' ? keyFromProxyUrl(f.fileUrl) : null
+      return fromUrl && fromUrl.startsWith(`${labName}/`) && !fromUrl.includes('..') ? fromUrl : `${labName}/${f.fileName}`
+    }
+
     // ── Extract each package, isolated ─────────────────────────────────────────
     const settled = await Promise.allSettled(
-      files.map((f) => {
-        const key = `${labName}/${f.fileName}`
-        return extractPackage(r2RangeReader(key), f.fileName)
-      }),
+      files.map((f) => extractPackage(r2RangeReader(keyFor(f)), f.fileName)),
     )
     const results: ApiResult[] = settled.map((s, i): ApiResult => {
       if (s.status === 'fulfilled') {

@@ -20,6 +20,8 @@ import { CASE_APPROVAL_CHECKLIST as QC_CHECKLIST } from "@/src/lib/case-approval
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
 import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 import { BulkOutputUploadModal } from "@/src/components/BulkOutputUploadModal";
+import { withCaseScopedName } from "@/src/lib/case-file-keys";
+import { needsNameOverride } from "@/src/lib/bulk-output-matching";
 import { BulkDownloadDialog } from "@/src/components/bulk-download/BulkDownloadDialog";
 import { useBulkSelection } from "@/src/components/bulk-download/useBulkSelection";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
@@ -495,7 +497,8 @@ export default function CasesPage() {
   const previewUploadInputRef = useRef<HTMLInputElement>(null);
   const [designUploadProgress, setDesignUploadProgress] = useState(0)
   const [previewUploadProgress, setPreviewUploadProgress] = useState(0)
-  const [designUploadExpectedFileName, setDesignUploadExpectedFileName] = useState<string | null>(null)
+  // Every scan file of the case: the output must match one of them (same rules as bulk upload)
+  const [designUploadScanNames, setDesignUploadScanNames] = useState<string[]>([])
   const [designUploadExistingPreviewCount, setDesignUploadExistingPreviewCount] = useState(0)
 
   const { data: membersData } = useQuery<OpsMember[]>({
@@ -672,7 +675,7 @@ export default function CasesPage() {
     setDesignUploadPreviewFiles([]);
     setDesignUploadProgress(0);
     setPreviewUploadProgress(0);
-    setDesignUploadExpectedFileName(null);
+    setDesignUploadScanNames([]);
     setDesignUploadExistingPreviewCount(0);
     if (designUploadInputRef.current) designUploadInputRef.current.value = "";
     if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
@@ -684,7 +687,7 @@ export default function CasesPage() {
       if (filesRes.ok) {
         const data = await filesRes.json();
         const files: Array<{ fileName: string }> = data.data || [];
-        if (files.length > 0) setDesignUploadExpectedFileName(files[0].fileName);
+        setDesignUploadScanNames(files.map((f) => f.fileName));
       }
       if (previewFilesRes.ok) {
         const data = await previewFilesRes.json();
@@ -705,7 +708,7 @@ export default function CasesPage() {
     setDesignUploadPreviewFiles([]);
     setDesignUploadProgress(0);
     setPreviewUploadProgress(0);
-    setDesignUploadExpectedFileName(null);
+    setDesignUploadScanNames([]);
     setDesignUploadExistingPreviewCount(0);
     if (designUploadInputRef.current) designUploadInputRef.current.value = "";
     if (previewUploadInputRef.current) previewUploadInputRef.current.value = "";
@@ -758,15 +761,23 @@ export default function CasesPage() {
     return { isValid: true };
   };
 
+  const designUploadNameMismatch = Boolean(
+    designUploadFile && designUploadCaseId && designUploadScanNames.length > 0 &&
+    needsNameOverride(designUploadFile.name, {
+      id: designUploadCaseId,
+      caseNumber: designUploadCaseNumber,
+      scanFileNames: designUploadScanNames,
+    }),
+  );
+
   const confirmDesignUpload = async () => {
     if (!designUploadCaseId) return;
     if (!designUploadFile) { toast.error("Please select an output file."); return; }
     const fileCheck = validateFile(designUploadFile);
     if (!fileCheck.isValid) { toast.error(fileCheck.error || "Invalid file"); return; }
 
-    if (designUploadExpectedFileName &&
-      removeExtensionFromString(designUploadFile.name).toLowerCase() !== removeExtensionFromString(designUploadExpectedFileName).toLowerCase()) {
-      toast.error(`Output file name must match the original case file: "${removeExtensionFromString(designUploadExpectedFileName)}"`);
+    if (designUploadNameMismatch) {
+      toast.error(`Output file name must match the original case file: "${removeExtensionFromString(designUploadScanNames[0])}"`);
       return;
     }
 
@@ -784,20 +795,21 @@ export default function CasesPage() {
     setPreviewUploadProgress(0);
     try {
       // 1. Upload output file with progress
-      const outputUrl = await uploadLocalFile(designUploadFile, designUploadClientId || "", setDesignUploadProgress);
+      // Case-scoped storage name: an output named after the scan must never overwrite the lab's scan object
+      const outputUrl = await uploadLocalFile(withCaseScopedName("output", designUploadCaseId, designUploadFile), designUploadClientId || "", setDesignUploadProgress);
 
       // 2. Upload each preview file, then persist it as its own row so multiple
       // previews can accumulate on the case instead of overwriting one another.
       for (let i = 0; i < designUploadPreviewFiles.length; i++) {
         const file = designUploadPreviewFiles[i];
         setPreviewUploadProgress(0);
-        const uploaded = await uploadLocalFileFull(file, designUploadClientId || "", setPreviewUploadProgress);
+        const uploaded = await uploadLocalFileFull(withCaseScopedName("preview", designUploadCaseId, file), designUploadClientId || "", setPreviewUploadProgress);
         await fetch(`/api/cases/${designUploadCaseId}/preview-files`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fileUrl: uploaded.fileUrl,
-            fileName: uploaded.fileName,
+            fileName: file.name,
             fileType: uploaded.fileType,
             fileSize: uploaded.fileSize,
           }),
@@ -894,9 +906,12 @@ export default function CasesPage() {
     fetchProfile();
   }, []);
 
-  const handleDeleteUploadedFile = async (fileName: string) => {
+  // Delete exactly the object that was uploaded (its URL), never a same-named file of another case.
+  // The server also refuses to delete anything a case still references.
+  const handleDeleteUploadedFile = async (fileUrl: string) => {
+    if (!fileUrl.startsWith("/api/cases/files?")) return;
     try {
-      await fetch(`/api/cases/files?labName=${encodeURIComponent(labName)}&fileName=${encodeURIComponent(fileName)}`, {
+      await fetch(fileUrl, {
         method: 'DELETE'
       });
     } catch (e) {
@@ -927,7 +942,7 @@ export default function CasesPage() {
 
     // Clean up old file if it exists
     if (uploadedFile) {
-      await handleDeleteUploadedFile(uploadedFile.fileName);
+      await handleDeleteUploadedFile(uploadedFile.fileUrl);
     }
 
     // Upload the new one
@@ -946,7 +961,7 @@ export default function CasesPage() {
 
     // Clean up old file if it exists
     if (row.uploadedFile) {
-      await handleDeleteUploadedFile(row.uploadedFile.fileName);
+      await handleDeleteUploadedFile(row.uploadedFile.fileUrl);
     }
 
     // Set row to uploading state in the UI
@@ -2093,9 +2108,10 @@ export default function CasesPage() {
             <div className="grid gap-2">
               <Label htmlFor="design-file" className="text-sm font-semibold text-gray-700">
                 Case Output File
-                {designUploadExpectedFileName && (
+                {designUploadScanNames.length > 0 && (
                   <span className="ml-2 text-[11px] font-normal text-gray-500">
-                    (must match: <span className="font-mono text-indigo-700">{designUploadExpectedFileName}</span>)
+                    (must match{designUploadScanNames.length > 1 ? " one of" : ""}:{" "}
+                    <span className="font-mono text-indigo-700">{designUploadScanNames.join(", ")}</span>)
                   </span>
                 )}
               </Label>
@@ -2103,9 +2119,9 @@ export default function CasesPage() {
                 onChange={(e) => setDesignUploadFile(e.target.files?.[0] || null)}
                 className="bg-gray-100 border-gray-200 text-gray-900 file:text-white file:bg-emerald-600 file:border-none file:rounded-md file:px-2 file:py-2" />
               {designUploadFile && (
-                <p className={`text-xs font-medium ${designUploadExpectedFileName && removeExtensionFromString(designUploadFile.name).toLowerCase() !== removeExtensionFromString(designUploadExpectedFileName).toLowerCase() ? "text-red-600" : "text-gray-700"}`}>
+                <p className={`text-xs font-medium ${designUploadNameMismatch ? "text-red-600" : "text-gray-700"}`}>
                   Selected: {designUploadFile.name}
-                  {designUploadExpectedFileName && removeExtensionFromString(designUploadFile.name).toLowerCase() !== removeExtensionFromString(designUploadExpectedFileName).toLowerCase() && (
+                  {designUploadNameMismatch && (
                     <span className="ml-1">— name must match case file</span>
                   )}
                 </p>

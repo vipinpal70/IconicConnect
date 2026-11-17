@@ -27,6 +27,10 @@ import { listAllR2Objects, deleteKeys } from '../r2-objects';
  *   - POST /api/cases/bulk/upload       → staged under `bulk-staging/`, never referenced
  *                                          directly — bulk/confirm COPYs it to a proxy-URL
  *                                          key above (or it's abandoned and SHOULD be reaped)
+ *   - New uploads get unique keys: `<lab>/uploads/<upload>/<name>` (general upload route),
+ *     and design outputs/previews (bulk/confirm, single upload) use case-scoped keys
+ *                                          `<lab>/case-outputs|case-previews/<case>/<upload>/<name>`,
+ *                                          referenced from `files.r2_key` like every other upload
  * If you add a new upload route, add its reference column to the `protect*` calls below
  * in the same commit — this file has already had silent, live gaps found this way
  * (hold images, then contract docs) before this comment existed.
@@ -39,10 +43,11 @@ import { listAllR2Objects, deleteKeys } from '../r2-objects';
 
 // Keep objects modified within this window. A completed multipart upload writes
 // the R2 object slightly before the app commits the DB row, so a fresh unlinked
-// object is normal and must not be reaped. Configurable via env; defaults to 2h,
-// comfortably longer than the gap between upload-complete and DB insert.
+// object is normal and must not be reaped. Configurable via env; defaults to 6h —
+// long enough for a bulk-upload batch to sit staged (bulk-staging/) while the user
+// reviews matches, and matching the 6h lifetime of the presigned upload-part URLs.
 const GRACE_PERIOD_MS =
-  (Number(process.env.R2_CLEANUP_GRACE_HOURS) || 2) * 60 * 60 * 1000;
+  (Number(process.env.R2_CLEANUP_GRACE_HOURS) || 6) * 60 * 60 * 1000;
 
 export async function runR2Cleanup(
   options: { dryRun?: boolean; force?: boolean } = {}

@@ -66,6 +66,7 @@ const preloadDental3DViewer = () => void loadDental3DViewer().catch(() => {});
 // Statuses at which the final design is released to the lab
 const DESIGN_RELEASED_STATUSES = ["submitted_to_client", "approved", "delivered"];
 import { uploadFileInChunks } from "@/src/lib/upload-utils";
+import { withCaseScopedName } from "@/src/lib/case-file-keys";
 import { HoldImagesField, type PendingHoldImage } from "@/src/components/HoldImagesField";
 import { createPortal } from "react-dom";
 
@@ -718,7 +719,8 @@ export function CaseDetailView({
 				fileSize: number | null;
 			}>((resolve, reject) => {
 				uploadFileInChunks(
-					file,
+					// Case-scoped storage name so a replacement never overwrites another case's (or the scan's) object
+					withCaseScopedName("preview", caseId, file),
 					{ clientId },
 					() => {},
 					(res) => resolve(res),
@@ -730,7 +732,7 @@ export function CaseDetailView({
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					fileUrl: uploaded.fileUrl,
-					fileName: uploaded.fileName,
+					fileName: file.name,
 					fileType: uploaded.fileType,
 					fileSize: uploaded.fileSize,
 				}),

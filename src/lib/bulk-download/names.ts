@@ -32,7 +32,8 @@ export function fileNameFromUrl(url: string): string {
   try {
     const q = url.indexOf('?')
     if (q !== -1) {
-      const name = new URLSearchParams(url.slice(q + 1)).get('fileName')
+      // Case-scoped keys carry folders (case-outputs/<case>/<upload>/<name>); the entry name is the last part
+      const name = new URLSearchParams(url.slice(q + 1)).get('fileName')?.split('/').pop()
       if (name) return name
     }
     const last = decodeURIComponent(url.split('?')[0]).split('/').pop()

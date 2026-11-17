@@ -9,6 +9,7 @@ import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2, R2_BUCKET } from '@/src/lib/r2';
 import { getProfileLabName } from '@/src/lib/profile-utils';
+import { displayFileName } from '@/src/lib/case-file-keys';
 
 function objectKey(labName: string, fileName: string) {
   return `${labName}/${fileName}`;
@@ -84,6 +85,8 @@ export async function GET(req: NextRequest) {
     // origin from the app, so nothing can touch our cookies). The bucket needs a CORS rule for this origin
     // if any page fetch()es these URLs.
     // Off by default; not exercised in tests.
+    // Case-scoped files live in sub-folders (case-outputs/<case>/<upload>/<name>); downloads use only the name
+    const downloadName = encodeURIComponent(displayFileName(fileName));
     const ext = fileName.lastIndexOf('.') >= 0 ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : '';
     const isHtml = ext === '.html' || ext === '.htm';
 
@@ -98,7 +101,7 @@ export async function GET(req: NextRequest) {
           Bucket: R2_BUCKET,
           Key: key,
           ResponseContentType: 'text/html; charset=utf-8',
-          ResponseContentDisposition: `inline; filename="${encodeURIComponent(fileName)}"`,
+          ResponseContentDisposition: `inline; filename="${downloadName}"`,
           ResponseCacheControl: 'private, no-store',
         }),
         { expiresIn: 600 },
@@ -114,7 +117,7 @@ export async function GET(req: NextRequest) {
             Bucket: R2_BUCKET,
             Key: key,
             ResponseContentType: 'application/octet-stream',
-            ResponseContentDisposition: `attachment; filename="${encodeURIComponent(fileName)}"`,
+            ResponseContentDisposition: `attachment; filename="${downloadName}"`,
           }),
           { expiresIn: 300 },
         );
@@ -142,7 +145,7 @@ export async function GET(req: NextRequest) {
     // User-uploaded content is untrusted. It must never run with this app's origin (session cookies,
     // same-origin APIs), so everything proxied here is a forced download with nosniff and a CSP sandbox
     // (HTML never reaches this point; it is redirected to R2 above).
-    const safeName = encodeURIComponent(fileName);
+    const safeName = downloadName;
 
     // Stream the R2 object body straight through to the client
     const webStream = (object.Body as any).transformToWebStream() as ReadableStream;
@@ -229,6 +232,15 @@ export async function DELETE(req: NextRequest) {
     }
 
     const key = objectKey(labName, fileName);
+
+    // This endpoint only discards an upload the user just made and then removed (before saving the case).
+    // Anything a case, chat message or other record still points at must never be deleted here: older
+    // uploads share flat `<lab>/<name>` keys, so a same-named file of another case would otherwise vanish.
+    // Records are removed through their own endpoints; the orphan sweep reclaims their objects.
+    const referenced = await db.select({ id: files.id }).from(files).where(eq(files.r2Key, key)).limit(1);
+    if (referenced.length > 0) {
+      return NextResponse.json({ error: 'File is in use and cannot be deleted here' }, { status: 409 });
+    }
 
     // DeleteObject is idempotent on R2 — it succeeds whether or not the key exists.
     await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
