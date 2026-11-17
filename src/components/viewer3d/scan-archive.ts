@@ -1,8 +1,10 @@
 import { Unzip, UnzipInflate, UnzipPassThrough } from 'fflate'
 
 const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
-const MAX_MESH_FILE_BYTES = 128 * 1024 * 1024
-const MAX_TOTAL_MESH_BYTES = 320 * 1024 * 1024
+// Large full-arch STL exports reach ~320 MB (6–7 M triangles). They load through the low-memory
+// binary STL welder and get a simplified display copy (see model-pipeline.ts).
+const MAX_MESH_FILE_BYTES = 400 * 1024 * 1024
+const MAX_TOTAL_MESH_BYTES = 512 * 1024 * 1024
 const MAX_MESH_FILES = 48
 
 /** Which preview a model is opened for; decides what part of an archive is shown. */
@@ -19,7 +21,11 @@ export type MeshCategory = 'scan' | 'cad' | 'mesh' | 'other'
 export interface ArchiveEntry {
   name: string
   category: MeshCategory
-  bytes: Uint8Array
+  /** Null when the file was skipped (see skipReason); the rest of the archive still opens. */
+  bytes: Uint8Array | null
+  /** Uncompressed size from the ZIP directory (or the extracted size). */
+  byteSize: number
+  skipReason?: string
 }
 
 export interface ScanArchiveProgress {
@@ -28,6 +34,8 @@ export interface ScanArchiveProgress {
 }
 
 const SCAN_FOLDERS = new Set(['scans', 'scan'])
+/** 3Shape keeps superseded copies of the scans in Backup/, often in another coordinate frame. */
+const IGNORED_FOLDERS = new Set(['backup', '__macosx'])
 const CAD_FOLDERS = new Set(['cad'])
 const MESH_EXTENSIONS = new Set(['stl', 'ply', 'obj'])
 
@@ -40,10 +48,11 @@ export function fileExtension(name: string): string {
 export function classifyArchiveEntry(name: string): MeshCategory | null {
   const parts = name.replace(/\\/g, '/').split('/').filter(Boolean)
   const baseName = parts[parts.length - 1]
-  if (!baseName || baseName.startsWith('.') || parts.some((p) => p === '__MACOSX')) return null
+  if (!baseName || baseName.startsWith('.')) return null
 
   const ext = fileExtension(baseName)
   const folders = parts.slice(0, -1).map((p) => p.toLowerCase())
+  if (folders.some((f) => IGNORED_FOLDERS.has(f))) return null
   if (ext === 'dcm') {
     if (folders.some((f) => SCAN_FOLDERS.has(f))) return 'scan'
     if (folders.some((f) => CAD_FOLDERS.has(f))) return 'cad'
@@ -143,9 +152,14 @@ function concat(chunks: Uint8Array[], total: number): Uint8Array {
 /** Standalone model files use the same per-file cap as meshes inside archives. */
 export const MAX_SINGLE_FILE_BYTES = MAX_MESH_FILE_BYTES
 
+const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`
+
 /**
  * Stream-unzip an archive in a single pass, keeping every mesh-like entry with its category.
  * Unlike a two-pass "scans first, then CAD" approach, the archive is only downloaded once.
+ *
+ * A file that is too large, over the total budget or unreadable comes back with `bytes: null` and a
+ * `skipReason` instead of failing the whole archive, so the rest of the case still opens.
  */
 export async function extractMeshEntries(
   response: Response,
@@ -160,51 +174,56 @@ export async function extractMeshEntries(
   const entries: ArchiveEntry[] = []
   let totalMeshBytes = 0
   let meshCount = 0
-  let limitError: Error | null = null
-  const tooMuchData = () => new Error('The archive contains more 3D data than the viewer can safely load at once.')
+  const overBudget = `Not loaded: the archive holds more than ${mb(MAX_TOTAL_MESH_BYTES)} of 3D data`
+  const tooLarge = (size?: number) =>
+    `Too large to preview (${size ? `${mb(size)}; ` : ''}limit ${mb(MAX_MESH_FILE_BYTES)})`
 
   const unzip = new Unzip((file) => {
     const category = classifyArchiveEntry(file.name)
-    if (!category || limitError) return
-    const declaredSize = file.originalSize
-    if (typeof declaredSize === 'number' && declaredSize > MAX_MESH_FILE_BYTES) {
-      limitError = new Error(`A mesh exceeds the ${Math.round(MAX_MESH_FILE_BYTES / 1024 / 1024)} MB per-file viewer limit.`)
-      return
-    }
-    if (meshCount >= MAX_MESH_FILES || (typeof declaredSize === 'number' && totalMeshBytes + declaredSize > MAX_TOTAL_MESH_BYTES)) {
-      limitError = tooMuchData()
-      return
-    }
+    if (!category) return
+    const declaredSize = typeof file.originalSize === 'number' ? file.originalSize : null
+    // Unstarted files are skipped by the unzipper without inflating them
+    const skip = (skipReason: string, byteSize = declaredSize ?? 0) =>
+      entries.push({ name: file.name, category, bytes: null, byteSize, skipReason })
+
+    if (declaredSize !== null && declaredSize > MAX_MESH_FILE_BYTES) return skip(tooLarge(declaredSize))
+    if (meshCount >= MAX_MESH_FILES) return skip(`Not loaded: the archive has more than ${MAX_MESH_FILES} 3D files`)
+    if (declaredSize !== null && totalMeshBytes + declaredSize > MAX_TOTAL_MESH_BYTES) return skip(overBudget)
     meshCount += 1
+    // Reserve the declared size up front so later files are judged against the real budget
+    if (declaredSize !== null) totalMeshBytes += declaredSize
 
     const chunks: Uint8Array[] = []
     let fileBytes = 0
+    let failed = false
+    const fail = (reason: string) => {
+      failed = true
+      chunks.length = 0
+      totalMeshBytes -= declaredSize ?? fileBytes
+      skip(reason, declaredSize ?? fileBytes)
+    }
     file.ondata = (error, chunk, final) => {
-      if (limitError) return
-      if (error) {
-        limitError = new Error(`Could not extract ${file.name} from the 3D archive: ${error.message}`)
-        return
-      }
+      if (failed) return
+      if (error) return fail(`Could not be extracted: ${error.message}`)
       fileBytes += chunk.byteLength
-      if (fileBytes > MAX_MESH_FILE_BYTES || totalMeshBytes + chunk.byteLength > MAX_TOTAL_MESH_BYTES) {
-        limitError = tooMuchData()
-        return
+      if (declaredSize === null) totalMeshBytes += chunk.byteLength
+      if (fileBytes > MAX_MESH_FILE_BYTES || (declaredSize !== null && fileBytes > declaredSize)) {
+        return fail(tooLarge())
       }
-      totalMeshBytes += chunk.byteLength
+      if (totalMeshBytes > MAX_TOTAL_MESH_BYTES) return fail(overBudget)
       chunks.push(chunk)
       if (final) {
-        if (typeof declaredSize === 'number' && declaredSize !== fileBytes) {
-          limitError = new Error(`The extracted size of ${file.name} does not match the ZIP directory.`)
-          return
+        if (declaredSize !== null && declaredSize !== fileBytes) {
+          return fail('Skipped: the extracted size does not match the ZIP directory')
         }
-        entries.push({ name: file.name, category, bytes: concat(chunks, fileBytes) })
+        entries.push({ name: file.name, category, bytes: concat(chunks, fileBytes), byteSize: fileBytes })
       }
     }
 
     try {
       file.start()
     } catch (error) {
-      limitError = new Error(`Could not extract ${file.name} from the 3D archive: ${error instanceof Error ? error.message : 'unsupported compression'}`)
+      fail(`Could not be extracted: ${error instanceof Error ? error.message : 'unsupported compression'}`)
     }
   })
   unzip.register(UnzipPassThrough)
@@ -223,16 +242,11 @@ export async function extractMeshEntries(
       }
       unzip.push(value)
       onProgress?.({ loadedBytes, totalBytes: contentLength })
-      if (limitError) {
-        await reader.cancel()
-        throw limitError
-      }
     }
     unzip.push(new Uint8Array(0), true)
   } finally {
     reader.releaseLock()
   }
 
-  if (limitError) throw limitError
   return entries.sort((a, b) => a.name.localeCompare(b.name))
 }

@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, forwardRef } from 'react';
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
-import { MeshBVH } from 'three-mesh-bvh';
-import type { ThreeEvent } from '@react-three/fiber';
+import { MeshBVH, type SerializedBVH } from 'three-mesh-bvh';
+import { useThree } from '@react-three/fiber';
 import { initBvhAcceleration } from './bvh-setup';
-import { loadModel } from './model-cache';
+import { loadModel, type ModelHandle, type ModelState, type ViewerFileStatus } from './model-cache';
 import type { LoadedMesh } from './model-pipeline';
 import type { MeshCategory, ModelPurpose, ScanArchiveProgress } from './scan-archive';
+import { inferUpAxis, type Axis3 } from './view-orientation';
 
 initBvhAcceleration();
 
@@ -17,7 +18,22 @@ export interface ScanFileInfo {
   color: string;
   vertices: number;
   triangles: number;
+  byteSize: number;
+  status: ViewerFileStatus;
+  reason?: string;
+  defaultVisible: boolean;
 }
+
+/** Where the camera should look: bounds of the visible model plus its "up" axis. */
+export interface ModelFrame {
+  /** Changes when a different model is loaded; the camera is re-framed only then. */
+  key: string;
+  center: { x: number; y: number; z: number };
+  radius: number;
+  up: Axis3;
+}
+
+export type MaterialMode = 'enamel' | 'clay' | 'normal';
 
 interface ModelMeshProps {
   modelUrl?: string | null;
@@ -26,53 +42,40 @@ interface ModelMeshProps {
   purpose?: ModelPurpose;
   wireframe?: boolean;
   opacity?: number;
-  materialMode?: 'enamel' | 'clay' | 'normal';
-  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
-  onPointerMove?: (e: ThreeEvent<PointerEvent>) => void;
-  onPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
+  materialMode?: MaterialMode;
   onLoadError?: (error: string | null) => void;
   onLoadProgress?: (progress: ScanArchiveProgress | null) => void;
+  /** Explicit visibility per file; files missing from the map use their default. */
   visibleScanFiles?: Record<string, boolean>;
   onScanFilesChange?: (files: ScanFileInfo[]) => void;
-  onModelBoundsChange?: (bounds: { center: { x: number; y: number; z: number }; radius: number } | null) => void;
+  onFrameChange?: (frame: ModelFrame | null) => void;
+  /** True once every visible mesh can be drawn on (its raycast BVH is ready). */
+  onSurfaceReadyChange?: (ready: boolean) => void;
 }
+
+const EMPTY_STATE: ModelState = { files: [], meshes: [], bvh: new Map(), lod: new Map(), transportLost: false };
+const noopSubscribe = () => () => {};
 
 /**
  * Procedural dental arch geometry fallback when no remote file is loaded.
- * Creates an anatomical curved dental model with individual tooth mounds.
  */
 function createProceduralDentalArch(): THREE.BufferGeometry {
   const points: THREE.Vector3[] = [];
-  const archRadiusX = 24;
-  const archRadiusZ = 28;
   const segments = 32;
-
-  // Parabolic arch curve
   for (let i = 0; i <= segments; i++) {
-    const t = (i / segments) * Math.PI; // 0 to PI
-    const x = Math.cos(t) * archRadiusX;
-    const z = Math.sin(t) * archRadiusZ - 10;
-    const y = Math.sin(t * 8) * 1.5; // tooth contour
-    points.push(new THREE.Vector3(x, y, z));
+    const t = (i / segments) * Math.PI;
+    points.push(new THREE.Vector3(Math.cos(t) * 24, Math.sin(t * 8) * 1.5, Math.sin(t) * 28 - 10));
   }
-
-  const curve = new THREE.CatmullRomCurve3(points);
-  const tubeGeometry = new THREE.TubeGeometry(curve, 64, 4.5, 16, false);
-
+  const tubeGeometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 64, 4.5, 16, false);
   tubeGeometry.computeVertexNormals();
   tubeGeometry.center();
+  tubeGeometry.computeBoundingBox();
   tubeGeometry.computeBoundingSphere();
-  if (typeof tubeGeometry.computeBoundsTree === 'function') {
-    tubeGeometry.computeBoundsTree();
-  }
-
+  tubeGeometry.computeBoundsTree?.();
   return tubeGeometry;
 }
 
-/**
- * Wrap worker-produced arrays in a BufferGeometry. Normals, bounds and the BVH were all computed
- * in the worker, so this is O(1) work on the main thread.
- */
+/** Wrap worker-produced arrays in a BufferGeometry (O(1): normals and bounds came from the worker). */
 function createMeshGeometry(mesh: LoadedMesh): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
@@ -81,20 +84,25 @@ function createMeshGeometry(mesh: LoadedMesh): THREE.BufferGeometry {
     // DCM colors are 0–255 bytes; PLY colors are already 0–1 floats
     geometry.setAttribute('color', new THREE.BufferAttribute(mesh.colors, 3, mesh.colors instanceof Uint8Array));
   }
-  if (mesh.index) geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+  geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
   const [minX, minY, minZ, maxX, maxY, maxZ] = mesh.bbox;
   geometry.boundingBox = new THREE.Box3(new THREE.Vector3(minX, minY, minZ), new THREE.Vector3(maxX, maxY, maxZ));
   geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
-  if (mesh.bvh) {
-    geometry.boundsTree = MeshBVH.deserialize(mesh.bvh, geometry, { setIndex: true });
-  } else if (typeof geometry.computeBoundsTree === 'function') {
-    geometry.computeBoundsTree();
-  }
   return geometry;
 }
 
+/** Same vertex buffers (uploaded to the GPU once), simplified triangle list. */
+function createDisplayGeometry(full: THREE.BufferGeometry, index: Uint32Array): THREE.BufferGeometry {
+  const display = new THREE.BufferGeometry();
+  for (const [name, attribute] of Object.entries(full.attributes)) display.setAttribute(name, attribute);
+  display.setIndex(new THREE.BufferAttribute(index, 1));
+  display.boundingBox = full.boundingBox;
+  display.boundingSphere = full.boundingSphere;
+  return display;
+}
+
 function disposeGeometry(geometry: THREE.BufferGeometry): void {
-  (geometry as THREE.BufferGeometry & { disposeBoundsTree?: () => void }).disposeBoundsTree?.();
+  geometry.disposeBoundsTree?.();
   geometry.dispose();
 }
 
@@ -109,159 +117,174 @@ function scanColor(name: string, category: MeshCategory, index: number): string 
   return ['#d8d4c8', '#c8c8c0', '#e3d8c6', '#bbc7c5'][index % 4];
 }
 
-function ScanMesh({
-  name,
-  geometry,
+interface MaterialSettings {
+  color: string;
+  hasVertexColors: boolean;
+  materialMode: MaterialMode;
+  wireframe: boolean;
+  opacity: number;
+}
+
+/** Update a material in place; program-affecting flags force a recompile only when they change. */
+function configureMaterial(material: THREE.Material, settings: MaterialSettings): void {
+  const { color, hasVertexColors, materialMode, wireframe, opacity } = settings;
+  const transparent = opacity < 1;
+  let needsUpdate = material.transparent !== transparent;
+  material.transparent = transparent;
+  material.opacity = opacity;
+  (material as THREE.MeshStandardMaterial | THREE.MeshNormalMaterial).wireframe = wireframe;
+  if (material instanceof THREE.MeshStandardMaterial) {
+    const useVertexColors = materialMode !== 'clay' && hasVertexColors;
+    needsUpdate ||= material.vertexColors !== useVertexColors;
+    material.vertexColors = useVertexColors;
+    material.color.set(materialMode === 'clay' ? '#e2d9cc' : hasVertexColors ? '#ffffff' : color);
+    material.roughness = materialMode === 'clay' ? 0.7 : 0.48;
+  }
+  if (needsUpdate) material.needsUpdate = true;
+}
+
+/**
+ * Attach the raycast BVH to a geometry. Returns false while it is still being built in the worker.
+ * `bvh === null` means the worker failed, so it is built here instead.
+ */
+function attachBvh(geometry: THREE.BufferGeometry, bvh: SerializedBVH | null | undefined, buildLocally: boolean): boolean {
+  if (geometry.boundsTree) return true;
+  if (bvh) {
+    geometry.boundsTree = MeshBVH.deserialize(bvh, geometry, { setIndex: false });
+  } else if (bvh === null || buildLocally) {
+    geometry.computeBoundsTree?.({ indirect: true });
+  } else {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * One material per mesh, updated in place. Recreating materials on every opacity/mode change made
+ * three recompile shaders (a visible stall); only switching to/from the normal-map view needs a new one.
+ */
+function useScanMaterial({
   color,
   hasVertexColors,
+  materialMode,
+  wireframe,
+  opacity,
+}: MaterialSettings): THREE.Material {
+  const invalidate = useThree((s) => s.invalidate);
+  const isNormal = materialMode === 'normal';
+  const material = useMemo<THREE.Material>(
+    () => (isNormal ? new THREE.MeshNormalMaterial() : new THREE.MeshStandardMaterial({ metalness: 0 })),
+    [isNormal],
+  );
+  useEffect(() => () => material.dispose(), [material]);
+
+  useEffect(() => {
+    configureMaterial(material, { color, hasVertexColors, materialMode, wireframe, opacity });
+    invalidate();
+  }, [material, color, hasVertexColors, materialMode, opacity, wireframe, invalidate]);
+
+  return material;
+}
+
+function ScanMesh({
+  surfaceKey,
+  mesh,
+  color,
+  bvh,
+  buildBvhLocally,
+  lodIndex,
   visible,
   wireframe,
   opacity,
   materialMode,
-  meshRef,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
+  onSurfaceReady,
 }: {
-  name: string;
-  geometry: THREE.BufferGeometry;
+  surfaceKey: string;
+  mesh: LoadedMesh;
   color: string;
-  hasVertexColors: boolean;
+  /** undefined = still being built in the worker; null = the worker failed to build it. */
+  bvh: SerializedBVH | null | undefined;
+  buildBvhLocally: boolean;
+  lodIndex: Uint32Array | undefined;
   visible: boolean;
   wireframe: boolean;
   opacity: number;
-  materialMode: 'enamel' | 'clay' | 'normal';
-  meshRef?: React.Ref<THREE.Mesh>;
-  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
-  onPointerMove?: (e: ThreeEvent<PointerEvent>) => void;
-  onPointerUp?: (e: ThreeEvent<PointerEvent>) => void;
+  materialMode: MaterialMode;
+  onSurfaceReady: (surfaceKey: string) => void;
 }) {
-  const material = useMemo(() => {
-    if (materialMode === 'normal') {
-      return new THREE.MeshNormalMaterial({ wireframe, transparent: opacity < 1, opacity });
-    }
-    return new THREE.MeshStandardMaterial({
-      color: materialMode === 'clay' ? '#e2d9cc' : hasVertexColors ? '#ffffff' : color,
-      vertexColors: materialMode !== 'clay' && hasVertexColors,
-      roughness: materialMode === 'clay' ? 0.7 : 0.48,
-      metalness: 0,
-      wireframe,
-      transparent: opacity < 1,
-      opacity,
-    });
-  }, [color, hasVertexColors, materialMode, opacity, wireframe]);
+  const full = useMemo(() => createMeshGeometry(mesh), [mesh]);
+  useEffect(() => () => disposeGeometry(full), [full]);
 
-  useEffect(() => () => material.dispose(), [material]);
+  // Attach the raycast BVH when it arrives; drawing is enabled per mesh once this is done
+  useEffect(() => {
+    if (attachBvh(full, bvh, buildBvhLocally)) onSurfaceReady(surfaceKey);
+  }, [bvh, buildBvhLocally, full, surfaceKey, onSurfaceReady]);
+
+  const display = useMemo(() => (lodIndex ? createDisplayGeometry(full, lodIndex) : full), [full, lodIndex]);
+  useEffect(() => () => {
+    // Shared attributes belong to `full`; only the simplified index is freed here
+    if (display !== full) display.dispose();
+  }, [display, full]);
+
+  // Drawing must land on the real surface, so a simplified mesh raycasts through the full geometry
+  const userData = useMemo(
+    () => ({ isDentalModel: true, raycastTarget: display === full ? null : new THREE.Mesh(full) }),
+    [display, full],
+  );
+
+  const material = useScanMaterial({
+    color,
+    hasVertexColors: mesh.colors !== null,
+    materialMode,
+    wireframe,
+    opacity,
+  });
 
   return (
-    <mesh
-      ref={meshRef}
-      name={name}
-      userData={{ isDentalModel: true }}
-      geometry={geometry}
-      material={material}
-      visible={visible}
-      castShadow
-      receiveShadow
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-    />
+    <mesh name={mesh.name} userData={userData} geometry={display} material={material} visible={visible} />
   );
 }
 
-interface SceneMesh {
-  name: string;
-  geometry: THREE.BufferGeometry;
-  color: string;
-  hasVertexColors: boolean;
+/** Camera framing for the visible meshes (raw model coordinates: nothing is re-centered). */
+function computeFrame(
+  loadKey: string | null,
+  proceduralRadius: number | null,
+  visibleMeshes: LoadedMesh[],
+  up: Axis3,
+): ModelFrame | null {
+  if (proceduralRadius !== null) return { key: 'procedural', center: { x: 0, y: 0, z: 0 }, radius: proceduralRadius, up: [0, 1, 0] };
+  if (!loadKey || visibleMeshes.length === 0) return null;
+  const box = new THREE.Box3();
+  const point = new THREE.Vector3();
+  for (const mesh of visibleMeshes) {
+    box.expandByPoint(point.set(mesh.bbox[0], mesh.bbox[1], mesh.bbox[2]));
+    box.expandByPoint(point.set(mesh.bbox[3], mesh.bbox[4], mesh.bbox[5]));
+  }
+  const center = box.getCenter(new THREE.Vector3());
+  return {
+    key: loadKey,
+    center: { x: center.x, y: center.y, z: center.z },
+    radius: Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 1),
+    up,
+  };
 }
 
-export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMesh(
-  {
-    modelUrl,
-    fileName = '',
-    purpose = 'case-submission',
-    wireframe = false,
-    opacity = 1.0,
-    materialMode = 'enamel',
-    onPointerDown,
-    onPointerMove,
-    onPointerUp,
-    onLoadError,
-    onLoadProgress,
-    visibleScanFiles = {},
-    onScanFilesChange,
-    onModelBoundsChange,
-  },
-  ref
-) {
-  const loadKey = modelUrl ? `${purpose}|${modelUrl}` : null;
-  const [loaded, setLoaded] = useState<{ key: string; meshes: SceneMesh[]; center: THREE.Vector3 } | null>(null);
-  const proceduralGeometry = useMemo(() => createProceduralDentalArch(), []);
-  useEffect(() => () => proceduralGeometry.dispose(), [proceduralGeometry]);
-
-  const active = loaded && loaded.key === loadKey ? loaded : null;
-
-  const activeBounds = useMemo(() => {
-    if (!active) return null;
-    const bounds = new THREE.Box3();
-    for (const item of active.meshes) {
-      if (visibleScanFiles[item.name] !== false && item.geometry.boundingBox) bounds.union(item.geometry.boundingBox);
-    }
-    if (bounds.isEmpty()) return null;
-    const center = bounds.getCenter(new THREE.Vector3()).sub(active.center);
-    return {
-      center: { x: center.x, y: center.y, z: center.z },
-      radius: Math.max(bounds.getBoundingSphere(new THREE.Sphere()).radius, 1),
-    };
-  }, [active, visibleScanFiles]);
+function useModelHandle(loadKey: string | null, modelUrl: string | null | undefined, fileName: string, purpose: ModelPurpose, onLoadError?: (e: string | null) => void, onLoadProgress?: (p: ScanArchiveProgress | null) => void) {
+  const [loaded, setLoaded] = useState<{ key: string; handle: ModelHandle } | null>(null);
 
   useEffect(() => {
-    onModelBoundsChange?.(
-      modelUrl
-        ? activeBounds
-        : proceduralGeometry.boundingSphere
-          ? { center: { x: 0, y: 0, z: 0 }, radius: proceduralGeometry.boundingSphere.radius }
-          : null,
-    );
-  }, [activeBounds, modelUrl, onModelBoundsChange, proceduralGeometry]);
-
-  // Load through the shared worker-backed cache (instant when already loaded or prefetched)
-  useEffect(() => {
-    onScanFilesChange?.([]);
     onLoadError?.(null);
     onLoadProgress?.(null);
     if (!modelUrl || !loadKey) return;
 
     let isMounted = true;
-    let created: SceneMesh[] = [];
     const load = loadModel({ url: modelUrl, fileName, purpose });
     const unsubscribe = load.subscribe((progress) => {
       if (isMounted) onLoadProgress?.(progress);
     });
-
     load.promise
-      .then((model) => {
-        if (!isMounted) return;
-        created = model.meshes.map((mesh, index) => ({
-          name: mesh.name,
-          geometry: createMeshGeometry(mesh),
-          color: scanColor(mesh.name, mesh.category, index),
-          hasVertexColors: mesh.colors !== null,
-        }));
-        const bounds = new THREE.Box3();
-        for (const item of created) if (item.geometry.boundingBox) bounds.union(item.geometry.boundingBox);
-        setLoaded({ key: loadKey, meshes: created, center: bounds.getCenter(new THREE.Vector3()) });
-        onScanFilesChange?.(
-          model.meshes.map((mesh, index) => ({
-            name: mesh.name,
-            category: mesh.category,
-            color: created[index].color,
-            vertices: mesh.vertexCount,
-            triangles: mesh.triangleCount,
-          })),
-        );
+      .then((handle) => {
+        if (isMounted) setLoaded({ key: loadKey, handle });
       })
       .catch((err: unknown) => {
         if (!isMounted) return;
@@ -272,65 +295,140 @@ export const ModelMesh = forwardRef<THREE.Mesh, ModelMeshProps>(function ModelMe
     return () => {
       isMounted = false;
       unsubscribe();
-      // GPU buffers only; the typed arrays stay in the session cache for instant reopen
-      for (const item of created) disposeGeometry(item.geometry);
     };
-  }, [modelUrl, fileName, purpose, loadKey, onLoadError, onLoadProgress, onScanFilesChange]);
+  }, [modelUrl, fileName, purpose, loadKey, onLoadError, onLoadProgress]);
 
-  // Procedural placeholder material (no model URL)
-  const material = useMemo(() => {
-    if (materialMode === 'normal') {
-      return new THREE.MeshNormalMaterial({ wireframe, transparent: opacity < 1.0, opacity });
+  return loaded && loaded.key === loadKey ? loaded.handle : null;
+}
+
+export function ModelMesh({
+  modelUrl,
+  fileName = '',
+  purpose = 'case-submission',
+  wireframe = false,
+  opacity = 1.0,
+  materialMode = 'enamel',
+  onLoadError,
+  onLoadProgress,
+  visibleScanFiles = {},
+  onScanFilesChange,
+  onFrameChange,
+  onSurfaceReadyChange,
+}: ModelMeshProps) {
+  const loadKey = modelUrl ? `${purpose}|${modelUrl}` : null;
+  const handle = useModelHandle(loadKey, modelUrl, fileName, purpose, onLoadError, onLoadProgress);
+  const state = useSyncExternalStore(
+    handle?.subscribe ?? noopSubscribe,
+    handle?.getState ?? (() => EMPTY_STATE),
+    () => EMPTY_STATE,
+  );
+
+  const isFileVisible = (file: string) =>
+    visibleScanFiles[file] ?? state.files.find((f) => f.name === file)?.defaultVisible ?? true;
+
+  // Colors and per-file stats for the Layers panel
+  const fileColors = useMemo(
+    () => new Map(state.files.map((f, i) => [f.name, scanColor(f.name, f.category, i)])),
+    [state.files],
+  );
+  const scanFiles = useMemo<ScanFileInfo[]>(
+    () =>
+      state.files.map((file) => {
+        const meshes = state.meshes.filter((m) => m.file === file.name);
+        return {
+          name: file.name,
+          category: file.category,
+          color: fileColors.get(file.name)!,
+          vertices: meshes.reduce((n, m) => n + m.vertexCount, 0),
+          triangles: meshes.reduce((n, m) => n + m.triangleCount, 0),
+          byteSize: file.byteSize,
+          status: file.status,
+          reason: file.reason,
+          defaultVisible: file.defaultVisible,
+        };
+      }),
+    [fileColors, state.files, state.meshes],
+  );
+  useEffect(() => {
+    onScanFilesChange?.(scanFiles);
+  }, [onScanFilesChange, scanFiles]);
+
+  // Hidden files are decoded the first time they are switched on
+  useEffect(() => {
+    if (!handle) return;
+    for (const file of state.files) {
+      if (file.status === 'deferred' && (visibleScanFiles[file.name] ?? file.defaultVisible)) handle.decode(file.name);
     }
-    return new THREE.MeshStandardMaterial({
-      color: materialMode === 'clay' ? '#e2d9cc' : '#f8f6f0',
-      roughness: materialMode === 'clay' ? 0.7 : 0.25,
-      metalness: materialMode === 'clay' ? 0.05 : 0.1,
-      wireframe,
-      transparent: opacity < 1.0,
-      opacity,
-    });
-  }, [materialMode, wireframe, opacity]);
-  useEffect(() => () => material.dispose(), [material]);
+  }, [handle, state.files, visibleScanFiles]);
 
-  if (!modelUrl) {
+  // Up axis from the default view (stable while files are toggled); bounds from what is visible now
+  const upAxis = useMemo(() => {
+    const defaults = new Set(state.files.filter((f) => f.defaultVisible).map((f) => f.name));
+    return inferUpAxis(state.meshes.filter((m) => defaults.has(m.file)));
+  }, [state.files, state.meshes]);
+
+  const proceduralGeometry = useMemo(() => (modelUrl ? null : createProceduralDentalArch()), [modelUrl]);
+  useEffect(() => () => proceduralGeometry?.dispose(), [proceduralGeometry]);
+
+  const visibleMeshes = state.meshes.filter((m) => isFileVisible(m.file));
+  // Serialized so the effect below only fires when the framing actually changes
+  const frameSignature = JSON.stringify(
+    computeFrame(loadKey, proceduralGeometry?.boundingSphere?.radius ?? null, visibleMeshes, upAxis),
+  );
+  useEffect(() => {
+    onFrameChange?.(JSON.parse(frameSignature) as ModelFrame | null);
+  }, [frameSignature, onFrameChange]);
+
+  // Drawing readiness: every visible mesh has its BVH attached
+  const [surfaceMeshes, setSurfaceMeshes] = useState<ReadonlySet<string>>(() => new Set());
+  const handleSurfaceReady = useMemo(
+    () => (name: string) => setSurfaceMeshes((current) => (current.has(name) ? current : new Set(current).add(name))),
+    [],
+  );
+  // Keyed per model: the case submission and the design output often contain identically named scans
+  const surfaceReady =
+    proceduralGeometry !== null || visibleMeshes.every((m) => surfaceMeshes.has(`${loadKey}|${m.name}`));
+  useEffect(() => {
+    onSurfaceReadyChange?.(surfaceReady);
+  }, [onSurfaceReadyChange, surfaceReady]);
+
+  const proceduralMaterial = useScanMaterial({
+    color: '#f8f6f0',
+    hasVertexColors: false,
+    materialMode,
+    wireframe,
+    opacity,
+  });
+
+  if (proceduralGeometry) {
     return (
       <mesh
-        ref={ref}
         name="Dental model"
         userData={{ isDentalModel: true }}
         geometry={proceduralGeometry}
-        material={material}
-        castShadow
-        receiveShadow
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        material={proceduralMaterial}
       />
     );
   }
 
-  if (!active) return null;
-
   return (
-    <group position={[-active.center.x, -active.center.y, -active.center.z]}>
-      {active.meshes.map((item, index) => (
+    <group>
+      {state.meshes.map((mesh) => (
         <ScanMesh
-          key={item.name}
-          meshRef={index === 0 ? ref : undefined}
-          name={item.name}
-          geometry={item.geometry}
-          color={item.color}
-          hasVertexColors={item.hasVertexColors}
-          visible={visibleScanFiles[item.name] !== false}
+          key={`${loadKey}|${mesh.name}`}
+          surfaceKey={`${loadKey}|${mesh.name}`}
+          mesh={mesh}
+          color={fileColors.get(mesh.file) ?? '#d8d4c8'}
+          bvh={state.bvh.get(mesh.name)}
+          buildBvhLocally={state.transportLost}
+          lodIndex={state.lod.get(mesh.name)?.index}
+          visible={isFileVisible(mesh.file)}
           wireframe={wireframe}
           opacity={opacity}
           materialMode={materialMode}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
+          onSurfaceReady={handleSurfaceReady}
         />
       ))}
     </group>
   );
-});
+}

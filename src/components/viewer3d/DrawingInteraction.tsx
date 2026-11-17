@@ -20,10 +20,6 @@ import {
   highlighterStencilProps,
 } from './markup-materials';
 
-interface OrbitControlsLike {
-  enabled: boolean;
-}
-
 interface DrawingInteractionProps {
   activeTool: ToolMode;
   activeColor: string;
@@ -31,7 +27,6 @@ interface DrawingInteractionProps {
   activeLayerId: string;
   onAddAnnotation: (annotation: AnnotationItem) => void;
   onRequestPinText: (point: Vector3D, normal?: Vector3D) => void;
-  orbitControlsRef: React.RefObject<unknown>;
 }
 
 type Tuple3 = [number, number, number];
@@ -66,7 +61,6 @@ export function DrawingInteraction({
   activeLayerId,
   onAddAnnotation,
   onRequestPinText,
-  orbitControlsRef,
 }: DrawingInteractionProps) {
   const { camera, scene, gl } = useThree();
 
@@ -88,6 +82,7 @@ export function DrawingInteraction({
   const isBrushDrawingRef = useRef(false);
   const brushPreviewFrameRef = useRef<number | null>(null);
   const meshCacheRef = useRef<THREE.Mesh[]>([]);
+  const meshCacheStaleRef = useRef(true);
   const [distanceStart, setDistanceStart] = useState<THREE.Vector3 | null>(null);
   const [distanceCurrent, setDistanceCurrent] = useState<THREE.Vector3 | null>(null);
   const [arrowTarget, setArrowTarget] = useState<THREE.Vector3 | null>(null);
@@ -96,24 +91,29 @@ export function DrawingInteraction({
   const [anglePoints, setAnglePoints] = useState<THREE.Vector3[]>([]);
   const [hoverPoint, setHoverPoint] = useState<THREE.Vector3 | null>(null);
 
-  // Disable OrbitControls when drawing markup tools are active
-  useEffect(() => {
-    const controls = orbitControlsRef.current as OrbitControlsLike | null;
-    if (controls) {
-      controls.enabled = activeTool === 'orbit';
-    }
-  }, [activeTool, orbitControlsRef]);
+  // The camera stays active while drawing: ViewerControls moves rotation to the right mouse button.
 
   const getDentalMeshes = useCallback((): THREE.Mesh[] => {
     const cachedMeshes = meshCacheRef.current;
-    if (cachedMeshes.length === 0 || cachedMeshes.some((mesh) => !mesh.parent)) {
+    // Rescanned at the start of every gesture (files can be switched on after load), then reused for
+    // the many raycasts inside one stroke or surface trace
+    if (meshCacheStaleRef.current || cachedMeshes.length === 0 || cachedMeshes.some((mesh) => !mesh.parent)) {
+      meshCacheStaleRef.current = false;
       cachedMeshes.length = 0;
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (mesh.isMesh && mesh.userData.isDentalModel && mesh.geometry) cachedMeshes.push(mesh);
       });
     }
-    return cachedMeshes.filter((mesh) => mesh.visible);
+    // A simplified display mesh raycasts through its full-detail geometry, so marks land on the real
+    // surface. Meshes whose BVH is still being built are skipped (drawing waits for them).
+    const targets: THREE.Mesh[] = [];
+    for (const mesh of cachedMeshes) {
+      if (!mesh.visible) continue;
+      const target = (mesh.userData.raycastTarget as THREE.Mesh | null | undefined) ?? mesh;
+      if (target.geometry.boundsTree) targets.push(target);
+    }
+    return targets;
   }, [scene]);
 
   const raycastNdc = useCallback((ndc: THREE.Vector2): THREE.Intersection | null => {
@@ -265,6 +265,7 @@ export function DrawingInteraction({
     const handlePointerDown = (e: PointerEvent) => {
       if (activeTool === 'orbit' || activeTool === 'eraser' || e.button !== 0) return;
 
+      meshCacheStaleRef.current = true;
       const hit = getMeshIntersection(e);
       if (!hit) return;
 
@@ -389,6 +390,7 @@ export function DrawingInteraction({
         return;
       }
 
+      if (e.buttons !== 0) return; // right-drag rotation in progress; nothing to preview
       const hit = getMeshIntersection(e);
       if (!hit) return;
       const pt = hit.point.clone();

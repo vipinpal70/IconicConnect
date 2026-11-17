@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { PerspectiveCamera } from '@react-three/drei';
 import {
   Save,
   RotateCcw,
@@ -33,11 +34,13 @@ import {
   X,
 } from 'lucide-react';
 import { useAnnotationEditor } from '@/src/lib/hooks/useAnnotationEditor';
-import { ModelMesh, type ScanFileInfo } from './ModelMesh';
+import { ModelMesh, type MaterialMode, type ModelFrame, type ScanFileInfo } from './ModelMesh';
 import { prefetchModel } from './model-cache';
-import { PREVIEW_KIND_META, type Model3DSource } from './preview-sources';
+import { PREVIEW_KIND_META, formatFileSize, type Model3DSource } from './preview-sources';
 import { AnnotationRenderer } from './AnnotationRenderer';
+import { AnnotationPicker } from './AnnotationPicker';
 import { DrawingInteraction } from './DrawingInteraction';
+import { ViewerControls, type CameraView, type ViewerControlsHandle } from './ViewerControls';
 import { DrawingStylePanel, MAX_STROKE_WIDTH, MIN_STROKE_WIDTH } from './DrawingStylePanel';
 import type { Vector3D, AnnotationVersionItem, ToolMode } from '@/src/types/annotation';
 import { Button } from '@/src/components/ui/button';
@@ -95,41 +98,35 @@ const ALL_TOOLS = TOOL_GROUPS.flat();
 /** Tools that draw with the current color/thickness (and so show the style bar). */
 const STYLED_TOOLS = new Set<ToolMode>(['brush', 'highlighter', 'polyline', 'arrow', 'distance', 'angle', 'pin']);
 
-interface OrbitControlsLike {
-  object: { position: { set: (x: number, y: number, z: number) => void } };
-  target: { set: (x: number, y: number, z: number) => void };
-  minDistance: number;
-  maxDistance: number;
-  update: () => void;
-}
+const VIEW_PRESETS: Array<{ view: CameraView; label: string }> = [
+  { view: 'top', label: 'Top' },
+  { view: 'bottom', label: 'Bottom' },
+  { view: 'front', label: 'Front' },
+  { view: 'back', label: 'Back' },
+  { view: 'left', label: 'Left' },
+  { view: 'right', label: 'Right' },
+  { view: 'reset', label: 'Reset' },
+];
 
-interface ModelBounds {
-  center: { x: number; y: number; z: number };
-  radius: number;
-}
+const NAVIGATE_HINT = 'Drag to rotate freely in any direction · Right-drag to pan · Scroll to zoom · Click a mark to select it';
 
-function ModelCameraFraming({
-  bounds,
-  controlsRef,
-}: {
-  bounds: ModelBounds | null;
-  controlsRef: React.RefObject<OrbitControlsLike | null>;
-}) {
-  useEffect(() => {
-    if (!bounds) return;
-    const controls = controlsRef.current;
-    if (!controls) return;
-
-    const { center, radius } = bounds;
-    const distance = Math.max(radius / Math.sin((45 * Math.PI) / 360) * 0.62, 2);
-    controls.minDistance = Math.max(radius * 0.08, 0.2);
-    controls.maxDistance = Math.max(radius * 12, 100);
-    controls.target.set(center.x, center.y, center.z);
-    controls.object.position.set(center.x + distance * 0.16, center.y + distance * 0.38, center.z + distance);
-    controls.update();
-  }, [bounds, controlsRef]);
-
-  return null;
+/**
+ * Lights that travel with the camera, so the side you rotate to is always lit (fixed world lights
+ * left the underside dark once the model could be turned over).
+ */
+function HeadLights() {
+  const target = useMemo(() => {
+    const object = new THREE.Object3D();
+    object.position.set(0, 0, -10);
+    return object;
+  }, []);
+  return (
+    <>
+      <primitive object={target} />
+      <directionalLight position={[4, 6, 3]} intensity={1.5} target={target} />
+      <directionalLight position={[-5, -2, 2]} intensity={0.55} target={target} />
+    </>
+  );
 }
 
 export function Dental3DViewer({
@@ -155,12 +152,19 @@ export function Dental3DViewer({
   const pendingLoadProgressRef = useRef<{ loadedBytes: number; totalBytes: number | null } | null>(null);
   const loadProgressFrameRef = useRef<number | null>(null);
   const [scanFiles, setScanFiles] = useState<ScanFileInfo[]>([]);
+  // Explicit toggles only; files not in the map use their default (see scan-visibility.ts)
   const [scanVisibility, setScanVisibility] = useState<Record<string, boolean>>({});
-  const [modelBounds, setModelBounds] = useState<ModelBounds | null>(null);
+  const [modelFrame, setModelFrame] = useState<ModelFrame | null>(null);
+  const [surfaceReady, setSurfaceReady] = useState(false);
+  const [isCameraMoving, setIsCameraMoving] = useState(false);
+  // The navigation how-to stays until the user has moved the camera once
+  const [hasNavigated, setHasNavigated] = useState(false);
+  const controlsApiRef = useRef<ViewerControlsHandle | null>(null);
+  const handleUserNavigation = useCallback(() => setHasNavigated(true), []);
 
   // Model rendering preferences
   const [wireframe, setWireframe] = useState(false);
-  const [materialMode, setMaterialMode] = useState<'enamel' | 'clay' | 'normal'>('enamel');
+  const [materialMode, setMaterialMode] = useState<MaterialMode>('enamel');
   const [modelOpacity, setModelOpacity] = useState(1.0);
 
   // Pin text input dialog
@@ -168,28 +172,10 @@ export function Dental3DViewer({
   const [pinTitle, setPinTitle] = useState('');
   const [pinText, setPinText] = useState('');
 
-  const orbitControlsRef = useRef<OrbitControlsLike | null>(null);
-
   const handleScanFilesChange = useCallback((files: ScanFileInfo[]) => {
     setScanFiles(files);
-    const hasPrimaryScanPair = files.some(({ name }) =>
-      /(?:^|\/)mb antagonist scan\.dcm$/i.test(name.replace(/\\/g, '/')),
-    ) && files.some(({ name }) =>
-      /(?:^|\/)mb preparation scan\.dcm$/i.test(name.replace(/\\/g, '/')),
-    );
-    setScanVisibility((current) =>
-      Object.fromEntries(files.map(({ name, category }) => {
-        const normalizedName = name.replace(/\\/g, '/');
-        // Designed restorations are what a design output is about — always show them
-        const defaultVisible = category === 'cad' || category === 'mesh'
-          ? true
-          : hasPrimaryScanPair
-          ? /(?:^|\/)mb (?:antagonist|preparation) scan\.dcm$/i.test(normalizedName)
-          : !/(?:^|\/)(?:raw |pre.?preparation|.*articulatorbitescan)/i.test(normalizedName);
-        return [name, current[name] ?? defaultVisible];
-      })),
-    );
   }, []);
+  const isScanFileVisible = (file: ScanFileInfo) => scanVisibility[file.name] ?? file.defaultVisible;
 
   const handleModelLoadProgress = useCallback((progress: { loadedBytes: number; totalBytes: number | null } | null) => {
     pendingLoadProgressRef.current = progress;
@@ -246,39 +232,14 @@ export function Dental3DViewer({
     },
   });
 
-  // Camera preset view angles
-  const setCameraView = (view: 'top' | 'front' | 'left' | 'right' | 'reset') => {
-    if (!orbitControlsRef.current) return;
-    const controls = orbitControlsRef.current;
-    const distance = Math.max(modelBounds?.radius ?? 20, 1) * 2.4;
-    const center = modelBounds?.center ?? { x: 0, y: 0, z: 0 };
-
-    switch (view) {
-      case 'top':
-        controls.object.position.set(center.x, center.y + distance, center.z + 0.001);
-        break;
-      case 'front':
-        controls.object.position.set(center.x, center.y + distance * 0.15, center.z + distance);
-        break;
-      case 'left':
-        controls.object.position.set(center.x - distance, center.y + distance * 0.15, center.z);
-        break;
-      case 'right':
-        controls.object.position.set(center.x + distance, center.y + distance * 0.15, center.z);
-        break;
-      case 'reset':
-        controls.object.position.set(center.x + distance * 0.16, center.y + distance * 0.38, center.z + distance);
-        controls.target.set(center.x, center.y, center.z);
-        break;
-    }
-    controls.update();
-  };
+  // Camera preset view angles (relative to the model's detected up axis)
+  const setCameraView = (view: CameraView) => controlsApiRef.current?.setView(view);
 
   const handleRequestPinText = useCallback((point: Vector3D, normal?: Vector3D) => {
     setPinDialogPoint({ point, normal });
     setPinTitle('');
     setPinText('');
-  }, []);
+  }, [setPinDialogPoint, setPinTitle, setPinText]);
 
   const handleCreatePin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -317,7 +278,18 @@ export function Dental3DViewer({
   };
 
   const activeLayer = layers.find((l) => l.id === activeLayerId) || layers[0];
-  const activeToolHint = ALL_TOOLS.find((t) => t.id === activeTool)?.hint;
+  const isNavigating = activeTool === 'orbit';
+  const drawsOnSurface = !isNavigating && activeTool !== 'eraser';
+  const toolHint = ALL_TOOLS.find((t) => t.id === activeTool)?.hint;
+  const activeToolHint = isNavigating
+    ? hasNavigated
+      ? undefined
+      : NAVIGATE_HINT
+    : drawsOnSurface && !surfaceReady && !modelLoadProgress && !modelLoadError
+    ? 'Preparing the scan surface for drawing…'
+    : toolHint
+    ? `${toolHint} · Right-drag to rotate · Esc to cancel`
+    : undefined;
 
   useEffect(() => {
     if (!isFullScreen) return;
@@ -580,6 +552,8 @@ export function Dental3DViewer({
                 onClick={() => {
                   setActiveSourceId(source.id);
                   setSelectedAnnotationId(null);
+                  // Visibility toggles belong to the model they were made on
+                  if (source.id !== activeSource?.id) setScanVisibility({});
                 }}
                 // Warm the cache on intent so the switch is instant
                 onPointerEnter={() => prefetchModel(request)}
@@ -740,7 +714,7 @@ export function Dental3DViewer({
             role="status"
             className="absolute bottom-14 left-1/2 -translate-x-1/2 z-10 max-w-[min(90%,40rem)] px-3 py-1.5 rounded-full bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 shadow-lg backdrop-blur text-center"
           >
-            {activeToolHint} · Esc to cancel
+            {activeToolHint}
           </div>
         )}
 
@@ -759,41 +733,16 @@ export function Dental3DViewer({
         {/* Floating Bottom View Presets & Settings */}
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900/90 border border-zinc-800 rounded-full shadow-xl backdrop-blur text-xs">
           <span className="text-[10px] text-zinc-400 font-semibold uppercase mr-1">View</span>
-          <button
-            type="button"
-            onClick={() => setCameraView('top')}
-            className="px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300"
-          >
-            Top
-          </button>
-          <button
-            type="button"
-            onClick={() => setCameraView('front')}
-            className="px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300"
-          >
-            Front
-          </button>
-          <button
-            type="button"
-            onClick={() => setCameraView('left')}
-            className="px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300"
-          >
-            Left
-          </button>
-          <button
-            type="button"
-            onClick={() => setCameraView('right')}
-            className="px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300"
-          >
-            Right
-          </button>
-          <button
-            type="button"
-            onClick={() => setCameraView('reset')}
-            className="px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300"
-          >
-            Reset
-          </button>
+          {VIEW_PRESETS.map(({ view, label }) => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => setCameraView(view)}
+              className="px-2 py-0.5 rounded hover:bg-zinc-800 text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            >
+              {label}
+            </button>
+          ))}
 
           <div className="h-3 w-[1px] bg-zinc-700 mx-1" />
 
@@ -867,18 +816,19 @@ export function Dental3DViewer({
                     </span>
                   )}
                 </div>
-                {scanFiles.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const allVisible = scanFiles.every((file) => scanVisibility[file.name] !== false);
-                      setScanVisibility(Object.fromEntries(scanFiles.map(({ name }) => [name, !allVisible])));
-                    }}
-                    className="text-[10px] font-medium text-blue-300 hover:text-blue-200"
-                  >
-                    {scanFiles.every((file) => scanVisibility[file.name] !== false) ? 'Hide all' : 'Show all'}
-                  </button>
-                )}
+                {scanFiles.some((file) => file.status !== 'skipped') && (() => {
+                  const toggleable = scanFiles.filter((file) => file.status !== 'skipped');
+                  const allVisible = toggleable.every(isScanFileVisible);
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setScanVisibility(Object.fromEntries(toggleable.map(({ name }) => [name, !allVisible])))}
+                      className="text-[10px] font-medium text-blue-300 hover:text-blue-200"
+                    >
+                      {allVisible ? 'Hide all' : 'Show all'}
+                    </button>
+                  );
+                })()}
               </div>
               {scanFiles.length === 0 ? (
                 <p className="text-[11px] text-zinc-500">
@@ -887,28 +837,53 @@ export function Dental3DViewer({
               ) : (
                 <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
                   {scanFiles.map((file) => {
-                    const visible = scanVisibility[file.name] !== false;
+                    const skipped = file.status === 'skipped';
+                    const visible = !skipped && isScanFileVisible(file);
                     const label = file.name.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) || file.name;
+                    const detail =
+                      file.status === 'ready'
+                        ? `${file.vertices.toLocaleString()} vertices · ${file.triangles.toLocaleString()} triangles`
+                        : file.status === 'deferred'
+                        ? `${formatFileSize(file.byteSize)} · loads when shown`
+                        : file.status === 'loading'
+                        ? 'Loading…'
+                        : file.reason || 'Could not be read';
                     return (
                       <button
                         key={file.name}
                         type="button"
                         aria-pressed={visible}
+                        disabled={skipped}
                         onClick={() => setScanVisibility((current) => ({ ...current, [file.name]: !visible }))}
-                        className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
+                        className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors disabled:cursor-not-allowed ${
                           visible
                             ? 'border-zinc-700 bg-zinc-800/80 text-zinc-200 hover:bg-zinc-800'
                             : 'border-transparent bg-zinc-950/50 text-zinc-500 hover:bg-zinc-800/60'
                         }`}
-                        title={`${file.name} · ${file.vertices.toLocaleString()} vertices · ${file.triangles.toLocaleString()} triangles`}
+                        title={`${file.name}\n${detail}`}
                       >
-                        {visible ? (
+                        {file.status === 'loading' ? (
+                          <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-400" />
+                        ) : file.status === 'skipped' || file.status === 'error' ? (
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                        ) : visible ? (
                           <Eye className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
                         ) : (
                           <EyeOff className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
                         )}
                         <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: file.color }} />
-                        <span className="min-w-0 flex-1 truncate text-[11px]">{label}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[11px]">{label}</span>
+                          {file.status !== 'ready' && (
+                            <span
+                              className={`block truncate text-[10px] ${
+                                file.status === 'skipped' || file.status === 'error' ? 'text-amber-400/90' : 'text-zinc-500'
+                              }`}
+                            >
+                              {detail}
+                            </span>
+                          )}
+                        </span>
                       </button>
                     );
                   })}
@@ -1077,29 +1052,27 @@ export function Dental3DViewer({
         {/* Three.js R3F 3D Canvas                                           */}
         {/* ---------------------------------------------------------------- */}
         <Canvas
-          dpr={[1, 1.75]}
-          shadows
-          className={`w-full h-full ${activeTool === 'orbit' ? 'cursor-grab' : 'cursor-crosshair'}`}
+          // Render on demand: frames are drawn only while something changes (camera, model, markup),
+          // so an idle viewer costs ~0 GPU instead of redrawing millions of triangles 60×/s
+          frameloop="demand"
+          dpr={[1, 1.5]}
+          className={`w-full h-full touch-none ${activeTool === 'orbit' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`}
           // Stencil buffer lets translucent highlighter strokes render evenly (see markup-materials.ts)
           gl={{ antialias: true, stencil: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' }}
         >
-          <PerspectiveCamera makeDefault position={[0, 20, 35]} fov={45} />
+          <PerspectiveCamera makeDefault position={[0, 20, 35]} fov={45}>
+            <HeadLights />
+          </PerspectiveCamera>
           <color attach="background" args={['#171d2b']} />
-          <OrbitControls
-            ref={orbitControlsRef as never}
-            makeDefault
-            enableDamping
-            dampingFactor={0.08}
-            minDistance={2}
-            maxDistance={modelBounds ? modelBounds.radius * 12 : 200}
-          />
-            <ModelCameraFraming bounds={modelBounds} controlsRef={orbitControlsRef} />
+          <ambientLight intensity={0.9} />
 
-          {/* Lighting */}
-          <ambientLight intensity={0.85} />
-          <directionalLight position={[12, 18, 12]} intensity={1.65} />
-          <directionalLight position={[-12, 8, -10]} intensity={0.75} />
-          <hemisphereLight intensity={0.65} groundColor="#444" />
+          <ViewerControls
+            apiRef={controlsApiRef}
+            frame={modelFrame}
+            leftButtonRotates={isNavigating}
+            onMotionChange={setIsCameraMoving}
+            onUserInteraction={handleUserNavigation}
+          />
 
           {/* Dental Mesh */}
           <ModelMesh
@@ -1113,16 +1086,22 @@ export function Dental3DViewer({
             onLoadProgress={handleModelLoadProgress}
             visibleScanFiles={scanVisibility}
             onScanFilesChange={handleScanFilesChange}
-            onModelBoundsChange={setModelBounds}
+            onFrameChange={setModelFrame}
+            onSurfaceReadyChange={setSurfaceReady}
           />
 
           {/* Render Persistent Markup & Annotations */}
           <AnnotationRenderer
             layers={layers}
             selectedId={selectedAnnotationId}
+            onDelete={deleteAnnotation}
+            hideLabels={isCameraMoving}
+          />
+          <AnnotationPicker
+            layers={layers}
+            activeTool={activeTool}
             onSelect={setSelectedAnnotationId}
             onDelete={deleteAnnotation}
-            isErasing={activeTool === 'eraser'}
           />
 
           {/* Active Drawing Tool Interactivity */}
@@ -1133,7 +1112,6 @@ export function Dental3DViewer({
             activeLayerId={activeLayerId}
             onAddAnnotation={addAnnotation}
             onRequestPinText={handleRequestPinText}
-            orbitControlsRef={orbitControlsRef as never}
           />
         </Canvas>
       </div>

@@ -2,7 +2,6 @@
 
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import type { ThreeEvent } from '@react-three/fiber';
 import { Html, Line as DreiLine } from '@react-three/drei';
 import type {
   AnnotationItem,
@@ -26,22 +25,17 @@ import {
 interface AnnotationRendererProps {
   layers: AnnotationLayer[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
   onDelete: (id: string) => void;
-  /** Eraser mode: clicking or dragging across a mark deletes it (locked layers are skipped). */
-  isErasing?: boolean;
+  /**
+   * Hide the HTML labels (pins, measurements) while the camera moves: each one is a DOM element
+   * repositioned every frame. Selecting and erasing is handled by AnnotationPicker.
+   */
+  hideLabels?: boolean;
 }
 
 type Tuple3 = [number, number, number];
-type ClickHandler = (e: { stopPropagation: () => void }) => void;
 
-export function AnnotationRenderer({
-  layers,
-  selectedId,
-  onSelect,
-  onDelete,
-  isErasing = false,
-}: AnnotationRendererProps) {
+export function AnnotationRenderer({ layers, selectedId, onDelete, hideLabels = false }: AnnotationRendererProps) {
   // Each highlighter stroke gets its own stencil value so it only blocks overlaps with itself
   const highlighterStencilRefs = useMemo(() => {
     const refs = new Map<string, number>();
@@ -62,42 +56,19 @@ export function AnnotationRenderer({
 
         return (
           <group key={layer.id}>
-            {layer.annotations.map((ann) => {
-              const canErase = isErasing && !layer.locked;
-              const eraserEvents = canErase
-                ? {
-                    onPointerDown: (e: ThreeEvent<PointerEvent>) => {
-                      if (e.button !== 0) return;
-                      e.stopPropagation();
-                      onDelete(ann.id);
-                    },
-                    // Dragging with the button held sweeps away every mark it crosses
-                    onPointerOver: (e: ThreeEvent<PointerEvent>) => {
-                      if ((e.buttons & 1) === 0) return;
-                      e.stopPropagation();
-                      onDelete(ann.id);
-                    },
-                  }
-                : {};
-
-              return (
-                <group key={ann.id} {...eraserEvents}>
-                  <AnnotationItemView
-                    annotation={ann}
-                    // Selection is shown with a halo/badge so the mark keeps its own color
-                    color={ann.color || layer.color}
-                    opacity={layer.opacity ?? 1.0}
-                    isSelected={selectedId === ann.id}
-                    stencilRef={highlighterStencilRefs.get(ann.id)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!isErasing) onSelect(ann.id);
-                    }}
-                    onDelete={() => onDelete(ann.id)}
-                  />
-                </group>
-              );
-            })}
+            {layer.annotations.map((ann) => (
+              <AnnotationItemView
+                key={ann.id}
+                annotation={ann}
+                // Selection is shown with a halo/badge so the mark keeps its own color
+                color={ann.color || layer.color}
+                opacity={layer.opacity ?? 1.0}
+                isSelected={selectedId === ann.id}
+                stencilRef={highlighterStencilRefs.get(ann.id)}
+                hideLabels={hideLabels}
+                onDelete={() => onDelete(ann.id)}
+              />
+            ))}
           </group>
         );
       })}
@@ -115,7 +86,7 @@ function AnnotationItemView({
   opacity: number;
   isSelected: boolean;
   stencilRef?: number;
-  onClick: ClickHandler;
+  hideLabels: boolean;
   onDelete: () => void;
 }) {
   switch (ann.type) {
@@ -244,14 +215,12 @@ function BrushItem({
   opacity,
   isSelected,
   stencilRef,
-  onClick,
 }: {
   annotation: BrushAnnotation;
   color: string;
   opacity: number;
   isSelected: boolean;
   stencilRef?: number;
-  onClick: ClickHandler;
 }) {
   const points = useMemo(() => {
     if (!annotation.points || annotation.points.length < 2) return null;
@@ -261,7 +230,7 @@ function BrushItem({
   if (!points) return null;
 
   return (
-    <group onClick={onClick}>
+    <group>
       <StrokeLine
         points={points}
         color={color}
@@ -282,14 +251,14 @@ function PolylineItem({
   color,
   opacity,
   isSelected,
-  onClick,
+  hideLabels = false,
   onDelete,
 }: {
   annotation: PolylineAnnotation;
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: ClickHandler;
+  hideLabels?: boolean;
   onDelete: () => void;
 }) {
   const points = useMemo(
@@ -305,7 +274,7 @@ function PolylineItem({
   if (!points) return null;
 
   return (
-    <group onClick={onClick}>
+    <group>
       <StrokeLine
         points={points}
         color={color}
@@ -320,7 +289,7 @@ function PolylineItem({
             <meshBasicMaterial color={color} depthTest={false} />
           </mesh>
         ))}
-      {isSelected && badgePosition && (
+      {isSelected && badgePosition && !hideLabels && (
         <MeasurementBadge
           position={badgePosition}
           text={`${annotation.closed ? 'Outline' : 'Path'} · ${annotation.lengthMm.toFixed(2)} mm`}
@@ -341,14 +310,14 @@ function AngleItem({
   color,
   opacity,
   isSelected,
-  onClick,
+  hideLabels = false,
   onDelete,
 }: {
   annotation: AngleAnnotation;
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: ClickHandler;
+  hideLabels?: boolean;
   onDelete: () => void;
 }) {
   const geometry = useMemo(() => {
@@ -368,7 +337,7 @@ function AngleItem({
   }, [annotation.startPoint, annotation.vertex, annotation.endPoint]);
 
   return (
-    <group onClick={onClick}>
+    <group>
       <StrokeLine
         points={geometry.arms}
         color={color}
@@ -385,13 +354,15 @@ function AngleItem({
           <meshBasicMaterial color={color} depthTest={false} />
         </mesh>
       ))}
-      <MeasurementBadge
-        position={geometry.badgePosition}
-        text={`${annotation.angleDeg.toFixed(1)}°`}
-        isSelected={isSelected}
-        deleteLabel="Delete angle"
-        onDelete={onDelete}
-      />
+      {!hideLabels && (
+        <MeasurementBadge
+          position={geometry.badgePosition}
+          text={`${annotation.angleDeg.toFixed(1)}°`}
+          isSelected={isSelected}
+          deleteLabel="Delete angle"
+          onDelete={onDelete}
+        />
+      )}
     </group>
   );
 }
@@ -404,14 +375,14 @@ function DistanceItem({
   color,
   opacity,
   isSelected,
-  onClick,
+  hideLabels = false,
   onDelete,
 }: {
   annotation: DistanceAnnotation;
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: (e: { stopPropagation: () => void }) => void;
+  hideLabels?: boolean;
   onDelete: () => void;
 }) {
   const p1 = useMemo(
@@ -433,7 +404,7 @@ function DistanceItem({
   }, [annotation.startPoint, annotation.endPoint]);
 
   return (
-    <group onClick={onClick}>
+    <group>
       <StrokeLine
         points={linePoints}
         color={color}
@@ -455,30 +426,15 @@ function DistanceItem({
       </mesh>
 
       {/* Measurement badge in 3D space */}
-      <Html position={midPoint} center distanceFactor={25} style={{ pointerEvents: 'auto' }}>
-        <div
-          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold shadow-md whitespace-nowrap transition-transform ${
-            isSelected
-              ? 'bg-blue-600 text-white ring-2 ring-blue-300 scale-105'
-              : 'bg-zinc-900/90 text-zinc-100 hover:bg-zinc-800'
-          }`}
-        >
-          <span>{annotation.distanceMm.toFixed(2)} mm</span>
-          {isSelected && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="hover:text-red-300 transition-colors"
-              title="Delete measurement"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-      </Html>
+      {!hideLabels && (
+        <MeasurementBadge
+          position={midPoint}
+          text={`${annotation.distanceMm.toFixed(2)} mm`}
+          isSelected={isSelected}
+          deleteLabel="Delete measurement"
+          onDelete={onDelete}
+        />
+      )}
     </group>
   );
 }
@@ -491,23 +447,30 @@ function PinItem({
   color,
   opacity,
   isSelected,
-  onClick,
+  hideLabels = false,
   onDelete,
 }: {
   annotation: PinAnnotation;
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: (e: { stopPropagation: () => void }) => void;
+  hideLabels?: boolean;
   onDelete: () => void;
 }) {
   const pos = useMemo(
     () => new THREE.Vector3(annotation.position.x, annotation.position.y, annotation.position.z),
     [annotation.position]
   );
+  // Stand the pin along the surface normal so it reads correctly from any side and on Z-up scans
+  const orientation = useMemo(() => {
+    const n = annotation.normal;
+    const normal = n ? new THREE.Vector3(n.x, n.y, n.z) : new THREE.Vector3(0, 1, 0);
+    if (normal.lengthSq() < 1e-8) normal.set(0, 1, 0);
+    return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal.normalize());
+  }, [annotation.normal]);
 
   return (
-    <group position={pos} onClick={onClick}>
+    <group position={pos} quaternion={orientation}>
       {/* 3D Pin Head */}
       <mesh position={[0, 0.6, 0]}>
         <sphereGeometry args={[0.4, 16, 16]} />
@@ -527,6 +490,7 @@ function PinItem({
       </mesh>
 
       {/* Pin Badge Overlay */}
+      {!hideLabels && (
       <Html position={[0, 1.2, 0]} center distanceFactor={25} style={{ pointerEvents: 'auto' }}>
         <div
           className={`group flex items-start gap-1.5 p-1.5 rounded-lg shadow-lg border max-w-[200px] text-xs transition-all ${
@@ -569,6 +533,7 @@ function PinItem({
           )}
         </div>
       </Html>
+      )}
     </group>
   );
 }
@@ -581,14 +546,14 @@ function ArrowItem({
   color,
   opacity,
   isSelected,
-  onClick,
+  hideLabels = false,
   onDelete,
 }: {
   annotation: ArrowAnnotation;
   color: string;
   opacity: number;
   isSelected: boolean;
-  onClick: (e: { stopPropagation: () => void }) => void;
+  hideLabels?: boolean;
   onDelete: () => void;
 }) {
   const start = useMemo(
@@ -620,7 +585,7 @@ function ArrowItem({
   }, [start, end, lineWidth]);
 
   return (
-    <group onClick={onClick}>
+    <group>
       <StrokeLine
         points={geometry.shaft}
         color={color}
@@ -632,7 +597,7 @@ function ArrowItem({
         <coneGeometry args={[geometry.headRadius, geometry.headLength, 20]} />
         <meshBasicMaterial color={color} transparent={opacity < 1} opacity={opacity} />
       </mesh>
-      {isSelected && (
+      {isSelected && !hideLabels && (
         <Html position={end} center distanceFactor={25} style={{ pointerEvents: 'auto' }}>
           <button
             type="button"
