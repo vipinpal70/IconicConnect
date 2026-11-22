@@ -5,8 +5,9 @@ export * from './activity-log'
 export * from './chat'
 export * from './tutorial'
 export * from './offer'
-export * from './support-ticket'
-export * from './support-callback-request'
+export * from './support-ticket' // deprecated: old system, kept until its tables are dropped
+export * from './support-callback-request' // deprecated: old system, kept until its tables are dropped
+export * from './support'
 export * from './preference-form'
 export * from './price-list'
 export * from './invoice'

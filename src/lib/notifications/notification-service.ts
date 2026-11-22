@@ -144,6 +144,8 @@ export class NotificationService {
       case NotificationType.SUPPORT_TICKET_RESOLVED:
       case NotificationType.SUPPORT_TICKET_CLOSED: return prefs.supportTicketUpdatedEmail;
       case NotificationType.SUPPORT_CALLBACK_REQUESTED: return prefs.supportCallbackEmail;
+      // One email per chat message would flood inboxes; unread conversations get a throttled digest instead.
+      case NotificationType.SUPPORT_MESSAGE: return false;
       default: return true;
     }
   }
@@ -167,6 +169,7 @@ export class NotificationService {
       case NotificationType.SUPPORT_TICKET_RESOLVED:
       case NotificationType.SUPPORT_TICKET_CLOSED: return prefs.supportTicketUpdatedInApp;
       case NotificationType.SUPPORT_CALLBACK_REQUESTED: return prefs.supportCallbackInApp;
+      case NotificationType.SUPPORT_MESSAGE: return prefs.supportTicketUpdatedInApp;
       default: return true;
     }
   }

@@ -5,6 +5,7 @@ import { cases } from '@/src/db/schema/case'
 import { invoices } from '@/src/db/schema/invoice'
 import { supportTickets } from '@/src/db/schema/support-ticket'
 import { supportCallbackRequests } from '@/src/db/schema/support-callback-request'
+import { supTickets } from '@/src/db/schema/support'
 import { activityLogs } from '@/src/db/schema/activity-log'
 import { deleteUser } from '@/src/lib/auth/auth-service'
 
@@ -51,6 +52,9 @@ export async function deleteClientCompletely(clientId: string): Promise<DeleteCl
     // Invoices go first: invoice_cases -> cases is RESTRICT by design, so a billed case can't vanish silently.
     await tx.delete(invoices).where(eq(invoices.clientId, clientId))
 
+    // Support conversations (messages, reads and audit cascade from the ticket)
+    await tx.delete(supTickets).where(eq(supTickets.clientId, clientId))
+    // Old support system tables, until a later migration drops them
     await tx.delete(supportTickets).where(eq(supportTickets.clientId, clientId))
     await tx.delete(supportCallbackRequests).where(eq(supportCallbackRequests.clientId, clientId))
     if (caseIds.length > 0) {

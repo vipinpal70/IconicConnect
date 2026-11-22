@@ -16,6 +16,8 @@ export enum NotificationType {
   SUPPORT_TICKET_RESOLVED = 'support_ticket_resolved',
   SUPPORT_TICKET_CLOSED = 'support_ticket_closed',
   SUPPORT_CALLBACK_REQUESTED = 'support_callback_requested',
+  /** New message in a support conversation: in-app only (emails are batched separately). */
+  SUPPORT_MESSAGE = 'support_message',
   OFFER_CREATED = 'offer_created',
   TUTORIAL_CREATED = 'tutorial_created',
   CLIENT_REGISTERED = 'client_registered',

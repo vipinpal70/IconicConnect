@@ -42,34 +42,6 @@ async function dispatchToUserIds(
   }
 }
 
-export async function notifySupportTicketCreated(input: {
-  actorUserId: string
-  ticketId: string
-  ticketNumber: string
-  subject: string
-  category: string
-  priority: string
-  clientName: string
-}) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
-
-  return dispatchToUserIds(adminIds, (targetUserId) => ({
-    type: NotificationType.SUPPORT_TICKET_CREATED,
-    actorUserId: input.actorUserId,
-    title: `New support ticket ${input.ticketNumber}`,
-    message: `${input.clientName} submitted "${input.subject}" (${input.category}, ${input.priority}).`,
-    link: '/admin/support',
-    metadata: {
-      ticketId: input.ticketId,
-      ticketNumber: input.ticketNumber,
-      subject: input.subject,
-      category: input.category,
-      priority: input.priority,
-      targetUserId,
-    },
-  }))
-}
-
 export async function notifyCaseSubmitted(input: {
   actorUserId: string
   caseId: string
@@ -156,79 +128,6 @@ export async function notifyCaseStatusChanged(input: {
       status: input.status,
     },
   })
-}
-
-export async function notifySupportTicketUpdated(input: {
-  actorUserId: string
-  clientId: string
-  ticketId: string
-  ticketNumber: string
-  subject: string
-  event: 'updated' | 'resolved' | 'closed'
-  ticketStatus: string
-  adminNotes?: string | null
-}) {
-  let type = NotificationType.SUPPORT_TICKET_UPDATED
-  let title = `Support ticket ${input.ticketNumber} updated`
-  let body = `Your support ticket "${input.subject}" has been updated.`
-
-  if (input.event === 'resolved') {
-    type = NotificationType.SUPPORT_TICKET_RESOLVED
-    title = `Support ticket ${input.ticketNumber} resolved`
-    body = `Your support ticket "${input.subject}" has been resolved.`
-  } else if (input.event === 'closed') {
-    type = NotificationType.SUPPORT_TICKET_CLOSED
-    title = `Support ticket ${input.ticketNumber} closed`
-    body = `Your support ticket "${input.subject}" has been closed.`
-  }
-
-  const noteSummary = input.adminNotes?.trim()
-    ? ` Admin note: ${input.adminNotes.trim()}`
-    : ''
-
-  return NotificationService.dispatch({
-    type,
-    actorUserId: input.actorUserId,
-    targetUserId: input.clientId,
-    title,
-    message: `${body}${noteSummary}`,
-    link: '/client/support',
-    metadata: {
-      ticketId: input.ticketId,
-      ticketNumber: input.ticketNumber,
-      subject: input.subject,
-      status: input.ticketStatus,
-      event: input.event,
-      adminNotes: input.adminNotes ?? null,
-    },
-  })
-}
-
-export async function notifyCallbackRequestCreated(input: {
-  actorUserId: string
-  requestId: string
-  clientId: string
-  clientName: string
-  labName: string
-  requesterName: string
-}) {
-  const adminIds = await resolveActiveProfileIds(['admin', 'qc', 'account_manager'])
-
-  return dispatchToUserIds(adminIds, (targetUserId) => ({
-    type: NotificationType.SUPPORT_CALLBACK_REQUESTED,
-    actorUserId: input.actorUserId,
-    title: `Callback requested by ${input.clientName}`,
-    message: `${input.labName} requested a callback. Requested by ${input.requesterName}.`,
-    link: '/admin/support/callback-requests',
-    metadata: {
-      requestId: input.requestId,
-      clientId: input.clientId,
-      clientName: input.clientName,
-      labName: input.labName,
-      requesterName: input.requesterName,
-      targetUserId,
-    },
-  }))
 }
 
 export async function notifyOfferCreated(input: {
