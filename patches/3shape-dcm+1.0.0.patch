@@ -1,0 +1,226 @@
+diff --git a/node_modules/3shape-dcm/parser.mjs b/node_modules/3shape-dcm/parser.mjs
+index d4a5d66..6dee5a1 100644
+--- a/node_modules/3shape-dcm/parser.mjs
++++ b/node_modules/3shape-dcm/parser.mjs
+@@ -260,17 +260,70 @@ class ByteReader {
+  * @returns {{indices: Uint32Array, opCounts: Object}}
+  */
+ function decodeFacets(data, vertexCount, indexBits) {
++  // Linear-time variant (patched): the edge list is a circular doubly-linked list held in typed
++  // arrays, so every instruction is O(1). The original used Array.splice on plain arrays, which made
++  // large scans quadratic (several seconds per DCM). Output is identical, triangle for triangle.
+   const reader = new ByteReader(data);
+ 
+-  /** @type {number[]} flat triangle list */
+-  const faces = [];
+-  /** edge list stored as two parallel arrays of vertex indices */
+-  let edgeStart = [];
+-  let edgeEnd = [];
+-  let cur = 0;
++  // Each instruction byte emits at most one triangle, so this rarely needs to grow
++  let faces = new Uint32Array(data.length * 3 + 3);
++  let faceCount = 0;
++  const pushFace = (a, b, c) => {
++    if (faceCount + 3 > faces.length) {
++      const grown = new Uint32Array(faces.length * 2);
++      grown.set(faces);
++      faces = grown;
++    }
++    faces[faceCount++] = a;
++    faces[faceCount++] = b;
++    faces[faceCount++] = c;
++  };
++
++  // Edge nodes: start vertex, end vertex, next node, previous node
++  let capacity = 1024;
++  let edgeStart = new Int32Array(capacity);
++  let edgeEnd = new Int32Array(capacity);
++  let nextNode = new Int32Array(capacity);
++  let prevNode = new Int32Array(capacity);
++  let freeNodes = [];
++  let nodeTop = 0;
++  let edgeCount = 0;
++  let cur = -1;
+   let vertexPtr = 0;
+   const opCounts = {};
+ 
++  const allocNode = (s, e) => {
++    const id = freeNodes.length > 0 ? freeNodes.pop() : nodeTop++;
++    if (id >= capacity) {
++      capacity *= 2;
++      const grow = (a) => {
++        const b = new Int32Array(capacity);
++        b.set(a);
++        return b;
++      };
++      edgeStart = grow(edgeStart);
++      edgeEnd = grow(edgeEnd);
++      nextNode = grow(nextNode);
++      prevNode = grow(prevNode);
++    }
++    edgeStart[id] = s;
++    edgeEnd[id] = e;
++    return id;
++  };
++  const unlinkNode = (id) => {
++    nextNode[prevNode[id]] = nextNode[id];
++    prevNode[nextNode[id]] = prevNode[id];
++    freeNodes.push(id);
++    edgeCount--;
++  };
++  const insertAfter = (anchor, id) => {
++    nextNode[id] = nextNode[anchor];
++    prevNode[id] = anchor;
++    prevNode[nextNode[anchor]] = id;
++    nextNode[anchor] = id;
++    edgeCount++;
++  };
++
+   const bounds = (v) => {
+     if (v < 0 || v >= vertexCount) {
+       throw new HPSError(`Vertex index ${v} out of bounds (0..${vertexCount - 1})`, 'PARSE_ERROR');
+@@ -283,86 +336,80 @@ function decodeFacets(data, vertexCount, indexBits) {
+   };
+ 
+   const restartFace = (v0, v1, v2) => {
+-    faces.push(v0, v1, v2);
+-    edgeStart = [v0, v1, v2];
+-    edgeEnd = [v1, v2, v0];
+-    cur = 0;
++    pushFace(v0, v1, v2);
++    freeNodes = [];
++    nodeTop = 0;
++    const a = allocNode(v0, v1);
++    const b = allocNode(v1, v2);
++    const c = allocNode(v2, v0);
++    nextNode[a] = b;
++    nextNode[b] = c;
++    nextNode[c] = a;
++    prevNode[a] = c;
++    prevNode[b] = a;
++    prevNode[c] = b;
++    edgeCount = 3;
++    cur = a;
+   };
+ 
+   const advance = (n) => {
+-    if (edgeStart.length === 0) throw new HPSError('Edge list is empty', 'PARSE_ERROR');
+-    cur = (cur + n) % edgeStart.length;
++    if (edgeCount === 0) throw new HPSError('Edge list is empty', 'PARSE_ERROR');
++    let steps = n % edgeCount;
++    while (steps-- > 0) cur = nextNode[cur];
+   };
+ 
+   const extendCurrentEdge = (v) => {
+-    if (edgeStart.length === 0) throw new HPSError('No edges available to extend', 'PARSE_ERROR');
++    if (edgeCount === 0) throw new HPSError('No edges available to extend', 'PARSE_ERROR');
+     const s = edgeStart[cur];
+     const e = edgeEnd[cur];
+-    faces.push(v, e, s);
++    pushFace(v, e, s);
+     // Replace the current edge with (s -> v) and (v -> e).
+-    edgeStart.splice(cur, 1, s, v);
+-    edgeEnd.splice(cur, 1, v, e);
++    edgeEnd[cur] = v;
++    insertAfter(cur, allocNode(v, e));
+   };
+ 
+   const usePrevious = () => {
+-    const n = edgeStart.length;
+-    if (n < 2) throw new HPSError('Cannot apply Previous with fewer than 2 edges', 'PARSE_ERROR');
+-    const prev = (cur - 1 + n) % n;
+-    faces.push(edgeStart[cur], edgeStart[prev], edgeEnd[cur]);
++    if (edgeCount < 2) throw new HPSError('Cannot apply Previous with fewer than 2 edges', 'PARSE_ERROR');
++    const prev = prevNode[cur];
++    pushFace(edgeStart[cur], edgeStart[prev], edgeEnd[cur]);
++    // prev and cur merge into one edge (prev.start -> cur.end) at cur's place
+     const newStart = edgeStart[prev];
+-    const newEnd = edgeEnd[cur];
+-    const high = Math.max(cur, prev);
+-    const low = Math.min(cur, prev);
+-    edgeStart.splice(high, 1);
+-    edgeEnd.splice(high, 1);
+-    edgeStart.splice(low, 1, newStart);
+-    edgeEnd.splice(low, 1, newEnd);
+-    cur = (low + 1) % edgeStart.length;
++    unlinkNode(prev);
++    edgeStart[cur] = newStart;
++    cur = nextNode[cur];
+   };
+ 
+   const useNext = () => {
+-    const n = edgeStart.length;
+-    if (n < 2) throw new HPSError('Cannot apply Next with fewer than 2 edges', 'PARSE_ERROR');
+-    const nxt = (cur + 1) % n;
+-    faces.push(edgeStart[cur], edgeEnd[nxt], edgeEnd[cur]);
+-    const newStart = edgeStart[cur];
+-    const newEnd = edgeEnd[nxt];
+-    const high = Math.max(cur, nxt);
+-    const low = Math.min(cur, nxt);
+-    edgeStart.splice(high, 1);
+-    edgeEnd.splice(high, 1);
+-    edgeStart.splice(low, 1, newStart);
+-    edgeEnd.splice(low, 1, newEnd);
+-    cur = (low + 1) % edgeStart.length;
++    if (edgeCount < 2) throw new HPSError('Cannot apply Next with fewer than 2 edges', 'PARSE_ERROR');
++    const nxt = nextNode[cur];
++    pushFace(edgeStart[cur], edgeEnd[nxt], edgeEnd[cur]);
++    // cur and next merge into one edge (cur.start -> next.end) at cur's place
++    edgeEnd[cur] = edgeEnd[nxt];
++    unlinkNode(nxt);
++    cur = nextNode[cur];
+   };
+ 
+   const removeCurrentEdge = () => {
+-    const n = edgeStart.length;
+-    if (n === 0) throw new HPSError('Cannot remove edge: edge list is empty', 'PARSE_ERROR');
+-    const prev = (cur - 1 + n) % n;
++    if (edgeCount === 0) throw new HPSError('Cannot remove edge: edge list is empty', 'PARSE_ERROR');
++    const prev = prevNode[cur];
+ 
+-    if (edgeStart[prev] === edgeEnd[cur] && n > 2) {
++    if (edgeStart[prev] === edgeEnd[cur] && edgeCount > 2) {
+       // The current edge doubles back on the previous one: drop both.
+-      const high = Math.max(cur, prev);
+-      const low = Math.min(cur, prev);
+-      edgeStart.splice(high, 1);
+-      edgeEnd.splice(high, 1);
+-      edgeStart.splice(low, 1);
+-      edgeEnd.splice(low, 1);
+-      if (edgeStart.length > 0) {
+-        const m = edgeStart.length;
+-        const newPrev = (low - 1 + m) % m;
+-        const newCur = low % m;
+-        edgeEnd[newPrev] = edgeStart[newCur];
+-        cur = newCur;
++      const after = nextNode[cur];
++      const before = prevNode[prev];
++      unlinkNode(cur);
++      unlinkNode(prev);
++      if (edgeCount > 0) {
++        edgeEnd[before] = edgeStart[after];
++        cur = after;
+       } else {
+-        cur = 0;
++        cur = -1;
+       }
+     } else {
+       edgeEnd[prev] = edgeEnd[cur];
+-      edgeStart.splice(cur, 1);
+-      edgeEnd.splice(cur, 1);
+-      cur = edgeStart.length > 0 ? cur % edgeStart.length : 0;
++      const after = nextNode[cur];
++      unlinkNode(cur);
++      cur = edgeCount > 0 ? after : -1;
+     }
+   };
+ 
+@@ -432,7 +479,7 @@ function decodeFacets(data, vertexCount, indexBits) {
+     }
+   }
+ 
+-  return { indices: Uint32Array.from(faces), opCounts, vertexPtr };
++  return { indices: faces.slice(0, faceCount), opCounts, vertexPtr };
+ }
+ 
+ /* ------------------------------------------------------------------ */

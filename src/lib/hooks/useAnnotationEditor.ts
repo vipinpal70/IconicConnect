@@ -1,0 +1,472 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import type {
+  AnnotationDocument,
+  AnnotationLayer,
+  AnnotationItem,
+  SaveStatus,
+  ToolMode,
+  SaveAnnotationResponse,
+  GetAnnotationResponse,
+  AnnotationSource,
+} from '@/src/types/annotation';
+import {
+  saveDraftToStorage,
+  loadDraftFromStorage,
+  clearDraftFromStorage,
+} from '@/src/lib/storage/annotation-draft-storage';
+
+const DEFAULT_LAYER_COLOR = '#3b82f6'; // Blue
+
+const DEFAULT_LAYER_NAMES: Record<AnnotationSource, string> = {
+  'case-submission': 'Case Submission Review',
+  'design-output': 'Design Output Review',
+};
+
+/** Layers saved before markup was split per preview were all drawn on the case submission. */
+export const layerSource = (layer: AnnotationLayer): AnnotationSource => layer.source ?? 'case-submission';
+
+function createInitialDocument(caseId: string): AnnotationDocument {
+  return {
+    id: `doc-${caseId}`,
+    caseId,
+    schemaVersion: 1,
+    revision: 0,
+    layers: [],
+  };
+}
+
+/**
+ * Placeholder shown until the first mark is drawn on a preview, so an untouched preview
+ * doesn't make the document dirty. It is materialized into the document on first use.
+ */
+function defaultLayerFor(source: AnnotationSource): AnnotationLayer {
+  return {
+    id: `layer-default-${source}`,
+    name: DEFAULT_LAYER_NAMES[source],
+    color: DEFAULT_LAYER_COLOR,
+    visible: true,
+    locked: false,
+    opacity: 1,
+    source,
+    annotations: [],
+  };
+}
+
+function withLayer(doc: AnnotationDocument, layer: AnnotationLayer): AnnotationDocument {
+  return doc.layers.some((l) => l.id === layer.id) ? doc : { ...doc, layers: [...doc.layers, layer] };
+}
+
+interface UseAnnotationEditorProps {
+  caseId: string;
+  userId?: string;
+  /** Which preview is open; markup is kept separate per preview because the models differ. */
+  source?: AnnotationSource;
+  onSaveSuccess?: (revision: number) => void;
+}
+
+export function useAnnotationEditor({
+  caseId,
+  userId,
+  source = 'case-submission',
+  onSaveSuccess,
+}: UseAnnotationEditorProps) {
+  const [doc, setDoc] = useState<AnnotationDocument>(() => createInitialDocument(caseId));
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [lastSavedRevision, setLastSavedRevision] = useState<number>(0);
+  const [lastSavedAt, setLastSavedAt] = useState<string | undefined>(undefined);
+  const [saveError, setSaveError] = useState<string | undefined>(undefined);
+
+  const [activeTool, setActiveTool] = useState<ToolMode>('orbit');
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [activeColor, setActiveColor] = useState<string>('#ef4444'); // Default red for markings
+  const [strokeWidth, setStrokeWidth] = useState<number>(4);
+
+  // Undo / Redo count states to avoid reading refs in render
+  const [undoCount, setUndoCount] = useState<number>(0);
+  const [redoCount, setRedoCount] = useState<number>(0);
+
+  // Draft recovery state
+  const [hasRecoverableDraft, setHasRecoverableDraft] = useState<boolean>(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [recoveredDraftDoc, setRecoveredDraftDoc] = useState<AnnotationDocument | null>(null);
+
+  // Undo / Redo history refs
+  const undoStackRef = useRef<AnnotationDocument[]>([]);
+  const redoStackRef = useRef<AnnotationDocument[]>([]);
+  const lastSavedSnapshotRef = useRef<AnnotationDocument | null>(null);
+
+  // In-flight save snapshot tracking
+  const savingSnapshotRef = useRef<AnnotationDocument | null>(null);
+  const isSavingRef = useRef<boolean>(false);
+
+  // Maintain activeLayerId without triggering cascading renders in effects
+  const [rawActiveLayerId, setRawActiveLayerId] = useState<string>('');
+  const sourceLayers = useMemo(() => {
+    const scoped = doc.layers.filter((l) => layerSource(l) === source);
+    return scoped.length > 0 ? scoped : [defaultLayerFor(source)];
+  }, [doc.layers, source]);
+  const activeLayerId = sourceLayers.some((l) => l.id === rawActiveLayerId)
+    ? rawActiveLayerId
+    : sourceLayers[0].id;
+  // The placeholder layer, if that's what is active and it isn't in the document yet
+  const pendingDefaultLayer = doc.layers.some((l) => l.id === activeLayerId) ? null : sourceLayers[0];
+
+  // Initial load from server + check for IndexedDB draft
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadData() {
+      try {
+        const res = await fetch(`/api/cases/${caseId}/annotations`);
+        if (!res.ok) throw new Error('Failed to fetch annotations');
+        const data: GetAnnotationResponse = await res.json();
+
+        if (cancelled) return;
+
+        let serverDoc: AnnotationDocument;
+        if (data.success && data.document) {
+          serverDoc = data.document;
+          setLastSavedRevision(data.revision);
+          setLastSavedAt(data.updatedAt);
+        } else {
+          serverDoc = createInitialDocument(caseId);
+          setLastSavedRevision(0);
+        }
+
+        setDoc(serverDoc);
+        lastSavedSnapshotRef.current = serverDoc;
+        setSaveStatus('saved');
+
+        // Check if there is an unsaved local draft in IndexedDB
+        const localDraft = await loadDraftFromStorage(caseId, userId);
+        if (!cancelled && localDraft && localDraft.document) {
+          const localAnnotationCount = localDraft.document.layers.reduce(
+            (acc, l) => acc + (l.annotations?.length || 0),
+            0
+          );
+          const serverAnnotationCount = serverDoc.layers.reduce(
+            (acc, l) => acc + (l.annotations?.length || 0),
+            0
+          );
+
+          if (
+            localAnnotationCount > serverAnnotationCount ||
+            localDraft.savedAt > (serverDoc.updatedAt ? new Date(serverDoc.updatedAt).getTime() : 0)
+          ) {
+            setHasRecoverableDraft(true);
+            setDraftSavedAt(localDraft.savedAt);
+            setRecoveredDraftDoc(localDraft.document);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Error loading annotation document:', err);
+          setSaveStatus('error');
+          setSaveError(err instanceof Error ? err.message : 'Failed to load');
+        }
+      }
+    }
+
+    void loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId, userId]);
+
+  // Navigation Protection: warn if unsaved changes exist
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (saveStatus === 'dirty' || saveStatus === 'saving') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [saveStatus]);
+
+  // Debounced draft persistence to IndexedDB
+  useEffect(() => {
+    if (saveStatus !== 'dirty') return;
+
+    const timer = setTimeout(() => {
+      void saveDraftToStorage(caseId, doc, userId);
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [doc, saveStatus, caseId, userId]);
+
+  // Helper to commit a state transition into undo history and mark dirty
+  const pushState = useCallback((newDoc: AnnotationDocument) => {
+    setDoc((prev) => {
+      undoStackRef.current.push(prev);
+      redoStackRef.current = [];
+      setUndoCount(undoStackRef.current.length);
+      setRedoCount(0);
+      return newDoc;
+    });
+    setSaveStatus('dirty');
+    setSaveError(undefined);
+  }, []);
+
+  // Tool / Layer Operations
+  const addAnnotation = useCallback((annotation: AnnotationItem) => {
+    setDoc((prev) => {
+      undoStackRef.current.push(prev);
+      redoStackRef.current = [];
+      setUndoCount(undoStackRef.current.length);
+      setRedoCount(0);
+
+      const base = pendingDefaultLayer ? withLayer(prev, pendingDefaultLayer) : prev;
+      const targetLayerId = base.layers.some((l) => l.id === annotation.layerId) ? annotation.layerId : activeLayerId;
+      const updatedLayers = base.layers.map((layer) => {
+        if (layer.id === targetLayerId) {
+          return {
+            ...layer,
+            annotations: [...layer.annotations, { ...annotation, layerId: targetLayerId }],
+          };
+        }
+        return layer;
+      });
+
+      return { ...base, layers: updatedLayers };
+    });
+    setSaveStatus('dirty');
+    setSaveError(undefined);
+  }, [activeLayerId, pendingDefaultLayer]);
+
+  const updateAnnotation = useCallback((id: string, updates: Partial<AnnotationItem>) => {
+    setDoc((prev) => {
+      undoStackRef.current.push(prev);
+      redoStackRef.current = [];
+      setUndoCount(undoStackRef.current.length);
+      setRedoCount(0);
+
+      const updatedLayers = prev.layers.map((layer) => ({
+        ...layer,
+        annotations: layer.annotations.map((ann) =>
+          ann.id === id ? ({ ...ann, ...updates } as AnnotationItem) : ann
+        ),
+      }));
+
+      return { ...prev, layers: updatedLayers };
+    });
+    setSaveStatus('dirty');
+  }, []);
+
+  const deleteAnnotation = useCallback((id: string) => {
+    setDoc((prev) => {
+      undoStackRef.current.push(prev);
+      redoStackRef.current = [];
+      setUndoCount(undoStackRef.current.length);
+      setRedoCount(0);
+
+      const updatedLayers = prev.layers.map((layer) => ({
+        ...layer,
+        annotations: layer.annotations.filter((ann) => ann.id !== id),
+      }));
+
+      return { ...prev, layers: updatedLayers };
+    });
+    setSelectedAnnotationId((sel) => (sel === id ? null : sel));
+    setSaveStatus('dirty');
+  }, []);
+
+  const addLayer = useCallback((name?: string, color?: string) => {
+    const newLayerId = `layer-${Date.now()}`;
+    const newLayer: AnnotationLayer = {
+      id: newLayerId,
+      name: name || `Layer ${sourceLayers.length + 1}`,
+      color: color || DEFAULT_LAYER_COLOR,
+      visible: true,
+      locked: false,
+      opacity: 1,
+      source,
+      annotations: [],
+    };
+
+    const base = pendingDefaultLayer ? withLayer(doc, pendingDefaultLayer) : doc;
+    pushState({
+      ...base,
+      layers: [...base.layers, newLayer],
+    });
+    setRawActiveLayerId(newLayerId);
+  }, [doc, pendingDefaultLayer, pushState, source, sourceLayers.length]);
+
+  const updateLayer = useCallback((layerId: string, updates: Partial<AnnotationLayer>) => {
+    const placeholder = sourceLayers.find((l) => l.id === layerId && !doc.layers.includes(l));
+    const base = placeholder ? withLayer(doc, placeholder) : doc;
+    pushState({
+      ...base,
+      layers: base.layers.map((l) => (l.id === layerId ? { ...l, ...updates } : l)),
+    });
+  }, [doc, pushState, sourceLayers]);
+
+  const deleteLayer = useCallback((layerId: string) => {
+    if (sourceLayers.length <= 1) return; // Each preview keeps at least one layer
+    const filtered = doc.layers.filter((l) => l.id !== layerId);
+    pushState({
+      ...doc,
+      layers: filtered,
+    });
+    if (activeLayerId === layerId) {
+      setRawActiveLayerId(sourceLayers.find((l) => l.id !== layerId)?.id || '');
+    }
+  }, [doc, activeLayerId, pushState, sourceLayers]);
+
+  // Undo / Redo
+  const undo = useCallback(() => {
+    if (undoStackRef.current.length === 0) return;
+    const previous = undoStackRef.current.pop()!;
+    redoStackRef.current.push(doc);
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(redoStackRef.current.length);
+    setDoc(previous);
+    setSaveStatus('dirty');
+  }, [doc]);
+
+  const redo = useCallback(() => {
+    if (redoStackRef.current.length === 0) return;
+    const next = redoStackRef.current.pop()!;
+    undoStackRef.current.push(doc);
+    setUndoCount(undoStackRef.current.length);
+    setRedoCount(redoStackRef.current.length);
+    setDoc(next);
+    setSaveStatus('dirty');
+  }, [doc]);
+
+  // Explicit Save
+  const saveDocument = useCallback(async () => {
+    if (isSavingRef.current) return; // Prevent duplicate concurrent submissions
+
+    isSavingRef.current = true;
+    setSaveStatus('saving');
+    setSaveError(undefined);
+
+    // Capture consistent snapshot of current document state
+    const snapshotToSave = JSON.parse(JSON.stringify(doc)) as AnnotationDocument;
+    savingSnapshotRef.current = snapshotToSave;
+
+    try {
+      const response = await fetch(`/api/cases/${caseId}/annotations`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schemaVersion: snapshotToSave.schemaVersion || 1,
+          expectedRevision: lastSavedRevision,
+          layers: snapshotToSave.layers,
+          saveReason: 'manual',
+        }),
+      });
+
+      const data = (await response.json()) as SaveAnnotationResponse;
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          throw new Error('Revision conflict: another user saved changes. Please refresh or review.');
+        }
+        throw new Error(data.error || 'Failed to persist annotations');
+      }
+
+      setLastSavedRevision(data.revision);
+      setLastSavedAt(data.savedAt);
+      lastSavedSnapshotRef.current = snapshotToSave;
+
+      // Clear local IndexedDB draft as database transaction committed
+      void clearDraftFromStorage(caseId, userId);
+      setHasRecoverableDraft(false);
+
+      // Check if user made newer edits while request was in-flight
+      setDoc((currentDoc) => {
+        const isStillSameAsSnapshot =
+          JSON.stringify(currentDoc.layers) === JSON.stringify(snapshotToSave.layers);
+
+        if (isStillSameAsSnapshot) {
+          setSaveStatus('saved');
+        } else {
+          // Keep dirty if newer changes were added while save was in-flight!
+          setSaveStatus('dirty');
+        }
+        return currentDoc;
+      });
+
+      if (onSaveSuccess) onSaveSuccess(data.revision);
+    } catch (err) {
+      console.error('Save failed:', err);
+      setSaveStatus('error');
+      setSaveError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      isSavingRef.current = false;
+      savingSnapshotRef.current = null;
+    }
+  }, [caseId, doc, lastSavedRevision, userId, onSaveSuccess]);
+
+  // Discard local changes and revert to last saved state
+  const discardChanges = useCallback(() => {
+    if (!lastSavedSnapshotRef.current) return;
+    setDoc(JSON.parse(JSON.stringify(lastSavedSnapshotRef.current)));
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    setUndoCount(0);
+    setRedoCount(0);
+    setSaveStatus('saved');
+    setSaveError(undefined);
+    void clearDraftFromStorage(caseId, userId);
+    setHasRecoverableDraft(false);
+  }, [caseId, userId]);
+
+  // Recover IndexedDB local draft
+  const recoverDraft = useCallback(() => {
+    if (!recoveredDraftDoc) return;
+    undoStackRef.current.push(doc);
+    setUndoCount(undoStackRef.current.length);
+    setDoc(recoveredDraftDoc);
+    setSaveStatus('dirty');
+    setHasRecoverableDraft(false);
+  }, [recoveredDraftDoc, doc]);
+
+  const dismissDraftRecovery = useCallback(() => {
+    setHasRecoverableDraft(false);
+    void clearDraftFromStorage(caseId, userId);
+  }, [caseId, userId]);
+
+  return {
+    document: doc,
+    // Layers belonging to the open preview (what the viewer should render and list)
+    layers: sourceLayers,
+    saveStatus,
+    lastSavedRevision,
+    lastSavedAt,
+    saveError,
+    activeTool,
+    setActiveTool,
+    activeLayerId,
+    setActiveLayerId: setRawActiveLayerId,
+    selectedAnnotationId,
+    setSelectedAnnotationId,
+    activeColor,
+    setActiveColor,
+    strokeWidth,
+    setStrokeWidth,
+    addAnnotation,
+    updateAnnotation,
+    deleteAnnotation,
+    addLayer,
+    updateLayer,
+    deleteLayer,
+    undo,
+    redo,
+    canUndo: undoCount > 0,
+    canRedo: redoCount > 0,
+    saveDocument,
+    discardChanges,
+    hasRecoverableDraft,
+    draftSavedAt,
+    recoverDraft,
+    dismissDraftRecovery,
+  };
+}
