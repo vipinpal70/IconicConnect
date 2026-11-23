@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { pgTable, pgEnum, uuid, varchar, text, bigint, integer, smallint, timestamp, primaryKey } from 'drizzle-orm/pg-core'
+import { pgTable, pgEnum, uuid, varchar, text, bigint, integer, smallint, boolean, timestamp, primaryKey } from 'drizzle-orm/pg-core'
 import { profiles } from './profile'
 import { cases } from './case'
 import { files } from './files'
@@ -46,6 +46,13 @@ export const supTickets = pgTable('sup_tickets', {
   csatScore: smallint('csat_score'),
   csatComment: text('csat_comment'),
   csatAt: tstz('csat_at'),
+  // Reply clock (Phase 5): runs while the lab waits on support
+  slaStartedAt: tstz('sla_started_at'),
+  replyDueAt: tstz('reply_due_at'),
+  replyWarnAt: tstz('reply_warn_at'),
+  slaAlertLevel: smallint('sla_alert_level').default(0).notNull(),
+  lastAgentReplyAt: tstz('last_agent_reply_at'),
+  autoCloseWarnedAt: tstz('auto_close_warned_at'),
   createdAt: tstz('created_at').defaultNow().notNull(),
   updatedAt: tstz('updated_at').defaultNow().notNull(),
 })
@@ -105,6 +112,23 @@ export const supCannedReplies = pgTable('sup_canned_replies', {
   createdAt: tstz('created_at').defaultNow().notNull(),
   updatedAt: tstz('updated_at').defaultNow().notNull(),
 })
+
+/** Reply-time targets per priority (wall clock; `business_hours` is reserved for decision D5). */
+export const supSlaPolicies = pgTable('sup_sla_policies', {
+  priority: supPriorityEnum('priority').primaryKey(),
+  firstResponseMinutes: integer('first_response_minutes').notNull(),
+  nextResponseMinutes: integer('next_response_minutes').notNull(),
+  businessHours: boolean('business_hours').default(false).notNull(),
+  updatedAt: tstz('updated_at').defaultNow().notNull(),
+})
+
+/** When each person was last emailed about unread messages in a conversation. */
+export const supEmailDigests = pgTable('sup_email_digests', {
+  userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
+  ticketId: uuid('ticket_id').references(() => supTickets.id, { onDelete: 'cascade' }).notNull(),
+  lastSeq: bigint('last_seq', { mode: 'number' }).notNull(),
+  lastSentAt: tstz('last_sent_at').notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.userId, t.ticketId] }) }))
 
 export type SupTicketRow = typeof supTickets.$inferSelect
 export type SupMessageRow = typeof supMessages.$inferSelect

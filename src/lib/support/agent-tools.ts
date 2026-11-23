@@ -8,7 +8,7 @@ import { formatTicketNumber } from './constants'
 import { SupportError, notFound } from './http'
 import { isAgent, type SupportActor } from './policy'
 import { personName } from './queries'
-import type { CannedReply, CustomerContext } from './types'
+import type { CannedReply, CustomerContext, SupportMetrics } from './types'
 import type { CannedReplyInput } from './validation'
 
 /**
@@ -192,5 +192,50 @@ export async function customerContext(actor: SupportActor, clientId: string, exc
       average: csat[0]?.average === null || csat[0]?.average === undefined ? null : Math.round(csat[0].average * 10) / 10,
       ratings: Number(csat[0]?.ratings ?? 0),
     },
+  }
+}
+
+// ── Metrics ───────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Team numbers for the last `days` days: one aggregate scan of sup_tickets (small table: one row per
+ * conversation). First-response figures only count conversations a lab started; "on time" counts replies
+ * within target out of conversations that were answered or are already past their target.
+ */
+export async function supportMetrics(actor: SupportActor, days: number, now = new Date()): Promise<SupportMetrics> {
+  requireAgent(actor)
+  const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString()
+  const nowIso = now.toISOString()
+  const t = supTickets
+  const inPeriod = sql`${t.createdAt} >= ${since}::timestamptz`
+  const labStarted = sql`${inPeriod} and ${t.source} <> 'agent'`
+  const [row] = await db
+    .select({
+      created: sql<number>`count(*) filter (where ${inPeriod})`.mapWith(Number),
+      closed: sql<number>`count(*) filter (where ${t.closedAt} >= ${since}::timestamptz)`.mapWith(Number),
+      autoClosed: sql<number>`count(*) filter (where ${t.closedAt} >= ${since}::timestamptz and ${t.closeReason} = 'no_reply' and ${t.closedBy} is null)`.mapWith(Number),
+      medianFirst: sql<number | null>`percentile_cont(0.5) within group (order by extract(epoch from ${t.firstRespondedAt} - ${t.createdAt}) / 60)
+        filter (where ${labStarted} and ${t.firstRespondedAt} is not null)`.mapWith((v) => (v === null ? null : Number(v))),
+      onTime: sql<number>`count(*) filter (where ${labStarted} and ${t.firstRespondedAt} <= ${t.firstResponseDueAt})`.mapWith(Number),
+      measured: sql<number>`count(*) filter (where ${labStarted} and ${t.firstResponseDueAt} is not null
+        and (${t.firstRespondedAt} is not null or ${t.firstResponseDueAt} <= ${nowIso}::timestamptz))`.mapWith(Number),
+      ratingAverage: sql<number | null>`avg(${t.csatScore}) filter (where ${t.csatAt} >= ${since}::timestamptz)`.mapWith((v) => (v === null ? null : Number(v))),
+      ratingCount: sql<number>`count(${t.csatScore}) filter (where ${t.csatAt} >= ${since}::timestamptz)`.mapWith(Number),
+      openNow: sql<number>`count(*) filter (where ${t.status} <> 'closed')`.mapWith(Number),
+      overdueNow: sql<number>`count(*) filter (where ${t.status} <> 'closed' and ${t.replyDueAt} <= ${nowIso}::timestamptz)`.mapWith(Number),
+    })
+    .from(t)
+
+  return {
+    days,
+    created: row.created,
+    closed: row.closed,
+    autoClosed: row.autoClosed,
+    medianFirstResponseMinutes: row.medianFirst === null ? null : Math.round(row.medianFirst),
+    firstResponseOnTime: row.onTime,
+    firstResponseMeasured: row.measured,
+    rating: { average: row.ratingAverage === null ? null : Math.round(row.ratingAverage * 10) / 10, count: row.ratingCount },
+    openNow: row.openNow,
+    overdueNow: row.overdueNow,
   }
 }

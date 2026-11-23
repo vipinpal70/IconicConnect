@@ -1,4 +1,6 @@
 import {
+  AUTO_CLOSE_DAYS,
+  REOPEN_WINDOW_DAYS,
   CLOSE_REASON_LABELS,
   PRIORITY_LABELS,
   CATEGORY_LABELS,
@@ -43,7 +45,7 @@ export interface LifecyclePatch {
   reopenedCount?: number
 }
 
-export type LifecycleEventType = 'status' | 'assignee' | 'priority' | 'category' | 'reopened' | 'linked'
+export type LifecycleEventType = 'status' | 'assignee' | 'priority' | 'category' | 'reopened' | 'linked' | 'auto_closed' | 'rated'
 
 export interface LifecycleResult {
   patch: LifecyclePatch
@@ -64,6 +66,7 @@ export type ActionInput =
 export type ActionOutcome = { ok: true; result: LifecycleResult } | { ok: false; code: 'no_change' | 'invalid_state' }
 
 const empty = (): LifecycleResult => ({ patch: {}, events: [], systemMessages: [] })
+const DAY_MS = 24 * 60 * 60 * 1000
 
 function reopen(state: LifecycleState, result: LifecycleResult, actorName: string) {
   result.patch.status = 'live'
@@ -91,6 +94,39 @@ export function onPublicMessage(
     }
     if (!state.firstRespondedAt) result.patch.firstRespondedAt = now
   }
+  return result
+}
+
+/**
+ * Auto-close (support-system.md §4): a Live conversation waiting on the lab gets a public warning one day
+ * before it closes, then closes as "No reply". Any public message in between cancels it.
+ */
+export function shouldWarnAutoClose(
+  t: { status: SupportStatus; lastPublicSender: SupportSide | null; lastAgentReplyAt: Date | null; autoCloseWarnedAt: Date | null },
+  now: Date,
+): boolean {
+  if (t.status !== 'live' || t.lastPublicSender !== 'agent' || !t.lastAgentReplyAt || t.autoCloseWarnedAt) return false
+  return now.getTime() - t.lastAgentReplyAt.getTime() >= (AUTO_CLOSE_DAYS - 1) * DAY_MS
+}
+
+export function shouldAutoClose(
+  t: { status: SupportStatus; lastPublicSender: SupportSide | null; autoCloseWarnedAt: Date | null },
+  now: Date,
+): boolean {
+  if (t.status !== 'live' || t.lastPublicSender !== 'agent' || !t.autoCloseWarnedAt) return false
+  return now.getTime() - t.autoCloseWarnedAt.getTime() >= DAY_MS
+}
+
+export const AUTO_CLOSE_WARNING =
+  "We haven't heard back, so this conversation will close automatically tomorrow. Reply here to keep it open."
+
+export function onAutoClose(state: LifecycleState, now: Date): LifecycleResult {
+  const result = empty()
+  result.patch = { status: 'closed', closedAt: now, closedBy: null, closeReason: 'no_reply' }
+  result.events.push({ type: 'auto_closed', from: state.status, to: 'closed' })
+  result.systemMessages.push(
+    `Conversation closed automatically after ${AUTO_CLOSE_DAYS} days without a reply. Reply within ${REOPEN_WINDOW_DAYS} days to reopen it.`,
+  )
   return result
 }
 

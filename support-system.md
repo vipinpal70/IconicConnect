@@ -701,3 +701,69 @@ Assignment views, internal notes and search shipped in Phase 1. This phase adds 
   - no page errors
 
 **Found and fixed:** a duplicate shortcut returned 500 instead of 409. Drizzle wraps Postgres errors ("Failed query …"), so the unique-violation check now looks through `cause`. `src/lib/auth/auth-service.ts` uses the same top-level-only `23505` check and probably has the same problem. It was left unchanged here because it is outside the support work.
+
+### Phase 5 — SLA, auto-close, digests, ratings, metrics (done)
+
+Migration `20261124000100_support_sla_csat.sql`:
+- `sup_sla_policies`, seeded with the §10 defaults.
+- Reply-clock columns on `sup_tickets`.
+- `sup_email_digests`.
+- Three partial or plain indexes for the sweeps.
+- A backfill (below).
+
+**Reply clock (SLA):** pure rules in `src/lib/support/sla.ts`; the service keeps the columns in step.
+- Starts at the first unanswered lab message: `sla_started_at`, `reply_due_at`, `reply_warn_at` (80 %).
+- A second lab message adds no time.
+- A public support reply or closing stops it. Internal notes do not.
+- The first-response target applies until support's first reply; after that, the next-response target.
+- Changing priority moves the deadline and re-arms alerts.
+- Wall-clock time, 24/7 (D5 still open; `business_hours` is reserved).
+- Agents see a badge in the list and the thread header: "Reply in 3h", amber when due soon, "Overdue 1h" in red. There is an **Overdue** inbox tab with a count. Labs never see deadlines.
+
+**Jobs** (BullMQ job schedulers in the existing maintenance worker):
+
+| Job | Every | Does |
+|---|---|---|
+| `support-sla` | 1 min | One atomic UPDATE claims each alert (level 0 → 1 at 80 %, → 2 when overdue), so concurrent replies and workers can't double-send. In-app to the assignee, or to all agents if unassigned. Never emailed. |
+| `support-auto-close` | 15 min | Live and waiting on the lab for 6 days: posts a public warning and notifies the lab. A day later: closes as "No reply" with no person attached, posts a system line and notifies the lab. Any public message cancels it. Both sides see "closes automatically on …". |
+| `support-email-digest` | 1 min | Unread messages from the other side, older than 2 min, for people with no open live stream, at most one email per person per conversation per 10 min, never repeating messages already emailed or read. Respects the master email switch and "conversation updates". Recipients: lab owner + the member who started it, and the assignee. Unassigned conversations already email every agent on creation. HTML-escaped, absolute links (`NEXT_PUBLIC_APP_URL`). |
+
+**Ratings (CSAT):**
+- `POST /api/support/tickets/:id/rating` with `{score 1–5, comment?}`.
+- Lab people only, once, on conversations closed as Resolved or No reply, within the 14-day reopen window. Returns 409 if already rated.
+- The thread asks "How did we do?" using native radio buttons (keyboard and screen-reader friendly).
+- Both sides then see the stars and comment. The assignee is notified.
+
+**Metrics:** `GET /api/support/metrics?days=7|30|90`, agents only, one aggregate query.
+- Created, closed, and auto-closed counts.
+- Median first-reply time, and first replies on time out of those due.
+- Average rating.
+- Open and overdue now.
+- The inbox header shows the last 30 days.
+
+**Backfill**, checked with fixture conversations:
+- Open conversations where the lab spoke last get a clock from their first unanswered message.
+- Deadlines that already passed are marked as alerted, so deploying causes no alert storm.
+- Conversations already waiting on the lab start their auto-close countdown at deploy, so no stale imported conversation is warned and emailed on day one.
+
+**Tests:**
+- `support-sla.test.ts` (12, pure rules).
+- `support-sla.integration.test.ts` (10, real Postgres + Redis, email queue mocked), covering:
+  - the clock through note, reply, follow-up, priority change and close
+  - alerts once per level
+  - overdue view and summary
+  - auto-close warn and close, and cancel on reply
+  - rating rules
+  - digest audience, escaping, throttle, read/online skips, and preference opt-out
+  - real notification delivery for job events
+  - metrics
+- Browser, production build, 20/20:
+  - badges, Overdue tab, metrics line
+  - auto-close notice on both sides; the lab never sees deadlines
+  - rating by keyboard
+  - the comment shown as text
+  - second rating refused
+  - the real worker raised exactly one in-app overdue alert
+  - no page errors
+
+**Found and fixed:** notifications sent by the jobs (no acting person) were silently dropped by the dispatcher, which requires an actor id. They now act as `system`, and a test calls the real notify module.

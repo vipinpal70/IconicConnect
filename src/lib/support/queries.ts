@@ -1,10 +1,10 @@
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { supMessages, supReads, supTickets } from '@/src/db/schema/support'
 import { AGENT_ROLES, CUSTOMER_ROLES, formatTicketNumber, type SupportSide } from './constants'
-import { allowedActions, canViewTicket, isAgent, isCustomer, reopenDeadline, type SupportActor } from './policy'
+import { allowedActions, canRate, canViewTicket, isAgent, isCustomer, reopenDeadline, type SupportActor } from './policy'
 import type { MessageView, MessagesResponse, PersonRef, SupportSummary, TicketDetail, TicketListResponse, TicketSummary } from './types'
 import type { ListMessagesQuery, ListTicketsQuery } from './validation'
 import { attachmentsForMessages } from './attachments'
@@ -59,6 +59,8 @@ const ticketColumns = {
   lastMessageSeq: supTickets.lastMessageSeq,
   lastPublicSender: supTickets.lastPublicSender,
   closedAt: supTickets.closedAt,
+  replyDueAt: supTickets.replyDueAt,
+  replyWarnAt: supTickets.replyWarnAt,
   labFullName: lab.fullName,
   labLabName: lab.labName,
   assigneeFullName: assignee.fullName,
@@ -80,6 +82,8 @@ type TicketRow = {
   lastMessageSeq: number
   lastPublicSender: SupportSide | null
   closedAt: Date | null
+  replyDueAt: Date | null
+  replyWarnAt: Date | null
   labFullName: string | null
   labLabName: string | null
   assigneeFullName: string | null
@@ -105,6 +109,9 @@ function toSummary(row: TicketRow, actor: SupportActor): TicketSummary {
     lastPublicSender: row.lastPublicSender,
     unread: row.lastMessageSeq > row.readSeq && row.lastPublicSender !== side,
     preview: row.preview ? row.preview.slice(0, 160) : null,
+    // Reply-time targets are internal to the support team
+    replyDueAt: side === 'agent' ? iso(row.replyDueAt) : null,
+    replyWarnAt: side === 'agent' ? iso(row.replyWarnAt) : null,
   }
 }
 
@@ -134,12 +141,13 @@ function scopeCondition(actor: SupportActor): SQL | undefined {
 export async function listTickets(actor: SupportActor, query: ListTicketsQuery): Promise<TicketListResponse> {
   const conditions: (SQL | undefined)[] = [scopeCondition(actor)]
   const agent = isAgent(actor)
-  const view = !agent && (query.view === 'mine' || query.view === 'unassigned') ? 'open' : query.view
+  const view = !agent && (query.view === 'mine' || query.view === 'unassigned' || query.view === 'overdue') ? 'open' : query.view
 
   if (view === 'open') conditions.push(ne(supTickets.status, 'closed'))
   if (view === 'closed') conditions.push(eq(supTickets.status, 'closed'))
   if (view === 'unassigned') conditions.push(ne(supTickets.status, 'closed'), isNull(supTickets.assigneeId))
   if (view === 'mine') conditions.push(ne(supTickets.status, 'closed'), eq(supTickets.assigneeId, actor.id))
+  if (view === 'overdue') conditions.push(ne(supTickets.status, 'closed'), lte(supTickets.replyDueAt, new Date()))
   if (query.status) conditions.push(eq(supTickets.status, query.status))
   if (query.priority) conditions.push(eq(supTickets.priority, query.priority))
   if (query.category) conditions.push(eq(supTickets.category, query.category))
@@ -203,6 +211,10 @@ export async function getTicketDetail(actor: SupportActor, ticketId: string, now
       closeReason: supTickets.closeReason,
       reopenedCount: supTickets.reopenedCount,
       linkedTicketId: supTickets.linkedTicketId,
+      csatScore: supTickets.csatScore,
+      csatComment: supTickets.csatComment,
+      csatAt: supTickets.csatAt,
+      autoCloseWarnedAt: supTickets.autoCloseWarnedAt,
       otherSideReadSeq: sql<number>`coalesce((
         select max(r.last_read_seq) from sup_reads r join profiles p on p.id = r.user_id
         where r.ticket_id = ${supTickets.id} and p.user_role::text in (${sql.join(otherRoles.map((r) => sql`${r}`), sql`, `)})
@@ -246,6 +258,12 @@ export async function getTicketDetail(actor: SupportActor, ticketId: string, now
     linkedTicket: linked
       ? { id: linked.id, number: formatTicketNumber(linked.number), subject: linked.subject, status: linked.status }
       : null,
+    rating: extra.csatScore !== null && extra.csatAt
+      ? { score: extra.csatScore, comment: extra.csatComment, ratedAt: extra.csatAt.toISOString() }
+      : null,
+    canRate: canRate(actor, { ...access, closeReason: extra.closeReason, csatScore: extra.csatScore }, now),
+    autoCloseAt:
+      row.status === 'live' && extra.autoCloseWarnedAt ? new Date(extra.autoCloseWarnedAt.getTime() + 24 * 60 * 60 * 1000).toISOString() : null,
   }
 }
 
@@ -319,6 +337,7 @@ export async function getSummary(actor: SupportActor): Promise<SupportSummary> {
       unread: unreadSql.mapWith(Number),
       newCount: sql<number>`count(*) filter (where ${supTickets.status} = 'new')`.mapWith(Number),
       mine: sql<number>`count(*) filter (where ${supTickets.assigneeId} = ${actor.id} and ${supTickets.status} <> 'closed')`.mapWith(Number),
+      overdue: sql<number>`count(*) filter (where ${supTickets.replyDueAt} <= now() and ${supTickets.status} <> 'closed')`.mapWith(Number),
     })
     .from(supTickets)
     .leftJoin(supReads, and(eq(supReads.ticketId, supTickets.id), eq(supReads.userId, actor.id)))
@@ -328,6 +347,7 @@ export async function getSummary(actor: SupportActor): Promise<SupportSummary> {
     unread: row?.unread ?? 0,
     newCount: isAgent(actor) ? (row?.newCount ?? 0) : 0,
     mine: isAgent(actor) ? (row?.mine ?? 0) : 0,
+    overdue: isAgent(actor) ? (row?.overdue ?? 0) : 0,
     agentsOnline: await agentsOnline(),
   }
 }

@@ -11,6 +11,7 @@ import type {
   TicketListResponse,
   CannedReply,
   CustomerContext,
+  SupportMetrics,
 } from '@/src/lib/support/types'
 import { pollInterval } from './live'
 import type { SupportCategory, SupportCloseReason, SupportPriority } from '@/src/lib/support/constants'
@@ -51,6 +52,7 @@ export const supportKeys = {
   labs: ['support', 'labs'] as const,
   canned: ['support', 'canned'] as const,
   customer: (clientId: string) => ['support', 'customer', clientId] as const,
+  metrics: (days: number) => ['support', 'metrics', days] as const,
 }
 
 export interface ListParams {
@@ -309,5 +311,26 @@ export function useCustomerContext(clientId: string | null, ticketId: string) {
     queryFn: () => request<CustomerContext>(`/api/support/customers/${clientId}/context?ticket=${ticketId}`),
     enabled: Boolean(clientId),
     staleTime: 60_000,
+  })
+}
+
+// ── Ratings and metrics (Phase 5) ─────────────────────────────────────────────────────────────────
+
+export function useRateTicket(ticketId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { score: number; comment?: string | null }) =>
+      request<void>(`/api/support/tickets/${ticketId}/rating`, { method: 'POST', body: JSON.stringify(body) }),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: supportKeys.ticket(ticketId) }),
+  })
+}
+
+export function useSupportMetrics(enabled: boolean, days = 30) {
+  return useQuery({
+    queryKey: supportKeys.metrics(days),
+    queryFn: () => request<SupportMetrics>(`/api/support/metrics?days=${days}`),
+    enabled,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
   })
 }

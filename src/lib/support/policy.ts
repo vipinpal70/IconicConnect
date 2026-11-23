@@ -50,6 +50,21 @@ export function customerCanReopen(ticket: Pick<TicketAccess, 'status' | 'closedA
   return deadline !== null && now.getTime() <= deadline.getTime()
 }
 
+/**
+ * Ratings (CSAT): someone from the lab, once, on a conversation that was closed as resolved or for no
+ * reply, within the reopen window. Duplicates and spam are not service the lab received.
+ */
+export function canRate(
+  actor: SupportActor,
+  ticket: Pick<TicketAccess, 'clientId' | 'status' | 'closedAt'> & { closeReason: string | null; csatScore: number | null },
+  now: Date,
+): boolean {
+  if (!isCustomer(actor) || ticket.clientId !== actor.clientId) return false
+  if (ticket.csatScore !== null) return false
+  if (ticket.closeReason !== 'resolved' && ticket.closeReason !== 'no_reply') return false
+  return customerCanReopen(ticket, now)
+}
+
 export function allowedActions(actor: SupportActor, ticket: TicketAccess, now: Date): TicketAction[] {
   if (!canViewTicket(actor, ticket)) return []
   const open = ticket.status !== 'closed'

@@ -26,7 +26,8 @@ import {
   useTicket,
   useTicketAction,
 } from './api'
-import { PriorityLabel, StatusBadge, WaitingBadge } from './parts'
+import { PriorityLabel, SlaBadge, Stars, StatusBadge, WaitingBadge } from './parts'
+import { RatingPrompt } from './RatingPrompt'
 import { useUploads } from './useUploads'
 import { useTypingNames, useTypingSender } from './live'
 
@@ -184,6 +185,7 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false,
             <WaitingBadge status={ticket.status} lastPublicSender={ticket.lastPublicSender} viewerSide={ticket.viewerSide} />
             <span>· {CATEGORY_LABELS[ticket.category]}</span>
             {agentView && <PriorityLabel priority={ticket.priority} />}
+            {agentView && <SlaBadge dueAt={ticket.replyDueAt} warnAt={ticket.replyWarnAt} />}
             {agentView && <span>· {ticket.lab.name}</span>}
             {!agentView && ticket.assignee && <span>· Handled by {ticket.assignee.name}</span>}
           </div>
@@ -196,6 +198,13 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false,
               <LinkIcon className="h-3 w-3 shrink-0" aria-hidden />
               Related: <span className="font-mono">{ticket.linkedTicket.number}</span> {ticket.linkedTicket.subject}
             </button>
+          )}
+          {ticket.rating && (
+            <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+              <span>{agentView ? 'Lab rated' : 'You rated'}</span>
+              <Stars score={ticket.rating.score} />
+              {ticket.rating.comment && <span className="truncate italic" title={ticket.rating.comment}>“{ticket.rating.comment}”</span>}
+            </p>
           )}
         </div>
         {agentView && !compact && (
@@ -262,6 +271,13 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false,
         </div>
       ) : (
         <>
+          {ticket.canRate && <RatingPrompt ticketId={ticket.id} />}
+          {ticket.autoCloseAt && (
+            <p className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-center text-[11px] text-amber-900">
+              {agentView ? 'No reply from the lab: this closes' : 'This conversation closes'} automatically on{' '}
+              {format(new Date(ticket.autoCloseAt), 'd MMM, p')} unless someone replies.
+            </p>
+          )}
           {closed && (
             <p className="border-t border-border/60 bg-muted/30 px-4 py-2 text-center text-[11px] text-muted-foreground">
               {agentView

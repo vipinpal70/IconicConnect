@@ -1,6 +1,8 @@
 'use client'
 
-import { Fragment } from 'react'
+import { Fragment, useEffect, useState } from 'react'
+import { AlarmClock, Star } from 'lucide-react'
+import { formatDuration, slaState } from '@/src/lib/support/sla'
 import { format, formatDistanceToNowStrict, isToday, isYesterday } from 'date-fns'
 import { cn } from '@/src/lib/utils'
 import {
@@ -94,5 +96,51 @@ export function MessageText({ text }: { text: string }) {
         ),
       )}
     </>
+  )
+}
+
+/** Re-renders every `ms` so time-based labels ("due in 5m") stay current without a refetch. */
+function useNow(ms: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), ms)
+    return () => clearInterval(t)
+  }, [ms])
+  return now
+}
+
+const SLA_STYLES = {
+  on_track: 'border-border bg-white text-muted-foreground',
+  due_soon: 'border-amber-300 bg-amber-50 text-amber-800',
+  overdue: 'border-red-300 bg-red-50 text-red-700 font-semibold',
+} as const
+
+/** Agents: how long until support owes the lab a reply. Hidden when nobody is waiting on support. */
+export function SlaBadge({ dueAt, warnAt, className }: { dueAt: string | null; warnAt: string | null; className?: string }) {
+  const now = useNow(30_000)
+  if (!dueAt || !warnAt) return null
+  const due = new Date(dueAt)
+  const state = slaState(due, new Date(warnAt), new Date(now))
+  if (!state) return null
+  const left = due.getTime() - now
+  const label = state === 'overdue' ? `Overdue ${formatDuration(left)}` : `Reply in ${formatDuration(left)}`
+  return (
+    <span
+      className={cn('inline-flex items-center gap-1 rounded border px-1.5 py-px text-[10px] leading-4', SLA_STYLES[state], className)}
+      title={`Reply due ${format(due, 'd MMM, p')}`}
+    >
+      <AlarmClock className="h-3 w-3" aria-hidden />
+      {label}
+    </span>
+  )
+}
+
+export function Stars({ score, className }: { score: number; className?: string }) {
+  return (
+    <span className={cn('inline-flex items-center', className)} role="img" aria-label={`${score} out of 5`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star key={n} className={cn('h-3 w-3', n <= score ? 'fill-amber-400 text-amber-400' : 'text-slate-300')} aria-hidden />
+      ))}
+    </span>
   )
 }

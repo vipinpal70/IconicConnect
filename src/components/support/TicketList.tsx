@@ -4,7 +4,7 @@ import { Inbox, Loader2 } from 'lucide-react'
 import { cn } from '@/src/lib/utils'
 import type { SupportSide } from '@/src/lib/support/constants'
 import type { TicketSummary } from '@/src/lib/support/types'
-import { PriorityLabel, StatusBadge, WaitingBadge, relativeTime } from './parts'
+import { PriorityLabel, SlaBadge, StatusBadge, WaitingBadge, relativeTime } from './parts'
 
 interface TicketListProps {
   tickets: TicketSummary[]
@@ -93,6 +93,7 @@ export function TicketList({
                   <StatusBadge status={ticket.status} />
                   <WaitingBadge status={ticket.status} lastPublicSender={ticket.lastPublicSender} viewerSide={viewerSide} />
                   {viewerSide === 'agent' && <PriorityLabel priority={ticket.priority} />}
+                  {viewerSide === 'agent' && <SlaBadge dueAt={ticket.replyDueAt} warnAt={ticket.replyWarnAt} />}
                 </div>
                 {ticket.preview && <p className="truncate text-[11px] text-muted-foreground">{ticket.preview}</p>}
                 {viewerSide === 'agent' && (

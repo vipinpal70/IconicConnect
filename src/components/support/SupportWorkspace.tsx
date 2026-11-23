@@ -13,7 +13,9 @@ import {
   type SupportPriority,
 } from '@/src/lib/support/constants'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/src/components/ui/select'
-import { useSupportSummary, useTicketList } from './api'
+import { useSupportMetrics, useSupportSummary, useTicketList } from './api'
+import { formatDuration } from '@/src/lib/support/sla'
+import type { SupportMetrics } from '@/src/lib/support/types'
 import { useLiveStatus, useSupportStream } from './live'
 import { TicketList } from './TicketList'
 import { ThreadView } from './ThreadView'
@@ -30,6 +32,7 @@ const VIEWS: Record<Mode, Array<{ id: string; label: string }>> = {
   agent: [
     { id: 'unassigned', label: 'Unassigned' },
     { id: 'mine', label: 'Mine' },
+    { id: 'overdue', label: 'Overdue' },
     { id: 'open', label: 'All open' },
     { id: 'closed', label: 'Closed' },
   ],
@@ -91,8 +94,10 @@ export function SupportWorkspace({ mode }: { mode: Mode }) {
     if (!counts || !agent) return null
     if (id === 'unassigned') return counts.newCount || null
     if (id === 'mine') return counts.mine || null
+    if (id === 'overdue') return counts.overdue || null
     return null
   }
+  const metrics = useSupportMetrics(agent)
 
   return (
     <div className="space-y-3 animate-fade-in">
@@ -118,6 +123,7 @@ export function SupportWorkspace({ mode }: { mode: Mode }) {
                 ? `${counts?.newCount ?? 0} waiting to be picked up · ${counts?.unread ?? 0} with unread replies`
                 : 'Chat with our team. Replies appear here and in your notifications.'}
             </p>
+            {agent && metrics.data && <MetricsLine metrics={metrics.data} />}
           </div>
           <div className="flex gap-2">
             {!agent && (
@@ -161,7 +167,14 @@ export function SupportWorkspace({ mode }: { mode: Mode }) {
                   >
                     {v.label}
                     {count ? (
-                      <span className={cn('rounded-full px-1.5 text-[9px]', view === v.id ? 'bg-white/20' : 'bg-primary/10 text-primary')}>{count}</span>
+                      <span
+                        className={cn(
+                          'rounded-full px-1.5 text-[9px]',
+                          view === v.id ? 'bg-white/20' : v.id === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-primary/10 text-primary',
+                        )}
+                      >
+                        {count}
+                      </span>
                     ) : null}
                   </button>
                 )
@@ -221,7 +234,7 @@ export function SupportWorkspace({ mode }: { mode: Mode }) {
                 q
                   ? 'No conversations match your search.'
                   : agent
-                    ? view === 'unassigned' ? 'Nothing waiting. Every conversation has an owner.' : 'No conversations here.'
+                    ? view === 'unassigned' ? 'Nothing waiting. Every conversation has an owner.' : view === 'overdue' ? 'Nothing overdue. Every lab has had a reply in time.' : 'No conversations here.'
                     : view === 'closed' ? 'No closed conversations yet.' : 'No open conversations. Start one if you need help.'
               }
             />
@@ -257,5 +270,21 @@ export function SupportWorkspace({ mode }: { mode: Mode }) {
         <CallbackDialog open={dialog?.kind === 'callback'} onOpenChange={(open) => !open && setDialog(null)} onCreated={created} />
       )}
     </div>
+  )
+}
+
+/** Team numbers for the last 30 days, in the inbox header (support-system.md §10). */
+function MetricsLine({ metrics }: { metrics: SupportMetrics }) {
+  const onTime = metrics.firstResponseMeasured > 0 ? Math.round((metrics.firstResponseOnTime / metrics.firstResponseMeasured) * 100) : null
+  const parts = [
+    `${metrics.created} new`,
+    metrics.medianFirstResponseMinutes !== null ? `first reply in ${formatDuration(metrics.medianFirstResponseMinutes * 60_000)} (median)` : null,
+    onTime !== null ? `${onTime}% on time` : null,
+    metrics.rating.average !== null ? `rated ${metrics.rating.average}/5 (${metrics.rating.count})` : 'no ratings yet',
+  ].filter(Boolean)
+  return (
+    <p className="mt-0.5 text-[10px] text-white/65" aria-label="Last 30 days">
+      Last {metrics.days} days: {parts.join(' · ')}
+    </p>
   )
 }

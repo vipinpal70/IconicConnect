@@ -1,19 +1,40 @@
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
-import { supEvents, supMessages, supReads, supTickets } from '@/src/db/schema/support'
+import { supEvents, supMessages, supReads, supSlaPolicies, supTickets } from '@/src/db/schema/support'
 import { logActivity } from '@/src/lib/activity-log'
-import { AGENT_ROLES, formatTicketNumber, type SupportSide } from './constants'
+import { AGENT_ROLES, AUTO_CLOSE_DAYS, formatTicketNumber, type SupportPriority, type SupportSide } from './constants'
 import { SupportError, notFound, type SupportProfile } from './http'
-import { onAction, onPublicMessage, type LifecycleResult, type LifecycleState } from './lifecycle'
-import { notifyAssigned, notifyNewMessage, notifyStatusChange, notifyTicketCreated, type NotifyActor, type NotifyTicket } from './notify'
-import { allowedActions, canCreateTicketFor, canViewTicket, checkPost, isAgent, type SupportActor } from './policy'
+import {
+  AUTO_CLOSE_WARNING,
+  onAction,
+  onAutoClose,
+  onPublicMessage,
+  shouldAutoClose,
+  shouldWarnAutoClose,
+  type LifecycleResult,
+  type LifecycleState,
+} from './lifecycle'
+import {
+  notifyAssigned,
+  notifyAutoClosed,
+  notifyAutoCloseWarning,
+  notifyNewMessage,
+  notifyRated,
+  notifySlaAlert,
+  notifyStatusChange,
+  notifyTicketCreated,
+  type NotifyActor,
+  type NotifyTicket,
+} from './notify'
+import { allowedActions, canCreateTicketFor, canRate, canViewTicket, checkPost, isAgent, type SupportActor } from './policy'
 import { personName } from './queries'
 import { attachmentsForMessages, bindAttachmentsTx } from './attachments'
 import { publishToAgents, publishToBoth } from './realtime'
+import { DEFAULT_SLA_POLICIES, SLA_STOPPED, nextSlaClock, slaDeadlines, type SlaAlertLevel, type SlaPolicy } from './sla'
 import type { MessageView } from './types'
-import type { ActionRequest, CreateTicketInput, PostMessageInput } from './validation'
+import type { ActionRequest, CreateTicketInput, PostMessageInput, RateInput } from './validation'
 
 /**
  * Write side of the support system: the only code that changes support tables. Each operation runs in
@@ -70,6 +91,57 @@ async function applyLifecycle(tx: Tx, ticketId: string, actorId: string | null, 
       result.events.map((e) => ({ ticketId, actorId, type: e.type, fromValue: e.from, toValue: e.to, createdAt: now })),
     )
   }
+}
+
+// ── Reply clock (SLA) ─────────────────────────────────────────────────────────────────────────────
+
+type TicketRow = typeof supTickets.$inferSelect
+type SlaPolicies = Record<SupportPriority, SlaPolicy>
+const DAY_MS = 24 * 60 * 60 * 1000
+
+let policyCache: { loadedAt: number; policies: SlaPolicies } | null = null
+
+/** Targets per priority; cached for a minute per process (they change rarely). Defaults if the table is empty. */
+export async function loadSlaPolicies(): Promise<SlaPolicies> {
+  if (policyCache && Date.now() - policyCache.loadedAt < 60_000) return policyCache.policies
+  const policies: SlaPolicies = { ...DEFAULT_SLA_POLICIES }
+  for (const row of await db.select().from(supSlaPolicies)) {
+    policies[row.priority] = { firstResponseMinutes: row.firstResponseMinutes, nextResponseMinutes: row.nextResponseMinutes }
+  }
+  policyCache = { loadedAt: Date.now(), policies }
+  return policies
+}
+
+const sameTime = (a: Date | null, b: Date | null) => (a?.getTime() ?? null) === (b?.getTime() ?? null)
+
+/** Column changes that keep the reply clock and the first-response target in line with the ticket after a change. */
+function slaPatch(after: TicketRow, policies: SlaPolicies, now: Date): Partial<TicketRow> {
+  const next = nextSlaClock(
+    {
+      status: after.status,
+      priority: after.priority,
+      lastPublicSender: after.lastPublicSender,
+      firstResponded: Boolean(after.firstRespondedAt),
+      current: {
+        slaStartedAt: after.slaStartedAt,
+        replyDueAt: after.replyDueAt,
+        replyWarnAt: after.replyWarnAt,
+        slaAlertLevel: after.slaAlertLevel as SlaAlertLevel,
+      },
+    },
+    policies[after.priority],
+    now,
+  )
+  const patch: Partial<TicketRow> = {}
+  if (!sameTime(next.slaStartedAt, after.slaStartedAt) || !sameTime(next.replyDueAt, after.replyDueAt) || next.slaAlertLevel !== after.slaAlertLevel) {
+    Object.assign(patch, next)
+  }
+  // The first-response target follows the priority until support has replied (reporting uses it)
+  if (!after.firstRespondedAt && after.source !== 'agent') {
+    const due = slaDeadlines(after.createdAt, policies[after.priority], false).dueAt
+    if (!sameTime(due, after.firstResponseDueAt)) patch.firstResponseDueAt = due
+  }
+  return patch
 }
 
 function stateOf(ticket: typeof supTickets.$inferSelect): LifecycleState {
@@ -155,17 +227,27 @@ export async function createTicket(caller: SupportCaller, input: CreateTicketInp
       .where(and(eq(supMessages.authorId, actor.id), eq(supMessages.clientMsgId, input.clientMsgId))).limit(1)
     if (existing) return { ticketId: existing.ticketId, created: false }
   }
+  const policies = await loadSlaPolicies()
 
   const side = sideOf(actor)
+  const priority: SupportPriority = agent ? (input.priority ?? 'normal') : 'normal'
+  // A lab starting a conversation is waiting on support from now; support starting one is waiting on the lab
+  const clock = agent
+    ? { lastAgentReplyAt: now }
+    : (() => {
+        const { dueAt, warnAt } = slaDeadlines(now, policies[priority], false)
+        return { firstResponseDueAt: dueAt, slaStartedAt: now, replyDueAt: dueAt, replyWarnAt: warnAt }
+      })()
   const ticket = await db.transaction(async (tx) => {
     const [created] = await tx
       .insert(supTickets)
       .values({
+        ...clock,
         clientId,
         createdBy: actor.id,
         subject: input.subject,
         category: input.category,
-        priority: agent ? (input.priority ?? 'normal') : 'normal',
+        priority,
         // An agent opening a conversation is already engaged with it and owns it
         status: agent ? 'live' : 'new',
         assigneeId: agent ? actor.id : null,
@@ -209,6 +291,7 @@ export async function createTicket(caller: SupportCaller, input: CreateTicketInp
 export async function postMessage(caller: SupportCaller, ticketId: string, input: PostMessageInput, now = new Date()) {
   const { actor } = caller
   const side = sideOf(actor)
+  const policies = await loadSlaPolicies()
 
   const outcome = await db.transaction(async (tx) => {
     const ticket = await lockTicket(tx, ticketId)
@@ -247,8 +330,17 @@ export async function postMessage(caller: SupportCaller, ticketId: string, input
       .values({ ticketId, kind: side, authorId: actor.id, body: input.body, clientMsgId: input.clientMsgId, createdAt: now })
       .returning({ id: supMessages.id, seq: supMessages.seq, kind: supMessages.kind, body: supMessages.body, createdAt: supMessages.createdAt })
     await bindAttachmentsTx(tx, input.attachmentIds ?? [], { actorId: actor.id, ticketId, clientId: ticket.clientId, messageId: message.id })
+    const after: TicketRow = { ...ticket, ...transition.patch, lastPublicSender: side } as TicketRow
     await tx.update(supTickets)
-      .set({ lastMessageSeq: message.seq, lastMessageAt: now, lastPublicSender: side })
+      .set({
+        lastMessageSeq: message.seq,
+        lastMessageAt: now,
+        lastPublicSender: side,
+        // Any public message cancels a pending auto-close; a support reply restarts its countdown
+        autoCloseWarnedAt: null,
+        ...(side === 'agent' ? { lastAgentReplyAt: now } : {}),
+        ...slaPatch(after, policies, now),
+      })
       .where(eq(supTickets.id, ticketId))
     await markReadTx(tx, ticketId, actor.id, message.seq)
     return { message, ticket, created: true, reopened: check.reopens }
@@ -297,6 +389,7 @@ export async function applyTicketAction(caller: SupportCaller, ticketId: string,
     if (!agentRow) throw new SupportError(400, 'invalid_assignee', 'Choose an active support agent')
     assigneeName = personName(agentRow)
   }
+  const policies = await loadSlaPolicies()
 
   const outcome = await db.transaction(async (tx) => {
     const ticket = await lockTicket(tx, ticketId)
@@ -317,7 +410,11 @@ export async function applyTicketAction(caller: SupportCaller, ticketId: string,
       throw new SupportError(409, 'invalid_state', 'This conversation has changed. Refresh and try again.')
     }
     await applyLifecycle(tx, ticketId, actor.id, result.result, now)
-    return { ticket: { ...ticket, ...result.result.patch }, changed: true }
+    // Closing stops the clock, reopening may restart it, a new priority moves the deadline
+    const after = { ...ticket, ...result.result.patch } as TicketRow
+    const clock = slaPatch(after, policies, now)
+    if (Object.keys(clock).length > 0) await tx.update(supTickets).set(clock).where(eq(supTickets.id, ticketId))
+    return { ticket: after, changed: true }
   })
 
   if (!outcome.changed) return
@@ -333,4 +430,108 @@ export async function applyTicketAction(caller: SupportCaller, ticketId: string,
     action: `support.${request.action}`,
     details: { ticketId, number: notifyTicket.number, ...request },
   }).catch((err) => console.error('[support action logActivity]', err))
+}
+
+// ── Ratings (CSAT) ────────────────────────────────────────────────────────────────────────────────
+
+export async function rateTicket(caller: SupportCaller, ticketId: string, input: RateInput, now = new Date()) {
+  const { actor, profile } = caller
+  const ticket = await db.transaction(async (tx) => {
+    const row = await lockTicket(tx, ticketId)
+    if (!row || !canViewTicket(actor, row)) throw notFound()
+    if (row.csatScore !== null) throw new SupportError(409, 'already_rated', 'This conversation has already been rated')
+    if (!canRate(actor, row, now)) throw new SupportError(403, 'cannot_rate', 'This conversation cannot be rated')
+    await tx
+      .update(supTickets)
+      .set({ csatScore: input.score, csatComment: input.comment?.trim() || null, csatAt: now })
+      .where(eq(supTickets.id, ticketId))
+    await tx.insert(supEvents).values({ ticketId, actorId: actor.id, type: 'rated', fromValue: null, toValue: String(input.score), createdAt: now })
+    return row
+  })
+
+  await publishToBoth(ticket.clientId, { type: 'ticket', ticketId })
+  await notifyRated(toNotifyTicket(ticket), notifyActor(caller), input.score)
+  await logActivity({
+    actor: profile,
+    action: 'support.rated',
+    details: { ticketId, number: formatTicketNumber(ticket.number), score: input.score },
+  }).catch((err) => console.error('[support.rated logActivity]', err))
+}
+
+// ── Scheduled jobs (support-system.md §13) ────────────────────────────────────────────────────────
+
+/**
+ * Every minute: raise "due soon" (80 %) and "overdue" alerts. One atomic UPDATE claims each alert, so a
+ * reply committed at the same moment wins (the row no longer matches) and two workers never double-send.
+ */
+export async function runSlaSweep(now = new Date()) {
+  const fired = await db
+    .update(supTickets)
+    .set({ slaAlertLevel: sql`case when ${supTickets.replyDueAt} <= ${now.toISOString()}::timestamptz then 2 else 1 end` })
+    .where(
+      and(
+        isNotNull(supTickets.replyDueAt),
+        ne(supTickets.status, 'closed'),
+        or(
+          and(lt(supTickets.slaAlertLevel, 2), lte(supTickets.replyDueAt, now)),
+          and(lt(supTickets.slaAlertLevel, 1), lte(supTickets.replyWarnAt, now)),
+        ),
+      ),
+    )
+    .returning()
+
+  for (const ticket of fired) {
+    await publishToAgents({ type: 'ticket', ticketId: ticket.id })
+    await notifySlaAlert(toNotifyTicket(ticket), ticket.slaAlertLevel === 2 ? 2 : 1, ticket.replyDueAt!)
+  }
+  return { alerts: fired.length }
+}
+
+const SWEEP_BATCH = 200
+
+/** Every 15 minutes: warn conversations waiting on the lab for 6 days, close them a day after the warning. */
+export async function runAutoCloseSweep(now = new Date()) {
+  const waitingOnLab = and(eq(supTickets.status, 'live'), eq(supTickets.lastPublicSender, 'agent'))
+
+  const toWarn = await db
+    .select({ id: supTickets.id })
+    .from(supTickets)
+    .where(and(waitingOnLab, isNull(supTickets.autoCloseWarnedAt), lte(supTickets.lastAgentReplyAt, new Date(now.getTime() - (AUTO_CLOSE_DAYS - 1) * DAY_MS))))
+    .limit(SWEEP_BATCH)
+  let warned = 0
+  for (const { id } of toWarn) {
+    // Re-checked under the row lock: the lab may have replied since the scan
+    const ticket = await db.transaction(async (tx) => {
+      const row = await lockTicket(tx, id)
+      if (!row || !shouldWarnAutoClose(row, now)) return null
+      await applyLifecycle(tx, id, null, { patch: {}, events: [], systemMessages: [AUTO_CLOSE_WARNING] }, now)
+      await tx.update(supTickets).set({ autoCloseWarnedAt: now }).where(eq(supTickets.id, id))
+      return row
+    })
+    if (!ticket) continue
+    warned++
+    await publishToBoth(ticket.clientId, { type: 'message', ticketId: id, seq: 0 })
+    await notifyAutoCloseWarning(toNotifyTicket(ticket))
+  }
+
+  const toClose = await db
+    .select({ id: supTickets.id })
+    .from(supTickets)
+    .where(and(waitingOnLab, lte(supTickets.autoCloseWarnedAt, new Date(now.getTime() - DAY_MS))))
+    .limit(SWEEP_BATCH)
+  let closed = 0
+  for (const { id } of toClose) {
+    const ticket = await db.transaction(async (tx) => {
+      const row = await lockTicket(tx, id)
+      if (!row || !shouldAutoClose(row, now)) return null
+      await applyLifecycle(tx, id, null, onAutoClose(stateOf(row), now), now)
+      await tx.update(supTickets).set({ ...SLA_STOPPED, autoCloseWarnedAt: null }).where(eq(supTickets.id, id))
+      return row
+    })
+    if (!ticket) continue
+    closed++
+    await publishToBoth(ticket.clientId, { type: 'ticket', ticketId: id })
+    await notifyAutoClosed(toNotifyTicket(ticket))
+  }
+  return { warned, closed }
 }

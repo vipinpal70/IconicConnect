@@ -141,3 +141,21 @@ export async function agentsOnline(): Promise<boolean> {
     return false
   }
 }
+
+/** Which of these people have the app open right now (a live support stream). Used to skip digest emails. */
+export async function usersWithOpenStreams(userIds: string[]): Promise<Set<string>> {
+  const online = new Set<string>()
+  if (userIds.length === 0) return online
+  try {
+    const since = Date.now() - STALE_MS
+    const pipeline = redis.pipeline()
+    for (const id of userIds) pipeline.zcount(STREAMS_KEY(id), since, '+inf')
+    const results = (await pipeline.exec()) ?? []
+    results.forEach(([error, n], i) => {
+      if (!error && Number(n) > 0) online.add(userIds[i])
+    })
+  } catch {
+    // Unknown presence: treat everyone as away. An extra email beats a missed reply.
+  }
+  return online
+}

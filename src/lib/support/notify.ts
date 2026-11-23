@@ -76,7 +76,8 @@ async function send(
         return {
           ...payload,
           link: payload.link,
-          actorUserId: actorId,
+          // The dispatcher drops payloads without an actor; scheduled jobs act as "system"
+          actorUserId: actorId || 'system',
           targetUserId: id,
           entityId: ticket.id,
           entityType: 'support_ticket',
@@ -129,6 +130,53 @@ export async function notifyAssigned(ticket: NotifyTicket, actor: NotifyActor) {
     type: NotificationType.SUPPORT_TICKET_UPDATED,
     title: `${ticket.number} assigned to you`,
     message: `${actor.name} assigned "${ticket.subject}" to you.`,
+    link: linkFor(role, ticket.id),
+  }), ticket)
+}
+
+/** Scheduled jobs act as nobody in particular. */
+const SYSTEM_ACTOR_ID = ''
+
+/** Reply-time alerts: the assignee, or every agent while nobody has picked it up. In-app only. */
+export async function notifySlaAlert(ticket: NotifyTicket, level: 1 | 2, dueAt: Date) {
+  const targets = await agentTargets(ticket)
+  const minutes = Math.max(1, Math.round(Math.abs(dueAt.getTime() - Date.now()) / 60_000))
+  const span = minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`
+  await send(targets, SYSTEM_ACTOR_ID, (role) => ({
+    type: NotificationType.SUPPORT_SLA_ALERT,
+    title: level === 2 ? `Reply overdue: ${ticket.number}` : `Reply due soon: ${ticket.number}`,
+    message: level === 2 ? `"${ticket.subject}" is waiting for a reply (overdue).` : `"${ticket.subject}" needs a reply within ${span}.`,
+    link: linkFor(role, ticket.id),
+  }), ticket)
+}
+
+export async function notifyAutoCloseWarning(ticket: NotifyTicket) {
+  const targets = await customerTargets(ticket)
+  await send(targets, SYSTEM_ACTOR_ID, (role) => ({
+    type: NotificationType.SUPPORT_TICKET_UPDATED,
+    title: `${ticket.number} will close tomorrow`,
+    message: `We haven't heard back about "${ticket.subject}". Reply to keep the conversation open.`,
+    link: linkFor(role, ticket.id),
+  }), ticket)
+}
+
+export async function notifyAutoClosed(ticket: NotifyTicket) {
+  const targets = await customerTargets(ticket)
+  await send(targets, SYSTEM_ACTOR_ID, (role) => ({
+    type: NotificationType.SUPPORT_TICKET_CLOSED,
+    title: `Conversation ${ticket.number} closed`,
+    message: `"${ticket.subject}" was closed after a week without a reply. Reply within two weeks to reopen it.`,
+    link: linkFor(role, ticket.id),
+  }), ticket)
+}
+
+/** The assignee hears how the lab rated the conversation. */
+export async function notifyRated(ticket: NotifyTicket, actor: NotifyActor, score: number) {
+  if (!ticket.assigneeId) return
+  await send([ticket.assigneeId], actor.id, (role) => ({
+    type: NotificationType.SUPPORT_TICKET_UPDATED,
+    title: `${ticket.number} rated ${score}/5`,
+    message: `${actor.name} rated "${ticket.subject}" ${score} out of 5.`,
     link: linkFor(role, ticket.id),
   }), ticket)
 }

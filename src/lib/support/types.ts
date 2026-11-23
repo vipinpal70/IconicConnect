@@ -41,6 +41,9 @@ export interface TicketSummary {
   /** The caller has public messages they haven't read. */
   unread: boolean
   preview: string | null
+  /** Agents only: when support must reply by, and when that becomes urgent (null when not waiting on support). */
+  replyDueAt: string | null
+  replyWarnAt: string | null
 }
 
 export interface TicketDetail extends TicketSummary {
@@ -60,6 +63,12 @@ export interface TicketDetail extends TicketSummary {
   viewerName: string
   /** A related conversation of the same lab, if linked. */
   linkedTicket: LinkedTicketRef | null
+  /** The lab's rating once given (both sides see it). */
+  rating: { score: number; comment: string | null; ratedAt: string } | null
+  /** The caller may rate this conversation now. */
+  canRate: boolean
+  /** Set after the auto-close warning: when the conversation will close unless someone replies. */
+  autoCloseAt: string | null
 }
 
 export interface CannedReply {
@@ -145,6 +154,25 @@ export interface SupportSummary {
   newCount: number
   /** Agents only: open conversations assigned to the caller. */
   mine: number
+  /** Agents only: open conversations past their reply deadline. */
+  overdue: number
   /** Is a support agent connected right now? (Labs see "We're online".) */
   agentsOnline: boolean
+}
+
+/** Agent dashboard numbers for a period (support-system.md §10). */
+export interface SupportMetrics {
+  days: number
+  created: number
+  closed: number
+  autoClosed: number
+  /** Median minutes from a lab starting a conversation to the first support reply. */
+  medianFirstResponseMinutes: number | null
+  /** First replies within target, of those due in the period. */
+  firstResponseOnTime: number
+  firstResponseMeasured: number
+  rating: { average: number | null; count: number }
+  /** Right now, not for the period. */
+  openNow: number
+  overdueNow: number
 }

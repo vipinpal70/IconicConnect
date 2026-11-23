@@ -98,7 +98,7 @@ export type CannedReplyInput = z.infer<typeof cannedReplySchema>
 export const cannedReplyUpdateSchema = cannedReplySchema.partial()
 export type ActionRequest = z.infer<typeof actionSchema>
 
-export const TICKET_VIEWS = ['open', 'unassigned', 'mine', 'closed', 'all'] as const
+export const TICKET_VIEWS = ['open', 'unassigned', 'mine', 'overdue', 'closed', 'all'] as const
 export type TicketView = (typeof TICKET_VIEWS)[number]
 
 export const listTicketsQuerySchema = z.object({
@@ -118,3 +118,14 @@ export const listMessagesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 })
 export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>
+
+/** How the lab rates a closed conversation (CSAT). */
+export const rateSchema = z.object({
+  score: z.number().int().min(1).max(5),
+  comment: z.string().max(2000).nullable().optional(),
+})
+export type RateInput = z.infer<typeof rateSchema>
+
+export const metricsQuerySchema = z.object({
+  days: z.coerce.number().int().refine((d) => [7, 30, 90].includes(d), 'Use 7, 30 or 90').default(30),
+})

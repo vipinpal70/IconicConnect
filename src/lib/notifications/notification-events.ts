@@ -18,6 +18,8 @@ export enum NotificationType {
   SUPPORT_CALLBACK_REQUESTED = 'support_callback_requested',
   /** New message in a support conversation: in-app only (emails are batched separately). */
   SUPPORT_MESSAGE = 'support_message',
+  /** A support reply is due soon / overdue: in-app only, for agents. */
+  SUPPORT_SLA_ALERT = 'support_sla_alert',
   OFFER_CREATED = 'offer_created',
   TUTORIAL_CREATED = 'tutorial_created',
   CLIENT_REGISTERED = 'client_registered',
