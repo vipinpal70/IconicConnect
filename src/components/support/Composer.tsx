@@ -15,12 +15,14 @@ interface ComposerProps {
   placeholder: string
   /** Attachment uploads for this conversation (owned by the thread so drag & drop works anywhere on it). */
   uploads: ReturnType<typeof useUploads>
+  /** Called while the person types (throttled by the caller) to show "… is typing" on the other side. */
+  onTyping?: (visibility: 'public' | 'note') => void
   disabled?: boolean
 }
 
 const MAX_ROWS_PX = 180
 
-export function Composer({ onSend, allowNotes, placeholder, uploads, disabled = false }: ComposerProps) {
+export function Composer({ onSend, allowNotes, placeholder, uploads, onTyping, disabled = false }: ComposerProps) {
   const [body, setBody] = useState('')
   const [visibility, setVisibility] = useState<'public' | 'note'>('public')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -112,6 +114,7 @@ export function Composer({ onSend, allowNotes, placeholder, uploads, disabled = 
           onChange={(e) => {
             setBody(e.target.value)
             resize(e.target)
+            if (e.target.value.trim()) onTyping?.(visibility)
           }}
           onPaste={(e) => {
             // Pasted screenshots become attachments

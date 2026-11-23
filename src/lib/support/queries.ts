@@ -8,6 +8,7 @@ import { allowedActions, canViewTicket, isAgent, isCustomer, reopenDeadline, typ
 import type { MessageView, MessagesResponse, PersonRef, SupportSummary, TicketDetail, TicketListResponse, TicketSummary } from './types'
 import type { ListMessagesQuery, ListTicketsQuery } from './validation'
 import { attachmentsForMessages } from './attachments'
+import { agentsOnline } from './realtime'
 
 /**
  * Read side of the support system. Every query is scoped by the caller: customers only ever see their
@@ -308,6 +309,7 @@ export async function getSummary(actor: SupportActor): Promise<SupportSummary> {
     unread: row?.unread ?? 0,
     newCount: isAgent(actor) ? (row?.newCount ?? 0) : 0,
     mine: isAgent(actor) ? (row?.mine ?? 0) : 0,
+    agentsOnline: await agentsOnline(),
   }
 }
 

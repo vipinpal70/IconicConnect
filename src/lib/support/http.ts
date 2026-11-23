@@ -88,6 +88,8 @@ export const LIMITS = {
   createTicket: { limit: 10, windowSeconds: 60 * 60 },
   message: { limit: 30, windowSeconds: 60 },
   upload: { limit: 20, windowSeconds: 60 * 60 },
+  // The browser pings about every 3 s while someone types
+  typing: { limit: 30, windowSeconds: 60 },
 } as const
 
 export async function enforceLimit(userId: string, name: keyof typeof LIMITS) {

@@ -97,4 +97,6 @@ export interface SupportSummary {
   newCount: number
   /** Agents only: open conversations assigned to the caller. */
   mine: number
+  /** Is a support agent connected right now? (Labs see "We're online".) */
+  agentsOnline: boolean
 }

@@ -14,6 +14,7 @@ import {
 } from '@/src/lib/support/constants'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/src/components/ui/select'
 import { useSupportSummary, useTicketList } from './api'
+import { useLiveStatus, useSupportStream } from './live'
 import { TicketList } from './TicketList'
 import { ThreadView } from './ThreadView'
 import { NewConversationDialog } from './NewConversationDialog'
@@ -64,6 +65,8 @@ export function SupportWorkspace({ mode }: { mode: Mode }) {
   const [dialog, setDialog] = useState<null | { kind: 'new'; subject?: string } | { kind: 'callback' }>(null)
   const q = useDebounced(search.trim(), 300)
 
+  useSupportStream()
+  const liveStatus = useLiveStatus()
   const summary = useSupportSummary()
   const list = useTicketList({ view, q: q || undefined, priority, category })
   const tickets = useMemo(() => list.data?.pages.flatMap((p) => p.tickets) ?? [], [list.data])
@@ -100,7 +103,16 @@ export function SupportWorkspace({ mode }: { mode: Mode }) {
               {agent ? <Headset className="h-3 w-3" aria-hidden /> : <LifeBuoy className="h-3 w-3" aria-hidden />}
               {agent ? 'Support inbox' : 'Support'}
             </div>
-            <h1 className="text-md font-semibold text-white">{agent ? 'Conversations with labs' : 'How can we help?'}</h1>
+            <h1 className="flex items-center gap-2 text-md font-semibold text-white">
+              {agent ? 'Conversations with labs' : 'How can we help?'}
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/80"
+                title={liveStatus === 'live' ? 'Updates appear instantly' : 'Updates may be delayed while we reconnect'}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full', liveStatus === 'live' ? 'bg-emerald-300' : 'bg-amber-300 animate-pulse')} aria-hidden />
+                {liveStatus === 'live' ? 'Live' : 'Reconnecting…'}
+              </span>
+            </h1>
             <p className="mt-0.5 text-[11px] text-white/75">
               {agent
                 ? `${counts?.newCount ?? 0} waiting to be picked up · ${counts?.unread ?? 0} with unread replies`
@@ -128,7 +140,7 @@ export function SupportWorkspace({ mode }: { mode: Mode }) {
         </div>
       </div>
 
-      <div className="flex h-[calc(100dvh-14rem)] min-h-[520px] overflow-hidden rounded-lg border border-border/60 bg-card shadow-sm">
+      <div className="flex h-[calc(100dvh-14rem)] min-h-[520px] overflow-hidden rounded-lg border border-border/60 bg-white shadow-sm">
         {/* List pane (hidden on small screens while a thread is open) */}
         <div className={cn('flex w-full flex-col border-r border-border/60 lg:w-[340px] lg:shrink-0', selectedId && 'hidden lg:flex')}>
           <div className="space-y-2 border-b border-border/60 p-2.5">

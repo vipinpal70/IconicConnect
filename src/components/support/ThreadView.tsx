@@ -6,12 +6,14 @@ import { toast } from 'sonner'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { CATEGORY_LABELS } from '@/src/lib/support/constants'
+import { cn } from '@/src/lib/utils'
 import { MessageList, type PendingMessage } from './MessageList'
 import { Composer } from './Composer'
 import { AgentControls } from './AgentControls'
 import { ApiError, newClientMsgId, sendMessage, supportKeys, useMarkRead, useThreadMessages, useTicket, useTicketAction } from './api'
 import { PriorityLabel, StatusBadge, WaitingBadge } from './parts'
 import { useUploads } from './useUploads'
+import { useTypingNames, useTypingSender } from './live'
 
 interface ThreadViewProps {
   ticketId: string
@@ -19,9 +21,11 @@ interface ThreadViewProps {
   onBack: () => void
   /** Customers: start a follow-up after the reopen window has passed. */
   onStartFollowUp?: (subject: string) => void
+  /** Floating widget: tighter header, back button always visible. */
+  compact?: boolean
 }
 
-export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProps) {
+export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false }: ThreadViewProps) {
   const queryClient = useQueryClient()
   const ticketQuery = useTicket(ticketId)
   const thread = useThreadMessages(ticketId)
@@ -29,6 +33,8 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
   const [pending, setPending] = useState<PendingMessage[]>([])
   const [dragging, setDragging] = useState(false)
   const uploads = useUploads(ticketId)
+  const sendTyping = useTypingSender(ticketId)
+  const typingNames = useTypingNames(ticketId, ticketQuery.data?.viewerId ?? '')
 
   const ticket = ticketQuery.data
   const messages = thread.data?.messages ?? []
@@ -130,15 +136,20 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
           Drop files to attach (up to 500 MB each)
         </div>
       )}
-      <header className="flex items-start gap-2 border-b border-border/60 px-3 py-2.5 sm:px-5">
-        <button type="button" onClick={onBack} className="mt-0.5 rounded p-1 text-muted-foreground hover:bg-muted lg:hidden" aria-label="Back to conversations">
+      <header className={cn('flex items-start gap-2 border-b border-border/60 px-3 py-2.5', !compact && 'sm:px-5')}>
+        <button
+          type="button"
+          onClick={onBack}
+          className={cn('mt-0.5 rounded p-1 text-muted-foreground hover:bg-muted', !compact && 'lg:hidden')}
+          aria-label="Back to conversations"
+        >
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold text-foreground">{ticket.subject}</h2>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
             <span className="font-mono">{ticket.number}</span>
-            {ticket.legacyNumber && <span className="font-mono">(was {ticket.legacyNumber})</span>}
+            {ticket.legacyNumber && !compact && <span className="font-mono">(was {ticket.legacyNumber})</span>}
             <StatusBadge status={ticket.status} />
             <WaitingBadge status={ticket.status} lastPublicSender={ticket.lastPublicSender} viewerSide={ticket.viewerSide} />
             <span>· {CATEGORY_LABELS[ticket.category]}</span>
@@ -174,6 +185,19 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
         onRetry={retry}
       />
 
+      <p className="h-5 px-4 text-[11px] text-muted-foreground" aria-live="polite">
+        {typingNames.length > 0 && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="flex gap-0.5" aria-hidden>
+              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" />
+            </span>
+            {typingNames.length === 1 ? `${typingNames[0]} is typing…` : `${typingNames.join(' and ')} are typing…`}
+          </span>
+        )}
+      </p>
+
       {!canCompose ? (
         <div className="border-t border-border/60 bg-muted/30 p-4 text-center text-xs text-muted-foreground">
           <p>This conversation is closed.</p>
@@ -199,6 +223,7 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
           <Composer
             onSend={send}
             uploads={uploads}
+            onTyping={sendTyping}
             allowNotes={agentView}
             placeholder={agentView ? `Reply to ${ticket.lab.name}` : 'Write a message to support'}
           />

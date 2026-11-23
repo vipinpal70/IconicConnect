@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges";
 import { SequentialPrefetcher, type PrefetchTask } from "@/src/components/SequentialPrefetcher";
+import { SupportWidget } from "@/src/components/support/SupportWidget";
 
 const getJson = async (url: string, signal: AbortSignal) => {
   const res = await fetch(url, { signal })
@@ -53,6 +54,8 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
+      {/* Floating support chat on every lab page (support-system.md §7b) */}
+      <SupportWidget />
     </SidebarProvider>
   );
 }

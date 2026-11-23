@@ -11,6 +11,7 @@ import { notifyAssigned, notifyNewMessage, notifyStatusChange, notifyTicketCreat
 import { allowedActions, canCreateTicketFor, canViewTicket, checkPost, isAgent, type SupportActor } from './policy'
 import { personName } from './queries'
 import { attachmentsForMessages, bindAttachmentsTx } from './attachments'
+import { publishToAgents, publishToBoth } from './realtime'
 import type { MessageView } from './types'
 import type { ActionRequest, CreateTicketInput, PostMessageInput } from './validation'
 
@@ -167,6 +168,7 @@ export async function createTicket(caller: SupportCaller, input: CreateTicketInp
     return created
   })
 
+  await publishToBoth(clientId, { type: 'message', ticketId: ticket.id, seq: 0 })
   const labName = labRow.labName || labRow.fullName || 'A lab'
   await notifyTicketCreated(toNotifyTicket(ticket), notifyActor(caller), labName)
   await logActivity({
@@ -228,6 +230,12 @@ export async function postMessage(caller: SupportCaller, ticketId: string, input
     return { message, ticket, created: true, reopened: check.reopens }
   })
 
+  if (outcome.created) {
+    // Live update after commit. A note is staff knowledge, so labs aren't even told one exists.
+    const event = { type: 'message' as const, ticketId, seq: outcome.message.seq }
+    if (outcome.message.kind === 'note') await publishToAgents(event)
+    else await publishToBoth(outcome.ticket.clientId, event)
+  }
   if (outcome.created && outcome.message.kind !== 'note') {
     const ticket = toNotifyTicket(outcome.ticket)
     if (outcome.reopened) await notifyStatusChange(ticket, notifyActor(caller), 'reopened')
@@ -245,7 +253,10 @@ export async function markRead(caller: SupportCaller, ticketId: string, seq: num
     .where(eq(supTickets.id, ticketId))
     .limit(1)
   if (!ticket || !canViewTicket(caller.actor, ticket)) throw notFound()
-  await db.transaction((tx) => markReadTx(tx, ticketId, caller.actor.id, Math.min(seq, ticket.maxSeq)))
+  const readSeq = Math.min(seq, ticket.maxSeq)
+  await db.transaction((tx) => markReadTx(tx, ticketId, caller.actor.id, readSeq))
+  // Read receipts update live on the other side
+  await publishToBoth(ticket.clientId, { type: 'read', ticketId, side: sideOf(caller.actor), seq: readSeq })
 }
 
 // ── Actions (close, reopen, assign, triage) ───────────────────────────────────────────────────────
@@ -281,6 +292,7 @@ export async function applyTicketAction(caller: SupportCaller, ticketId: string,
   })
 
   if (!outcome.changed) return
+  await publishToBoth(outcome.ticket.clientId, { type: 'ticket', ticketId })
   const notifyTicket = toNotifyTicket(outcome.ticket as typeof supTickets.$inferSelect)
   const who = notifyActor(caller)
   if (request.action === 'close') await notifyStatusChange(notifyTicket, who, 'closed')

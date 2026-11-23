@@ -2,7 +2,7 @@
 
 **Branch:** `support-system` (from `no-supabase-rewrite`)
 
-**Status:** approved ("go with recommendations"). **Phases 1–2 implemented** (foundation, attachments); Phases 3–5 to do (see §17).
+**Status:** approved ("go with recommendations"). **Phases 1–3 implemented** (foundation, attachments, live); Phases 4–5 to do (see §17).
 
 **Approach:** the current support feature is **replaced, not extended**:
 
@@ -580,3 +580,68 @@ The old tables and their Drizzle schema files remain until the drop migration.
 **R2 CORS:** browser part uploads need the bucket to allow the app origin and expose `ETag`. Case uploads already depend on this, so production should be set up.
 
 **Testing note:** the dev server refuses to start without `RESEND_API_KEY`. Use a fake value (e.g. `RESEND_API_KEY=re_local_test_disabled npm run dev`): Resend rejects every send and nothing is delivered.
+
+### Phase 3 — Live (done)
+
+**Server:** `src/lib/support/realtime.ts`
+- Redis pub/sub with one subscriber connection per web process (separate from the request client, which times out commands after 1.5 s).
+- Channels:
+
+  | Channel | Who receives it | What it carries |
+  |---|---|---|
+  | `sup:lab:<clientId>` | That lab's people | Public changes only |
+  | `sup:agents` | Support staff | Everything, including internal notes |
+
+- **Events carry ids only, never message text:** `message`, `ticket`, `read`, `typing`. The browser refetches through the normal access-checked API, so the stream cannot leak content.
+- **Published after commit** by the service:
+  - New conversation, message: a note goes to staff only.
+  - Close, reopen, assign, triage: `ticket`.
+  - Read: `read`.
+  - Idempotent repeats publish nothing.
+
+**Stream:** `GET /api/support/stream` (SSE)
+- Every (re)connect starts with `resync`.
+- A heartbeat every 25 s.
+- `X-Accel-Buffering: no` for nginx.
+- At most 5 open streams per user (Redis ZSET, stale after 90 s).
+- The session is re-checked every 5 minutes (`logout`, then close).
+- Agents with an open stream count as "online".
+
+**Typing:** `POST /api/support/tickets/:id/typing`
+- Ephemeral (never stored).
+- Rate-limited.
+- Typing an internal note is shown to staff only.
+
+**Browser:** `src/components/support/live.ts`
+- One `EventSource` per tab, shared by the page and the widget (reference counted).
+- Events refresh the matching query caches.
+- Polling only runs while disconnected (live: at most every 60 s as a safety net).
+- Live/Reconnecting chip on the support pages.
+- "… is typing" line in the thread.
+- Read receipts, status changes, badges and the sidebar dot all update live.
+
+**Floating widget:** `src/components/support/SupportWidget.tsx`, mounted in `ClientLayout`
+- On every lab page except `/client/support`.
+- Unread badge.
+- "We're online" or "We'll reply when we're back" status.
+- Quick "Start a conversation" (source `widget`) and "Request a callback".
+- Open conversations, the full thread with attachments, a link to the full page.
+- Full screen on phones; Escape closes it.
+
+**Tests:**
+- `support-realtime.integration.test.ts`: 6 tests through real Redis and the real service. They show:
+  - other labs and lab channels never hear about internal notes
+  - events carry no message text
+  - read and status changes reach both sides
+  - deduplicated sends stay silent
+  - the stream limit and agent presence work
+- Browser, with **two separate production server processes** (lab member on one, agent on the other):
+  - new conversation, reply, close, "Seen", widget badge and widget-started conversation all arrived in about 0.1–0.2 s
+  - typing arrived in under 10 ms
+  - typing an internal note did not reach the lab
+  - mobile widget is full screen
+  - no page errors
+
+**Found and fixed:** the app's Tailwind theme does not map the `card` colour, so `bg-card` is transparent app-wide. The support UI now uses `bg-white`; other pages that use `bg-card` are unchanged.
+
+**Limitation:** if Redis is down, the stream stays open but receives no events. The UI then updates through the 60-second safety poll until Redis is back. No data is lost; Postgres is the source of truth.

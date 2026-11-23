@@ -10,11 +10,12 @@ import type {
   TicketDetail,
   TicketListResponse,
 } from '@/src/lib/support/types'
+import { pollInterval } from './live'
 import type { SupportCategory, SupportCloseReason, SupportPriority } from '@/src/lib/support/constants'
 
 /**
- * Client data layer for the support UI. Phase 1 refreshes by polling; the live stream (Phase 3) will
- * push the same updates into these caches.
+ * Client data layer for the support UI. Updates arrive through the live stream (live.ts); polling is only
+ * the fallback while that connection is down.
  */
 
 export const POLL = { list: 30_000, ticket: 20_000, thread: 8_000 } as const
@@ -65,7 +66,7 @@ export function useTicketList(params: ListParams) {
       return request<TicketListResponse>(`/api/support/tickets?${search}`)
     },
     getNextPageParam: (last) => last.nextCursor,
-    refetchInterval: POLL.list,
+    refetchInterval: pollInterval(POLL.list),
   })
 }
 
@@ -74,7 +75,7 @@ export function useTicket(ticketId: string | null) {
     queryKey: supportKeys.ticket(ticketId ?? 'none'),
     queryFn: () => request<TicketDetail>(`/api/support/tickets/${ticketId}`),
     enabled: Boolean(ticketId),
-    refetchInterval: POLL.ticket,
+    refetchInterval: pollInterval(POLL.ticket),
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
   })
 }
@@ -83,7 +84,7 @@ export function useSupportSummary() {
   return useQuery({
     queryKey: supportKeys.summary,
     queryFn: () => request<SupportSummary>('/api/support/summary'),
-    refetchInterval: POLL.list,
+    refetchInterval: pollInterval(POLL.list),
   })
 }
 
@@ -147,7 +148,7 @@ export function useThreadMessages(ticketId: string | null) {
     queryKey: [...key, 'poll'],
     queryFn: fetchNewer,
     enabled: Boolean(ticketId) && thread.isSuccess,
-    refetchInterval: POLL.thread,
+    refetchInterval: pollInterval(POLL.thread),
   })
 
   const loadOlder = useCallback(async () => {

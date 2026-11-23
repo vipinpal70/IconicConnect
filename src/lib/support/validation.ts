@@ -68,6 +68,8 @@ export type UploadRequest = z.infer<typeof uploadRequestSchema>
 
 export const markReadSchema = z.object({ seq: z.number().int().nonnegative() })
 
+export const typingSchema = z.object({ visibility: z.enum(['public', 'note']).default('public') })
+
 export const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('close'), reason: z.enum(SUPPORT_CLOSE_REASONS).optional() }),
   z.object({ action: z.literal('reopen') }),
