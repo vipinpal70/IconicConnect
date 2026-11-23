@@ -4,6 +4,7 @@ import { cases } from '@/src/db/schema/case'
 import { profiles, users } from '@/src/db/schema/profile'
 import { supCannedReplies, supTickets } from '@/src/db/schema/support'
 import { getStatusLabel, type CaseStatus } from '@/src/lib/case-status-mapping'
+import { isUniqueViolation } from '@/src/lib/db-errors'
 import { formatTicketNumber } from './constants'
 import { SupportError, notFound } from './http'
 import { isAgent, type SupportActor } from './policy'
@@ -31,13 +32,7 @@ const toView = (row: typeof supCannedReplies.$inferSelect, actor: SupportActor):
   editable: row.ownerId === actor.id || (row.ownerId === null && actor.role === 'admin'),
 })
 
-/** Postgres 23505. Drizzle wraps driver errors ("Failed query: …"), so look through `cause` too. */
-function isUniqueViolation(error: unknown): boolean {
-  for (let e: unknown = error, depth = 0; e && typeof e === 'object' && depth < 5; e = (e as { cause?: unknown }).cause, depth++) {
-    if ((e as { code?: string }).code === '23505') return true
-  }
-  return false
-}
+const isShortcutTaken = (error: unknown) => isUniqueViolation(error, 'uq_sup_canned_shortcut')
 
 export async function listCannedReplies(actor: SupportActor): Promise<CannedReply[]> {
   requireAgent(actor)
@@ -65,7 +60,7 @@ export async function createCannedReply(actor: SupportActor, input: CannedReplyI
       .returning()
     return toView(row, actor)
   } catch (error) {
-    if (isUniqueViolation(error)) throw new SupportError(409, 'shortcut_taken', `The shortcut /${input.shortcut} is already in use`)
+    if (isShortcutTaken(error)) throw new SupportError(409, 'shortcut_taken', `The shortcut /${input.shortcut} is already in use`)
     throw error
   }
 }
@@ -89,7 +84,7 @@ export async function updateCannedReply(actor: SupportActor, id: string, input: 
     const [row] = await db.update(supCannedReplies).set(patch).where(eq(supCannedReplies.id, id)).returning()
     return toView(row, actor)
   } catch (error) {
-    if (isUniqueViolation(error)) throw new SupportError(409, 'shortcut_taken', `The shortcut /${input.shortcut} is already in use`)
+    if (isShortcutTaken(error)) throw new SupportError(409, 'shortcut_taken', `The shortcut /${input.shortcut} is already in use`)
     throw error
   }
 }

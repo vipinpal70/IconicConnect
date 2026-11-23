@@ -6,7 +6,7 @@ import { parseStoredPhone, validateNationalPhone } from '@/src/lib/phone'
 import { handleProfileCreated } from '@/src/lib/price-list'
 import { deleteCachedData } from '@/src/lib/redis-cache'
 import { logActivity } from '@/src/lib/activity-log'
-import { createUserWithProfile, EmailTakenError, normalizeEmail } from '@/src/lib/auth/auth-service'
+import { createUserWithProfile, EmailTakenError, LabNameTakenError, normalizeEmail } from '@/src/lib/auth/auth-service'
 import { validatePasswordStrength } from '@/src/lib/security/password'
 import { escapeHtml } from '@/src/lib/security/html'
 import { sql } from 'drizzle-orm'
@@ -77,6 +77,10 @@ export async function POST(req: NextRequest) {
     } catch (dbError: any) {
       if (dbError instanceof EmailTakenError) {
         return NextResponse.json({ error: 'An account with this email already exists. Please sign in instead.' }, { status: 409 })
+      }
+      if (dbError instanceof LabNameTakenError) {
+        // Same answer as the pre-check above: another sign-up took the name a moment earlier
+        return NextResponse.json({ error: 'A lab with this name is already registered. Please use a more specific lab name.' }, { status: 409 })
       }
       console.error('[sign-up] create failed', dbError)
       return NextResponse.json({ error: 'Failed to save profile' }, { status: 500 })

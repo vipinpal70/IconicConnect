@@ -5,6 +5,7 @@ import { users, profiles, type NewProfile } from '@/src/db/schema/profile'
 import { redis, guarded } from '@/src/lib/redis'
 import { hashPassword, verifyPassword } from './password-hash'
 import { createSession, destroyAllSessions } from './session'
+import { isUniqueViolation } from '@/src/lib/db-errors'
 
 /**
  * Replaces supabase.auth.* / supabase.auth.admin.*. Everything is one Postgres + one Redis call away —
@@ -51,10 +52,8 @@ export async function signIn(emailRaw: string, password: string): Promise<SignIn
 }
 
 export class EmailTakenError extends Error { constructor() { super('A user with this email already exists.') } }
-
-function isUniqueViolation(e: unknown) {
-  return typeof e === 'object' && e !== null && (e as { code?: string }).code === '23505'
-}
+/** Lab names are unique (they double as the lab's storage folder). Reaching this means a race past the pre-check. */
+export class LabNameTakenError extends Error { constructor() { super('A lab with this name is already registered.') } }
 
 /**
  * Creates the credential row AND the profile in one transaction — no orphaned auth user is possible,
@@ -74,7 +73,8 @@ export async function createUserWithProfile(
       await tx.insert(profiles).values({ ...input.profile, id, clientId })
     })
   } catch (e) {
-    if (isUniqueViolation(e)) throw new EmailTakenError()
+    if (isUniqueViolation(e, 'users_email_key')) throw new EmailTakenError()
+    if (isUniqueViolation(e, 'uq_profiles_lab_name')) throw new LabNameTakenError()
     throw e
   }
   return { id }
