@@ -1,8 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Paperclip } from 'lucide-react'
+import { ACCEPT_ATTRIBUTE } from '@/src/lib/support/upload-policy'
+import { UploadTiles } from './Attachments'
+import { useUploads } from './useUploads'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/src/components/ui/dialog'
 import { Input } from '@/src/components/ui/input'
 import { Label } from '@/src/components/ui/label'
@@ -61,8 +64,17 @@ function ConversationForm({
   const [clientMsgId] = useState(newClientMsgId)
   const labs = useLabs(agent)
   const create = useCreateTicket()
+  // Labs can attach files to their first message (agents attach in the thread, once the lab is chosen)
+  const uploads = useUploads()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const valid = subject.trim().length >= 3 && message.trim().length > 0 && (!agent || clientId)
+  const valid =
+    subject.trim().length >= 3 && message.trim().length > 0 && (!agent || clientId) && !uploads.uploading && !uploads.failed
+
+  const cancel = () => {
+    uploads.items.forEach((item) => uploads.remove(item.localId))
+    onCancel()
+  }
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,7 +85,7 @@ function ConversationForm({
         category,
         message: message.trim(),
         clientMsgId,
-        ...(agent ? { clientId, priority } : { source: 'page' as const }),
+        ...(agent ? { clientId, priority } : { source: 'page' as const, attachmentIds: uploads.readyIds }),
       },
       {
         onSuccess: ({ ticketId }) => {
@@ -166,11 +178,44 @@ function ConversationForm({
           onChange={(e) => setMessage(e.target.value)}
           placeholder={agent ? 'First message to the lab' : 'What happened, when, and what you expected to see'}
           className="text-xs"
+          onPaste={(e) => {
+            if (agent) return
+            const pasted = Array.from(e.clipboardData.files)
+            if (pasted.length > 0) {
+              e.preventDefault()
+              uploads.add(pasted)
+            }
+          }}
         />
       </div>
 
+      {!agent && (
+        <div>
+          <UploadTiles items={uploads.items} onRemove={uploads.remove} onRetry={uploads.retry} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPT_ATTRIBUTE}
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) uploads.add(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-md border border-input px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Paperclip className="h-3.5 w-3.5" aria-hidden /> Attach screenshots or files
+          </button>
+          <p className="mt-1 text-[10px] text-muted-foreground">Images, videos, PDFs or documents · up to 500 MB each · you can also paste a screenshot</p>
+        </div>
+      )}
+
       <DialogFooter className="gap-2 sm:gap-0">
-        <button type="button" onClick={onCancel} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted">
+        <button type="button" onClick={cancel} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted">
           Cancel
         </button>
         <button
@@ -178,8 +223,8 @@ function ConversationForm({
           disabled={!valid || create.isPending}
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          {create.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
-          {agent ? 'Start conversation' : 'Send'}
+          {(create.isPending || uploads.uploading) && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+          {uploads.uploading ? 'Uploading…' : agent ? 'Start conversation' : 'Send'}
         </button>
       </DialogFooter>
     </form>

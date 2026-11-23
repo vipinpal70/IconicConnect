@@ -6,11 +6,14 @@ import { cn } from '@/src/lib/utils'
 import type { SupportSide } from '@/src/lib/support/constants'
 import type { MessageView } from '@/src/lib/support/types'
 import { MessageText, clockTime, dayLabel } from './parts'
+import { MessageAttachments } from './Attachments'
 
 export interface PendingMessage {
   clientMsgId: string
   body: string
   visibility: 'public' | 'note'
+  attachmentIds: string[]
+  attachmentNames: string[]
   status: 'sending' | 'failed'
   createdAt: string
   error?: string
@@ -169,9 +172,12 @@ function MessageItem({
           Internal note · {message.author?.name} · {clockTime(message.createdAt)}
           <span className="font-normal">— only visible to the support team</span>
         </p>
-        <p className="whitespace-pre-wrap break-words text-xs text-amber-950">
-          <MessageText text={message.body} />
-        </p>
+        {message.body && (
+          <p className="whitespace-pre-wrap break-words text-xs text-amber-950">
+            <MessageText text={message.body} />
+          </p>
+        )}
+        <MessageAttachments attachments={message.attachments} onDark={false} />
       </div>
     )
   }
@@ -193,7 +199,8 @@ function MessageItem({
           message.deleted && 'italic opacity-70',
         )}
       >
-        {message.deleted ? 'Message deleted' : <MessageText text={message.body} />}
+        {message.deleted ? 'Message deleted' : message.body ? <MessageText text={message.body} /> : null}
+        {!message.deleted && <MessageAttachments attachments={message.attachments} onDark={right} />}
       </div>
       {receipt && (
         <p className="mt-0.5 flex items-center gap-1 px-1 text-[10px] text-muted-foreground">
@@ -217,6 +224,11 @@ function PendingItem({ pending, onRetry }: { pending: PendingMessage; onRetry: (
         )}
       >
         {pending.body}
+        {pending.attachmentNames.length > 0 && (
+          <span className={cn('block text-[10px] opacity-90', pending.body && 'mt-1')}>
+            📎 {pending.attachmentNames.join(', ')}
+          </span>
+        )}
       </div>
       <p className="mt-0.5 flex items-center gap-1 px-1 text-[10px] text-muted-foreground">
         {pending.status === 'sending' ? (

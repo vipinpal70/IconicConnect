@@ -10,6 +10,7 @@ import { onAction, onPublicMessage, type LifecycleResult, type LifecycleState } 
 import { notifyAssigned, notifyNewMessage, notifyStatusChange, notifyTicketCreated, type NotifyActor, type NotifyTicket } from './notify'
 import { allowedActions, canCreateTicketFor, canViewTicket, checkPost, isAgent, type SupportActor } from './policy'
 import { personName } from './queries'
+import { attachmentsForMessages, bindAttachmentsTx } from './attachments'
 import type { MessageView } from './types'
 import type { ActionRequest, CreateTicketInput, PostMessageInput } from './validation'
 
@@ -83,16 +84,18 @@ function stateOf(ticket: typeof supTickets.$inferSelect): LifecycleState {
   }
 }
 
-function messageView(
+async function messageView(
   row: { id: string; seq: number; kind: MessageView['kind']; body: string; createdAt: Date },
   caller: SupportCaller,
-): MessageView {
+): Promise<MessageView> {
+  const attachments = await attachmentsForMessages([row.id])
   return {
     id: row.id,
     seq: row.seq,
     kind: row.kind,
     author: row.kind === 'system' ? null : { id: caller.actor.id, name: personName(caller.profile), side: sideOf(caller.actor) },
     body: row.body,
+    attachments: attachments.get(row.id) ?? [],
     createdAt: row.createdAt.toISOString(),
     editedAt: null,
     deleted: false,
@@ -151,7 +154,8 @@ export async function createTicket(caller: SupportCaller, input: CreateTicketInp
     const [message] = await tx
       .insert(supMessages)
       .values({ ticketId: created.id, kind: side, authorId: actor.id, body: input.message, clientMsgId: input.clientMsgId ?? null, createdAt: now })
-      .returning({ seq: supMessages.seq })
+      .returning({ id: supMessages.id, seq: supMessages.seq })
+    await bindAttachmentsTx(tx, input.attachmentIds ?? [], { actorId: actor.id, ticketId: created.id, clientId, messageId: message.id })
     await tx.update(supTickets)
       .set({ lastMessageSeq: message.seq, lastPublicSender: side })
       .where(eq(supTickets.id, created.id))
@@ -203,6 +207,7 @@ export async function postMessage(caller: SupportCaller, ticketId: string, input
         .insert(supMessages)
         .values({ ticketId, kind: 'note', authorId: actor.id, body: input.body, clientMsgId: input.clientMsgId, createdAt: now })
         .returning({ id: supMessages.id, seq: supMessages.seq, kind: supMessages.kind, body: supMessages.body, createdAt: supMessages.createdAt })
+      await bindAttachmentsTx(tx, input.attachmentIds ?? [], { actorId: actor.id, ticketId, clientId: ticket.clientId, messageId: note.id })
       await markReadTx(tx, ticketId, actor.id, note.seq)
       return { message: note, ticket, created: true, reopened: false }
     }
@@ -215,6 +220,7 @@ export async function postMessage(caller: SupportCaller, ticketId: string, input
       .insert(supMessages)
       .values({ ticketId, kind: side, authorId: actor.id, body: input.body, clientMsgId: input.clientMsgId, createdAt: now })
       .returning({ id: supMessages.id, seq: supMessages.seq, kind: supMessages.kind, body: supMessages.body, createdAt: supMessages.createdAt })
+    await bindAttachmentsTx(tx, input.attachmentIds ?? [], { actorId: actor.id, ticketId, clientId: ticket.clientId, messageId: message.id })
     await tx.update(supTickets)
       .set({ lastMessageSeq: message.seq, lastMessageAt: now, lastPublicSender: side })
       .where(eq(supTickets.id, ticketId))
@@ -225,9 +231,11 @@ export async function postMessage(caller: SupportCaller, ticketId: string, input
   if (outcome.created && outcome.message.kind !== 'note') {
     const ticket = toNotifyTicket(outcome.ticket)
     if (outcome.reopened) await notifyStatusChange(ticket, notifyActor(caller), 'reopened')
-    await notifyNewMessage(ticket, notifyActor(caller), outcome.message.body)
+    const count = input.attachmentIds?.length ?? 0
+    const text = outcome.message.body || `Sent ${count === 1 ? 'an attachment' : `${count} attachments`}`
+    await notifyNewMessage(ticket, notifyActor(caller), text)
   }
-  return { message: messageView(outcome.message, caller), created: outcome.created }
+  return { message: await messageView(outcome.message, caller), created: outcome.created }
 }
 
 export async function markRead(caller: SupportCaller, ticketId: string, seq: number) {

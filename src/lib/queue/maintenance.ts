@@ -10,11 +10,13 @@ import { maintenanceQueue } from './client'
 export const MAINTENANCE_JOBS = {
   purgeAuthAudit: 'purge-auth-audit',     // daily 03:30 server time
   refreshRollups: 'refresh-rollups',      // every 5 minutes
+  supportUploadReaper: 'support-upload-reaper', // hourly: support attachments never sent (support-system.md §13)
 } as const
 
 export async function scheduleMaintenance(): Promise<void> {
   await maintenanceQueue.upsertJobScheduler('purge-auth-audit-daily', { pattern: '30 3 * * *' }, { name: MAINTENANCE_JOBS.purgeAuthAudit })
   await maintenanceQueue.upsertJobScheduler('refresh-rollups-5m', { every: 5 * 60 * 1000 }, { name: MAINTENANCE_JOBS.refreshRollups })
+  await maintenanceQueue.upsertJobScheduler('support-upload-reaper-hourly', { every: 60 * 60 * 1000 }, { name: MAINTENANCE_JOBS.supportUploadReaper })
 }
 
 export async function processMaintenance(name: string): Promise<unknown> {
@@ -31,6 +33,12 @@ export async function processMaintenance(name: string): Promise<unknown> {
       await db.execute(sql`refresh materialized view concurrently mv_cases_created_daily`)
       await db.execute(sql`refresh materialized view concurrently mv_cases_completed_daily`)
       return { refreshed: 2 }
+    }
+    case MAINTENANCE_JOBS.supportUploadReaper: {
+      const { reapUnsentUploads } = await import('@/src/lib/support/attachments')
+      const result = await reapUnsentUploads()
+      if (result.removed > 0) console.log(`[Maintenance] removed ${result.removed} unsent support upload(s)`)
+      return result
     }
     default:
       throw new Error(`Unknown maintenance job: ${name}`)

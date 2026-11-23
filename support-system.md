@@ -2,7 +2,7 @@
 
 **Branch:** `support-system` (from `no-supabase-rewrite`)
 
-**Status:** approved ("go with recommendations"). **Phase 1 (Foundation) implemented**; Phases 2–5 to do (see §17).
+**Status:** approved ("go with recommendations"). **Phases 1–2 implemented** (foundation, attachments); Phases 3–5 to do (see §17).
 
 **Approach:** the current support feature is **replaced, not extended**:
 
@@ -526,3 +526,57 @@ The old tables and their Drizzle schema files remain until the drop migration.
 - `npm install` adds `zod` (already present as a dependency of another package).
 
 **Testing note:** the dev server runs the email worker. With a live `RESEND_API_KEY` in `.env`, any local test that creates conversations emails every active agent. Remove the key (or disable agents' email preferences) before manual testing.
+
+### Phase 2 — Attachments (done)
+
+**Migration:** `db/migrations/20261122000200_support_attachments.sql`
+- Adds the `support` value to `file_kind`, `files.support_ticket_id` and `sup_attachments`.
+- Tested locally: apply, rollback, re-apply.
+
+**Flow:** `src/lib/support/attachments.ts` and `POST /api/support/uploads` (actions `init`, `sign`, `complete`, `abort`).
+1. The browser uploads 64 MB parts straight to R2, 3 at a time, retrying each part.
+2. On `complete`, the server checks the stored object's real size; a mismatch is deleted and marked failed.
+
+**Rules:** `src/lib/support/upload-policy.ts`, shared by browser and server.
+- Allowed: images, videos, PDFs, text, CSV, Office files and ZIP.
+- The server decides the served content type from the extension; SVG, HTML and scripts are not allowed.
+- Limits: 500 MB per file, 10 files per message.
+
+**Storage keys:** `support/<lab>/<ticket|new>/<upload id>/<safe name>`. Each object is registered in `files` (kind `support`), so the orphan sweep keeps it and retention marks it purged.
+
+**Sending:**
+- Attachments are bound inside the send transaction, and only:
+  - your own finished, unsent uploads
+  - for this conversation, or for this lab's new conversation
+- A message can be attachments only.
+- Labs can attach files to their first message (new-conversation dialog).
+
+**Viewing:** `GET /api/support/attachments/:id` checks access, then redirects to a 15-minute signed R2 URL (`?download=1` to download).
+- Video streams with Range requests; the player gets a fresh link if one expires mid-playback.
+- Images and videos that can't be shown fall back to a download tile.
+- Files on internal notes are never served to labs.
+- Retention-purged files return 410 and show "Removed after 3 months".
+
+**UI:**
+- Attach button, drag and drop onto the thread, paste screenshots.
+- Upload tiles with progress, cancel and retry.
+- Image grid, video player, document tiles.
+
+**Cleanup:**
+- Maintenance job `support-upload-reaper` runs hourly and removes uploads never sent within 24 h (D6).
+- Client deletion also removes a lab's unsent uploads.
+
+**Tests:**
+- `support-upload-policy.test.ts`: 7 unit tests.
+- `support-attachments.integration.test.ts`: 8 tests against a real database with in-memory fake storage. They cover:
+  - uploads, parts and size verification
+  - who may send which upload
+  - files on notes hidden from labs
+  - expired files, cancelling and the reaper
+- Browser: attachment display and the composer, checked on seeded data.
+
+**Not tested:** a real browser upload into R2. The local `.env` bucket (`clipforge`) is the app's real bucket, so this needs a dev bucket or your go-ahead.
+
+**R2 CORS:** browser part uploads need the bucket to allow the app origin and expose `ETag`. Case uploads already depend on this, so production should be set up.
+
+**Testing note:** the dev server refuses to start without `RESEND_API_KEY`. Use a fake value (e.g. `RESEND_API_KEY=re_local_test_disabled npm run dev`): Resend rejects every send and nothing is delivered.

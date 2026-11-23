@@ -3,7 +3,7 @@ import { profiles } from './profile'
 import { cases } from './case'
 import { chatMessages } from './chat'
 
-export const fileKindEnum = pgEnum('file_kind', ['scan', 'preview', 'reference', 'hold', 'output', 'teeth_library', 'chat'])
+export const fileKindEnum = pgEnum('file_kind', ['scan', 'preview', 'reference', 'hold', 'output', 'teeth_library', 'chat', 'support'])
 export const fileStatusEnum = pgEnum('file_status', ['pending', 'ready', 'failed', 'purged'])
 export type FileKind = (typeof fileKindEnum.enumValues)[number]
 
@@ -18,6 +18,8 @@ export const files = pgTable('files', {
   clientId: uuid('client_id').references(() => profiles.id, { onDelete: 'restrict' }).notNull(),
   caseId: uuid('case_id').references(() => cases.id, { onDelete: 'cascade' }),
   messageId: uuid('message_id').references(() => chatMessages.id, { onDelete: 'cascade' }),
+  /** Support attachments (kind 'support'): the conversation. FK to sup_tickets is in the migration. */
+  supportTicketId: uuid('support_ticket_id'),
   kind: fileKindEnum('kind').notNull(),
   uploadedBy: uuid('uploaded_by').references(() => profiles.id, { onDelete: 'set null' }),
   fileName: varchar('file_name', { length: 255 }).notNull(),

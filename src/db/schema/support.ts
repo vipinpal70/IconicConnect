@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import { pgTable, pgEnum, uuid, varchar, text, bigint, integer, smallint, timestamp, primaryKey } from 'drizzle-orm/pg-core'
 import { profiles } from './profile'
 import { cases } from './case'
+import { files } from './files'
 
 /**
  * Support system (see support-system.md). Tables are created by
@@ -76,6 +77,20 @@ export const supEvents = pgTable('sup_events', {
   type: supEventTypeEnum('type').notNull(),
   fromValue: text('from_value'),
   toValue: text('to_value'),
+  createdAt: tstz('created_at').defaultNow().notNull(),
+})
+
+export const supAttachmentKindEnum = pgEnum('sup_attachment_kind', ['image', 'video', 'document'])
+
+/** Links an uploaded file (in `files`) to a support message. Created at upload time, bound on send. */
+export const supAttachments = pgTable('sup_attachments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  fileId: uuid('file_id').references(() => files.id, { onDelete: 'cascade' }).notNull(),
+  clientId: uuid('client_id').references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
+  ticketId: uuid('ticket_id').references(() => supTickets.id, { onDelete: 'cascade' }),
+  messageId: uuid('message_id').references(() => supMessages.id, { onDelete: 'cascade' }),
+  uploadedBy: uuid('uploaded_by').references(() => profiles.id, { onDelete: 'set null' }),
+  kind: supAttachmentKindEnum('kind').notNull(),
   createdAt: tstz('created_at').defaultNow().notNull(),
 })
 

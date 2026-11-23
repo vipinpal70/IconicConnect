@@ -208,10 +208,10 @@ export function newClientMsgId(): string {
   return crypto.randomUUID()
 }
 
-export function sendMessage(ticketId: string, body: string, visibility: 'public' | 'note', clientMsgId: string) {
+export function sendMessage(ticketId: string, body: string, visibility: 'public' | 'note', clientMsgId: string, attachmentIds: string[] = []) {
   return request<{ message: MessageView; created: boolean }>(`/api/support/tickets/${ticketId}/messages`, {
     method: 'POST',
-    body: JSON.stringify({ body, visibility, clientMsgId }),
+    body: JSON.stringify({ body, visibility, clientMsgId, attachmentIds }),
   })
 }
 
@@ -223,6 +223,7 @@ export interface CreateTicketBody {
   clientId?: string
   source?: 'page' | 'widget'
   clientMsgId: string
+  attachmentIds?: string[]
 }
 
 export function useCreateTicket() {

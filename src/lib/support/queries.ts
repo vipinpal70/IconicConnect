@@ -7,6 +7,7 @@ import { AGENT_ROLES, CUSTOMER_ROLES, formatTicketNumber, type SupportSide } fro
 import { allowedActions, canViewTicket, isAgent, isCustomer, reopenDeadline, type SupportActor } from './policy'
 import type { MessageView, MessagesResponse, PersonRef, SupportSummary, TicketDetail, TicketListResponse, TicketSummary } from './types'
 import type { ListMessagesQuery, ListTicketsQuery } from './validation'
+import { attachmentsForMessages } from './attachments'
 
 /**
  * Read side of the support system. Every query is scoped by the caller: customers only ever see their
@@ -107,7 +108,8 @@ function toSummary(row: TicketRow, actor: SupportActor): TicketSummary {
 }
 
 /** Newest message the caller may see, for the list preview (uses the unique seq index). */
-const previewSql = sql<string | null>`(select m.body from sup_messages m where m.seq = ${supTickets.lastMessageSeq} and m.deleted_at is null)`
+const previewSql = sql<string | null>`(select coalesce(nullif(m.body, ''), 'Attachment') from sup_messages m
+  where m.seq = ${supTickets.lastMessageSeq} and m.deleted_at is null)`
 
 function baseTicketQuery(actor: SupportActor) {
   return db
@@ -259,6 +261,7 @@ export async function listMessages(actor: SupportActor, ticketId: string, query:
     rows = desc_.slice(0, query.limit).reverse()
   }
 
+  const attachments = await attachmentsForMessages(rows.filter((m) => !m.deletedAt).map((m) => m.id))
   const messages: MessageView[] = rows.map((m) => ({
     id: m.id,
     seq: m.seq,
@@ -276,6 +279,7 @@ export async function listMessages(actor: SupportActor, ticketId: string, query:
             side: m.kind === 'customer' ? 'customer' : m.kind === 'agent' || m.kind === 'note' ? 'agent' : sideOf(m.authorRole),
           },
     body: m.deletedAt ? '' : m.body,
+    attachments: attachments.get(m.id) ?? [],
     createdAt: m.createdAt.toISOString(),
     editedAt: iso(m.editedAt),
     deleted: Boolean(m.deletedAt),

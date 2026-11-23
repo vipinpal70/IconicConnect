@@ -51,15 +51,33 @@ export interface TicketDetail extends TicketSummary {
   viewerId: string
 }
 
+export interface AttachmentView {
+  id: string
+  kind: 'image' | 'video' | 'document'
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  /** expired: removed by the 3-month storage retention; the message text stays. */
+  status: 'ready' | 'expired'
+}
+
 export interface MessageView {
   id: string
   seq: number
   kind: SupportMessageKind
   author: (PersonRef & { side: SupportSide }) | null
   body: string
+  attachments: AttachmentView[]
   createdAt: string
   editedAt: string | null
   deleted: boolean
+}
+
+/** Returned when an upload starts: the browser PUTs each part straight to storage. */
+export interface UploadStart {
+  attachmentId: string
+  partSize: number
+  parts: Array<{ partNumber: number; url: string }>
 }
 
 export interface TicketListResponse {

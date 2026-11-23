@@ -11,6 +11,7 @@ import { Composer } from './Composer'
 import { AgentControls } from './AgentControls'
 import { ApiError, newClientMsgId, sendMessage, supportKeys, useMarkRead, useThreadMessages, useTicket, useTicketAction } from './api'
 import { PriorityLabel, StatusBadge, WaitingBadge } from './parts'
+import { useUploads } from './useUploads'
 
 interface ThreadViewProps {
   ticketId: string
@@ -26,6 +27,8 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
   const thread = useThreadMessages(ticketId)
   const action = useTicketAction(ticketId)
   const [pending, setPending] = useState<PendingMessage[]>([])
+  const [dragging, setDragging] = useState(false)
+  const uploads = useUploads(ticketId)
 
   const ticket = ticketQuery.data
   const messages = thread.data?.messages ?? []
@@ -33,7 +36,7 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
 
   const deliver = async (item: PendingMessage) => {
     try {
-      const { message } = await sendMessage(ticketId, item.body, item.visibility, item.clientMsgId)
+      const { message } = await sendMessage(ticketId, item.body, item.visibility, item.clientMsgId, item.attachmentIds)
       // Fetch before adding: a reopen inserts a system line just before this message, and fetching
       // "everything after our last message" must not skip it
       await thread.fetchNewer().catch(() => null)
@@ -52,8 +55,17 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
     }
   }
 
-  const send = (body: string, visibility: 'public' | 'note') => {
-    const item: PendingMessage = { clientMsgId: newClientMsgId(), body, visibility, status: 'sending', createdAt: new Date().toISOString() }
+  const send = (body: string, visibility: 'public' | 'note', attachmentIds: string[]) => {
+    const attachmentNames = uploads.items.filter((i) => i.attachmentId && attachmentIds.includes(i.attachmentId)).map((i) => i.name)
+    const item: PendingMessage = {
+      clientMsgId: newClientMsgId(),
+      body,
+      visibility,
+      attachmentIds,
+      attachmentNames,
+      status: 'sending',
+      createdAt: new Date().toISOString(),
+    }
     setPending((list) => [...list, item])
     void deliver(item)
   }
@@ -89,9 +101,35 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
   const agentView = ticket.viewerSide === 'agent'
   const closed = ticket.status === 'closed'
   const canReopen = ticket.actions.includes('reopen')
+  const canCompose = !(closed && !agentView && !canReopen)
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label={`Conversation ${ticket.number}`}>
+    <section
+      className="relative flex min-h-0 flex-1 flex-col"
+      aria-label={`Conversation ${ticket.number}`}
+      // Drop files anywhere on the conversation to attach them
+      onDragOver={(e) => {
+        if (!canCompose || !hasFiles(e)) return
+        e.preventDefault()
+        if (!dragging) setDragging(true)
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+        setDragging(false)
+      }}
+      onDrop={(e) => {
+        if (!canCompose || !hasFiles(e)) return
+        e.preventDefault()
+        setDragging(false)
+        uploads.add(e.dataTransfer.files)
+      }}
+    >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/5 text-xs font-medium text-primary">
+          Drop files to attach (up to 500 MB each)
+        </div>
+      )}
       <header className="flex items-start gap-2 border-b border-border/60 px-3 py-2.5 sm:px-5">
         <button type="button" onClick={onBack} className="mt-0.5 rounded p-1 text-muted-foreground hover:bg-muted lg:hidden" aria-label="Back to conversations">
           <ArrowLeft className="h-4 w-4" />
@@ -136,7 +174,7 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
         onRetry={retry}
       />
 
-      {closed && !agentView && !canReopen ? (
+      {!canCompose ? (
         <div className="border-t border-border/60 bg-muted/30 p-4 text-center text-xs text-muted-foreground">
           <p>This conversation is closed.</p>
           {onStartFollowUp && (
@@ -160,6 +198,7 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp }: ThreadViewProp
           )}
           <Composer
             onSend={send}
+            uploads={uploads}
             allowNotes={agentView}
             placeholder={agentView ? `Reply to ${ticket.lab.name}` : 'Write a message to support'}
           />

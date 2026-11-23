@@ -87,6 +87,7 @@ export function parseId(id: string): string {
 export const LIMITS = {
   createTicket: { limit: 10, windowSeconds: 60 * 60 },
   message: { limit: 30, windowSeconds: 60 },
+  upload: { limit: 20, windowSeconds: 60 * 60 },
 } as const
 
 export async function enforceLimit(userId: string, name: keyof typeof LIMITS) {
