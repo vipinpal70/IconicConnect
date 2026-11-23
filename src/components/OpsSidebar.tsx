@@ -105,7 +105,8 @@ export function OpsSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.map((item) => (
+              {/* Designers have no support access (support-system.md, decision D10) */}
+              {NAV_ITEMS.filter((item) => !(item.url === "/support" && profile?.role === "designer")).map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <Link

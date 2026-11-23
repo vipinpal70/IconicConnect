@@ -214,15 +214,24 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/api/preference-forms')
       )
     case 'qc':
-    case 'designer':
       return (
         pathname.startsWith('/dashboard') ||
         pathname.startsWith('/cases') ||
         pathname.startsWith('/case') ||
         pathname.startsWith('/analytics') ||
         pathname === '/support' ||
-        pathname.startsWith('/admin/support') ||
-        pathname.startsWith('/api/admin/support') ||
+        pathname.startsWith('/api/admin/members') ||
+        pathname === '/api/admin/clients/options' ||
+        pathname.startsWith('/api/tutorials') ||
+        pathname.startsWith('/api/offers')
+      )
+    // Designers have no support access (support-system.md, decision D10)
+    case 'designer':
+      return (
+        pathname.startsWith('/dashboard') ||
+        pathname.startsWith('/cases') ||
+        pathname.startsWith('/case') ||
+        pathname.startsWith('/analytics') ||
         pathname.startsWith('/api/admin/members') ||
         pathname === '/api/admin/clients/options' ||
         pathname.startsWith('/api/tutorials') ||
@@ -235,8 +244,6 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
         pathname.startsWith('/case') ||
         pathname.startsWith('/analytics') ||
         pathname === '/support' ||
-        pathname.startsWith('/admin/support') ||
-        pathname.startsWith('/api/admin/support') ||
         pathname.startsWith('/api/admin/members') ||
         pathname === '/api/admin/clients/options' ||
         pathname.startsWith('/api/tutorials') ||

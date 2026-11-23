@@ -5,7 +5,9 @@ import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { offers, offerClaims } from '@/src/db/schema/offer'
-import { supportTickets } from '@/src/db/schema/support-ticket'
+import { getSummary } from '@/src/lib/support/queries'
+import { isAgentRole } from '@/src/lib/support/constants'
+import type { SupportActor } from '@/src/lib/support/policy'
 import { invoices } from '@/src/db/schema/invoice'
 import { tutorials } from '@/src/db/schema/tutorial'
 import { notifications } from '@/src/db/schema/notification'
@@ -15,6 +17,12 @@ import { eq, gt, and, count, sql } from 'drizzle-orm'
 import { isValidRoleForType } from '@/src/lib/auth/role'
 import { resolveClientId, isLabUser } from '@/src/lib/auth/resolve-client-id'
 import { describeDbError } from '@/src/lib/db-error'
+
+/** Support dot: something is waiting for this person (same counts the support pages use). */
+async function supportBadge(actor: SupportActor): Promise<{ count: number }[]> {
+  const summary = await getSummary(actor)
+  return [{ count: summary.unread + summary.newCount }]
+}
 
 async function getOne(query: Promise<{ count: number }[]>): Promise<boolean> {
   const [row] = await query
@@ -70,13 +78,10 @@ export async function GET() {
           .where(and(eq(profiles.role, 'client'), gt(profiles.createdAt, getSince('clients'))))
       )
 
-      // Support — new support tickets
-      setBadge('support', 
-        db
-          .select({ count: count() })
-          .from(supportTickets)
-          .where(gt(supportTickets.createdAt, getSince('support')))
-      )
+      // Support — conversations nobody has picked up, or unread replies (agents only; designers have no support access)
+      if (isAgentRole(profile.role)) {
+        setBadge('support', supportBadge({ id: profile.id, role: profile.role, clientId: profile.clientId }))
+      }
 
       // Billing — new invoices generated
       setBadge('billing', 
@@ -112,15 +117,8 @@ export async function GET() {
           .where(and(eq(cases.clientId, clientId), gt(cases.updatedAt, getSince('cases'))))
       )
 
-      // Support — own tickets with updates
-      setBadge('support', 
-        db
-          .select({ count: count() })
-          .from(supportTickets)
-          .where(
-            and(eq(supportTickets.clientId, clientId), gt(supportTickets.updatedAt, getSince('support')))
-          )
-      )
+      // Support — unread replies from the support team
+      setBadge('support', supportBadge({ id: profile.id, role: profile.role, clientId: profile.clientId }))
 
       // Billing — new invoices issued to this client
       setBadge('billing', 
