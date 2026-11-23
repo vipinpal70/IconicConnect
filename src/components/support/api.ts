@@ -9,6 +9,8 @@ import type {
   SupportSummary,
   TicketDetail,
   TicketListResponse,
+  CannedReply,
+  CustomerContext,
 } from '@/src/lib/support/types'
 import { pollInterval } from './live'
 import type { SupportCategory, SupportCloseReason, SupportPriority } from '@/src/lib/support/constants'
@@ -47,6 +49,8 @@ export const supportKeys = {
   summary: ['support', 'summary'] as const,
   agents: ['support', 'agents'] as const,
   labs: ['support', 'labs'] as const,
+  canned: ['support', 'canned'] as const,
+  customer: (clientId: string) => ['support', 'customer', clientId] as const,
 }
 
 export interface ListParams {
@@ -246,6 +250,7 @@ export type ActionBody =
   | { action: 'claim' }
   | { action: 'set_priority'; priority: SupportPriority }
   | { action: 'set_category'; category: SupportCategory }
+  | { action: 'link'; ticketNumber: string | null }
 
 export function useTicketAction(ticketId: string) {
   const queryClient = useQueryClient()
@@ -258,5 +263,51 @@ export function useTicketAction(ticketId: string) {
       void queryClient.invalidateQueries({ queryKey: supportKeys.lists })
       void queryClient.invalidateQueries({ queryKey: supportKeys.summary })
     },
+  })
+}
+
+// ── Agent tools ───────────────────────────────────────────────────────────────────────────────────
+
+export function useCannedReplies(enabled: boolean) {
+  return useQuery({
+    queryKey: supportKeys.canned,
+    queryFn: () => request<CannedReply[]>('/api/support/canned-replies'),
+    enabled,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export interface CannedReplyBody {
+  title: string
+  body: string
+  shortcut: string | null
+  shared?: boolean
+}
+
+export function useSaveCannedReply() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: CannedReplyBody & { id?: string }) =>
+      id
+        ? request<CannedReply>(`/api/support/canned-replies/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+        : request<CannedReply>('/api/support/canned-replies', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: supportKeys.canned }),
+  })
+}
+
+export function useDeleteCannedReply() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => request(`/api/support/canned-replies/${id}`, { method: 'DELETE' }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: supportKeys.canned }),
+  })
+}
+
+export function useCustomerContext(clientId: string | null, ticketId: string) {
+  return useQuery({
+    queryKey: [...supportKeys.customer(clientId ?? 'none'), ticketId],
+    queryFn: () => request<CustomerContext>(`/api/support/customers/${clientId}/context?ticket=${ticketId}`),
+    enabled: Boolean(clientId),
+    staleTime: 60_000,
   })
 }

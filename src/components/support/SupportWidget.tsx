@@ -74,6 +74,7 @@ export function SupportWidget() {
                 compact
                 onBack={() => setView({ kind: 'home' })}
                 onStartFollowUp={() => setView({ kind: 'new' })}
+                onOpenTicket={(id) => setView({ kind: 'thread', ticketId: id })}
               />
             </div>
           ) : (

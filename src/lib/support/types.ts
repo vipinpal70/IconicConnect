@@ -15,7 +15,14 @@ export interface PersonRef {
 }
 
 /** Actions the caller may take on a ticket right now (computed by the policy on the server). */
-export type TicketAction = 'close' | 'reopen' | 'assign' | 'claim' | 'set_priority' | 'set_category'
+export type TicketAction = 'close' | 'reopen' | 'assign' | 'claim' | 'set_priority' | 'set_category' | 'link'
+
+export interface LinkedTicketRef {
+  id: string
+  number: string
+  subject: string
+  status: SupportStatus
+}
 
 export interface TicketSummary {
   id: string
@@ -49,6 +56,47 @@ export interface TicketDetail extends TicketSummary {
   viewerSide: SupportSide
   /** The caller's own id (marks "You" and read receipts without a separate profile request). */
   viewerId: string
+  /** The caller's display name (fills {{agent}} in canned replies). */
+  viewerName: string
+  /** A related conversation of the same lab, if linked. */
+  linkedTicket: LinkedTicketRef | null
+}
+
+export interface CannedReply {
+  id: string
+  title: string
+  body: string
+  shortcut: string | null
+  /** Shared with every agent (admins manage these). */
+  shared: boolean
+  /** The caller may edit / delete it. */
+  editable: boolean
+}
+
+/** Agent-side context about the lab in a conversation. */
+export interface CustomerContext {
+  lab: {
+    id: string
+    name: string
+    ownerName: string | null
+    email: string | null
+    phone: string | null
+    plan: string | null
+    status: string
+    memberSince: string
+    members: number
+  }
+  cases: {
+    total: number
+    open: number
+    recent: Array<{ id: string; caseNumber: string; status: string; statusLabel: string; createdAt: string }>
+  }
+  conversations: {
+    total: number
+    open: number
+    recent: Array<{ id: string; number: string; subject: string; status: SupportStatus; lastMessageAt: string }>
+  }
+  satisfaction: { average: number | null; ratings: number }
 }
 
 export interface AttachmentView {

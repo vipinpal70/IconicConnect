@@ -77,7 +77,25 @@ export const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('claim') }),
   z.object({ action: z.literal('set_priority'), priority: z.enum(SUPPORT_PRIORITIES) }),
   z.object({ action: z.literal('set_category'), category: z.enum(SUPPORT_CATEGORIES) }),
+  /** Link a related conversation of the same lab by its number (e.g. "SUP-000123"), or unlink with null. */
+  z.object({ action: z.literal('link'), ticketNumber: z.string().trim().max(30).nullable() }),
 ])
+
+const shortcut = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z0-9][a-z0-9-]{0,39}$/, 'Shortcuts use lowercase letters, digits and dashes')
+
+export const cannedReplySchema = z.object({
+  title: z.string().trim().min(1, 'Give it a title').max(120),
+  body: z.string().trim().min(1, 'Write the reply').max(5000),
+  shortcut: shortcut.nullable().optional(),
+  /** Shared with every agent (admins only). */
+  shared: z.boolean().default(false),
+})
+export type CannedReplyInput = z.infer<typeof cannedReplySchema>
+export const cannedReplyUpdateSchema = cannedReplySchema.partial()
 export type ActionRequest = z.infer<typeof actionSchema>
 
 export const TICKET_VIEWS = ['open', 'unassigned', 'mine', 'closed', 'all'] as const

@@ -54,8 +54,8 @@ export function allowedActions(actor: SupportActor, ticket: TicketAccess, now: D
   if (!canViewTicket(actor, ticket)) return []
   const open = ticket.status !== 'closed'
   if (isAgent(actor)) {
-    if (!open) return ['reopen']
-    const actions: TicketAction[] = ['close', 'assign', 'set_priority', 'set_category']
+    if (!open) return ['reopen', 'link']
+    const actions: TicketAction[] = ['close', 'assign', 'set_priority', 'set_category', 'link']
     if (ticket.assigneeId !== actor.id) actions.push('claim')
     return actions
   }

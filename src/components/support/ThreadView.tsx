@@ -1,16 +1,31 @@
 'use client'
 
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { usePathname, useRouter } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Link as LinkIcon, Loader2 } from 'lucide-react'
+import { fetchProfileWithCache } from '@/src/lib/profile-cache'
+import { Dialog, DialogContent, DialogTitle } from '@/src/components/ui/dialog'
+import { CustomerPanel } from './CustomerPanel'
+import { CannedRepliesDialog } from './CannedRepliesDialog'
 import { format } from 'date-fns'
 import { CATEGORY_LABELS } from '@/src/lib/support/constants'
 import { cn } from '@/src/lib/utils'
 import { MessageList, type PendingMessage } from './MessageList'
 import { Composer } from './Composer'
 import { AgentControls } from './AgentControls'
-import { ApiError, newClientMsgId, sendMessage, supportKeys, useMarkRead, useThreadMessages, useTicket, useTicketAction } from './api'
+import {
+  ApiError,
+  newClientMsgId,
+  sendMessage,
+  supportKeys,
+  useCannedReplies,
+  useMarkRead,
+  useThreadMessages,
+  useTicket,
+  useTicketAction,
+} from './api'
 import { PriorityLabel, StatusBadge, WaitingBadge } from './parts'
 import { useUploads } from './useUploads'
 import { useTypingNames, useTypingSender } from './live'
@@ -23,11 +38,21 @@ interface ThreadViewProps {
   onStartFollowUp?: (subject: string) => void
   /** Floating widget: tighter header, back button always visible. */
   compact?: boolean
+  /** Open another conversation (linked one). Defaults to `?ticket=` on the current page. */
+  onOpenTicket?: (ticketId: string) => void
 }
 
-export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false }: ThreadViewProps) {
+export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false, onOpenTicket }: ThreadViewProps) {
   const queryClient = useQueryClient()
+  const router = useRouter()
+  const pathname = usePathname()
   const ticketQuery = useTicket(ticketId)
+  const isAgentViewer = ticketQuery.data?.viewerSide === 'agent'
+  const canned = useCannedReplies(isAgentViewer)
+  const { data: me } = useQuery({ queryKey: ['my-profile'], queryFn: fetchProfileWithCache, enabled: isAgentViewer })
+  const [cannedOpen, setCannedOpen] = useState(false)
+  const [labInfoOpen, setLabInfoOpen] = useState(false)
+  const openTicket = onOpenTicket ?? ((id: string) => router.replace(`${pathname}?ticket=${id}`, { scroll: false }))
   const thread = useThreadMessages(ticketId)
   const action = useTicketAction(ticketId)
   const [pending, setPending] = useState<PendingMessage[]>([])
@@ -109,8 +134,13 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false 
   const canReopen = ticket.actions.includes('reopen')
   const canCompose = !(closed && !agentView && !canReopen)
   const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files')
+  // Saved-reply placeholders: {{name}} = first name of whoever started it, {{lab}}, {{agent}}
+  const firstName = (ticket.createdBy?.name ?? ticket.lab.name).split(/\s+/)[0]
+  const renderTemplate = (text: string) =>
+    text.replaceAll('{{name}}', firstName).replaceAll('{{lab}}', ticket.lab.name).replaceAll('{{agent}}', ticket.viewerName)
 
   return (
+    <div className="flex min-h-0 flex-1">
     <section
       className="relative flex min-h-0 flex-1 flex-col"
       aria-label={`Conversation ${ticket.number}`}
@@ -157,7 +187,26 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false 
             {agentView && <span>· {ticket.lab.name}</span>}
             {!agentView && ticket.assignee && <span>· Handled by {ticket.assignee.name}</span>}
           </div>
+          {ticket.linkedTicket && (
+            <button
+              type="button"
+              onClick={() => openTicket(ticket.linkedTicket!.id)}
+              className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[10px] text-primary hover:underline"
+            >
+              <LinkIcon className="h-3 w-3 shrink-0" aria-hidden />
+              Related: <span className="font-mono">{ticket.linkedTicket.number}</span> {ticket.linkedTicket.subject}
+            </button>
+          )}
         </div>
+        {agentView && !compact && (
+          <button
+            type="button"
+            onClick={() => setLabInfoOpen(true)}
+            className="shrink-0 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground xl:hidden"
+          >
+            Lab info
+          </button>
+        )}
         {!agentView && ticket.actions.includes('close') && (
           <button
             type="button"
@@ -225,10 +274,30 @@ export function ThreadView({ ticketId, onBack, onStartFollowUp, compact = false 
             uploads={uploads}
             onTyping={sendTyping}
             allowNotes={agentView}
-            placeholder={agentView ? `Reply to ${ticket.lab.name}` : 'Write a message to support'}
+            cannedReplies={agentView ? (canned.data ?? []) : undefined}
+            renderTemplate={renderTemplate}
+            onManageCanned={() => setCannedOpen(true)}
+            placeholder={agentView ? `Reply to ${ticket.lab.name} · type / for saved replies` : 'Write a message to support'}
           />
         </>
       )}
     </section>
+    {agentView && !compact && (
+      <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-border/60 bg-muted/10 xl:block" aria-label="Lab details">
+        <CustomerPanel clientId={ticket.lab.id} ticketId={ticket.id} />
+      </aside>
+    )}
+    {agentView && (
+      <>
+        <CannedRepliesDialog open={cannedOpen} onOpenChange={setCannedOpen} isAdmin={me?.role === 'admin'} />
+        <Dialog open={labInfoOpen} onOpenChange={setLabInfoOpen}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-sm">
+            <DialogTitle className="sr-only">Lab details</DialogTitle>
+            <CustomerPanel clientId={ticket.lab.id} ticketId={ticket.id} />
+          </DialogContent>
+        </Dialog>
+      </>
+    )}
+    </div>
   )
 }

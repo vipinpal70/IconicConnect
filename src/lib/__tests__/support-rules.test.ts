@@ -67,9 +67,9 @@ describe('support policy', () => {
     expect(allowedActions(owner, ticket(), now)).toEqual(['close'])
     expect(allowedActions(owner, ticket({ status: 'closed', closedAt: daysAgo(1) }), now)).toEqual(['reopen'])
     expect(allowedActions(owner, ticket({ status: 'closed', closedAt: daysAgo(30) }), now)).toEqual([])
-    expect(allowedActions(agent, ticket(), now)).toEqual(['close', 'assign', 'set_priority', 'set_category', 'claim'])
+    expect(allowedActions(agent, ticket(), now)).toEqual(['close', 'assign', 'set_priority', 'set_category', 'link', 'claim'])
     expect(allowedActions(agent, ticket({ assigneeId: agent.id }), now)).not.toContain('claim')
-    expect(allowedActions(agent, ticket({ status: 'closed', closedAt: daysAgo(90) }), now)).toEqual(['reopen'])
+    expect(allowedActions(agent, ticket({ status: 'closed', closedAt: daysAgo(90) }), now)).toEqual(['reopen', 'link'])
   })
 })
 

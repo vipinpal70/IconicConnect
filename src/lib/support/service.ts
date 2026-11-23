@@ -82,7 +82,31 @@ function stateOf(ticket: typeof supTickets.$inferSelect): LifecycleState {
     closedAt: ticket.closedAt,
     closeReason: ticket.closeReason,
     reopenedCount: ticket.reopenedCount,
+    linkedTicketId: ticket.linkedTicketId,
   }
+}
+
+/** "SUP-000123" / "123" → a conversation of the same lab (never itself); null unlinks. */
+async function resolveLink(tx: Tx, ticket: typeof supTickets.$inferSelect, ticketNumber: string | null) {
+  const previous = ticket.linkedTicketId
+    ? (await tx.select({ number: supTickets.number }).from(supTickets).where(eq(supTickets.id, ticket.linkedTicketId)).limit(1))[0]
+    : undefined
+  const previousNumber = previous ? formatTicketNumber(previous.number) : null
+  if (ticketNumber === null || ticketNumber === '') {
+    return { action: 'link' as const, linkedTicketId: null, linkedNumber: null, previousNumber }
+  }
+  const match = /^(?:sup-?)?0*(\d{1,12})$/i.exec(ticketNumber)
+  const [target] = match
+    ? await tx
+        .select({ id: supTickets.id, number: supTickets.number })
+        .from(supTickets)
+        .where(and(eq(supTickets.number, Number(match[1])), eq(supTickets.clientId, ticket.clientId)))
+        .limit(1)
+    : []
+  if (!target || target.id === ticket.id) {
+    throw new SupportError(400, 'link_not_found', 'No other conversation with that number for this lab')
+  }
+  return { action: 'link' as const, linkedTicketId: target.id, linkedNumber: formatTicketNumber(target.number), previousNumber }
 }
 
 async function messageView(
@@ -281,7 +305,12 @@ export async function applyTicketAction(caller: SupportCaller, ticketId: string,
     if (!permitted.includes(request.action)) {
       throw new SupportError(403, 'action_not_allowed', 'You cannot do that on this conversation right now')
     }
-    const input = request.action === 'assign' ? { ...request, assigneeName } : request
+    const input =
+      request.action === 'assign'
+        ? { ...request, assigneeName }
+        : request.action === 'link'
+          ? await resolveLink(tx, ticket, request.ticketNumber)
+          : request
     const result = onAction(stateOf(ticket), input, { id: actor.id, name: personName(profile) }, now)
     if (!result.ok) {
       if (result.code === 'no_change') return { ticket, changed: false }

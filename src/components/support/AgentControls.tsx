@@ -1,7 +1,8 @@
 'use client'
 
 import { toast } from 'sonner'
-import { ChevronDown, Loader2, UserCheck } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, Link as LinkIcon, Loader2, Unlink, UserCheck } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/src/components/ui/select'
 import {
   DropdownMenu,
@@ -35,9 +36,28 @@ export function AgentControls({ ticket }: { ticket: TicketDetail }) {
     })
 
   const busy = action.isPending
+  const [linking, setLinking] = useState(false)
+  const [linkNumber, setLinkNumber] = useState('')
+
+  const submitLink = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!linkNumber.trim()) return
+    action.mutate(
+      { action: 'link', ticketNumber: linkNumber.trim() },
+      {
+        onSuccess: () => {
+          toast.success('Conversations linked')
+          setLinking(false)
+          setLinkNumber('')
+        },
+        onError: (error) => toast.error(error.message),
+      },
+    )
+  }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted/20 px-3 py-2 sm:px-5">
+    <div className="border-b border-border/60 bg-muted/20">
+    <div className="flex flex-wrap items-center gap-2 px-3 py-2 sm:px-5">
       {can('assign') && (
         <Select
           value={ticket.assignee?.id ?? UNASSIGNED}
@@ -89,6 +109,17 @@ export function AgentControls({ ticket }: { ticket: TicketDetail }) {
           </SelectContent>
         </Select>
       )}
+      {can('link') && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => (ticket.linkedTicket ? run({ action: 'link', ticketNumber: null }, 'Link removed') : setLinking((v) => !v))}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2.5 text-[11px] font-medium hover:bg-muted disabled:opacity-60"
+        >
+          {ticket.linkedTicket ? <Unlink className="h-3.5 w-3.5" aria-hidden /> : <LinkIcon className="h-3.5 w-3.5" aria-hidden />}
+          {ticket.linkedTicket ? 'Unlink' : 'Link…'}
+        </button>
+      )}
       <div className="ml-auto flex items-center gap-2">
         {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Saving" />}
         {can('close') && (
@@ -122,6 +153,26 @@ export function AgentControls({ ticket }: { ticket: TicketDetail }) {
           </button>
         )}
       </div>
+    </div>
+    {linking && !ticket.linkedTicket && (
+      <form onSubmit={submitLink} className="flex flex-wrap items-center gap-2 border-t border-border/60 px-3 py-2 sm:px-5">
+        <label htmlFor="link-number" className="text-[11px] text-muted-foreground">Related conversation of {ticket.lab.name}:</label>
+        <input
+          id="link-number"
+          value={linkNumber}
+          onChange={(e) => setLinkNumber(e.target.value)}
+          placeholder="SUP-000123"
+          className="h-7 w-32 rounded-md border border-input bg-background px-2 font-mono text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          autoFocus
+        />
+        <button type="submit" disabled={!linkNumber.trim() || busy} className="h-7 rounded-md bg-primary px-2.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50">
+          Link
+        </button>
+        <button type="button" onClick={() => setLinking(false)} className="h-7 rounded-md px-2 text-[11px] text-muted-foreground hover:bg-muted">
+          Cancel
+        </button>
+      </form>
+    )}
     </div>
   )
 }

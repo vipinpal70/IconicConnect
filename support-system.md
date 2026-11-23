@@ -645,3 +645,59 @@ The old tables and their Drizzle schema files remain until the drop migration.
 **Found and fixed:** the app's Tailwind theme does not map the `card` colour, so `bg-card` is transparent app-wide. The support UI now uses `bg-white`; other pages that use `bg-card` are unchanged.
 
 **Limitation:** if Redis is down, the stream stays open but receives no events. The UI then updates through the 60-second safety poll until Redis is back. No data is lost; Postgres is the source of truth.
+
+### Phase 4 — Agent tools (done)
+
+Assignment views, internal notes and search shipped in Phase 1. This phase adds saved replies, the lab side panel and linked conversations.
+
+**Saved replies** (migration `20261123000100_support_canned_replies.sql`, table `sup_canned_replies`)
+- Personal (`owner_id` = agent) or shared (`owner_id` NULL). Only admins create or edit shared ones.
+- Optional shortcut (`a-z`, `0-9`, `-`, up to 40), unique per owner, and once across shared replies.
+- Three shared replies are seeded: `/hi`, `/details`, `/done`.
+- Placeholders are filled in the browser when inserted: `{{name}}` is the first name of the person who started the conversation, `{{lab}}` is the lab name, and `{{agent}}` is the agent's name. The agent can still edit the text before sending.
+- APIs:
+
+  | Method | Path | Who |
+  |---|---|---|
+  | GET, POST | `/api/support/canned-replies` | Agents |
+  | PATCH, DELETE | `/api/support/canned-replies/:id` | The owner; admins for shared |
+
+  A duplicate shortcut returns 409 `shortcut_taken`. Someone else's personal reply returns 404.
+- Composer:
+  - Typing `/` at the start of a word opens a picker, filtered by shortcut or title (at most 6 shown).
+  - ↑/↓ choose, Enter or Tab insert, Esc closes.
+  - A button opens the same picker, and "Manage" opens the dialog to create, edit or delete saved replies.
+  - Labs never see any of this.
+
+**Lab side panel:** `GET /api/support/customers/:clientId/context?ticket=<id>`, agents only.
+- Shows the lab name, owner, email, phone, member count, plan, status, and customer since.
+- Cases: open of total, and the 5 most recent with status labels, linking to the case page.
+- Other conversations: open of total, and the 5 most recent, excluding the one being viewed.
+- Satisfaction: average rating, or "No ratings yet" until CSAT ships in Phase 5.
+- Layout: shown as a column on wide screens (≥ 1280 px). On smaller screens a "Lab info" button opens it in a dialog. It is not shown in the floating widget.
+
+**Linked conversations:** new action `link`, agents only, on open and closed conversations.
+- Accepts `SUP-000123`, `sup123` or `123`. It must be the same lab and not the conversation itself; otherwise it returns 400 `link_not_found`.
+- `ticketNumber: null` unlinks.
+- Recorded in the audit log. No system line appears in the thread.
+- Both sides see "Related: SUP-… subject" in the header, and it opens that conversation.
+
+**Tests:**
+- Unit: policy expectations updated for `link`.
+- `support-agent-tools.integration.test.ts`: 5 tests against real Postgres. They show:
+  - personal replies stay private, and only admins share
+  - labs are refused
+  - duplicate shortcut is 409; the same shortcut works for another person
+  - editing another person's or a shared reply is refused
+  - linking works with typed number formats and unlinks, and refuses another lab, itself, garbage, and lab users
+  - lab context is agent-only, 404 for an unknown lab, and excludes the current conversation
+- Browser, production build, 25/25 checks:
+  - the `/` picker filters, inserts with names filled in, Esc keeps the text, and Enter still sends when the picker is closed
+  - a new saved reply is usable at once
+  - link, "Related" and follow the link
+  - unknown number refused
+  - lab sees "Related" but no agent tools, and gets 403 on both agent APIs
+  - side panel on wide screens and "Lab info" dialog on narrower ones
+  - no page errors
+
+**Found and fixed:** a duplicate shortcut returned 500 instead of 409. Drizzle wraps Postgres errors ("Failed query …"), so the unique-violation check now looks through `cause`. `src/lib/auth/auth-service.ts` uses the same top-level-only `23505` check and probably has the same problem. It was left unchanged here because it is outside the support work.

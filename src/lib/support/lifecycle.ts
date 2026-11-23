@@ -27,9 +27,11 @@ export interface LifecycleState {
   closedAt: Date | null
   closeReason: SupportCloseReason | null
   reopenedCount: number
+  linkedTicketId?: string | null
 }
 
 export interface LifecyclePatch {
+  linkedTicketId?: string | null
   status?: SupportStatus
   assigneeId?: string | null
   priority?: SupportPriority
@@ -41,7 +43,7 @@ export interface LifecyclePatch {
   reopenedCount?: number
 }
 
-export type LifecycleEventType = 'status' | 'assignee' | 'priority' | 'category' | 'reopened'
+export type LifecycleEventType = 'status' | 'assignee' | 'priority' | 'category' | 'reopened' | 'linked'
 
 export interface LifecycleResult {
   patch: LifecyclePatch
@@ -57,6 +59,7 @@ export type ActionInput =
   | { action: 'claim' }
   | { action: 'set_priority'; priority: SupportPriority }
   | { action: 'set_category'; category: SupportCategory }
+  | { action: 'link'; linkedTicketId: string | null; linkedNumber: string | null; previousNumber?: string | null }
 
 export type ActionOutcome = { ok: true; result: LifecycleResult } | { ok: false; code: 'no_change' | 'invalid_state' }
 
@@ -139,6 +142,13 @@ export function onAction(
       if (state.category === input.category) return { ok: false, code: 'no_change' }
       result.patch.category = input.category
       result.events.push({ type: 'category', from: CATEGORY_LABELS[state.category], to: CATEGORY_LABELS[input.category] })
+      return { ok: true, result }
+    }
+    case 'link': {
+      if ((state.linkedTicketId ?? null) === input.linkedTicketId) return { ok: false, code: 'no_change' }
+      result.patch.linkedTicketId = input.linkedTicketId
+      // Audited; both sides see the link in the header, so no thread line is needed
+      result.events.push({ type: 'linked', from: input.previousNumber ?? null, to: input.linkedNumber })
       return { ok: true, result }
     }
   }

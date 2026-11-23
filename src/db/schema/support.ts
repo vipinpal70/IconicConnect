@@ -94,5 +94,17 @@ export const supAttachments = pgTable('sup_attachments', {
   createdAt: tstz('created_at').defaultNow().notNull(),
 })
 
+/** Saved replies agents insert with "/" in the composer. owner_id NULL = shared (admins manage). */
+export const supCannedReplies = pgTable('sup_canned_replies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: varchar('title', { length: 120 }).notNull(),
+  body: text('body').notNull(),
+  shortcut: varchar('shortcut', { length: 40 }),
+  ownerId: uuid('owner_id').references(() => profiles.id, { onDelete: 'cascade' }),
+  createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+  createdAt: tstz('created_at').defaultNow().notNull(),
+  updatedAt: tstz('updated_at').defaultNow().notNull(),
+})
+
 export type SupTicketRow = typeof supTickets.$inferSelect
 export type SupMessageRow = typeof supMessages.$inferSelect

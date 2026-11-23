@@ -202,6 +202,7 @@ export async function getTicketDetail(actor: SupportActor, ticketId: string, now
       creatorRole: creator.role,
       closeReason: supTickets.closeReason,
       reopenedCount: supTickets.reopenedCount,
+      linkedTicketId: supTickets.linkedTicketId,
       otherSideReadSeq: sql<number>`coalesce((
         select max(r.last_read_seq) from sup_reads r join profiles p on p.id = r.user_id
         where r.ticket_id = ${supTickets.id} and p.user_role::text in (${sql.join(otherRoles.map((r) => sql`${r}`), sql`, `)})
@@ -216,6 +217,20 @@ export async function getTicketDetail(actor: SupportActor, ticketId: string, now
   if (!canViewTicket(actor, access)) return null
   const deadline = reopenDeadline(access)
 
+  const [viewer] = await db
+    .select({ fullName: profiles.fullName, labName: profiles.labName, role: profiles.role })
+    .from(profiles)
+    .where(eq(profiles.id, actor.id))
+    .limit(1)
+  // Links are only ever made within one lab, but check again: a link must never reveal another lab
+  const [linked] = extra.linkedTicketId
+    ? await db
+        .select({ id: supTickets.id, number: supTickets.number, subject: supTickets.subject, status: supTickets.status })
+        .from(supTickets)
+        .where(and(eq(supTickets.id, extra.linkedTicketId), eq(supTickets.clientId, row.clientId)))
+        .limit(1)
+    : []
+
   return {
     ...toSummary(row, actor),
     createdBy: personRef({ id: extra.createdById, fullName: extra.creatorFullName, labName: extra.creatorLabName, role: extra.creatorRole }),
@@ -227,6 +242,10 @@ export async function getTicketDetail(actor: SupportActor, ticketId: string, now
     otherSideReadSeq: extra.otherSideReadSeq,
     viewerSide: side,
     viewerId: actor.id,
+    viewerName: viewer ? personName(viewer) : 'Support',
+    linkedTicket: linked
+      ? { id: linked.id, number: formatTicketNumber(linked.number), subject: linked.subject, status: linked.status }
+      : null,
   }
 }
 
