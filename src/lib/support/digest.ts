@@ -4,6 +4,8 @@ import { profiles, users } from '@/src/db/schema/profile'
 import { supEmailDigests, supMessages, supReads, supTickets } from '@/src/db/schema/support'
 import { loadPreferences } from '@/src/lib/notifications/preferences'
 import { queueEmail } from '@/src/lib/queue/jobs'
+import { escapeHtml } from '@/src/lib/security/html'
+import { safeEmailLink } from '@/src/lib/notifications/email-template'
 import { formatTicketNumber, isAgentRole, isCustomerRole, type SupportSide } from './constants'
 import { personName } from './queries'
 import { usersWithOpenStreams } from './realtime'
@@ -31,17 +33,14 @@ interface Candidate {
   messages: Array<{ seq: number; body: string; authorName: string }>
 }
 
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 const excerpt = (s: string) => (s.length > 280 ? `${s.slice(0, 277)}…` : s)
 
 function linkFor(role: string, ticketId: string) {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '')
   const path = role === 'admin' ? '/admin/support' : isCustomerRole(role) ? '/client/support' : '/support'
-  return `${base}${path}?ticket=${ticketId}`
+  return safeEmailLink(`${path}?ticket=${ticketId}`)
 }
 
-export function renderDigest(c: Pick<Candidate, 'ticket' | 'messages'>, link: string) {
+export function renderDigest(c: Pick<Candidate, 'ticket' | 'messages'>, link: string | null) {
   const number = formatTicketNumber(c.ticket.number)
   const count = c.messages.length
   const subject = count === 1 ? `New reply in ${number}: ${c.ticket.subject}` : `${count} new messages in ${number}: ${c.ticket.subject}`
@@ -65,7 +64,7 @@ export function renderDigest(c: Pick<Candidate, 'ticket' | 'messages'>, link: st
       <h2 style="font-size:17px;margin:0 0 4px 0;">${escapeHtml(c.ticket.subject)}</h2>
       <p style="font-size:12px;color:#64748b;margin:0 0 20px 0;">${number}</p>
       ${items}${more}
-      <a href="${escapeHtml(link)}" style="display:inline-block;margin-top:8px;background:#059669;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:500;">Reply in IconicConnect</a>
+      ${link ? `<a href="${escapeHtml(link)}" style="display:inline-block;margin-top:8px;background:#059669;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:500;">Reply in IconicConnect</a>` : ""}
     </div>
     <div style="background:#f8fafc;padding:14px;text-align:center;font-size:12px;color:#94a3b8;">
       You get this because a support conversation has unread messages. Turn off "conversation updates" emails in your notification preferences.

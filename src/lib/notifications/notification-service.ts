@@ -7,6 +7,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { redis as connection } from '@/src/lib/redis';
 import { queueEmail } from '@/src/lib/queue/jobs';
 import { NotificationEventPayload, NotificationType } from './notification-events';
+import { renderNotificationEmail } from './email-template';
 
 export class NotificationService {
   /**
@@ -95,7 +96,7 @@ export class NotificationService {
             to,
             subject: payload.title,
             type: 'notification',
-            html: this.renderEmailHtml(payload.title, payload.message, payload.link),
+            html: renderNotificationEmail(payload.title, payload.message, payload.link),
           });
           outcomes.get(payload)!.channels.push('email');
         } catch (emailErr) {
@@ -177,38 +178,4 @@ export class NotificationService {
     }
   }
 
-  // HTML Template helper for standard emails
-  private static renderEmailHtml(title: string, message: string, link?: string): string {
-    const actionButton = link
-      ? `<div style="margin-top: 24px;">
-           <a href="${link}" style="background-color: #059669; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">View Details</a>
-         </div>`
-      : '';
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>${title}</title>
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f5; padding: 40px; margin: 0;">
-        <div style="max-width: 600px; background-color: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin: 0 auto; border: 1px solid #e4e4e7;">
-          <div style="background-color: #0f172a; padding: 24px; text-align: center; border-bottom: 2px solid #059669;">
-            <span style="font-size: 20px; font-weight: bold; color: white; letter-spacing: 0.5px;">IconicConnect</span>
-          </div>
-          <div style="padding: 32px; color: #1f2937;">
-            <h2 style="font-size: 18px; font-weight: 600; margin-top: 0; color: #0f172a;">${title}</h2>
-            <p style="font-size: 15px; line-height: 1.6; color: #4b5563; margin-bottom: 24px;">${message}</p>
-            ${actionButton}
-          </div>
-          <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8;">
-            <p style="margin: 0;">This is an automated email from IconicConnect.</p>
-            <p style="margin: 4px 0 0 0;">You can customize your notification preferences inside your account profile dashboard.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-  }
 }
