@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
 import { createWorkerConnection } from './client';
 import { processCaseCleanup, type CaseCleanupJob } from './case-cleanup';
+import { processChatJob, type ChatJob } from './chat-jobs';
 import { processMaintenance, scheduleMaintenance } from './maintenance';
 import { resend } from '../resend';
 
@@ -28,6 +29,14 @@ function startBackgroundWorkers() {
   cleanup.on('failed', (job, err) => console.error(`[CaseCleanup] job ${job?.id} attempt ${job?.attemptsMade} failed: ${err.message}`));
   cleanup.on('error', (err) => console.error('[CaseCleanup] worker error:', err.message));
 
+  const chat = new Worker<ChatJob>(
+    'chat',
+    async (job) => processChatJob(job.data),
+    { connection: createWorkerConnection() as any, concurrency: 3 },
+  );
+  chat.on('failed', (job, err) => console.error(`[Chat] ${job?.name} job ${job?.id} failed: ${err.message}`));
+  chat.on('error', (err) => console.error('[Chat] worker error:', err.message));
+
   const maintenance = new Worker(
     'maintenance',
     async (job) => processMaintenance(job.name),
@@ -36,7 +45,7 @@ function startBackgroundWorkers() {
   maintenance.on('failed', (job, err) => console.error(`[Maintenance] ${job?.name} failed: ${err.message}`));
   maintenance.on('error', (err) => console.error('[Maintenance] worker error:', err.message));
   scheduleMaintenance().catch((err) => console.error('[Maintenance] scheduling failed:', err.message));
-  console.log('[Worker] case-cleanup + maintenance workers initialized');
+  console.log('[Worker] case-cleanup + chat + maintenance workers initialized');
 }
 
 if (process.env.NODE_ENV === 'production') {

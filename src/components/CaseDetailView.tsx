@@ -614,13 +614,7 @@ export function CaseDetailView({
 				}),
 			});
 			if (res.ok) {
-				await fetch(`/api/cases/${caseId}/chat`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						messageText: `[CASE REJECTED]: ${rejectNotes.trim()}`,
-					}),
-				});
+				// The server adds the "[CASE REJECTED]" line to the case chat along with the rejection
 				toast.success("Case rejected successfully.");
 				setIsRejectDialogOpen(false);
 				setRejectNotes("");

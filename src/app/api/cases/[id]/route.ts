@@ -25,6 +25,8 @@ import { timelineForClient, isLabRole, stripStaffOnlyCaseFields } from '@/src/li
 
 const CASE_DETAIL_TTL = 300 // 5 minutes
 import { chatMessages } from '@/src/db/schema/chat';
+import { markCaseChatRead } from '@/src/lib/chat';
+import { announceChatMessage } from '@/src/lib/queue/chat-jobs';
 import { activityLogs } from '@/src/db/schema/activity-log';
 
 type CaseUpdateData = {
@@ -537,7 +539,22 @@ export async function PUT(
       return NextResponse.json({ error: 'No updates permitted or values provided to set' }, { status: 400 });
     }
 
-    const updatedCase = await db.transaction(async (tx) => {
+    // A lab rejecting its case: the reason also goes into the case chat. Written here, with the rejection
+    // itself, because a rejected case accepts no more chat messages.
+    const rejectionReason = isLabRole(profile.role) && updateData.status === 'client_reject' && typeof body.clientMassage === 'string'
+      ? body.clientMassage.trim()
+      : '';
+
+    const { updated: updatedCase, rejectionMessage } = await db.transaction(async (tx) => {
+      // Locked so a double submit writes the line once
+      const [before] = rejectionReason
+        ? await tx.select({ status: cases.status }).from(cases).where(eq(cases.id, id)).for('update')
+        : [];
+      const [rejectionMessage] = before && before.status !== 'client_reject'
+        ? await tx.insert(chatMessages).values({
+            caseId: id, senderId: profile.id, senderRole: profile.role, messageText: `[CASE REJECTED]: ${rejectionReason}`,
+          }).returning()
+        : [];
       const updated = Object.keys(updateData).length > 0
         ? await tx.update(cases).set(updateData).where(eq(cases.id, id)).returning()
         : [caseRecord];
@@ -573,8 +590,13 @@ export async function PUT(
         }
       }
 
-      return updated;
+      return { updated, rejectionMessage };
     });
+
+    if (rejectionMessage) {
+      await markCaseChatRead(id, profile.id);
+      await announceChatMessage(updatedCase[0], rejectionMessage, profile.fullName);
+    }
 
     // Dispatch Notifications after successful DB update
     if (updatedCase.length > 0) {

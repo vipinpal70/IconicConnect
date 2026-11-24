@@ -60,6 +60,17 @@ export const caseCleanupQueue = new Queue('case-cleanup', {
   },
 });
 
+/** Case chat follow-ups: delayed emails and attachment cleanup (chat-jobs.ts). */
+export const chatQueue = new Queue('chat', {
+  connection: connection as any,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: { age: 3600, count: 1000 },
+    removeOnFail: { age: 7 * 24 * 3600 },
+  },
+});
+
 /** Scheduled housekeeping (audit-log retention, analytics rollup refresh). */
 export const maintenanceQueue = new Queue('maintenance', {
   connection: connection as any,

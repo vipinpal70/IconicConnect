@@ -571,7 +571,10 @@ export async function GET(req: NextRequest) {
       ? null
       : await getCachedData<{ data: unknown[]; hasMore: boolean }>(casesCacheKey)
     if (cachedCases) {
-      return NextResponse.json(cachedCases, {
+      // The cached page is shared by everyone in the lab / on staff, but chat badges belong to one person
+      const rows = cachedCases.data as Array<{ id: string }>
+      const chat = await getCasesChatMetadata(rows.map((r) => r.id), profile.id)
+      return NextResponse.json({ ...cachedCases, data: rows.map((r) => ({ ...r, ...chat.get(r.id) })) }, {
         headers: { 'Server-Timing': `profile;dur=${Math.round(tProfile - t0)}, cache;dur=${Math.round(performance.now() - tProfile)}, hit;desc="redis"` },
       })
     }

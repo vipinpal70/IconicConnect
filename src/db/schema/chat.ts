@@ -8,6 +8,9 @@ export const chatMessages = pgTable('chat_messages', {
   senderId: uuid('sender_id').references(() => profiles.id, { onDelete: 'restrict' }).notNull(),
   senderRole: userRoleEnum('sender_role').notNull(), // snapshot at send time; name is joined from profiles
   messageText: text('message_text').default('').notNull(),
+  editedAt: timestamp('edited_at', { withTimezone: true }),
+  /** Set when the sender deleted it; the text is erased (DB check), the row stays as a placeholder. */
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

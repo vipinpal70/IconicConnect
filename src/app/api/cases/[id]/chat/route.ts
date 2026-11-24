@@ -7,10 +7,10 @@ import { profiles } from '@/src/db/schema/profile';
 import { cases } from '@/src/db/schema/case';
 import { and, desc, eq } from 'drizzle-orm';
 import { createClient } from '@/src/lib/auth/server';
-import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifications } from '@/src/db/schema/notification';
-import { canAccessCaseChat, markCaseChatRead, resolveCaseChatParticipantIds } from '@/src/lib/chat';
+import { canAccessCaseChat, markCaseChatRead } from '@/src/lib/chat';
+import { announceChatMessage } from '@/src/lib/queue/chat-jobs';
 
 export async function GET(
   req: NextRequest,
@@ -43,7 +43,7 @@ export async function GET(
     }
 
     // Load messages sorted by createdAt descending (latest first)
-    const messages = await loadChatMessages(caseId);
+    const messages = await loadChatMessages(caseId, { id: profile.id, chatLocked: caseRecord.status === 'client_reject' });
 
     await markCaseChatRead(caseId, profile.id);
     await db
@@ -134,29 +134,10 @@ export async function POST(
 
     await markCaseChatRead(caseId, profile.id);
 
-    // Trigger notifications for all case chat participants except the sender.
-    try {
-      const targetUserIds = (await resolveCaseChatParticipantIds(caseRecord))
-        .filter((targetUserId) => targetUserId !== profile.id);
+    // Everyone else on the case: in-app now; email once the message can no longer be edited or deleted.
+    await announceChatMessage(caseRecord, newMessage, profile.fullName);
 
-      await Promise.allSettled(targetUserIds.map((targetUserId) =>
-        NotificationService.dispatch({
-          type: NotificationType.CHAT_MESSAGE,
-          actorUserId: profile.id,
-          targetUserId,
-          entityId: newMessage.id,
-          entityType: 'chat',
-          title: `New Message on Case ${caseRecord.caseNumber || 'Update'}`,
-          message: `${profile.fullName || 'User'}: ${messageText?.trim() || 'Sent an attachment'}`,
-          link: `/cases/${caseId}`,
-          metadata: { caseId, messageId: newMessage.id },
-        })
-      ));
-    } catch (e) {
-      console.error('[ChatNotificationTrigger] Error resolving target participants:', e);
-    }
-
-    return NextResponse.json({ data: toChatPayload(newMessage, profile.fullName || 'User', attachment ?? null) });
+    return NextResponse.json({ data: toChatPayload(newMessage, profile.fullName || 'User', attachment ?? null, { id: profile.id, chatLocked: false }, 0) });
   } catch (error: unknown) {
     console.error('Post chat message error:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 });

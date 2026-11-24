@@ -5,6 +5,8 @@ import { ClientSidebar } from "@/src/components/ClientSidebar";
 import { Bell } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/src/lib/utils";
 import { useState } from "react";
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges";
 import { SequentialPrefetcher, type PrefetchTask } from "@/src/components/SequentialPrefetcher";
@@ -28,6 +30,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
   // Shares the sidebar's single /api/sidebar-badges poll instead of running a second one.
   const { badges } = useSidebarBadges();
   const hasUnread = Boolean(badges.notifications);
+  const pathname = usePathname();
   const prefetchTasks = useState(clientPrefetchTasks)[0];
 
   return (
@@ -49,7 +52,9 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-4 bg-background">
+          {/* Room at the end of the page for the floating support button, so it never covers the last controls
+              (e.g. the case chat's Send). The Support page has no floating button. */}
+          <main className={cn("flex-1 overflow-auto p-4 bg-background", !pathname?.startsWith("/client/support") && "pb-24")}>
             {children}
           </main>
         </div>

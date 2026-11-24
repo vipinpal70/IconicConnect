@@ -1940,7 +1940,13 @@ export default function AdminCasesPage() {
 			</div>
 
 			<Dialog open={!!openCase} onOpenChange={(o) => !o && setOpenCase(null)}>
-				<DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto text-xs">
+				<DialogContent
+					className="sm:max-w-3xl max-h-[90vh] overflow-y-auto text-xs"
+					// Esc while editing a chat message cancels the edit, not the whole dialog
+					onEscapeKeyDown={(e) => {
+						if ((e.target as HTMLElement | null)?.closest?.("[data-chat-editor]")) e.preventDefault()
+					}}
+				>
 					{openCase && (
 						<>
 							<DialogHeader>

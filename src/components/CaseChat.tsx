@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
-import { Send, Paperclip, FileText, Loader2, Download } from "lucide-react"
+import { CaseChatEditor, CaseChatMessageActions } from "@/src/components/CaseChatMessageActions"
+import { Send, Paperclip, FileText, Loader2, Download, Ban } from "lucide-react"
 import { cn } from "@/src/lib/utils"
 import { toast } from "sonner"
 
@@ -20,6 +21,14 @@ interface ChatMessage {
   fileType?: string | null
   fileSize?: string | null
   createdAt: string
+  editedAt?: string | null
+  deleted?: boolean
+  /** The viewer may edit / delete this message for `msLeft` more milliseconds (measured by the server). */
+  canEdit?: boolean
+  canDelete?: boolean
+  msLeft?: number
+  /** When that ends on this computer's clock: set when the message is received. */
+  deadline?: number
 }
 
 interface Props {
@@ -40,25 +49,39 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
   const [sending, setSending] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
 
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  // Bumped by every change, so a poll that started before an edit can't bring the old text back
+  const versionRef = useRef(0)
 
   // Reset state when the caseId prop changes — useEffect avoids the render-time setState anti-pattern
   useEffect(() => {
+    versionRef.current++
     setMessages(null)
     setForbidden(false)
+    setEditingId(null)
   }, [caseId])
 
   // 1. Fetch case messages
   const fetchMessages = useCallback(async () => {
+    const version = versionRef.current
     try {
       const res = await fetch(`/api/cases/${caseId}/chat`)
+      if (version !== versionRef.current) return
       if (res.status === 403) {
         setForbidden(true)
         return
       }
       if (!res.ok) throw new Error("Failed to load chat messages")
       const json = await res.json()
-      setMessages(json.data || [])
+      if (version !== versionRef.current) return
+      const receivedAt = Date.now()
+      setNow(receivedAt)
+      setMessages(((json.data || []) as ChatMessage[]).map((m) => ({ ...m, deadline: receivedAt + (m.msLeft ?? 0) })))
     } catch {
       toast.error("Failed to load messages")
     }
@@ -78,12 +101,65 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
     }
   }, [caseId, fetchMessages, forbidden])
 
-  // Scroll to bottom of the chat container whenever messages load or change
+  // Scroll to the bottom when a new message arrives (not on every refresh: that would pull the view away
+  // from a message being edited)
+  const newestId = messages?.[0]?.id
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
     }
-  }, [messages])
+  }, [newestId])
+
+  // Count down only while one of the viewer's messages can still be changed
+  const lastDeadline = Math.max(0, ...(messages ?? []).filter((m) => m.canDelete).map((m) => m.deadline ?? 0))
+  useEffect(() => {
+    if (lastDeadline <= Date.now()) return
+    const t = setInterval(() => {
+      setNow(Date.now())
+      if (Date.now() >= lastDeadline) clearInterval(t)
+    }, 1000)
+    return () => clearInterval(t)
+  }, [lastDeadline])
+
+  /** Edit or delete one of the viewer's messages. Resolves true when the server accepted it. */
+  const changeMessage = async (messageId: string, init: RequestInit): Promise<boolean> => {
+    setBusyId(messageId)
+    versionRef.current++
+    try {
+      const res = await fetch(`/api/cases/${caseId}/chat/${messageId}`, init)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to change the message")
+      }
+      return true
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to change the message")
+      return false
+    } finally {
+      versionRef.current++
+      await fetchMessages()
+      setBusyId(null)
+    }
+  }
+
+  const saveEdit = async (messageId: string, messageText: string) => {
+    const saved = await changeMessage(messageId, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageText }),
+    })
+    // On failure the editor stays open, so what was typed isn't lost
+    if (saved) closeEditor()
+  }
+
+  const closeEditor = () => {
+    setEditingId(null)
+    inputRef.current?.focus()
+  }
+
+  const deleteMessage = async (messageId: string) => {
+    if (await changeMessage(messageId, { method: "DELETE" })) inputRef.current?.focus()
+  }
 
   // 2. Format file sizes nicely
   const formatSize = (bytesStr?: string | null) => {
@@ -266,6 +342,8 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
             {sortedMessages.map((m) => {
               const isAdminColumn = ["admin", "qc", "designer", "account_manager"].includes(m.senderRole)
               const alignment = isAdminColumn ? "justify-end" : "justify-start"
+              const timeLeft = m.canDelete ? Math.max(0, (m.deadline ?? 0) - now) : 0
+              const isEditing = editingId === m.id && !m.deleted
 
               return (
                 <div key={m.id} className={cn("flex w-full", alignment)}>
@@ -284,7 +362,22 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
                       </span>
                     </div>
 
-                    <p className="text-xs leading-normal whitespace-pre-wrap wrap-break-words">{m.messageText}</p>
+                    {m.deleted ? (
+                      <p className="flex items-center gap-1.5 text-xs italic opacity-75">
+                        <Ban className="h-3 w-3 shrink-0" aria-hidden />
+                        This message was deleted
+                      </p>
+                    ) : isEditing ? (
+                      <CaseChatEditor
+                        initialText={m.messageText}
+                        timeLeft={timeLeft}
+                        saving={busyId === m.id}
+                        onSave={(value) => saveEdit(m.id, value)}
+                        onCancel={closeEditor}
+                      />
+                    ) : (
+                      <p className="text-xs leading-normal whitespace-pre-wrap wrap-break-words">{m.messageText}</p>
+                    )}
 
                     {renderFilePreview(m)}
 
@@ -292,8 +385,19 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
                       "block text-[8px] mt-1 text-right",
                       isAdminColumn ? "text-zinc-300" : "text-muted-foreground"
                     )}>
+                      {m.editedAt && !m.deleted && <span className="mr-1 italic">(edited)</span>}
                       {new Date(m.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
+
+                    {timeLeft > 0 && !isEditing && (
+                      <CaseChatMessageActions
+                        canEdit={Boolean(m.canEdit)}
+                        timeLeft={timeLeft}
+                        busy={busyId === m.id}
+                        onEdit={() => setEditingId(m.id)}
+                        onDelete={() => deleteMessage(m.id)}
+                      />
+                    )}
                   </div>
                 </div>
               )
@@ -342,6 +446,8 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
           </Button>
 
           <Input
+            ref={inputRef}
+            aria-label="Message"
             placeholder="Type a message…"
             value={text}
             disabled={uploading || sending}

@@ -1,8 +1,9 @@
-import { and, eq, gte, inArray, ne, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, max, ne, sql } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat'
 import { profiles, type Profile } from '@/src/db/schema/profile'
+import { NotificationType, type NotificationEventPayload } from '@/src/lib/notifications/notification-events'
 
 type CaseAccessRecord = typeof cases.$inferSelect
 
@@ -45,6 +46,30 @@ export async function resolveCaseChatParticipantIds(caseRecord: CaseAccessRecord
   return Array.from(participantIds)
 }
 
+/** What a chat notification says. Also used to refresh it when the message is edited. */
+export const chatNotificationText = (senderName: string | null, text: string) =>
+  `${senderName || 'User'}: ${text || 'Sent an attachment'}`
+
+/** One notification per person on the case except the sender. */
+export async function chatNotificationPayloads(
+  caseRecord: CaseAccessRecord,
+  message: Pick<typeof chatMessages.$inferSelect, 'id' | 'senderId' | 'messageText'>,
+  senderName: string | null,
+): Promise<NotificationEventPayload[]> {
+  const targets = (await resolveCaseChatParticipantIds(caseRecord)).filter((id) => id !== message.senderId)
+  return targets.map((targetUserId) => ({
+    type: NotificationType.CHAT_MESSAGE,
+    actorUserId: message.senderId,
+    targetUserId,
+    entityId: message.id,
+    entityType: 'chat',
+    title: `New Message on Case ${caseRecord.caseNumber || 'Update'}`,
+    message: chatNotificationText(senderName, message.messageText),
+    link: `/cases/${caseRecord.id}`,
+    metadata: { caseId: caseRecord.id, messageId: message.id },
+  }))
+}
+
 export async function getCasesChatMetadata(caseIds: string[], userId: string) {
   const metadata = new Map<string, CaseChatMetadata>()
 
@@ -69,18 +94,21 @@ export async function getCasesChatMetadata(caseIds: string[], userId: string) {
       .from(chatMessages)
       .where(and(
         inArray(chatMessages.caseId, caseIds),
-        gte(chatMessages.createdAt, todayStart)
+        gte(chatMessages.createdAt, todayStart),
+        isNull(chatMessages.deletedAt)
       ))
       .groupBy(chatMessages.caseId),
     db
       .select({
         caseId: chatMessages.caseId,
-        maxCreatedAt: sql<Date>`max(${chatMessages.createdAt})`,
+        // max(), not raw sql: raw results are strings, and `string > Date` is always false
+        maxCreatedAt: max(chatMessages.createdAt),
       })
       .from(chatMessages)
       .where(and(
         inArray(chatMessages.caseId, caseIds),
-        ne(chatMessages.senderId, userId)
+        ne(chatMessages.senderId, userId),
+        isNull(chatMessages.deletedAt)
       ))
       .groupBy(chatMessages.caseId),
     db

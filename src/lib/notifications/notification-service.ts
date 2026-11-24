@@ -37,8 +37,13 @@ export class NotificationService {
    * enqueues, regardless of recipient count — the old per-recipient path ran ~4 queries each, concurrently,
    * which saturated the 3-connection pool whenever a case was submitted to many staff.
    * Recipients with no preference row are treated as all-enabled (the schema defaults) without writing one.
+   * `channelsAllowed` limits where this call may deliver (case chat sends in-app at once and email later).
    */
-  static async dispatchMany(payloads: NotificationEventPayload[]): Promise<{ success: boolean; channels: string[] }[]> {
+  static async dispatchMany(
+    payloads: NotificationEventPayload[],
+    channelsAllowed: { inApp?: boolean; email?: boolean } = {},
+  ): Promise<{ success: boolean; channels: string[] }[]> {
+    const { inApp: inAppAllowed = true, email: emailAllowed = true } = channelsAllowed;
     const valid = payloads.map((p) => Boolean(p.type && p.actorUserId && p.targetUserId && p.title && p.message));
     const items = payloads.filter((_, i) => valid[i]);
     if (items.length === 0) return payloads.map(() => ({ success: false, channels: [] }));
@@ -64,7 +69,7 @@ export class NotificationService {
       const channels: string[] = [];
       outcomes.set(payload, { success: true, channels });
 
-      if (prefs.inAppEnabled && this.isEventEnabledForInApp(payload.type, prefs)) {
+      if (inAppAllowed && prefs.inAppEnabled && this.isEventEnabledForInApp(payload.type, prefs)) {
         inserts.push({
           userId: payload.targetUserId,
           type: payload.type,
@@ -78,7 +83,7 @@ export class NotificationService {
         channels.push('in-app');
       }
       const email = emailById.get(payload.targetUserId);
-      if (email && prefs.emailEnabled && this.isEventEnabledForEmail(payload.type, prefs)) {
+      if (emailAllowed && email && prefs.emailEnabled && this.isEventEnabledForEmail(payload.type, prefs)) {
         emails.push({ payload, to: email });
       }
     }
@@ -113,8 +118,8 @@ export class NotificationService {
    * Drop the cached unread count and first notification page for these users in a single DEL, so a new
    * notification shows on the next poll instead of after the cache TTL. (Other list pages age out in 60s.)
    */
-  private static async invalidateUnreadCaches(userIds: string[]) {
-    if (connection.status !== 'ready') return;
+  static async invalidateUnreadCaches(userIds: string[]) {
+    if (userIds.length === 0 || connection.status !== 'ready') return;
     try {
       const keys = Array.from(new Set(userIds)).flatMap((id) => [
         `notifications:${id}:unread`,
