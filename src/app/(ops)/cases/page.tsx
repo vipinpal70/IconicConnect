@@ -1,5 +1,6 @@
 "use client"
 
+import { useVisibleInterval } from "@/src/hooks/useVisibleInterval";
 import { useMemo, useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { HOLD_REASONS, canAdminCancelCase } from "@/src/lib/case-utils";
@@ -462,12 +463,9 @@ export default function CasesPage() {
   useEffect(() => {
     loadedPagesRef.current = 1;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
-    const intervalId = window.setInterval(() => { void refreshFirstPage(); }, 30_000);
-    return () => {
-      window.clearTimeout(timeoutId);
-      window.clearInterval(intervalId);
-    };
+    return () => window.clearTimeout(timeoutId);
   }, []);
+  useVisibleInterval(() => { void refreshFirstPage(); }, 30_000);
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);

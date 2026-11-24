@@ -1,5 +1,6 @@
 "use client";
 
+import { useVisibleInterval } from "@/src/hooks/useVisibleInterval";
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -410,12 +411,7 @@ export default function AdminCasesPage() {
 	// and merges it into the query cache — updating existing rows in place and
 	// prepending brand-new ones, leaving pages loaded via "Load more" as-is.
 	const queryClient = useQueryClient();
-	useEffect(() => {
-		// With filters applied the list is a filtered result set — the
-		// "newest 50" merge below doesn't apply, so pause it and let the
-		// query's own staleTime refetch handle freshness.
-		if (filtersActive) return;
-		const intervalId = window.setInterval(async () => {
+	const refreshFirstPage = async () => {
 			try {
 				const res = await fetch(`/api/cases?limit=${CASES_PAGE_SIZE}&page=1`);
 				if (!res.ok) return;
@@ -444,9 +440,11 @@ export default function AdminCasesPage() {
 			} catch (err) {
 				console.error("Error refreshing cases:", err);
 			}
-		}, 30_000);
-		return () => window.clearInterval(intervalId);
-	}, [queryClient, filtersActive, fetchFiltersKey]);
+	};
+	// With filters applied the list is a filtered result set — the "newest 50"
+	// merge above doesn't apply, so pause it and let the query's own staleTime
+	// refetch handle freshness. Hidden tabs don't refresh.
+	useVisibleInterval(() => { void refreshFirstPage(); }, 30_000, !filtersActive);
 
 	const data = useMemo(
 		() => ({ data: (casesPages?.pages ?? []).flatMap((p) => p.data) }),

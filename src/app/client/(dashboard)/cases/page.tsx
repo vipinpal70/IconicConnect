@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 "use client";
 
+import { useVisibleInterval } from "@/src/hooks/useVisibleInterval";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { createClient } from "@/src/lib/auth/client";
 import { Card, CardContent } from "@/src/components/ui/card";
@@ -402,9 +403,9 @@ export default function CasesPage() {
   useEffect(() => {
     loadedPagesRef.current = 1;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
-    const intervalId = window.setInterval(() => { void refreshFirstPage(); }, 30_000);
-    return () => { window.clearTimeout(timeoutId); window.clearInterval(intervalId); };
+    return () => window.clearTimeout(timeoutId);
   }, []);
+  useVisibleInterval(() => { void refreshFirstPage(); }, 30_000);
 
   // Which individual services (category/sub-type) this client has enabled —
   // admin can disable one independently. null means "not fetched yet, don't filter".

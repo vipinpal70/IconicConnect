@@ -115,7 +115,7 @@ export class NotificationService {
   }
 
   /**
-   * Drop the cached unread count and first notification page for these users in a single DEL, so a new
+   * Drop the cached unread count, sidebar dots and first notification page for these users in a single DEL, so a new
    * notification shows on the next poll instead of after the cache TTL. (Other list pages age out in 60s.)
    */
   static async invalidateUnreadCaches(userIds: string[]) {
@@ -124,6 +124,7 @@ export class NotificationService {
       const keys = Array.from(new Set(userIds)).flatMap((id) => [
         `notifications:${id}:unread`,
         `notifications:${id}:list:20:0`,
+        `sidebar-badges:${id}`,
       ]);
       await connection.del(...keys);
     } catch (err) {

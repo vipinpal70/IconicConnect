@@ -5,6 +5,7 @@ import { profiles } from '../../db/schema/profile'
 import { eq, and, lte, isNotNull, isNull } from 'drizzle-orm'
 import { NotificationService } from '../notifications/notification-service'
 import { NotificationType } from '../notifications/notification-events'
+import { deleteCachedData, invalidateCasesCache } from '../redis-cache'
 
 const AUTO_APPROVE_DAYS = 7
 
@@ -57,6 +58,9 @@ export async function runAutoApprove() {
           updatedAt: new Date(),
         })
         .where(eq(cases.id, c.id))
+
+      // Lists, dashboards (cached for an hour) and the case page, as for any other case change
+      await Promise.all([invalidateCasesCache(c.clientId), deleteCachedData(`case:detail:${c.id}`)])
 
       console.log(`[AutoApprove] Auto-approved case ${c.caseNumber} (${c.id})`)
 

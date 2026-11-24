@@ -594,7 +594,7 @@ export async function PUT(
     });
 
     if (rejectionMessage) {
-      await markCaseChatRead(id, profile.id);
+      await markCaseChatRead(id, profile.id, rejectionMessage.id);
       await announceChatMessage(updatedCase[0], rejectionMessage, profile.fullName);
     }
 

@@ -66,7 +66,7 @@ export function AppSidebar() {
     if (item?.badgeKey) {
       markSeen(item.badgeKey)
     }
-  }, [pathname, markSeen])
+  }, [pathname, markSeen, badges])
 
   const handleLogout = async () => {
     if (loggingOut) return;

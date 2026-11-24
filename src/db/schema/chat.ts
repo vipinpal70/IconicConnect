@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { pgTable, uuid, text, timestamp, primaryKey } from 'drizzle-orm/pg-core'
 import { cases } from './case'
 import { profiles, userRoleEnum } from './profile'
@@ -12,6 +13,8 @@ export const chatMessages = pgTable('chat_messages', {
   /** Set when the sender deleted it; the text is erased (DB check), the row stays as a placeholder. */
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  /** Moves on every insert, edit and delete (database default + trigger): what the chat loads by. */
+  changedAt: timestamp('changed_at', { withTimezone: true }).default(sql`clock_timestamp()`).notNull(),
 })
 
 export const chatReadStates = pgTable('chat_read_states', {

@@ -1,6 +1,8 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react"
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { useVisibleInterval } from "@/src/hooks/useVisibleInterval"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
@@ -22,6 +24,7 @@ interface ChatMessage {
   fileSize?: string | null
   createdAt: string
   editedAt?: string | null
+  mine?: boolean
   deleted?: boolean
   /** The viewer may edit / delete this message for `msLeft` more milliseconds (measured by the server). */
   canEdit?: boolean
@@ -29,6 +32,16 @@ interface ChatMessage {
   msLeft?: number
   /** When that ends on this computer's clock: set when the message is received. */
   deadline?: number
+}
+
+const POLL_MS = 8000
+
+/** Newest first; a changed message replaces the copy already shown. */
+function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  if (incoming.length === 0) return current
+  const byId = new Map(current.map((m) => [m.id, m]))
+  for (const m of incoming) byId.set(m.id, m)
+  return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
 }
 
 interface Props {
@@ -52,25 +65,37 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
   const [editingId, setEditingId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [hasOlder, setHasOlder] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const queryClient = useQueryClient()
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   // Bumped by every change, so a poll that started before an edit can't bring the old text back
   const versionRef = useRef(0)
+  // Where the next "what changed?" starts; null = load the newest page
+  const cursorRef = useRef<string | null>(null)
+  const markedRef = useRef<string | null>(null)
+  // Distance from the bottom to restore after older messages are added above
+  const keepFromBottomRef = useRef<number | null>(null)
 
   // Reset state when the caseId prop changes — useEffect avoids the render-time setState anti-pattern
   useEffect(() => {
     versionRef.current++
+    cursorRef.current = null
+    markedRef.current = null
     setMessages(null)
+    setHasOlder(false)
     setForbidden(false)
     setEditingId(null)
   }, [caseId])
 
-  // 1. Fetch case messages
+  // 1. The newest messages at first, then only what changed
   const fetchMessages = useCallback(async () => {
     const version = versionRef.current
+    const since = cursorRef.current
     try {
-      const res = await fetch(`/api/cases/${caseId}/chat`)
+      const res = await fetch(`/api/cases/${caseId}/chat${since ? `?since=${since}` : ""}`)
       if (version !== versionRef.current) return
       if (res.status === 403) {
         setForbidden(true)
@@ -80,26 +105,91 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
       const json = await res.json()
       if (version !== versionRef.current) return
       const receivedAt = Date.now()
-      setNow(receivedAt)
-      setMessages(((json.data || []) as ChatMessage[]).map((m) => ({ ...m, deadline: receivedAt + (m.msLeft ?? 0) })))
+      const incoming = ((json.data || []) as ChatMessage[]).map((m) => ({ ...m, deadline: receivedAt + (m.msLeft ?? 0) }))
+      cursorRef.current = json.cursor ?? null
+      if (json.changes) {
+        if (incoming.length === 0) return // nothing new: no re-render
+        setNow(receivedAt)
+        setMessages((current) => mergeMessages(current ?? [], incoming))
+      } else {
+        setNow(receivedAt)
+        setMessages(incoming)
+        setHasOlder(Boolean(json.hasMore))
+      }
     } catch {
-      toast.error("Failed to load messages")
+      // Once the chat is on screen, a missed refresh isn't worth a message every 8 seconds
+      if (!since) toast.error("Failed to load messages")
     }
   }, [caseId])
 
-  // Reset messages to null on caseId change to show loading skeleton
   useEffect(() => {
     if (forbidden) return
-    const t = setTimeout(() => {
-      fetchMessages()
-    }, 0)
-    // Poll for new messages every 8 seconds for a lively chat experience
-    const interval = setInterval(fetchMessages, 8000)
-    return () => {
-      clearTimeout(t)
-      clearInterval(interval)
+    const t = setTimeout(() => void fetchMessages(), 0)
+    return () => clearTimeout(t)
+  }, [fetchMessages, forbidden])
+
+  // Only while the tab is visible; at once when it is shown again
+  useVisibleInterval(() => void fetchMessages(), POLL_MS, !forbidden)
+
+  const loadOlder = async () => {
+    const oldest = messages?.[messages.length - 1]
+    if (!oldest || loadingOlder) return
+    const version = versionRef.current
+    setLoadingOlder(true)
+    try {
+      const res = await fetch(`/api/cases/${caseId}/chat?before=${oldest.id}`)
+      if (!res.ok) throw new Error()
+      const json = await res.json()
+      if (version !== versionRef.current) return
+      const box = scrollContainerRef.current
+      keepFromBottomRef.current = box ? box.scrollHeight - box.scrollTop : null
+      setMessages((current) => mergeMessages(json.data as ChatMessage[], current ?? []))
+      setHasOlder(Boolean(json.hasMore))
+    } catch {
+      toast.error("Failed to load earlier messages")
+    } finally {
+      setLoadingOlder(false)
     }
-  }, [caseId, fetchMessages, forbidden])
+  }
+
+  // Adding messages above must not move what the person is reading
+  useLayoutEffect(() => {
+    const box = scrollContainerRef.current
+    if (!box || keepFromBottomRef.current === null) return
+    box.scrollTop = box.scrollHeight - keepFromBottomRef.current
+    keepFromBottomRef.current = null
+  }, [messages])
+
+  // Seen: only while the chat is really on screen, and only when there is something newer
+  const newest = messages?.[0]
+  const newestMine = newest?.mine
+  useEffect(() => {
+    const id = newest?.id
+    if (!id || newestMine) return // sending already marks one's own message
+    const mark = () => {
+      if (document.visibilityState !== "visible" || markedRef.current === id) return
+      markedRef.current = id
+      fetch(`/api/cases/${caseId}/chat/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: id }),
+      })
+        .then(async (res) => {
+          if (!res.ok) throw new Error()
+          if ((await res.json()).notificationsRead > 0) {
+            for (const key of ["sidebar-badges", "notifications", "notifications-unread-count"]) {
+              void queryClient.invalidateQueries({ queryKey: [key] })
+            }
+          }
+        })
+        .catch(() => {
+          if (markedRef.current === id) markedRef.current = null // tried again when the tab is next shown
+        })
+    }
+    mark()
+    document.addEventListener("visibilitychange", mark)
+    return () => document.removeEventListener("visibilitychange", mark)
+  }, [caseId, newest?.id, newestMine, queryClient])
 
   // Scroll to the bottom when a new message arrives (not on every refresh: that would pull the view away
   // from a message being edited)
@@ -317,7 +407,7 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
 
   return (
     <div className={cn("flex flex-col rounded-lg border border-border bg-card overflow-hidden shadow-sm", className)}>
-      <div ref={scrollContainerRef} className={cn("flex-1 overflow-y-scroll p-3 space-y-2 bg-muted/15 flex flex-col custom-scrollbar", heightClass)}>
+      <div ref={scrollContainerRef} className={cn("shrink-0 overflow-y-scroll p-3 space-y-2 bg-muted/15 flex flex-col custom-scrollbar", heightClass)}>
         {forbidden ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-2 py-20">
             <div className="p-3 rounded-full bg-muted/50">
@@ -339,6 +429,14 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
           </p>
         ) : (
           <div className="space-y-2">
+            {hasOlder && (
+              <div className="text-center">
+                <Button variant="outline" size="sm" className="h-7 text-[11px]" disabled={loadingOlder} onClick={loadOlder}>
+                  {loadingOlder && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
+                  Load earlier messages
+                </Button>
+              </div>
+            )}
             {sortedMessages.map((m) => {
               const isAdminColumn = ["admin", "qc", "designer", "account_manager"].includes(m.senderRole)
               const alignment = isAdminColumn ? "justify-end" : "justify-start"
