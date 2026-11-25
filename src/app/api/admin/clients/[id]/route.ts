@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getEmail } from '@/src/lib/auth/auth-service'
+import { getEmail, revokeAccess } from '@/src/lib/auth/auth-service'
+import { logAuthEvent } from '@/src/lib/auth/audit'
 import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
@@ -107,6 +108,27 @@ export async function PATCH(
       .returning()
 
     await invalidateClientCaches(id)
+
+    // Sign out the owner and every sub-user: sessions remember "active" and would keep working for hours.
+    // Repeating the request is safe and revokes again.
+    let revoked: { accounts: number } | null = null
+    if (updates.status === 'inactive') {
+      try {
+        revoked = await revokeAccess(id)
+      } catch (err) {
+        console.error('[admin/clients/[id] PATCH] session revoke failed', err)
+        return NextResponse.json(
+          { error: 'The client was deactivated, but people already signed in could not be signed out. Please try again.' },
+          { status: 503 },
+        )
+      }
+    }
+    if (updates.status !== undefined && updates.status !== client.status) {
+      logAuthEvent({
+        event: 'role_changed', userId: id, actorId: auth.profile.id, email: await getEmail(id), headers: req.headers,
+        details: { changes: { status: { from: client.status, to: updates.status } }, sessionsRevoked: revoked !== null, accounts: revoked?.accounts ?? 0 },
+      })
+    }
 
     if (updates.status !== undefined) {
       await logActivity({

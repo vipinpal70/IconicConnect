@@ -44,13 +44,13 @@ export async function POST(req: NextRequest) {
     await clearLoginFailures(key)
 
     if (!result.ok) {
-      logAuthEvent({ event: 'signin_blocked', userId: result.userId, email: key, headers: req.headers, details: { status: result.status } })
+      logAuthEvent({ event: 'signin_blocked', userId: result.userId, email: key, headers: req.headers, details: { status: result.status, lab: result.lab } })
       return NextResponse.json({
         success: false,
         isBlocked: true,
         message: result.status === 'pending'
           ? 'Your account is under review. Please wait for admin approval.'
-          : `Your account is ${result.status}. Please contact support.`,
+          : `Your ${result.lab ? "lab's " : ''}account is ${result.status}. Please contact support.`,
       })
     }
 

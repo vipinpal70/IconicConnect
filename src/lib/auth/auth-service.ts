@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, or } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { db } from '@/src/db'
 import { users, profiles, type NewProfile } from '@/src/db/schema/profile'
 import { redis, guarded } from '@/src/lib/redis'
 import { hashPassword, verifyPassword } from './password-hash'
-import { createSession, destroyAllSessions } from './session'
+import { createSession, destroyAllSessions, destroySession } from './session'
 import { isUniqueViolation } from '@/src/lib/db-errors'
 
 /**
@@ -18,7 +19,24 @@ export type SignInResult =
   | { ok: true; sid: string; userId: string; role: string; status: string; clientId: string | null }
   // `why`/`userId` are for the audit log ONLY — never put them in an HTTP response (no account enumeration).
   | { ok: false; reason: 'invalid'; why: 'unknown_email' | 'bad_password'; userId: string | null }
-  | { ok: false; reason: 'blocked'; status: string; userId: string }
+  // `lab`: the account itself is fine, but the lab it belongs to isn't active
+  | { ok: false; reason: 'blocked'; status: string; lab: boolean; userId: string }
+
+const labProfile = alias(profiles, 'lab')
+
+/** Why this account may not be used right now, or null if it may. A sub-user needs an active lab too. */
+async function blockedReason(userId: string): Promise<{ status: string; lab: boolean } | null> {
+  const [row] = await db
+    .select({ status: profiles.status, role: profiles.role, labStatus: labProfile.status })
+    .from(profiles)
+    .leftJoin(labProfile, eq(labProfile.id, profiles.clientId))
+    .where(eq(profiles.id, userId))
+    .limit(1)
+  if (!row) return { status: 'deleted', lab: false }
+  if (row.status !== 'active') return { status: row.status ?? 'pending', lab: false }
+  if (row.role === 'subuser' && row.labStatus !== 'active') return { status: row.labStatus ?? 'inactive', lab: true }
+  return null
+}
 
 /** One indexed read (users ⨝ profiles by PK) → verify → one Redis write. */
 export async function signIn(emailRaw: string, password: string): Promise<SignInResult> {
@@ -36,7 +54,8 @@ export async function signIn(emailRaw: string, password: string): Promise<SignIn
   const verdict = await verifyPassword(password, row?.hash ?? null)
   if (!row) return { ok: false, reason: 'invalid', why: 'unknown_email', userId: null }
   if (!verdict.ok || !row.role) return { ok: false, reason: 'invalid', why: 'bad_password', userId: row.id }
-  if (row.status !== 'active') return { ok: false, reason: 'blocked', status: row.status ?? 'pending', userId: row.id }
+  const blocked = await blockedReason(row.id)
+  if (blocked) return { ok: false, reason: 'blocked', ...blocked, userId: row.id }
 
   if (verdict.needsRehash) {
     // Legacy bcrypt (migrated from Supabase) → argon2id, transparently.
@@ -46,9 +65,15 @@ export async function signIn(emailRaw: string, password: string): Promise<SignIn
   }
 
   const { sid } = await createSession({
-    userId: row.id, email: row.email, role: row.role, userType: row.userType!, clientId: row.clientId, status: row.status,
+    userId: row.id, email: row.email, role: row.role, userType: row.userType!, clientId: row.clientId, status: row.status!,
   })
-  return { ok: true, sid, userId: row.id, role: row.role, status: row.status, clientId: row.clientId }
+  // Deactivated or deleted while signing in: that revocation ran before this session existed, so undo it here
+  const nowBlocked = await blockedReason(row.id)
+  if (nowBlocked) {
+    await destroySession(sid, row.id)
+    return { ok: false, reason: 'blocked', ...nowBlocked, userId: row.id }
+  }
+  return { ok: true, sid, userId: row.id, role: row.role, status: row.status!, clientId: row.clientId }
 }
 
 export class EmailTakenError extends Error { constructor() { super('A user with this email already exists.') } }
@@ -86,6 +111,17 @@ export async function setPassword(userId: string, newPassword: string) {
     .set({ passwordHash: await hashPassword(newPassword), passwordChangedAt: new Date() })
     .where(eq(users.id, userId))
   await destroyAllSessions(userId)
+}
+
+/**
+ * Signs an account out everywhere, and for a lab everyone in it. Call after its status, role or lab changed:
+ * sessions carry those facts, so without this they stay valid until they expire (7 hours).
+ */
+export async function revokeAccess(userId: string): Promise<{ accounts: number }> {
+  const people = await db.select({ id: profiles.id }).from(profiles).where(or(eq(profiles.id, userId), eq(profiles.clientId, userId)))
+  const ids = new Set([userId, ...people.map((p) => p.id)])
+  await Promise.all([...ids].map((id) => destroyAllSessions(id)))
+  return { accounts: ids.size }
 }
 
 /** Profile is removed by ON DELETE CASCADE. */

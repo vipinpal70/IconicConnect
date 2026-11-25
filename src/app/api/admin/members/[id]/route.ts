@@ -1,10 +1,9 @@
 import { logAuthEvent } from '@/src/lib/auth/audit';
 import { NextRequest, NextResponse } from 'next/server';
-import { getEmail } from '@/src/lib/auth/auth-service'
+import { getEmail, revokeAccess } from '@/src/lib/auth/auth-service'
 import { db } from '@/src/db';
 import { profiles } from '@/src/db/schema/profile';
 import { deleteUser } from '@/src/lib/auth/auth-service';
-import { destroyAllSessions } from '@/src/lib/auth/session';
 import { createClient } from '@/src/lib/auth/server';
 import { eq } from 'drizzle-orm';
 import { logActivity } from '@/src/lib/activity-log';
@@ -94,7 +93,8 @@ export async function PATCH(
     const body = await req.json();
     const { fullName, role, status, phone, title, userType } = body;
     const parsedPhone = parseStoredPhone(phone)
-    const phoneError = validateNationalPhone(parsedPhone.countryCode, parsedPhone.nationalNumber)
+    // Only when a phone is sent: the team page's on/off switch sends just the status
+    const phoneError = phone === undefined ? null : validateNationalPhone(parsedPhone.countryCode, parsedPhone.nationalNumber)
 
     if (phoneError) {
       return NextResponse.json({ error: phoneError }, { status: 400 })
@@ -144,7 +144,7 @@ export async function PATCH(
     // Role / status / type live in the Redis session — revoke so the change takes effect immediately
     // (a suspended or demoted user must not keep working until their 7 h session ends).
     if (updateData.role || updateData.userType || updateData.status) {
-      await destroyAllSessions(id).catch((e) => console.error('[members PATCH] session revoke failed', e));
+      await revokeAccess(id).catch((e) => console.error('[members PATCH] session revoke failed', e));
 
       // Audit only what actually changed (from -> to); a no-op PATCH is not a security event.
       const changes: Record<string, { from: string | null; to: string | null }> = {};
