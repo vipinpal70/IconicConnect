@@ -370,8 +370,20 @@ Measured again on the §3 data:
 - **Dots:** a page is marked seen only if its dot is on. The bell and Support dots are real unread counts, so visiting never clears them.
 - **Also fixed:** the chat box ignored its height and grew with the conversation; it is a 360 px scrolling box again (400 px in the admin dialog).
 
-**Changed from the plan:** the profile lookups stay. Deactivating a lab or deleting a sub-user does **not** end their sessions, and for a deleted sub-user that lookup is what refuses them. In the chat it is joined into the case query instead, so it costs nothing extra. Revoking sessions there must come before Phase 1, because the live stream relies on it (§10).
+**Changed from the plan:** the profile lookups stay, as a second check on top of the session. In the chat it is joined into the case query, so it costs nothing extra.
 
 **Tests:** 7 new database tests; 263 in total pass. Browser, production build: 15/15 for Phase 0, and the 25 earlier chat checks again.
 
 **Deploy:** run `20261126000100_chat_incremental.sql` before the new code.
+
+### Before Phase 1: losing access takes effect at once (done)
+
+The live stream relies on sessions ending (§10), so these came first:
+- **Deactivating a lab** now signs out its owner and every sub-user, on every device. If that fails, the admin is told, and repeating the request finishes the job.
+- **A sub-user of an inactive lab can't sign in.** Only the sub-user's own status was checked before.
+- **Signing in at the moment of deactivation or deletion** no longer leaves a working session.
+- **The team page's on/off switch** works again: it was refused because it sends no phone number, so staff couldn't be deactivated there.
+
+Correction: an earlier version of this section said deleting a sub-user left their sessions working. It doesn't; deletion always revoked them.
+
+Tests: `auth-revocation.integration.test.ts` (8, real Postgres and Redis; 7 of them fail on the old code).

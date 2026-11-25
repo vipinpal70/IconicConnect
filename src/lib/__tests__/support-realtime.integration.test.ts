@@ -111,7 +111,8 @@ describe.runIf(enabled)('support live events (database + Redis)', async () => {
     await service.postMessage(callers.labA, ticketId, { body: 'once', visibility: 'public', clientMsgId })
     await settle()
     expect(received.labA).toHaveLength(0)
-    expect(received.agents).toHaveLength(0)
+    // The agents channel is shared: other test files running in parallel publish there too
+    expect(received.agents.filter((e) => e.ticketId === ticketId)).toHaveLength(0)
   })
 
   it('limits open streams per user and reports agents online', async () => {
