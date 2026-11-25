@@ -19,7 +19,7 @@ import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
-import { lightStaffBadge } from '@/src/lib/live/publish';
+import { lightStaffBadge, MAX_CASE_IDS } from '@/src/lib/live/publish';
 import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
 import { getPriceListForClient, type PriceListEntryFull } from '@/src/lib/price-list';
 import { getRequiredServiceSelections } from '@/src/lib/case-hierarchy';
@@ -27,6 +27,7 @@ import { getProfileLabName } from '@/src/lib/profile-utils';
 import { resolveDuplicates, normalizeCaseFileName, type ActiveCaseKey } from '@/src/lib/case-duplicate';
 
 const CASES_LIST_TTL = 300 // 5 minutes
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Statuses before a case reaches a finished state (Approved/Delivered) or a
 // dead end (Cancelled/Client Rejected) — i.e. everything not yet 'Completed'
@@ -474,7 +475,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (clientId) {
-      await invalidateCasesCache(clientId);
+      await invalidateCasesCache(clientId, results.map((r) => r.id));
       await lightStaffBadge('cases');
     }
 
@@ -518,8 +519,15 @@ export async function GET(req: NextRequest) {
 
     // Page-based loading with no overall cap: every page is `limit` rows (default 100, which is
     // what all the cases pages request), `page` walks through the whole result set.
-    const limit = Math.max(Math.floor(Number(searchParams.get('limit')) || 100), 1);
-    const page = Math.max(Math.floor(Number(searchParams.get('page')) || 1), 1);
+    // `ids` (live updates) asks for just these rows instead: one page that holds them all.
+    const idsParam = searchParams.get('ids');
+    const ids = idsParam === null ? null : Array.from(new Set(idsParam.toLowerCase().split(',').filter(Boolean)));
+    if (ids && (ids.length === 0 || ids.length > MAX_CASE_IDS || !ids.every((id) => UUID.test(id)))) {
+      return NextResponse.json({ error: `ids must be 1 to ${MAX_CASE_IDS} case ids` }, { status: 400 });
+    }
+
+    const limit = ids ? ids.length : Math.max(Math.floor(Number(searchParams.get('limit')) || 100), 1);
+    const page = ids ? 1 : Math.max(Math.floor(Number(searchParams.get('page')) || 1), 1);
     const offset = (page - 1) * limit;
 
     // ── Server-side list filters ────────────────────────────────────────────
@@ -569,7 +577,7 @@ export async function GET(req: NextRequest) {
 
     // Filtered views bypass the list cache — one entry per filter combination
     // would flood Redis and slip past invalidateCasesCache().
-    const cachedCases = hasFilters
+    const cachedCases = hasFilters || ids
       ? null
       : await getCachedData<{ data: unknown[]; hasMore: boolean }>(casesCacheKey)
     if (cachedCases) {
@@ -632,7 +640,10 @@ export async function GET(req: NextRequest) {
       fromDate ? gte(cases.createdAt, fromDate) : undefined,
       toDate ? lte(cases.createdAt, toDate) : undefined,
     ];
-    const filterCondition = and(...filterParts);
+    const matchesFilters = and(...filterParts);
+    // With `ids`, a row is returned whether or not it matches the filters; `matching` lists those that do.
+    const filterCondition = ids ? inArray(cases.id, ids) : matchesFilters;
+    const selection = { ...caseListSelection, matchesFilters: ids && matchesFilters ? sql<boolean>`coalesce((${matchesFilters}), false)` : sql<boolean>`true` };
 
     // Rank the role-specific action status before pagination, preserving the
     // existing newest-first order within each priority group.
@@ -646,19 +657,19 @@ export async function GET(req: NextRequest) {
     let results;
 
     if (isAdmin) {
-      results = await db.select(caseListSelection).from(cases)
+      results = await db.select(selection).from(cases)
         .where(filterCondition)
         .orderBy(asc(statusPriorityOrder), desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'client') {
-      results = await db.select(caseListSelection).from(cases)
+      results = await db.select(selection).from(cases)
         .where(and(eq(cases.clientId, profile.id), filterCondition))
         .orderBy(asc(statusPriorityOrder), desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
         .offset(offset);
     } else if (profile.role === 'subuser') {
-      results = await db.select(caseListSelection).from(cases)
+      results = await db.select(selection).from(cases)
         .where(and(eq(cases.clientId, cacheClientId), filterCondition))
         .orderBy(asc(statusPriorityOrder), desc(cases.createdAt), desc(cases.id))
         .limit(fetchLimit)
@@ -724,6 +735,7 @@ export async function GET(req: NextRequest) {
 
     const mappedResults = results.map(r => stripStaffOnlyCaseFields({
       ...r,
+      matchesFilters: undefined,
       internalFilesDownloadedBy: staffDownloads.get(r.id)?.downloadedByName ?? null,
       clientOutputDownloadedBy: labDownloads.get(r.id)?.downloadedByName ?? null,
       designerName: r.designerId ? (designersMap.get(r.designerId) || null) : null,
@@ -737,6 +749,11 @@ export async function GET(req: NextRequest) {
       teethLibraryFileName: teethLibs.get(r.id)?.fileName ?? null,
       createdBy: r.createdById ? (creatorMap.get(r.createdById) ?? null) : null,
     }, profile.role));
+
+    if (ids) {
+      const matching = results.filter((r) => r.matchesFilters).map((r) => r.id);
+      return NextResponse.json({ data: mappedResults, hasMore: false, matching });
+    }
 
     const payload = { data: mappedResults, hasMore }
     if (!hasFilters) await setCachedData(casesCacheKey, payload, CASES_LIST_TTL)

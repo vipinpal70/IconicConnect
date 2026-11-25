@@ -7,7 +7,7 @@ import { createClient } from '@/src/lib/auth/server'
 import { logActivity } from '@/src/lib/activity-log'
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher'
 import { CASE_APPROVAL_CHECKLIST, normalizeCaseApprovalChecklist } from '@/src/lib/case-approval'
-import { invalidateCasesCache, deleteCachedData } from '@/src/lib/redis-cache'
+import { invalidateCasesCache } from '@/src/lib/redis-cache'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal Server Error'
@@ -115,10 +115,7 @@ export async function POST(
 
     const finalCase = updatedCase
 
-    await Promise.all([
-      invalidateCasesCache(caseRecord.clientId),
-      deleteCachedData(`case:detail:${id}`),
-    ])
+    await invalidateCasesCache(caseRecord.clientId, id)
 
     await notifyCaseStatusChanged({
       actorUserId: profile.id,

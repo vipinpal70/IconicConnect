@@ -1,6 +1,6 @@
 # Performance Optimization in Notifications: Plan
 
-**Status:** approved with the recommendations (N1–N4). **Phases 0 to 3 implemented** (see §13); Phases 4–6 to do. N5 and N6 still need answers.
+**Status:** approved with the recommendations (N1–N4). **Phases 0 to 4 implemented** (see §13); Phases 5 and 6 to do. N5 and N6 still need answers.
 
 **Branch:** `perf/live-notifications`, from `no-supabase-rewrite`.
 
@@ -445,8 +445,26 @@ It also works without this (25 s heartbeat, unbuffered by header); the location 
 - **The open chat** refreshes at once with `?since=`, one refresh at a time, and once more if something arrived meanwhile. A hidden chat loads when shown. After a lost connection it catches up.
 - **P1** polls every 5 minutes while live, every 15 s otherwise.
 - **List badges** change per row, without a request. One's own message leaves none.
-- A deleted message doesn't take the badge off lists at once; the list refresh does (Phase 4).
+- A deleted message doesn't take the badge off lists at once; since Phase 4 the list refetches that row.
 
 **Tests:** `live-chat.integration.test.ts` (7); 301 in total. Browser, two production processes: 17/17 (messages, edits and deletes in under 0.1 s; 12 messages at the same moment all shown; 40 s idle: 0 requests, 5 before), an open chat through a server restart, and Phase 1, Phase 2 and edit/delete again (18, 15, 25).
 
 **Deploy:** no migration.
+
+### Phase 4: Case lists and dashboards (done)
+
+- **The event:** `case {ids}`, sent by `invalidateCasesCache(clientId, caseIds)` to staff and to that lab, after every case write (also auto-approval, bulk output, files, downloads and deleting a lab). It clears the cached lists and the cached case first and sends the event after, so whoever asks on hearing it gets the new state. More than 50 ids, or unknown: `ids: null`, "reload". Staff downloads are announced to staff only.
+- **`GET /api/cases?ids=…`:** 1 to 50 ids, same access rules and fields as the list, never cached. With filters it also says which of the rows match (`matching`).
+- **Lists (P3–P5):** changed rows are fetched on their own, grouped: after 0–3 s, at most every 10 s per tab. New cases go to their place, waiting ones to the top, rows no longer returned disappear. A longer list reloads its loaded pages when a row leaves them, so that "Load more" skips none. The open case window of the admin list follows.
+- **Filtered lists** change in place only; a new match shows "Updates available" with a Refresh button. Rows that stop matching a status filter are hidden, as before.
+- **Case page:** refetches after 0.3–1.3 s. A refresh that fails leaves the page (it used to replace it by the error); a deleted case says so.
+- **Dashboards (P6–P8):** refresh 0–3 s after a change, then at most every 30 s.
+- **While live**, lists and dashboards poll every 5 minutes (filtered lists not at all); otherwise every 60 s, visible tabs only.
+
+**Decided while building:**
+- **The ops dashboard refreshes all 5 sections on a case change**, because nearly every change touches most of them and their answers are cached on the server. "Only if changed" holds for time without changes: no requests at all.
+- **Deleting a lab** now also clears the cached staff lists; its cases stayed on them for up to 5 minutes.
+
+**Tests:** `live-cases.integration.test.ts` (13) and `case-rows.test.ts` (9); 323 in total. Browser, two production processes: 29/29 (a change reaches three roles' lists in 4–8 s with one request each; 30 changes cost 4 list requests per tab; 65 s idle: 0 requests, 2 per tab before; case page in 0.9 s; server restart; kill switch), and the Phase 1, 2, 3 and edit/delete checks again (18, 15, 17, 25).
+
+**Deploy:** no migration. Restart the worker and the auto-approve scheduler too: they send case events.

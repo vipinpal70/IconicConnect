@@ -15,7 +15,7 @@ import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
-import { invalidateCasesCache, deleteCachedData } from '@/src/lib/redis-cache';
+import { invalidateCasesCache } from '@/src/lib/redis-cache';
 import { getProfileLabName } from '@/src/lib/profile-utils';
 import { BULK_UPLOAD_ROLES, BULK_ELIGIBLE_STATUS, bulkAttachDenialReason } from '@/src/lib/bulk-output-eligibility';
 import { matchFileToCase, needsNameOverride } from '@/src/lib/bulk-output-matching';
@@ -305,10 +305,7 @@ export async function POST(req: NextRequest) {
           }).catch((err) => console.error('[BulkConfirm] QC notification failed:', err));
         }
 
-        await Promise.all([
-          invalidateCasesCache(caseRecord.clientId),
-          deleteCachedData(`case:detail:${item.caseId}`),
-        ]);
+        await invalidateCasesCache(caseRecord.clientId, item.caseId);
 
         results.push({ caseId: item.caseId, ok: true });
       } catch (err: unknown) {

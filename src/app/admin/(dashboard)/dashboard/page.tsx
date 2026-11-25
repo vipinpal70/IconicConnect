@@ -6,6 +6,7 @@ import { Inbox, ScanLine, Layers, ShieldCheck, ClipboardCheck, PauseCircle, MapP
 import { Badge } from "@/src/components/ui/badge";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { dashboardPoll, useLiveRefresh } from "@/src/hooks/useLiveRefresh";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { StatusBadge } from "@/src/components/StatusBadge";
 
@@ -21,9 +22,12 @@ export default function AdminDashboard() {
       if (!res.ok) throw new Error("Failed to fetch dashboard data");
       return res.json();
     },
-    refetchInterval: 30_000,
+    refetchInterval: dashboardPoll,
     staleTime: 20_000,
   });
+
+  // It also shows the newest clients
+  useLiveRefresh([["admin-dashboard-data"]], (type, data) => type === "badge" && data.key === "clients" && data.on === true);
 
   const counts = dashboardData?.counts || {
     received: 0,

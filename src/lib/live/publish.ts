@@ -30,6 +30,17 @@ export async function publishLive(channel: string, event: { type: string }, opts
 /** This person's sessions changed: each of their streams checks whether its own is still valid. */
 export const publishSessionCheck = (userId: string) => publishLive(userChannel(userId), { type: 'session' }, { counted: false })
 
+// ── Cases ─────────────────────────────────────────────────────────────────────────────────────────
+
+/** More ids than a browser may ask for in one request (MAX_CASE_IDS): then it reloads its list instead. */
+export const MAX_CASE_IDS = 50
+
+/** Cases were added, changed or removed: every open list, dashboard and case page that shows them catches up. */
+export async function publishCaseChange(clientId: string | null, caseIds: string[]): Promise<void> {
+  const event = { type: 'case', ids: caseIds.length > 0 && caseIds.length <= MAX_CASE_IDS ? caseIds : null }
+  await Promise.all([staffChannel, ...(clientId ? [labChannel(clientId)] : [])].map((channel) => publishLive(channel, event)))
+}
+
 // ── Sidebar dots ──────────────────────────────────────────────────────────────────────────────────
 
 export type BadgeKey = 'cases' | 'clients' | 'billing' | 'offers' | 'tutorials'

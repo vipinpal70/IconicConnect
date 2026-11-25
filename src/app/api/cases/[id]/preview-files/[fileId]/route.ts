@@ -59,7 +59,7 @@ export async function DELETE(
       details: { caseNumber: caseRecord.caseNumber, fileName: deleted[0].fileName },
     }).catch((err) => console.error('[PreviewFiles] activity log failed:', err));
 
-    await invalidateCasesCache(caseRecord.clientId);
+    await invalidateCasesCache(caseRecord.clientId, id);
 
     return NextResponse.json({ data: deleted[0] });
   } catch (error: unknown) {

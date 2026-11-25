@@ -1,7 +1,8 @@
 "use client";
 
 import { useCaseChatBadges } from "@/src/hooks/useCaseChatBadges";
-import { useVisibleInterval } from "@/src/hooks/useVisibleInterval";
+import { useLiveCases } from "@/src/hooks/useLiveCases";
+import { UpdatesAvailable } from "@/src/components/UpdatesAvailable";
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -362,6 +363,7 @@ export default function AdminCasesPage() {
 		const next = override ?? snapshotFilters();
 		setAppliedFilters(next);
 		setFetchFilters(next);
+		clearUpdates();
 	};
 
 	const clearFilters = () => {
@@ -442,10 +444,42 @@ export default function AdminCasesPage() {
 				console.error("Error refreshing cases:", err);
 			}
 	};
-	// With filters applied the list is a filtered result set — the "newest 50"
-	// merge above doesn't apply, so pause it and let the query's own staleTime
-	// refetch handle freshness. Hidden tabs don't refresh.
-	useVisibleInterval(() => { void refreshFirstPage(); }, 30_000, !filtersActive);
+	const { updatesAvailable, clearUpdates } = useLiveCases<CaseRecord>({
+		rows: (casesPages?.pages ?? []).flatMap((p) => p.data),
+		url: () => buildCasesQuery(fetchFilters, CASES_PAGE_SIZE, 1),
+		priorityStatus: "change_requested",
+		filtered: filtersActive,
+		hasMore: hasNextPage ?? false,
+		change: (fn) =>
+			queryClient.setQueryData<{
+				pages: { data: CaseRecord[]; hasMore: boolean }[];
+				pageParams: number[];
+			}>(["admin-cases", fetchFiltersKey], (old) => {
+				if (!old || old.pages.length === 0) return old;
+				const rows = fn(old.pages.flatMap((p) => p.data));
+				// The same pages again; the last one takes what is left over
+				let start = 0;
+				const pages = old.pages.map((page, i) => {
+					const end = i === old.pages.length - 1 ? rows.length : start + page.data.length;
+					const part = rows.slice(start, end);
+					start = end;
+					return { ...page, data: part };
+				});
+				return { ...old, pages };
+			}),
+		reload: () => { void refetch(); },
+		// With filters applied the "newest 100" merge doesn't apply
+		refresh: () => { if (!filtersActive) void refreshFirstPage(); },
+		onFresh: (rows) =>
+			setOpenCase((open) => {
+				const row = open && rows.find((r) => r.id === open.id);
+				return row ? { ...open, ...row } : open;
+			}),
+	});
+	const refreshFiltered = () => {
+		clearUpdates();
+		void refetch();
+	};
 	useCaseChatBadges((caseId, change) => {
 		queryClient.setQueriesData<{
 			pages: { data: CaseRecord[]; hasMore: boolean }[];
@@ -1090,6 +1124,8 @@ export default function AdminCasesPage() {
 						</div>
 					</CardContent>
 				</Card>
+
+				<UpdatesAvailable show={updatesAvailable && filtersActive} busy={isFetching} onRefresh={refreshFiltered} />
 
 				<Card className="shadow-card border-border/50 overflow-hidden">
 					<CardContent className="p-0">

@@ -5,6 +5,7 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { CheckCircle2, ClipboardCheck, Timer, TrendingUp, Inbox } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { dashboardPoll, useLiveRefresh } from "@/src/hooks/useLiveRefresh";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -27,9 +28,11 @@ export default function ClientDashboard() {
       if (!res.ok) throw new Error("Failed to fetch client dashboard data");
       return res.json();
     },
-    refetchInterval: 30_000,
+    refetchInterval: dashboardPoll,
     staleTime: 20_000,
   });
+
+  useLiveRefresh([["client-dashboard-data"]]);
 
   const counts = dashboardData?.counts || {
     active: 0,

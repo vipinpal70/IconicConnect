@@ -4,7 +4,7 @@ import { db } from '@/src/db'
 import { cases } from '@/src/db/schema/case'
 import { caseBulkDownloads } from '@/src/db/schema/bulk-download'
 import { profiles } from '@/src/db/schema/profile'
-import { invalidateCasesCache, deleteCachedData } from '@/src/lib/redis-cache'
+import { invalidateCasesCache } from '@/src/lib/redis-cache'
 import type { AuthedProfile, DownloadScope, InternalInclude } from './types'
 
 /** A claim that never finished (crash / killed process) stops blocking the case after this long. */
@@ -118,10 +118,8 @@ export async function completeClaim(
       .set(info.scope === 'client_output' ? { clientOutputDownloadedAt: at } : { internalFilesDownloadedAt: at })
       .where(eq(cases.id, info.caseId))
   })
-  await Promise.all([
-    invalidateCasesCache(info.clientId).catch(() => {}),
-    deleteCachedData(`case:detail:${info.caseId}`).catch(() => {}),
-  ])
+  // What staff downloaded is not shown to labs
+  await invalidateCasesCache(info.clientId, info.caseId, { staffOnly: info.scope === 'internal_files' })
 }
 
 export async function failClaim(claimId: string, reason: string): Promise<void> {
@@ -158,10 +156,7 @@ export async function resetCaseDownloads(
       await tx.update(cases).set(s === 'client_output' ? { clientOutputDownloadedAt: null } : { internalFilesDownloadedAt: null }).where(eq(cases.id, caseId))
     }
   })
-  await Promise.all([
-    invalidateCasesCache(row.clientId).catch(() => {}),
-    deleteCachedData(`case:detail:${caseId}`).catch(() => {}),
-  ])
+  await invalidateCasesCache(row.clientId, caseId, { staffOnly: scope === 'internal_files' })
   return { clientId: row.clientId }
 }
 

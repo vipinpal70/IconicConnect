@@ -27,6 +27,7 @@ import {
 	type CaseStatus,
 } from "@/src/lib/case-status-mapping";
 import React, { useState, useRef, useEffect } from "react";
+import { invalidateLive, onLiveEvent, onLiveResync } from "@/src/lib/live/client";
 import { toast } from "sonner";
 import {
 	Dialog,
@@ -769,7 +770,10 @@ export function CaseDetailView({
 			const res = await fetch(`/api/cases/${caseId}`);
 			if (!res.ok) {
 				const err = await res.json().catch(() => ({}));
-				throw new Error(err.error || "Failed to fetch case");
+				const failure = new Error(err.error || "Failed to fetch case");
+				// No longer there, or no longer for this person to see
+				if (res.status === 403 || res.status === 404) failure.name = "CaseGone";
+				throw failure;
 			}
 			return res.json();
 		},
@@ -892,6 +896,30 @@ export function CaseDetailView({
 		setIs3DViewerModalOpen(true);
 	};
 
+	// Changes by other people show at once. A moment later, so that the activity entry of the change is there too.
+	useEffect(() => {
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const schedule = (withinMs: number) => {
+			timer ??= setTimeout(() => {
+				timer = null;
+				for (const key of ["case", "case-files", "case-hold-files", "case-preview-files", "case-reference-files"]) {
+					invalidateLive(queryClient, [key, caseId]);
+				}
+			}, 300 + Math.random() * withinMs);
+		};
+		const offs = [
+			onLiveEvent((type, data) => {
+				if (type === "case" && (!Array.isArray(data.ids) || data.ids.includes(caseId))) schedule(1_000);
+			}),
+			onLiveResync("lab", () => schedule(3_000)),
+			onLiveResync("staff", () => schedule(3_000)),
+		];
+		return () => {
+			if (timer) clearTimeout(timer);
+			offs.forEach((off) => off());
+		};
+	}, [caseId, queryClient]);
+
 	// Left/right arrow-key navigation while the reference-images carousel is open.
 	useEffect(() => {
 		if (!isReferenceImagesOpen || referenceImages.length === 0) return;
@@ -933,7 +961,8 @@ export function CaseDetailView({
 		);
 	}
 
-	if (error || !caseRecord) {
+	// A refresh in the background that merely failed leaves the page as it is
+	if (!caseRecord || (error as Error | null)?.name === "CaseGone") {
 		return shell(
 			<div className="p-10 text-center text-muted-foreground">
 				{(error as Error | undefined)?.message || "Case not found"}

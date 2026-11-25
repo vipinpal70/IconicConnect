@@ -7,6 +7,7 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { FolderOpen, CheckCircle2, PauseCircle, XCircle, ClipboardCheck, Timer, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { dashboardPoll, useLiveRefresh } from "@/src/hooks/useLiveRefresh";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line,
@@ -30,7 +31,7 @@ export default function Dashboard() {
     if (!res.ok) throw new Error(`Failed to fetch ${url}`);
     return res.json();
   };
-  const sectionOpts = { refetchInterval: 60_000, staleTime: 50_000 };
+  const sectionOpts = { refetchInterval: dashboardPoll, staleTime: 50_000 };
 
   const kpisQuery = useQuery<{ active: number; delivered: number; pending: number; hold: number; cancelled: number }>({
     queryKey: ["ops-dashboard-kpis"],
@@ -68,6 +69,10 @@ export default function Dashboard() {
     enabled: lowerEnabled,
     ...sectionOpts,
   });
+
+  useLiveRefresh([
+    ["ops-dashboard-kpis"], ["ops-dashboard-volume"], ["ops-dashboard-breakdown"], ["ops-dashboard-recent"], ["dashboard-tat"],
+  ]);
 
   const kpis = kpisQuery.data;
   const dynamicKpis = [

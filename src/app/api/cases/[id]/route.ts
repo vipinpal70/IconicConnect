@@ -17,7 +17,7 @@ import { logActivity } from '@/src/lib/activity-log';
 import { NotificationService } from '@/src/lib/notifications/notification-service';
 import { NotificationType } from '@/src/lib/notifications/notification-events';
 import { notifyCaseStatusChanged } from '@/src/lib/notifications/notification-dispatcher';
-import { invalidateCasesCache, getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache';
+import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
 import { canTransitionCaseStatus } from '@/src/lib/case-status-transitions';
 import { canCancelCase } from '@/src/lib/case-utils';
 import type { CaseStatus } from '@/src/lib/case-status-mapping';
@@ -787,10 +787,7 @@ export async function PUT(
     }
 
     if (updatedCase.length > 0) {
-      await Promise.all([
-        invalidateCasesCache(updatedCase[0].clientId),
-        deleteCachedData(`case:detail:${id}`),
-      ])
+      await invalidateCasesCache(updatedCase[0].clientId, id)
     }
 
     return NextResponse.json({ data: stripStaffOnlyCaseFields(updatedCase[0], profile.role) });
@@ -889,10 +886,7 @@ export async function DELETE(
     // enqueueCaseCleanup never throws; if Redis is down the daily orphan sweep reclaims the objects.
     void enqueueCaseCleanup({ caseId: id, caseNumber: caseRecord.caseNumber, keys });
 
-    await Promise.all([
-      invalidateCasesCache(caseRecord.clientId),
-      deleteCachedData(`case:detail:${id}`),
-    ])
+    await invalidateCasesCache(caseRecord.clientId, id)
 
     return NextResponse.json({ message: 'Case deleted successfully' });
   } catch (error: unknown) {
