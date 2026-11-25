@@ -1,6 +1,6 @@
 # Performance Optimization in Notifications: Plan
 
-**Status:** approved with the recommendations (N1–N4). **Phases 0 to 2 implemented** (see §13); Phases 3–6 to do. N5 and N6 still need answers.
+**Status:** approved with the recommendations (N1–N4). **Phases 0 to 3 implemented** (see §13); Phases 4–6 to do. N5 and N6 still need answers.
 
 **Branch:** `perf/live-notifications`, from `no-supabase-rewrite`.
 
@@ -438,3 +438,15 @@ It also works without this (25 s heartbeat, unbuffered by header); the location 
 **Tests:** `live-badges.integration.test.ts` (11, real routes, Postgres and Redis); 294 in total. Browser, two production processes: 15/15 (bell in another process and every tab at once, without a request; 95 s idle: 0 badge requests in 5 tabs, 3 per tab before), and the Phase 0, Phase 1 and chat checks again (15, 18 and 25).
 
 **Deploy:** no migration. Restart the worker and the schedulers too: they send notification events.
+
+### Phase 3: Case chat (done)
+
+- **Events:** `chat {caseId, kind}` after every message, edit and delete (and the rejection line), to the lab's channel, the staff on the case, and admins: the same people as `canAccessCaseChat`. `chat-read {caseId}` goes to one person's own devices.
+- **The open chat** refreshes at once with `?since=`, one refresh at a time, and once more if something arrived meanwhile. A hidden chat loads when shown. After a lost connection it catches up.
+- **P1** polls every 5 minutes while live, every 15 s otherwise.
+- **List badges** change per row, without a request. One's own message leaves none.
+- A deleted message doesn't take the badge off lists at once; the list refresh does (Phase 4).
+
+**Tests:** `live-chat.integration.test.ts` (7); 301 in total. Browser, two production processes: 17/17 (messages, edits and deletes in under 0.1 s; 12 messages at the same moment all shown; 40 s idle: 0 requests, 5 before), an open chat through a server restart, and Phase 1, Phase 2 and edit/delete again (18, 15, 25).
+
+**Deploy:** no migration.

@@ -4,6 +4,7 @@ import { cases } from '@/src/db/schema/case'
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat'
 import { profiles, type Profile } from '@/src/db/schema/profile'
 import { notifications } from '@/src/db/schema/notification'
+import { publishChatRead } from '@/src/lib/live/chat'
 import { notificationsChanged } from '@/src/lib/notifications/changed'
 import { NotificationType, type NotificationEventPayload } from '@/src/lib/notifications/notification-events'
 
@@ -57,8 +58,9 @@ export async function chatNotificationPayloads(
   caseRecord: CaseAccessRecord,
   message: Pick<typeof chatMessages.$inferSelect, 'id' | 'senderId' | 'messageText'>,
   senderName: string | null,
+  participantIds?: string[],
 ): Promise<NotificationEventPayload[]> {
-  const targets = (await resolveCaseChatParticipantIds(caseRecord)).filter((id) => id !== message.senderId)
+  const targets = (participantIds ?? (await resolveCaseChatParticipantIds(caseRecord))).filter((id) => id !== message.senderId)
   return targets.map((targetUserId) => ({
     type: NotificationType.CHAT_MESSAGE,
     actorUserId: message.senderId,
@@ -148,13 +150,18 @@ export async function getCasesChatMetadata(caseIds: string[], userId: string) {
   return metadata
 }
 
-/** The person has seen the chat up to this message. Never moves backwards; writes nothing when already there. */
+/**
+ * The person has seen the chat up to this message. Never moves backwards; writes nothing when already there.
+ * When it moved, the badge goes off on their other devices too.
+ */
 export async function markCaseChatRead(caseId: string, userId: string, messageId: string) {
-  await db.execute(sql`
+  const moved = await db.execute(sql`
     insert into chat_read_states (case_id, user_id, last_read_at)
     select m.case_id, ${userId}::uuid, m.created_at from chat_messages m where m.id = ${messageId}::uuid and m.case_id = ${caseId}::uuid
     on conflict (case_id, user_id) do update set last_read_at = excluded.last_read_at
-    where chat_read_states.last_read_at < excluded.last_read_at`)
+    where chat_read_states.last_read_at < excluded.last_read_at
+    returning 1`)
+  if ((moved as unknown as unknown[]).length > 0) await publishChatRead(userId, caseId)
 }
 
 /** Marks this chat's notifications read, up to a message. Returns how many changed. */

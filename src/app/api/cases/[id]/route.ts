@@ -594,8 +594,8 @@ export async function PUT(
     });
 
     if (rejectionMessage) {
-      await markCaseChatRead(id, profile.id, rejectionMessage.id);
       await announceChatMessage(updatedCase[0], rejectionMessage, profile.fullName);
+      await markCaseChatRead(id, profile.id, rejectionMessage.id);
     }
 
     // Dispatch Notifications after successful DB update

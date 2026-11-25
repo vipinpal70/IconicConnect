@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 "use client";
 
+import { useCaseChatBadges } from "@/src/hooks/useCaseChatBadges";
 import { useVisibleInterval } from "@/src/hooks/useVisibleInterval";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { createClient } from "@/src/lib/auth/client";
@@ -406,6 +407,7 @@ export default function CasesPage() {
     return () => window.clearTimeout(timeoutId);
   }, []);
   useVisibleInterval(() => { void refreshFirstPage(); }, 30_000);
+  useCaseChatBadges((caseId, change) => setCases((prev) => prev.map((c) => (c.id === caseId ? change(c) : c))));
 
   // Which individual services (category/sub-type) this client has enabled —
   // admin can disable one independently. null means "not fetched yet, don't filter".

@@ -1,5 +1,6 @@
 "use client";
 
+import { useCaseChatBadges } from "@/src/hooks/useCaseChatBadges";
 import { useVisibleInterval } from "@/src/hooks/useVisibleInterval";
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
@@ -445,6 +446,20 @@ export default function AdminCasesPage() {
 	// merge above doesn't apply, so pause it and let the query's own staleTime
 	// refetch handle freshness. Hidden tabs don't refresh.
 	useVisibleInterval(() => { void refreshFirstPage(); }, 30_000, !filtersActive);
+	useCaseChatBadges((caseId, change) => {
+		queryClient.setQueriesData<{
+			pages: { data: CaseRecord[]; hasMore: boolean }[];
+			pageParams: number[];
+		}>({ queryKey: ["admin-cases"] }, (old) =>
+			old && {
+				...old,
+				pages: old.pages.map((page) => ({
+					...page,
+					data: page.data.map((c) => (c.id === caseId ? change(c) : c)),
+				})),
+			},
+		);
+	});
 
 	const data = useMemo(
 		() => ({ data: (casesPages?.pages ?? []).flatMap((p) => p.data) }),

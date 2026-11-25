@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useVisibleInterval } from "@/src/hooks/useVisibleInterval"
+import { onLiveEvent, onLiveResync, useLiveStatus } from "@/src/lib/live/client"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
@@ -34,7 +35,10 @@ interface ChatMessage {
   deadline?: number
 }
 
-const POLL_MS = 8000
+/** Without the live connection. */
+const POLL_MS = 15_000
+/** With it: a safety net only. */
+const LIVE_POLL_MS = 5 * 60_000
 
 /** Newest first; a changed message replaces the copy already shown. */
 function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
@@ -117,19 +121,71 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
         setHasOlder(Boolean(json.hasMore))
       }
     } catch {
-      // Once the chat is on screen, a missed refresh isn't worth a message every 8 seconds
+      // Once the chat is on screen, a missed refresh isn't worth a message every time
       if (!since) toast.error("Failed to load messages")
     }
   }, [caseId])
 
+  // One refresh at a time. A change announced meanwhile may have missed the running one, so it runs once more.
+  const fetchRef = useRef(fetchMessages)
+  const runningRef = useRef<Promise<void> | null>(null)
+  const againRef = useRef(false)
+  useEffect(() => {
+    fetchRef.current = fetchMessages
+  }, [fetchMessages])
+  const refresh = useCallback((): Promise<void> => {
+    if (runningRef.current) {
+      againRef.current = true
+      return runningRef.current
+    }
+    const run = (async () => {
+      do {
+        againRef.current = false
+        await fetchRef.current() // always the chat on screen, even if another case was opened meanwhile
+      } while (againRef.current)
+    })().finally(() => {
+      runningRef.current = null
+    })
+    runningRef.current = run
+    return run
+  }, [])
+
   useEffect(() => {
     if (forbidden) return
-    const t = setTimeout(() => void fetchMessages(), 0)
+    const t = setTimeout(() => void refresh(), 0)
     return () => clearTimeout(t)
-  }, [fetchMessages, forbidden])
+  }, [fetchMessages, forbidden, refresh])
 
-  // Only while the tab is visible; at once when it is shown again
-  useVisibleInterval(() => void fetchMessages(), POLL_MS, !forbidden)
+  // Live: at once when this chat changed. A hidden tab remembers it and loads when shown.
+  const live = useLiveStatus() === "live"
+  useEffect(() => {
+    if (forbidden) return
+    let missed = false
+    const changed = () => {
+      if (document.visibilityState === "visible") void refresh()
+      else missed = true
+    }
+    const shown = () => {
+      if (!missed || document.visibilityState !== "visible") return
+      missed = false
+      void refresh()
+    }
+    const offs = [
+      onLiveEvent((type, data) => {
+        if (type === "chat" && data.caseId === caseId) changed()
+      }),
+      // Events may have been missed while the connection was down
+      onLiveResync("lab", changed),
+      onLiveResync("user", changed),
+    ]
+    document.addEventListener("visibilitychange", shown)
+    return () => {
+      offs.forEach((off) => off())
+      document.removeEventListener("visibilitychange", shown)
+    }
+  }, [caseId, forbidden, refresh])
+
+  useVisibleInterval(() => void refresh(), live ? LIVE_POLL_MS : POLL_MS, !forbidden)
 
   const loadOlder = async () => {
     const oldest = messages?.[messages.length - 1]
@@ -160,6 +216,11 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
     keepFromBottomRef.current = null
   }, [messages])
 
+  const liveRef = useRef(live)
+  useEffect(() => {
+    liveRef.current = live
+  }, [live])
+
   // Seen: only while the chat is really on screen, and only when there is something newer
   const newest = messages?.[0]
   const newestMine = newest?.mine
@@ -176,7 +237,8 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
       })
         .then(async (res) => {
           if (!res.ok) throw new Error()
-          if ((await res.json()).notificationsRead > 0) {
+          // While live, the bell hears about it by itself
+          if ((await res.json()).notificationsRead > 0 && !liveRef.current) {
             for (const key of ["sidebar-badges", "notifications", "notifications-unread-count"]) {
               void queryClient.invalidateQueries({ queryKey: [key] })
             }
@@ -227,7 +289,7 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
       return false
     } finally {
       versionRef.current++
-      await fetchMessages()
+      await refresh()
       setBusyId(null)
     }
   }
@@ -278,7 +340,7 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
         throw new Error(err.error || "Failed to send message")
       }
       setText("")
-      await fetchMessages()
+      await refresh()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to send message")
     } finally {
@@ -337,7 +399,7 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
 
           if (linkRes.ok) {
             toast.success("Attachment sent successfully!")
-            await fetchMessages()
+            await refresh()
           } else {
             const err = await linkRes.json()
             toast.error(err.error || "Failed to attach file to message")

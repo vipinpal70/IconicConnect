@@ -127,10 +127,10 @@ export async function POST(
       return { newMessage, attachment };
     });
 
-    await markCaseChatRead(caseId, profile.id, newMessage.id);
-
-    // Everyone else on the case: in-app now; email once the message can no longer be edited or deleted.
+    // Everyone on the case: open chats and the bell now; email once the message can no longer be edited or deleted.
     await announceChatMessage(caseRecord, newMessage, profile.fullName);
+    // After it, so that the sender's own lists end up without a badge
+    await markCaseChatRead(caseId, profile.id, newMessage.id);
 
     return NextResponse.json({ data: toChatPayload(newMessage, profile.fullName || 'User', attachment ?? null, { id: profile.id, chatLocked: false }, 0) });
   } catch (error: unknown) {

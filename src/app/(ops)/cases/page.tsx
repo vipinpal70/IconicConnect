@@ -1,5 +1,6 @@
 "use client"
 
+import { useCaseChatBadges } from "@/src/hooks/useCaseChatBadges";
 import { useVisibleInterval } from "@/src/hooks/useVisibleInterval";
 import { useMemo, useState, useRef, useEffect } from "react";
 import Link from "next/link";
@@ -466,6 +467,7 @@ export default function CasesPage() {
     return () => window.clearTimeout(timeoutId);
   }, []);
   useVisibleInterval(() => { void refreshFirstPage(); }, 30_000);
+  useCaseChatBadges((caseId, change) => setCases((prev) => prev.map((c) => (c.id === caseId ? change(c) : c))));
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [assignQcCaseId, setAssignQcCaseId] = useState<string | null>(null);
