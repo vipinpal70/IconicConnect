@@ -1,6 +1,6 @@
 # Performance Optimization in Notifications: Plan
 
-**Status:** approved with the recommendations (N1–N4). **Phase 0 implemented** (see §13); Phases 1–6 to do. N5 and N6 still need answers.
+**Status:** approved with the recommendations (N1–N4). **Phases 0 and 1 implemented** (see §13); Phases 2–6 to do. N5 and N6 still need answers.
 
 **Branch:** `perf/live-notifications`, from `no-supabase-rewrite`.
 
@@ -387,3 +387,41 @@ The live stream relies on sessions ending (§10), so these came first:
 Correction: an earlier version of this section said deleting a sub-user left their sessions working. It doesn't; deletion always revoked them.
 
 Tests: `auth-revocation.integration.test.ts` (8, real Postgres and Redis; 7 of them fail on the old code).
+
+### Phase 1: One live connection (done)
+
+- **Server** (`src/lib/live/`): `publish` (no extra connection, usable from the worker), `bus` (one Redis subscriber per process), `presence`, `stream` (`/api/live`, one timer per process). Channels come from the session through an allow-list of roles.
+- **Browser** (`src/lib/live/client.ts`): tabs elect a leader that holds the only connection and passes events on. A closed leader is replaced at once, a frozen one after about a minute.
+- **Catching up:** events carry a counter. On (re)connecting, the server says where the counters stand, and only areas that moved are reloaded, spread over a few seconds. The versions are read only after Redis confirmed the subscription, so nothing falls in between. The same happens after a Redis restart.
+- **Support** runs on it. `/api/support/stream` stays for one release, for tabs that are still open.
+- **Losing access:** `destroySession` and `destroyAllSessions` close the matching streams at once.
+- **Hidden tabs** only mark data as stale and load it when shown.
+- **Kill switch:** `LIVE_UPDATES=off`.
+
+**Decided while building:**
+- **"Online" means a visible tab, not an open connection.** Otherwise a tab forgotten overnight would show support as online and stop that person's emails. Visible tabs report every 4 minutes (`POST /api/live/presence`, Redis only).
+- **The limit is 10 streams per person** (was 5): after a crash, dead connections count for up to 90 s.
+- The `live:labs`, `live:lab` and `live:staff` channels exist but carry nothing until Phase 2.
+
+**Tests:** `live.integration.test.ts` (12, real Redis); all earlier support tests pass unchanged; 283 in total. Browser, two production processes: 18/18 for Phase 1 (5 tabs on 1 connection; events across processes in about 0.1 s; leader closed and frozen; server restarts; kill switch; deactivation reaches every open tab in 0.15 s), and the 16 earlier two-process support checks again.
+
+**Deploy:** no migration. `deploy.sh` now has an nginx location for `/api/live` and raises `worker_connections` to 4096. If nginx was changed by hand (N6), add this to the `server` block:
+
+```nginx
+location ~ ^/api/(live|support/stream)$ {
+    proxy_pass http://127.0.0.1:4000;
+    proxy_http_version 1.1;
+    proxy_set_header Connection '';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    gzip off;
+    proxy_read_timeout 1h;
+    proxy_send_timeout 1h;
+}
+```
+
+It also works without this (25 s heartbeat, unbuffered by header); the location makes it robust.

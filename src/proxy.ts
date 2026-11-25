@@ -185,7 +185,9 @@ function isAllowedPath(role: string | undefined, pathname: string, createdBy: st
     pathname.startsWith('/admin/notifications') ||
     pathname.startsWith('/api/notifications') ||
     pathname.startsWith('/api/notification-preferences') ||
-    pathname.startsWith('/api/sidebar-badges')
+    pathname.startsWith('/api/sidebar-badges') ||
+    pathname === '/api/live' ||
+    pathname === '/api/live/presence'
   )
     return true
 

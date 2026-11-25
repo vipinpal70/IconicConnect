@@ -190,6 +190,22 @@ server {
         proxy_busy_buffers_size 512k;
     }
 
+    # Live updates (server-sent events): never buffered, open for as long as the browser stays
+    location ~ ^/api/(live|support/stream)$ {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
     # Large uploads: stream straight through, long timeouts
     location /api/cases/upload {
         proxy_pass http://127.0.0.1:$PORT;
@@ -205,6 +221,12 @@ server {
     }
 }
 NGINX
+  # Every live connection uses two nginx connections (browser and app); the default of 768 is too few
+  if grep -qE '^\s*worker_connections\s+[0-9]+;' /etc/nginx/nginx.conf; then
+    cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.bak.$(date +%Y%m%d%H%M%S)"
+    sed -i -E 's/^(\s*)worker_connections\s+[0-9]+;/\1worker_connections 4096;/' /etc/nginx/nginx.conf
+    grep -q '^worker_rlimit_nofile' /etc/nginx/nginx.conf || sed -i '1i worker_rlimit_nofile 16384;' /etc/nginx/nginx.conf
+  fi
   ln -sf "$conf" "/etc/nginx/sites-enabled/$APP_NAME"
   rm -f /etc/nginx/sites-enabled/default
   nginx -t && systemctl reload nginx

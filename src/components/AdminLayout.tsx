@@ -6,8 +6,10 @@ import { Bell } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import Link from "next/link";
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges";
+import { useLive } from "@/src/lib/live/client";
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
+  useLive(); // this browser's live connection
   // Shares the sidebar's single /api/sidebar-badges poll instead of running a second one.
   const { badges } = useSidebarBadges();
   const hasUnread = Boolean(badges.notifications);
