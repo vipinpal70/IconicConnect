@@ -1,6 +1,6 @@
 # Performance Optimization in Notifications: Plan
 
-**Status:** approved with the recommendations (N1–N4). **Phases 0 to 5 implemented** (see §13); Phase 6 to do. N5 and N6 still need answers.
+**Status:** approved with the recommendations (N1–N4). **All phases implemented and measured** (see §13). Rollout to production is still to do. N5 and N6 still need answers.
 
 **Branch:** `perf/live-notifications`, from `no-supabase-rewrite`.
 
@@ -20,7 +20,7 @@
 | Dashboards | Every 30–60 s | Refresh when something changed, at most every 30 s |
 | Support | Already live | Moves onto the same connection; no more safety polling every 60 s |
 
-**Expected result:** in the load model in §4, about **700 requests per minute from 100 open tabs** drop to about **90–210**, and the chat stops writing to the database when nobody has sent anything. These are estimates to be confirmed in Phase 6.
+**Expected result:** in the load model in §4, about **700 requests per minute from 100 open tabs** drop to about **60 when quiet and about 300 when busy**, and the chat stops writing to the database when nobody has sent anything. Most of the remaining requests are 1 KB instead of 20–94 KB. Measured and recalculated in Phase 6 (§13).
 
 **Most of the chat saving needs no SSE.** Phase 0 is small fixes that can ship first.
 
@@ -104,8 +104,8 @@ Case-chat polling alone is 300 of the 700.
 | Safety refresh, every 5 min per tab (badges + page data) | ~40 |
 | Chat: about 3 people have each conversation open | ~30 (about 1 KB each) |
 | Case lists: changed rows only, at most one request per 10 s per tab | up to ~120 (about 1 KB each) |
-| Dashboards: at most every 30 s | up to ~20 |
-| **Total** | **~90 quiet, up to ~210 busy** |
+| Dashboards: at most every 30 s | up to ~20 (corrected in Phase 6: up to ~100, as the ops dashboard is 5 requests) |
+| **Total** | **~90 quiet, up to ~210 busy** (Phase 6: ~60 quiet, ~300 busy) |
 
 **An honest limit:** on a busy day, staff case lists may make **as many requests as now or more**, but each is about 1 KB instead of 94 KB. The saving there is in data and database work, not in request count. For chat and badges, everything drops.
 
@@ -480,3 +480,63 @@ It also works without this (25 s heartbeat, unbuffered by header); the location 
 **Tests:** 323 in total (the support live tests now listen through `src/lib/live`). Browser, two production processes: 16/16 (support still live both ways; 130 s idle: no support, dot or dashboard requests; the widget asks about "online" on opening and once a minute; with live turned off, dots, dashboards and the open conversation poll within a minute; the old stream answers 404), and Phases 2, 3 and 4 again (15, 17, 29).
 
 **Deploy:** no migration. Run `deploy.sh` (or change the nginx location to `= /api/live`; the old pattern keeps working).
+
+### Phase 6: Load test and rollout (measured; rollout to do)
+
+**Added for the rollout:**
+- `LIVE_UPDATES=staff`: staff connect, labs get 204 and poll. Then remove the setting for everyone. `off` still turns it off for all.
+- `/api/health` with the `x-health-token` header now also shows, **per web process**: memory, the live mode, open streams, streams opened and dropped (too slow) since start, events sent, the subscriber's state and its channel count.
+
+**300 connections across two production processes** (200 lab people in 20 labs, 100 staff; fake sessions, no database rows):
+
+| Measured | Result |
+|---|---|
+| All 300 connected | 0.3 s |
+| Memory per process, 150 streams | 126 → 167 MB (about 0.3 MB per stream); back to 117 MB when they closed |
+| Redis | +0.2 MB; 5 connections in total, whatever the number of streams |
+| CPU while idle (heartbeats) | 0.2–0.6 % of a core per process |
+| 100 events to every kind of channel | 658 of 658 delivered; 5 ms median, 13 ms at the 95th percentile, 15 ms max |
+| A burst: 300 events to all staff in 1 s (30,000 deliveries) | 30,000 of 30,000; 8 ms median, 17 ms max; nobody dropped as too slow |
+| A deploy: one process killed and restarted | Its 150 clients all back 3.7 s after it was; spread over 3.4 s (no stampede). All 50 staff among them noticed the event sent while it was down. The other process was untouched |
+| Redis subscriber connection dropped (as in a Redis restart) | All 300 streams kept; all 300 told to catch up; the next event reached everyone |
+| Redis frozen for 8 s | All 300 streams kept; afterwards events reach everyone; health reports Redis and both subscribers well |
+
+**Request costs again** (same data as §3: 10,000 cases, 20,000 messages, 48,000 notifications, 2,400 conversations; development PC, compare relative to each other):
+
+| Request | Queries | Response | Median |
+|---|---|---|---|
+| Case chat, 200 messages, first load | 3 (was 6) | 21.5 KB (was 86.5) | 5.9 ms (was 28) |
+| Case chat, "what changed" (idle) | 2 | 0.05 KB | 3.0 ms |
+| Badges, cache miss / hit | 8 / 1 | 0.09 KB | 8.9 / 3.1 ms |
+| Case list (admin), cache miss / hit | 10 / 3 | 94 KB | 20.9 / 8.3 ms |
+| **Case list, 1 changed row (live), admin / lab** | 10 | **1 KB** | 7.5 / 7.9 ms |
+| Case list, 10 changed rows | 10 | 9.8 KB | 8.0 ms |
+| Admin dashboard, miss / hit | 13 / 1 | 3.5 KB | 18.7 / 1.6 ms |
+| Lab dashboard, miss / hit | 7 / 1 | 2.6 KB | 8.4 / 2.0 ms |
+| Ops dashboard, 5 parts, miss | 10 in total | ~1 KB | 19.8 ms in total |
+| Support summary | 2 | 0.07 KB | 3.3 ms |
+
+A badge cache hit now makes one query (it was 0): the cached answer is checked against the person's event counters (Phase 2), so it can never hide a change.
+
+**The §4 load model again** (100 visible tabs; 10 chat messages and 10 case changes a minute), from these measurements and the browser checks:
+
+| Source | Before | After |
+|---|---|---|
+| Idle tabs | 700 a minute | **~60** (the 5-minute safety refresh) |
+| Chat | 300 a minute, the whole conversation each | ~10, a few bytes each |
+| Staff case lists | 40 a minute, 94 KB each | up to ~120, 1 KB each |
+| Lab case lists, dots | 60 + 100 a minute | ~10 |
+| Ops dashboards | 50 a minute | up to ~100 when cases change all the time; 0 when they don't |
+| **Total, busy** | **~700 a minute** | **~300 a minute, most of them 1 KB** |
+
+**Corrected:** §4 estimated up to 20 dashboard requests; the ops dashboard is 5 requests, so up to 100. If that matters, 60 s instead of 30 s halves it (`MIN_GAP_MS` in `useLiveRefresh.ts`).
+
+**Not measured:** real nginx and Cloudflare in front (both are configured for it: unbuffered, long timeouts), more than 300 connections, a real Redis restart (the local one holds development data; dropping its connections and freezing it stood in for that). N5 (people at peak) would set the size of a production test.
+
+**Rollout:**
+1. Merge `perf/live-notifications`. Run the one migration (`20261126000100`, from Phase 0). Deploy with `LIVE_UPDATES=staff` in `.env`. Restart web, worker and schedulers.
+2. For a few days, watch `/api/health` with the token on each web process: `streams` about the number of staff online, `dropped` 0, `subscriber` "ready", memory steady. Browser tools: `/api/live` open with a `beat` every 25 s.
+3. Remove `LIVE_UPDATES` and restart: labs join. Watch the same for a week.
+4. **Rollback** at any step: `LIVE_UPDATES=off` and restart. Everyone polls, as before.
+
+While labs wait (step 2), their support pages poll instead of updating live: every 8 s in an open conversation. The old support stream no longer exists.

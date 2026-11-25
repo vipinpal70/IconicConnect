@@ -85,6 +85,20 @@ describe.runIf(enabled)('live connection (Redis)', async () => {
     for (const lab of [labA, labB]) await redis.del(`ver:live:sup:lab:${lab}`)
   })
 
+  it('LIVE_UPDATES=staff: staff connect, labs are told to poll', async () => {
+    process.env.LIVE_UPDATES = 'staff'
+    try {
+      const lab = await login('client', labA)
+      const member = await login('subuser', labA)
+      const staff = await login('qc')
+      expect((await connect(lab.sid)).res.status).toBe(204)
+      expect((await connect(member.sid)).res.status).toBe(204)
+      expect((await connect(staff.sid)).res.status).toBe(200)
+    } finally {
+      delete process.env.LIVE_UPDATES
+    }
+  })
+
   it('needs a session; LIVE_UPDATES=off answers 204 so browsers stop reconnecting', async () => {
     expect((await connect(undefined)).res.status).toBe(401)
     expect((await connect('made-up')).res.status).toBe(401)

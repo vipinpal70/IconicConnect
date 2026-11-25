@@ -121,10 +121,12 @@ useQuery({ …, refetchInterval: usePollInterval(60_000) })
 | Session | Signing out, deactivation and role changes close streams at once; also checked every 5 minutes |
 | "Online" | A tab was **visible** in the last 6 minutes, not just an open connection |
 | Refused (401, 429, off) | Polling, and another try after 60–90 s |
+| Measured | 300 streams on two processes: ~0.3 MB each, under 1 % CPU idle, events in 5–17 ms, a restart rejoined in under 4 s (plan, §13, Phase 6) |
 
 ## 9. Operating
 
-- **Turn it off:** `LIVE_UPDATES=off` and restart the web processes. `/api/live` answers 204, open browsers move to polling.
+- **Turn it off:** `LIVE_UPDATES=off` and restart the web processes. `/api/live` answers 204, open browsers move to polling. `LIVE_UPDATES=staff` turns it on for staff only (for rolling out).
+- **Watch it:** `curl -H "x-health-token: $HEALTH_TOKEN" …/api/health` shows, for the process that answered: open streams, streams dropped as too slow, events sent, the subscriber's state, memory.
 - **nginx:** `/api/live` must not be buffered and needs long timeouts. `deploy/deploy.sh` writes this; the block to add by hand is in the plan, §13, Phase 1.
 - **Processes:** restart the worker and the schedulers with the web processes: they send events too.
 - **Is it working?** Browser tools → Network → `live`: status 200, type `eventsource`, a `beat` every 25 s.

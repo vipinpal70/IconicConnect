@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { redis, guarded } from '@/src/lib/redis'
 import { describeDbError } from '@/src/lib/db-error'
+import { liveStats } from '@/src/lib/live/stream'
 
 /**
  * GET /api/health — "is this deployment wired up correctly?" in one request, from any browser or `curl`.
@@ -45,6 +46,9 @@ export async function GET(req: NextRequest) {
       redis: { ms: redisCheck.ms, error: redisCheck.error },
       schema: { applied, expected, error: schemaCheck.error, hint: schemaOk ? undefined : 'run: npm run db:deploy' },
       node: process.version, uptimeSeconds: Math.round(process.uptime()),
+      memoryMb: Math.round(process.memoryUsage().rss / 1048576),
+      // This process only: each web process has its own streams
+      live: { mode: process.env.LIVE_UPDATES || 'on', ...liveStats() },
     }
   }
   return NextResponse.json(body, { status: ok ? 200 : 503, headers: { 'Cache-Control': 'no-store' } })

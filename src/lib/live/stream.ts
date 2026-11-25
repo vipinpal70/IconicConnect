@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { aliveSessions, type SessionData } from '@/src/lib/auth/session'
 import { redis } from '@/src/lib/redis'
 import { isAgentRole } from '@/src/lib/support/constants'
-import { listen, onBusReconnect, type LiveEvent } from './bus'
+import { busStats, listen, onBusReconnect, type LiveEvent } from './bus'
 import { closeStream, heartbeatStreams, openStream } from './presence'
 import { channelsFor } from './channels'
 import { versionKey } from './names'
@@ -32,7 +32,16 @@ interface Stream {
   hello: () => Promise<void>
 }
 
+/** Counted since this process started. */
+interface Counters {
+  opened: number
+  /** Closed because the browser read too slowly. */
+  dropped: number
+  events: number
+}
+
 interface Registry {
+  counters: Counters
   streams: Set<Stream>
   timer: ReturnType<typeof setInterval> | null
   beats: number
@@ -40,7 +49,7 @@ interface Registry {
   offReconnect: (() => void) | null
 }
 const g = globalThis as unknown as { __liveStreams?: Registry }
-const registry = (g.__liveStreams ??= { streams: new Set(), timer: null, beats: 0, shutdownHooked: false, offReconnect: null })
+const registry = (g.__liveStreams ??= { counters: { opened: 0, dropped: 0, events: 0 }, streams: new Set(), timer: null, beats: 0, shutdownHooked: false, offReconnect: null })
 
 async function checkSessions(streams: Stream[]) {
   const alive = await aliveSessions(streams.map((s) => s.sid))
@@ -82,6 +91,11 @@ function hookShutdown() {
 
 export const openStreamCount = () => registry.streams.size
 
+/** For /api/health (with its token): what this process is doing. */
+export function liveStats() {
+  return { streams: registry.streams.size, ...registry.counters, ...busStats() }
+}
+
 export async function liveStreamResponse(session: SessionData, sid: string, signal: AbortSignal): Promise<Response> {
   const isAgent = isAgentRole(session.role)
   const connectionId = crypto.randomUUID()
@@ -102,7 +116,10 @@ export async function liveStreamResponse(session: SessionData, sid: string, sign
         if (closed) return
         try {
           controller.enqueue(encoder.encode(chunk))
-          if (controller.desiredSize !== null && controller.desiredSize < -MAX_QUEUED) close()
+          if (controller.desiredSize !== null && controller.desiredSize < -MAX_QUEUED) {
+            registry.counters.dropped++
+            close()
+          }
         } catch {
           close()
         }
@@ -129,6 +146,7 @@ export async function liveStreamResponse(session: SessionData, sid: string, sign
       stop = close
 
       registry.streams.add(stream)
+      registry.counters.opened++
       startBeat()
       hookShutdown()
       signal.addEventListener('abort', close)
@@ -136,6 +154,7 @@ export async function liveStreamResponse(session: SessionData, sid: string, sign
       send(`retry: ${3000 + Math.floor(Math.random() * 4000)}\n\n`)
       const listening = listen(channels.map((c) => c.channel), (event: LiveEvent, version, channel) => {
         if (event.type === 'session') return void checkSessions([stream])
+        registry.counters.events++
         send(`event: ${event.type}\ndata: ${JSON.stringify(version === null ? event : { ...event, a: areaOf.get(channel), v: version })}\n\n`)
       })
       stopListening = listening.stop

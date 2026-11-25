@@ -95,6 +95,12 @@ export function listen(channels: string[], listener: LiveListener): { ready: Pro
   }
 }
 
+/** For /api/health: is this process's subscriber connected, and to how many channels. */
+export function busStats() {
+  const h = g.__liveHub
+  return { subscriber: h ? h.connection.status : 'not started', channels: h ? h.listeners.size : 0 }
+}
+
 /** Runs after the subscriber lost and regained Redis. */
 export function onBusReconnect(fn: () => void): () => void {
   const { onReconnect } = hub()
