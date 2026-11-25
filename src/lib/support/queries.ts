@@ -8,7 +8,7 @@ import { allowedActions, canRate, canViewTicket, isAgent, isCustomer, reopenDead
 import type { MessageView, MessagesResponse, PersonRef, SupportSummary, TicketDetail, TicketListResponse, TicketSummary } from './types'
 import type { ListMessagesQuery, ListTicketsQuery } from './validation'
 import { attachmentsForMessages } from './attachments'
-import { agentsOnline } from './realtime'
+import { agentsOnline } from '@/src/lib/live/presence'
 
 /**
  * Read side of the support system. Every query is scoped by the caller: customers only ever see their

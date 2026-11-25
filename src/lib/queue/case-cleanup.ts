@@ -3,6 +3,7 @@ import { db } from '@/src/db'
 import { files } from '@/src/db/schema/files'
 import { notifications } from '@/src/db/schema/notification'
 import { caseCleanupQueue, connection } from './client'
+import { notificationsChanged } from '../notifications/changed'
 import { deleteKeys } from '../r2-objects'
 
 /**
@@ -54,7 +55,8 @@ export async function processCaseCleanup(
     eq(notifications.link, `/admin/cases/${data.caseId}`),
     like(notifications.link, `%/cases/${data.caseId}%`),
     sql`${notifications.metadata}->>'caseId' = ${data.caseId}`,
-  )).returning({ id: notifications.id })
+  )).returning({ userId: notifications.userId })
+  await notificationsChanged(removed.map((n) => n.userId))
 
   // One R2 object can back several logical files (see migration 1700). Never delete an object that another
   // surviving row still points at — re-checked HERE (not at enqueue time) so late re-uploads are respected.

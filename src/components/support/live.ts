@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { invalidateLive, onLiveEvent, onLiveResync, useLive, type LiveData } from '@/src/lib/live/client'
 import type { SupportSide } from '@/src/lib/support/constants'
 
 /**
- * One live connection per browser tab (support-system.md §11), shared by the support page and the
- * floating widget. Server events only say *what* changed; this module refreshes the matching cached
- * queries, which refetch through the normal API. While the connection is down, the queries fall back
- * to polling (see `pollInterval`).
+ * Support on the app's live connection (support-system.md §11), shared by the support page and the floating
+ * widget. Events only say *what* changed; this module refreshes the matching cached queries, which refetch
+ * through the normal API.
  */
 
-export type LiveStatus = 'connecting' | 'live' | 'offline'
+export { usePollInterval, useLiveStatus, type LiveStatus } from '@/src/lib/live/client'
 
 interface TypingEntry {
   name: string
@@ -21,14 +21,11 @@ interface TypingEntry {
 
 const TYPING_SHOW_MS = 6_000
 
-const state = {
-  status: 'connecting' as LiveStatus,
-  typing: new Map<string, Map<string, TypingEntry>>(), // ticketId → userId → entry
-  version: 0,
-}
+const typing = new Map<string, Map<string, TypingEntry>>() // ticketId → userId → entry
+let version = 0
 const listeners = new Set<() => void>()
 const emit = () => {
-  state.version++
+  version++
   listeners.forEach((l) => l())
 }
 const subscribeStore = (l: () => void) => {
@@ -36,136 +33,90 @@ const subscribeStore = (l: () => void) => {
   return () => listeners.delete(l)
 }
 
-let source: EventSource | null = null
 let users = 0
-let queryClient: QueryClient | null = null
-let typingTimer: ReturnType<typeof setInterval> | null = null
+let stop: (() => void) | null = null
 
 const support = ['support'] as const
 const invalidateTicket = (qc: QueryClient, ticketId: string) => {
-  void qc.invalidateQueries({ queryKey: ['support', 'ticket', ticketId] })
-  void qc.invalidateQueries({ queryKey: ['support', 'messages', ticketId, 'poll'] })
-  void qc.invalidateQueries({ queryKey: ['support', 'list'] })
-  void qc.invalidateQueries({ queryKey: ['support', 'summary'] })
-  void qc.invalidateQueries({ queryKey: ['sidebar-badges'] })
+  invalidateLive(qc, ['support', 'ticket', ticketId])
+  invalidateLive(qc, ['support', 'messages', ticketId, 'poll'])
+  invalidateLive(qc, ['support', 'list'])
+  invalidateLive(qc, ['support', 'summary'])
+  // The sidebar dot: useAppLive, on every page
 }
 
-function handle(type: string, data: string) {
-  const qc = queryClient
-  if (!qc) return
-  let event: Record<string, unknown> = {}
-  try {
-    event = JSON.parse(data)
-  } catch {
-    return
-  }
+function handle(qc: QueryClient, type: string, event: LiveData) {
   const ticketId = typeof event.ticketId === 'string' ? event.ticketId : null
+  if (!ticketId) return
   switch (type) {
-    case 'resync':
-      void qc.invalidateQueries({ queryKey: support })
-      break
     case 'message':
-      if (!ticketId) return
-      state.typing.delete(ticketId) // whoever was typing has just sent
+      typing.delete(ticketId) // whoever was typing has just sent
       emit()
       invalidateTicket(qc, ticketId)
       break
     case 'ticket':
-      if (ticketId) invalidateTicket(qc, ticketId)
+      invalidateTicket(qc, ticketId)
       break
     case 'read':
-      if (ticketId) void qc.invalidateQueries({ queryKey: ['support', 'ticket', ticketId] })
+      invalidateLive(qc, ['support', 'ticket', ticketId])
       break
     case 'typing': {
-      if (!ticketId || typeof event.userId !== 'string') return
-      const map = state.typing.get(ticketId) ?? new Map<string, TypingEntry>()
+      if (typeof event.userId !== 'string') return
+      const map = typing.get(ticketId) ?? new Map<string, TypingEntry>()
       map.set(event.userId, { name: String(event.name ?? 'Someone'), side: event.side === 'agent' ? 'agent' : 'customer', until: Date.now() + TYPING_SHOW_MS })
-      state.typing.set(ticketId, map)
+      typing.set(ticketId, map)
       emit()
       break
     }
   }
 }
 
-function connect() {
-  if (source || typeof window === 'undefined' || typeof EventSource === 'undefined') return
-  state.status = 'connecting'
-  emit()
-  const es = new EventSource('/api/support/stream')
-  source = es
-  es.onopen = () => {
-    state.status = 'live'
-    emit()
-  }
-  es.onerror = () => {
-    // The browser reconnects by itself; CLOSED means it gave up (e.g. 429 or 401): poll instead
-    state.status = es.readyState === EventSource.CLOSED ? 'offline' : 'connecting'
-    if (es.readyState === EventSource.CLOSED) source = null
-    emit()
-  }
-  for (const type of ['resync', 'message', 'ticket', 'read', 'typing']) {
-    es.addEventListener(type, (e) => handle(type, (e as MessageEvent<string>).data))
-  }
-  es.addEventListener('logout', () => {
-    es.close()
-    source = null
-    state.status = 'offline'
-    emit()
-  })
+function start(qc: QueryClient) {
+  const offEvent = onLiveEvent((type, data) => handle(qc, type, data))
+  const offResync = onLiveResync('support', () => invalidateLive(qc, support))
   // Expire typing indicators
-  typingTimer = setInterval(() => {
+  const timer = setInterval(() => {
+    if (typing.size === 0) return
     const now = Date.now()
     let changed = false
-    for (const [ticketId, map] of state.typing) {
+    for (const [ticketId, map] of typing) {
       for (const [userId, entry] of map) {
         if (entry.until <= now) {
           map.delete(userId)
           changed = true
         }
       }
-      if (map.size === 0) state.typing.delete(ticketId)
+      if (map.size === 0) typing.delete(ticketId)
     }
     if (changed) emit()
   }, 1000)
+  return () => {
+    offEvent()
+    offResync()
+    clearInterval(timer)
+    typing.clear()
+  }
 }
 
-function disconnect() {
-  source?.close()
-  source = null
-  if (typingTimer) clearInterval(typingTimer)
-  typingTimer = null
-  state.status = 'offline'
-  state.typing.clear()
-}
-
-/** Keeps the tab's live connection open while any component using it is mounted. */
+/** Keeps support's data live while any component using it is mounted. */
 export function useSupportStream() {
   const qc = useQueryClient()
+  useLive()
   useEffect(() => {
-    queryClient = qc
-    users++
-    connect()
+    if (users++ === 0) stop = start(qc)
     return () => {
-      users--
-      if (users === 0) disconnect()
+      if (--users > 0) return
+      stop?.()
+      stop = null
     }
   }, [qc])
 }
 
-export function useLiveStatus(): LiveStatus {
-  return useSyncExternalStore(subscribeStore, () => state.status, () => 'connecting')
-}
-
-/** Polling only matters while the live connection is down. */
-export function pollInterval(fallbackMs: number): () => number {
-  return () => (state.status === 'live' ? Math.max(fallbackMs, 60_000) : fallbackMs)
-}
-
 /** Names of the other people currently typing in a conversation. */
 export function useTypingNames(ticketId: string, viewerId: string): string[] {
-  const version = useSyncExternalStore(subscribeStore, () => state.version, () => 0)
-  void version
-  const map = state.typing.get(ticketId)
+  const current = useSyncExternalStore(subscribeStore, () => version, () => 0)
+  void current
+  const map = typing.get(ticketId)
   if (!map) return []
   return [...map.entries()].filter(([userId]) => userId !== viewerId).map(([, entry]) => entry.name)
 }

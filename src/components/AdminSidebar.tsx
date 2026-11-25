@@ -89,7 +89,7 @@ export function AdminSidebar() {
     if (item?.badgeKey) {
       markSeen(item.badgeKey)
     }
-  }, [pathname, markSeen])
+  }, [pathname, markSeen, badges])
 
   const isNotAdmin = profile?.role !== "admin"
 

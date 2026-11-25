@@ -7,6 +7,8 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { FolderOpen, CheckCircle2, PauseCircle, XCircle, ClipboardCheck, Timer, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { useLiveRefresh } from "@/src/hooks/useLiveRefresh";
+import { usePollInterval } from "@/src/lib/live/client";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line,
@@ -22,6 +24,7 @@ const ACTIVE_STATUSES = ["scan_received", "scan_verified", "allocated_to_designe
 
 export default function Dashboard() {
   const router = useRouter();
+  const poll = usePollInterval(60_000);
 
   // One request per dashboard section (each renders as its own data arrives). KPIs go first; the lower
   // sections start once they settle so the first paint isn't competing with five queries at once.
@@ -30,7 +33,7 @@ export default function Dashboard() {
     if (!res.ok) throw new Error(`Failed to fetch ${url}`);
     return res.json();
   };
-  const sectionOpts = { refetchInterval: 60_000, staleTime: 50_000 };
+  const sectionOpts = { refetchInterval: poll, staleTime: 50_000 };
 
   const kpisQuery = useQuery<{ active: number; delivered: number; pending: number; hold: number; cancelled: number }>({
     queryKey: ["ops-dashboard-kpis"],
@@ -68,6 +71,10 @@ export default function Dashboard() {
     enabled: lowerEnabled,
     ...sectionOpts,
   });
+
+  useLiveRefresh([
+    ["ops-dashboard-kpis"], ["ops-dashboard-volume"], ["ops-dashboard-breakdown"], ["ops-dashboard-recent"], ["dashboard-tat"],
+  ]);
 
   const kpis = kpisQuery.data;
   const dynamicKpis = [

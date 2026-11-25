@@ -14,6 +14,7 @@ export interface DeleteClientResult {
   clientId: string
   subUserProfileIds: string[]
   casesDeleted: number
+  caseIds: string[]
   authDeleteErrors: { id: string; error: string }[]
 }
 
@@ -81,6 +82,7 @@ export async function deleteClientCompletely(clientId: string): Promise<DeleteCl
     clientId,
     subUserProfileIds,
     casesDeleted: caseIds.length,
+    caseIds,
     authDeleteErrors,
   }
 }

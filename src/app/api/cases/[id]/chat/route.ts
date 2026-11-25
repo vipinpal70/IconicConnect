@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { db } from '@/src/db';
 import { chatMessages } from '@/src/db/schema/chat';
 import { insertFiles } from '@/src/lib/files-repo';
-import { loadChatMessages, toChatPayload } from '@/src/lib/chat-messages';
+import { loadChatChanges, loadChatPage, openChat, toChatPayload } from '@/src/lib/chat-messages';
 import { profiles } from '@/src/db/schema/profile';
 import { cases } from '@/src/db/schema/case';
-import { and, desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createClient } from '@/src/lib/auth/server';
-import { NotificationType } from '@/src/lib/notifications/notification-events';
-import { notifications } from '@/src/db/schema/notification';
 import { canAccessCaseChat, markCaseChatRead } from '@/src/lib/chat';
 import { announceChatMessage } from '@/src/lib/queue/chat-jobs';
 
+const querySchema = z.object({
+  /** Newest-first page before this message. */
+  before: z.uuid().optional(),
+  /** Only what changed since this point (the `cursor` of the previous answer). */
+  since: z.string().regex(/^\d{1,16}$/).optional(),
+});
+
+/**
+ * GET: the newest messages, older ones (`?before=`), or only what changed since the last look (`?since=`).
+ * Loading never marks anything as read: see ./read.
+ */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,46 +30,29 @@ export async function GET(
     const { id: caseId } = await params;
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const query = querySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
+    if (!query.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    if (!z.uuid().safeParse(caseId).success) return NextResponse.json({ error: 'Case not found' }, { status: 404 });
 
-    const profileResult = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1);
-    const profile = profileResult[0];
-
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-    }
-
-    // Verify case exists
-    const [caseRecord] = await db.select().from(cases).where(eq(cases.id, caseId)).limit(1);
-    if (!caseRecord) {
-      return NextResponse.json({ error: 'Case not found' }, { status: 404 });
-    }
-
-    if (!canAccessCaseChat(caseRecord, profile)) {
+    const chat = await openChat(caseId, user.id);
+    if (chat.status === 404) return NextResponse.json({ error: 'Case not found' }, { status: 404 });
+    if (chat.status === 403) {
       return NextResponse.json({ error: 'Forbidden: You do not have access to this case chat' }, { status: 403 });
     }
+    const { viewer, cursor } = chat;
 
-    // Load messages sorted by createdAt descending (latest first)
-    const messages = await loadChatMessages(caseId, { id: profile.id, chatLocked: caseRecord.status === 'client_reject' });
-
-    await markCaseChatRead(caseId, profile.id);
-    await db
-      .update(notifications)
-      .set({ read: true, readAt: new Date() })
-      .where(and(
-        eq(notifications.userId, profile.id),
-        eq(notifications.type, NotificationType.CHAT_MESSAGE),
-        eq(notifications.link, `/cases/${caseId}`),
-        eq(notifications.read, false),
-      ));
-
-    return NextResponse.json({ data: messages });
+    if (query.data.since) {
+      const changes = await loadChatChanges(caseId, viewer, query.data.since);
+      if (changes) return NextResponse.json({ data: changes, cursor, changes: true });
+      // Away for so long that a fresh page is smaller than the changes
+    }
+    const { messages, hasMore } = await loadChatPage(caseId, viewer, query.data.before);
+    return NextResponse.json({ data: messages, cursor, hasMore });
   } catch (error: unknown) {
     console.error('Fetch chat error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
@@ -113,29 +106,31 @@ export async function POST(
       }
     }
 
-    // Save message to database
-    const [newMessage] = await db
-      .insert(chatMessages)
-      .values({
-        caseId,
-        senderId: profile.id,
-        senderRole: profile.role,
-        messageText: messageText?.trim() || '',
-      })
-      .returning();
+    // Message and attachment together: nobody can load one without the other
+    const { newMessage, attachment } = await db.transaction(async (tx) => {
+      const [newMessage] = await tx
+        .insert(chatMessages)
+        .values({
+          caseId,
+          senderId: profile.id,
+          senderRole: profile.role,
+          messageText: messageText?.trim() || '',
+        })
+        .returning();
+      // Attachment = a `files` row of kind 'chat' owned by the message (not the case).
+      const [attachment] = fileUrl
+        ? await insertFiles([{
+            clientId: caseRecord.clientId, caseId: null, messageId: newMessage.id, kind: 'chat', uploadedBy: profile.id,
+            fileName: fileName || 'attachment', fileUrl, fileType: fileType || null, fileSize: fileSize ? Number(fileSize) : null,
+          }], tx)
+        : [];
+      return { newMessage, attachment };
+    });
 
-    // Attachment = a `files` row of kind 'chat' owned by the message (not the case).
-    const [attachment] = fileUrl
-      ? await insertFiles([{
-          clientId: caseRecord.clientId, caseId: null, messageId: newMessage.id, kind: 'chat', uploadedBy: profile.id,
-          fileName: fileName || 'attachment', fileUrl, fileType: fileType || null, fileSize: fileSize ? Number(fileSize) : null,
-        }])
-      : [];
-
-    await markCaseChatRead(caseId, profile.id);
-
-    // Everyone else on the case: in-app now; email once the message can no longer be edited or deleted.
+    // Everyone on the case: open chats and the bell now; email once the message can no longer be edited or deleted.
     await announceChatMessage(caseRecord, newMessage, profile.fullName);
+    // After it, so that the sender's own lists end up without a badge
+    await markCaseChatRead(caseId, profile.id, newMessage.id);
 
     return NextResponse.json({ data: toChatPayload(newMessage, profile.fullName || 'User', attachment ?? null, { id: profile.id, chatLocked: false }, 0) });
   } catch (error: unknown) {

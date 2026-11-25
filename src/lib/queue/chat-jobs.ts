@@ -4,7 +4,8 @@ import { cases } from '@/src/db/schema/case'
 import { chatMessages } from '@/src/db/schema/chat'
 import { files } from '@/src/db/schema/files'
 import { profiles } from '@/src/db/schema/profile'
-import { chatNotificationPayloads } from '@/src/lib/chat'
+import { chatNotificationPayloads, resolveCaseChatParticipantIds } from '@/src/lib/chat'
+import { publishChat } from '@/src/lib/live/chat'
 import { CHAT_EMAIL_DELAY_MS } from '@/src/lib/chat-rules'
 import { NotificationService } from '@/src/lib/notifications/notification-service'
 import { deleteKeys } from '../r2-objects'
@@ -37,8 +38,8 @@ export const scheduleChatEmail = (messageId: string) =>
   enqueue({ kind: 'email', messageId }, `chat-email-${messageId}`, CHAT_EMAIL_DELAY_MS)
 
 /**
- * Tells everyone else on the case about a new message: in-app now, by email once it can no longer change.
- * Never throws: the message is already saved.
+ * Tells everyone on the case about a new message: open chats now, everyone else in-app now and by email once
+ * it can no longer change. Never throws: the message is already saved.
  */
 export async function announceChatMessage(
   caseRecord: typeof cases.$inferSelect,
@@ -46,7 +47,9 @@ export async function announceChatMessage(
   senderName: string | null,
 ) {
   try {
-    await NotificationService.dispatchMany(await chatNotificationPayloads(caseRecord, message, senderName), { email: false })
+    const participants = await resolveCaseChatParticipantIds(caseRecord)
+    await publishChat(caseRecord, participants, 'new')
+    await NotificationService.dispatchMany(await chatNotificationPayloads(caseRecord, message, senderName, participants), { email: false })
   } catch (e) {
     console.error('[chat-jobs] could not notify participants:', e)
   }

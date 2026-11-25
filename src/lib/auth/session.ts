@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { redis, guarded } from '@/src/lib/redis'
+import { publishSessionCheck } from '@/src/lib/live/publish'
 
 /**
  * Opaque-cookie sessions stored in Redis. One GET per request resolves the user AND the authz facts
@@ -42,12 +43,23 @@ export async function getSession(sid: string | undefined): Promise<SessionData |
   return raw ? (JSON.parse(raw) as SessionData) : null
 }
 
+/** Which of these sessions still exist; null when Redis can't say. */
+export async function aliveSessions(sids: string[]): Promise<boolean[] | null> {
+  if (sids.length === 0) return []
+  try {
+    return (await redis.mget(sids.map(sessKey))).map((v) => v !== null)
+  } catch {
+    return null
+  }
+}
+
 export async function destroySession(sid: string | undefined, userId?: string) {
   if (!sid) return
   const key = sessKey(sid)
   const m = redis.multi().del(key)
   if (userId) m.srem(userKey(userId), key)
   await guarded(() => m.exec())
+  if (userId) await publishSessionCheck(userId) // closes this session's live connection
 }
 
 /** Revoke every device — call on password reset, suspension and role/clientId change. */
@@ -55,6 +67,7 @@ export async function destroyAllSessions(userId: string) {
   const keys = await guarded(() => redis.smembers(userKey(userId)))
   if (keys.length) await guarded(() => redis.del(...keys))
   await guarded(() => redis.del(userKey(userId)))
+  await publishSessionCheck(userId) // closes their live connections at once
 }
 
 export const sessionCookieOptions = {

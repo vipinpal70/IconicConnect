@@ -38,6 +38,8 @@ describe.runIf(enabled)('case chat edit / delete (database)', async () => {
   const { files } = await import('@/src/db/schema/files')
   const { notifications } = await import('@/src/db/schema/notification')
   const thread = await import('@/src/app/api/cases/[id]/chat/route')
+  const readRoute = await import('@/src/app/api/cases/[id]/chat/read/route')
+  const { getCachedData, setCachedData } = await import('@/src/lib/redis-cache')
   const single = await import('@/src/app/api/cases/[id]/chat/[messageId]/route')
   const caseRoute = await import('@/src/app/api/cases/[id]/route')
   const caseList = await import('@/src/app/api/cases/route')
@@ -89,6 +91,16 @@ describe.runIf(enabled)('case chat edit / delete (database)', async () => {
     as(key)
     const res = await thread.GET(new NextRequest(url), { params: Promise.resolve({ id: caseId }) })
     return ((await res.json()).data as Array<Record<string, unknown>>).find((m) => m.id === messageId)!
+  }
+  async function load(key: string, params = '') {
+    as(key)
+    const res = await thread.GET(new NextRequest(`${url}${params}`), { params: Promise.resolve({ id: caseId }) })
+    return { status: res.status, body: (await res.json()) as { data: Array<Record<string, unknown>>; cursor: string; hasMore?: boolean; changes?: boolean } }
+  }
+  async function seen(key: string, messageId: string) {
+    as(key)
+    const res = await readRoute.POST(json('POST', { messageId }), { params: Promise.resolve({ id: caseId }) })
+    return { status: res.status, body: await res.json() }
   }
   const row = async (id: string) => (await db.select().from(chatMessages).where(eq(chatMessages.id, id)))[0]
   const age = (id: string, seconds: number) =>
@@ -295,7 +307,9 @@ describe.runIf(enabled)('case chat edit / delete (database)', async () => {
     const badge = async (key: string) => (await getCasesChatMetadata([caseId], u[key])).get(caseId)!.hasUnreadChat
     const first = await send('lab', 'one')
     expect(await badge('designer')).toBe(true)
-    await view('designer', first) // opening the chat marks it read
+    await view('designer', first)
+    expect(await badge('designer')).toBe(true) // loading alone marks nothing
+    await seen('designer', first)
     expect(await badge('designer')).toBe(false)
     const second = await send('lab', 'two')
     expect(await badge('designer')).toBe(true)
@@ -314,7 +328,7 @@ describe.runIf(enabled)('case chat edit / delete (database)', async () => {
       return { unread: found!.hasUnreadChat, cached: res.headers.get('Server-Timing')!.includes('cache;dur') }
     }
     expect(await badge('lab')).toEqual({ unread: true, cached: false }) // fills the shared cache
-    await view('lab', id) // the owner reads the chat
+    await seen('lab', id) // the owner reads the chat
     expect(await badge('lab')).toEqual({ unread: false, cached: true })
     expect(await badge('member')).toEqual({ unread: true, cached: true }) // same cached list, not yet read
     await invalidateCasesCache(u.lab)
@@ -370,6 +384,123 @@ describe.runIf(enabled)('case chat edit / delete (database)', async () => {
       } finally {
         await reset()
       }
+    })
+  })
+
+  describe('loading only what changed', () => {
+    const ids = (r: { body: { data: Array<Record<string, unknown>> } }) => r.body.data.map((m) => m.id)
+
+    it('returns new, edited and deleted messages, and nothing else', async () => {
+      const old = await send('lab', 'old')
+      await db.update(chatMessages).set({ messageText: 'old' }).where(eq(chatMessages.id, old))
+      const first = await load('designer')
+      expect(first.body.changes).toBeUndefined()
+      // Step past the 10-second overlap
+      const cursor = String(Number(first.body.cursor) + 10_000)
+      expect(ids(await load('designer', `?since=${cursor}`))).toEqual([])
+
+      const fresh = await send('lab', 'fresh')
+      await edit('lab', old, 'old, corrected')
+      const changed = await load('designer', `?since=${cursor}`)
+      expect(changed.body.changes).toBe(true)
+      expect(ids(changed).sort()).toEqual([old, fresh].sort())
+      await remove('lab', fresh)
+      const later = await load('designer', `?since=${cursor}`)
+      expect(later.body.data.find((m) => m.id === fresh)).toMatchObject({ deleted: true, messageText: '' })
+    })
+
+    it('an idle refresh makes 2 queries, writes nothing and answers in under 1 KB', async () => {
+      const { body } = await load('designer')
+      const statements: string[] = []
+      const session = (db as unknown as { session: { logger: { logQuery: (q: string) => void } } }).session
+      const original = session.logger.logQuery
+      session.logger.logQuery = (q) => { statements.push(q) }
+      const states = () => db.execute(sql`select count(*)::int n, max(last_read_at)::text t from chat_read_states where case_id = ${caseId}::uuid`)
+      try {
+        const before = JSON.stringify(await states())
+        statements.length = 0
+        const idle = await load('designer', `?since=${Number(body.cursor) + 10_000}`)
+        const during = [...statements]
+        expect(JSON.stringify(idle.body).length).toBeLessThan(1024)
+        expect(during).toHaveLength(2)
+        expect(during.every((q) => /^select/i.test(q.trim()))).toBe(true)
+        expect(JSON.stringify(await states())).toBe(before)
+      } finally {
+        session.logger.logQuery = original
+      }
+    })
+
+    it('pages through a long conversation without gaps or repeats', async () => {
+      const main = caseId
+      const [long] = await db.insert(cases).values({ caseNumber: `CHAT-${crypto.randomUUID().slice(0, 8)}-L`, clientId: u.lab, designerId: u.designer, category: 'test', status: 'in_progress' } as never).returning({ id: cases.id })
+      caseId = long.id
+      try {
+        // Many share one timestamp: paging must not depend on distinct times
+        const at = new Date(Date.now() - 3600_000)
+        await db.insert(chatMessages).values(Array.from({ length: 120 }, (_, i) => ({ caseId: long.id, senderId: u.lab, senderRole: 'client' as const, messageText: `m${i}`, createdAt: new Date(at.getTime() + Math.floor(i / 40) * 1000) })))
+        const pages = [await load('designer')]
+        while (pages.at(-1)!.body.hasMore) pages.push(await load('designer', `?before=${pages.at(-1)!.body.data.at(-1)!.id}`))
+        const all = pages.flatMap((x) => ids(x))
+        expect(pages.map((x) => x.body.data.length)).toEqual([50, 50, 20])
+        expect(new Set(all).size).toBe(120)
+        // Away for a long time: a fresh page instead of hundreds of changes
+        await db.insert(chatMessages).values(Array.from({ length: 150 }, (_, i) => ({ caseId: long.id, senderId: u.lab, senderRole: 'client' as const, messageText: `n${i}` })))
+        const back = await load('designer', '?since=1')
+        expect(back.body.changes).toBeUndefined()
+        expect(back.body.data).toHaveLength(50)
+      } finally {
+        caseId = main
+        await db.delete(cases).where(eq(cases.id, long.id))
+      }
+    })
+
+    it('refuses bad requests and people without access', async () => {
+      expect((await load('designer', '?since=abc')).status).toBe(400)
+      expect((await load('designer', '?before=1')).status).toBe(400)
+      expect((await load('otherLab', '?since=1')).status).toBe(403)
+      expect((await load('stranger')).status).toBe(403)
+      const id = await send('lab', 'x')
+      expect((await seen('otherLab', id)).status).toBe(403)
+      expect((await seen('designer', 'nope')).status).toBe(400)
+    })
+  })
+
+  describe('marking as read', () => {
+    const readAt = async (key: string) =>
+      ((await db.execute(sql`select last_read_at::text t from chat_read_states where case_id = ${caseId}::uuid and user_id = ${u[key]}::uuid`)) as unknown as Array<{ t: string }>)[0]?.t
+
+    it('goes up to the message seen, never backwards, and leaves later notifications unread', async () => {
+      const one = await send('lab', 'one')
+      const two = await send('lab', 'two')
+      const unread = async (id: string) => (await notes(id)).find((n) => n.userId === u.designer)!.read === false
+      expect((await seen('designer', one)).body.notificationsRead).toBeGreaterThanOrEqual(1)
+      expect([await unread(one), await unread(two)]).toEqual([false, true])
+      expect((await getCasesChatMetadata([caseId], u.designer)).get(caseId)!.hasUnreadChat).toBe(true)
+
+      await seen('designer', two)
+      const latest = await readAt('designer')
+      expect(await unread(two)).toBe(false)
+      expect((await seen('designer', one)).body.notificationsRead).toBe(0)
+      expect(await readAt('designer')).toBe(latest)
+    })
+
+    it('a message from another case cannot move the read position', async () => {
+      const [foreign] = await db.insert(chatMessages).values({ caseId: otherCaseId, senderId: u.otherLab, senderRole: 'client', messageText: 'x', createdAt: new Date(Date.now() + 60_000) }).returning()
+      const before = await readAt('designer')
+      expect((await seen('designer', foreign.id)).body.notificationsRead).toBe(0)
+      expect(await readAt('designer')).toBe(before)
+    })
+
+    it('a new message and reading it both refresh the bell and dots at once (no stale cache)', async () => {
+      const key = `sidebar-badges:${u.designer}`
+      await setCachedData(key, { notifications: false }, 60)
+      const id = await send('lab', 'ring')
+      expect(await getCachedData(key)).toBeNull()
+      await setCachedData(key, { notifications: true }, 60)
+      await setCachedData(`notifications:${u.designer}:unread`, { count: 1 }, 60)
+      await seen('designer', id)
+      expect(await getCachedData(key)).toBeNull()
+      expect(await getCachedData(`notifications:${u.designer}:unread`)).toBeNull()
     })
   })
 

@@ -6,22 +6,43 @@ import { cases } from '@/src/db/schema/case'
 import { profiles } from '@/src/db/schema/profile'
 import { offers, offerClaims } from '@/src/db/schema/offer'
 import { getSummary } from '@/src/lib/support/queries'
-import { isAgentRole } from '@/src/lib/support/constants'
-import type { SupportActor } from '@/src/lib/support/policy'
+import { isAgentRole, isCustomerRole } from '@/src/lib/support/constants'
+import { channelsFor } from '@/src/lib/live/channels'
+import { versionKey } from '@/src/lib/live/names'
+import { clearUserBadge } from '@/src/lib/live/publish'
+import { redis } from '@/src/lib/redis'
 import { invoices } from '@/src/db/schema/invoice'
 import { tutorials } from '@/src/db/schema/tutorial'
 import { notifications } from '@/src/db/schema/notification'
 import { sidebarSeenAt } from '@/src/db/schema/sidebar-seen'
-import { createClient } from '@/src/lib/auth/server'
+import { createClient, getCurrentSession } from '@/src/lib/auth/server'
 import { eq, gt, and, count, sql } from 'drizzle-orm'
 import { isValidRoleForType } from '@/src/lib/auth/role'
 import { resolveClientId, isLabUser } from '@/src/lib/auth/resolve-client-id'
 import { describeDbError } from '@/src/lib/db-error'
 
-/** Support dot: something is waiting for this person (same counts the support pages use). */
-async function supportBadge(actor: SupportActor): Promise<{ count: number }[]> {
-  const summary = await getSummary(actor)
-  return [{ count: summary.unread + summary.newCount }]
+type BadgeSession = { userId: string; role: string; clientId: string | null }
+
+/** Where this person's event counters stand: read before the counts, so a later change can't be hidden. */
+async function badgeVersion(session: BadgeSession): Promise<string | null> {
+  const keys = channelsFor(session).filter((c) => c.area !== 'support').map((c) => versionKey(c.channel))
+  try {
+    return (await redis.mget(keys)).map((v) => v ?? '0').join('.')
+  } catch {
+    return null
+  }
+}
+
+/** Support: something is waiting for this person (same counts as the support pages). Nothing for designers. */
+async function supportDot(session: BadgeSession): Promise<{ support?: boolean }> {
+  if (!isAgentRole(session.role) && !(isCustomerRole(session.role) && session.clientId)) return {}
+  try {
+    const summary = await getSummary({ id: session.userId, role: session.role, clientId: session.clientId })
+    return { support: summary.unread + summary.newCount > 0 }
+  } catch (err) {
+    console.error('[sidebar-badges GET] support:', JSON.stringify(describeDbError(err)))
+    return { support: false } // cosmetic: never takes the other dots down
+  }
 }
 
 async function getOne(query: Promise<{ count: number }[]>): Promise<boolean> {
@@ -33,12 +54,17 @@ export async function GET() {
   try {
     const supabase = await createClient()
     const user = await getRequestUser(supabase)
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const session = await getCurrentSession()
+    if (!user || !session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Per-user (key includes the verified user id) 15s cache: the client polls this every 30s per open tab.
+    // Cached per person until one of their event counters moves (or a minute has passed). Support isn't: its
+    // dot depends on other people's conversations, and it is one cheap query.
     const cacheKey = `sidebar-badges:${user.id}`
-    const cached = await getCachedData<Record<string, boolean>>(cacheKey)
-    if (cached) return NextResponse.json(cached)
+    const version = await badgeVersion(session)
+    const cached = version ? await getCachedData<{ version: string; badges: Record<string, boolean> }>(cacheKey) : null
+    if (cached && cached.version === version) {
+      return NextResponse.json({ ...cached.badges, ...(await supportDot(session)) })
+    }
 
     const profileResult = await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)
     const profile = profileResult[0]
@@ -78,11 +104,6 @@ export async function GET() {
           .where(and(eq(profiles.role, 'client'), gt(profiles.createdAt, getSince('clients'))))
       )
 
-      // Support — conversations nobody has picked up, or unread replies (agents only; designers have no support access)
-      if (isAgentRole(profile.role)) {
-        setBadge('support', supportBadge({ id: profile.id, role: profile.role, clientId: profile.clientId }))
-      }
-
       // Billing — new invoices generated
       setBadge('billing', 
         db
@@ -116,9 +137,6 @@ export async function GET() {
           .from(cases)
           .where(and(eq(cases.clientId, clientId), gt(cases.updatedAt, getSince('cases'))))
       )
-
-      // Support — unread replies from the support team
-      setBadge('support', supportBadge({ id: profile.id, role: profile.role, clientId: profile.clientId }))
 
       // Billing — new invoices issued to this client
       setBadge('billing', 
@@ -157,12 +175,11 @@ export async function GET() {
     const failed = Object.keys(degraded)
     if (failed.length) {
       console.error('[sidebar-badges GET] degraded badges:', JSON.stringify(degraded))
-      // Do not cache a partial answer for the full TTL; retry soon.
-      await setCachedData(cacheKey, badge, 3)
-      return NextResponse.json(badge, { headers: { 'X-Badge-Degraded': failed.join(',') } })
+      // A partial answer is not cached.
+      return NextResponse.json({ ...badge, ...(await supportDot(session)) }, { headers: { 'X-Badge-Degraded': failed.join(',') } })
     }
-    await setCachedData(cacheKey, badge, 15)
-    return NextResponse.json(badge)
+    if (version) await setCachedData(cacheKey, { version, badges: badge }, 60)
+    return NextResponse.json({ ...badge, ...(await supportDot(session)) })
   } catch (err) {
     // Core failure (session store, profile lookup, …). Say WHY in the log (code + Postgres message, no SQL params)
     // and tell clients to back off briefly instead of hammering a struggling backend.
@@ -194,6 +211,7 @@ export async function PATCH(req: NextRequest) {
 
     // The badge for this page just cleared — don't serve the stale cached copy.
     await deleteCachedData(`sidebar-badges:${user.id}`)
+    await clearUserBadge(user.id, page) // and off on their other devices
 
     return NextResponse.json({ ok: true })
   } catch (err) {

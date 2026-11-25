@@ -4,10 +4,10 @@ import { notifications } from '@/src/db/schema/notification';
 import { loadPreference, loadPreferences } from './preferences';
 import { profiles } from '@/src/db/schema/profile';
 import { eq, inArray } from 'drizzle-orm';
-import { redis as connection } from '@/src/lib/redis';
 import { queueEmail } from '@/src/lib/queue/jobs';
 import { NotificationEventPayload, NotificationType } from './notification-events';
 import { renderNotificationEmail } from './email-template';
+import { notificationsChanged } from './changed';
 
 export class NotificationService {
   /**
@@ -90,7 +90,7 @@ export class NotificationService {
 
     if (inserts.length > 0) {
       await db.insert(notifications).values(inserts);
-      await this.invalidateUnreadCaches(inserts.map((r) => r.userId));
+      await notificationsChanged(inserts.map((r) => r.userId), { created: true });
     }
 
     // Email failures must NOT break the business flow — log and continue.
@@ -112,23 +112,6 @@ export class NotificationService {
 
     let k = 0;
     return payloads.map((p, i) => (valid[i] ? outcomes.get(items[k++])! : { success: false, channels: [] }));
-  }
-
-  /**
-   * Drop the cached unread count and first notification page for these users in a single DEL, so a new
-   * notification shows on the next poll instead of after the cache TTL. (Other list pages age out in 60s.)
-   */
-  static async invalidateUnreadCaches(userIds: string[]) {
-    if (userIds.length === 0 || connection.status !== 'ready') return;
-    try {
-      const keys = Array.from(new Set(userIds)).flatMap((id) => [
-        `notifications:${id}:unread`,
-        `notifications:${id}:list:20:0`,
-      ]);
-      await connection.del(...keys);
-    } catch (err) {
-      console.error('[NotificationService] Cache invalidation failed:', err);
-    }
   }
 
   // Check specific event switches for email

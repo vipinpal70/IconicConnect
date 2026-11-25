@@ -1,4 +1,5 @@
 import { redis as connection, guarded } from './redis';
+import { publishCaseChange, recheckLabBadges } from './live/publish';
 
 const DEFAULT_TTL = 3600; // 1 hour default cache time
 
@@ -124,29 +125,18 @@ export async function invalidateInvoiceCache(clientId: string, invoiceId?: strin
 }
 
 /**
- * Invalidates notification caches for a user (list + unread count).
- */
-export async function invalidateNotificationCache(userId: string): Promise<void> {
-  if (connection.status !== 'ready') return
-  try {
-    // Direct DEL of the keys the UI actually uses — no keyspace SCAN (slow on managed Redis). Any other
-    // list page/limit (API clients only) ages out via its 60s TTL.
-    await connection.del(
-      `notifications:${userId}:unread`,
-      `notifications:${userId}:list:20:0`,
-      `notifications:${userId}:list:5:0`,
-      `sidebar-badges:${userId}`,
-    )
-  } catch (error) {
-    console.error('[invalidateNotificationCache]', error)
-  }
-}
-
-/**
  * Invalidates cases, dashboards and analytics after a case write: 3-4 INCRs in one MULTI, no keyspace scan.
  * Staff views refresh on any lab's change; a lab's views refresh only on its own.
+ *
+ * `caseIds`: the cases that changed. Their cached details go too, and only then do open browsers hear about
+ * it, so what they fetch is the new state. Leave it out when it isn't known which (or too many): they reload.
+ * `staffOnly`: labs see none of this change.
  */
-export async function invalidateCasesCache(clientId?: string | null): Promise<void> {
+export async function invalidateCasesCache(
+  clientId?: string | null,
+  caseIds?: string | string[],
+  opts: { staffOnly?: boolean } = {},
+): Promise<void> {
   if (connection.status !== 'ready') {
     console.warn(`[Redis Cache Invalidation] Redis is not ready. Skipping cache invalidation for Client: ${clientId || 'ALL'}`);
     return;
@@ -154,7 +144,11 @@ export async function invalidateCasesCache(clientId?: string | null): Promise<vo
   try {
     const m = connection.multi().incr('ver:cases:staff').incr('ver:analytics:staff');
     if (clientId) m.incr(`ver:cases:${clientId}`).incr(`ver:analytics:${clientId}`);
+    const ids = caseIds === undefined ? [] : [caseIds].flat();
+    if (ids.length) m.del(...ids.map((id) => `case:detail:${id}`));
     await m.exec();
+    await publishCaseChange(opts.staffOnly ? null : clientId ?? null, ids);
+    if (clientId && !opts.staffOnly) await recheckLabBadges(clientId); // "something about your cases changed"
   } catch (error) {
     console.error('[Redis Cache Invalidation Error]', error);
   }

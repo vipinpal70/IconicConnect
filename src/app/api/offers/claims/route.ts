@@ -1,3 +1,4 @@
+import { lightStaffBadge } from "@/src/lib/live/publish"
 import { users } from '@/src/db/schema/profile'
 import { NextRequest, NextResponse } from "next/server"
 import { getEmail } from '@/src/lib/auth/auth-service'
@@ -184,6 +185,7 @@ export async function POST(req: NextRequest) {
         clientId,
       })
       .returning()
+    await lightStaffBadge('offers')
 
     const [row] = await db
       .select({

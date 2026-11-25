@@ -1,6 +1,9 @@
 /* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 "use client";
 
+import { useCaseChatBadges } from "@/src/hooks/useCaseChatBadges";
+import { useLiveCases } from "@/src/hooks/useLiveCases";
+import { UpdatesAvailable } from "@/src/components/UpdatesAvailable";
 import { useMemo, useState, useRef, useEffect } from "react";
 import { createClient } from "@/src/lib/auth/client";
 import { Card, CardContent } from "@/src/components/ui/card";
@@ -291,6 +294,7 @@ export default function CasesPage() {
     appliedRef.current = next;
     setAppliedFilters(next);
     loadedPagesRef.current = 1;
+    clearUpdates();
     setIsFetching(true);
     try {
       await fetchCases(false);
@@ -397,14 +401,39 @@ export default function CasesPage() {
     }
   };
 
-  // Initial load (top CASES_PAGE_SIZE, no filters) + a 30s refresh that re-runs
-  // whatever filter snapshot is currently applied.
+  // Everything loaded so far, without a spinner or a toast. Dropped if the filters or the number of loaded
+  // pages changed meanwhile: that load is newer.
+  const reloadQuietly = async () => {
+    const pages = Math.max(loadedPagesRef.current, 1);
+    const url = buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, 1);
+    try {
+      const results = await Promise.all(Array.from({ length: pages }, (_, i) => fetchPageJson(i + 1)));
+      if (loadedPagesRef.current !== pages || buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, 1) !== url) return;
+      setCases(dedupeById(results.flatMap((r) => (Array.isArray(r.data) ? r.data : []))));
+      setHasMore(results[results.length - 1]?.hasMore ?? false);
+    } catch (err) {
+      console.error("Error refreshing cases:", err);
+    }
+  };
+
+  // Initial load (top CASES_PAGE_SIZE, no filters); live updates keep it fresh from there.
   useEffect(() => {
     loadedPagesRef.current = 1;
     const timeoutId = window.setTimeout(() => { void fetchCases(); }, 0);
-    const intervalId = window.setInterval(() => { void refreshFirstPage(); }, 30_000);
-    return () => { window.clearTimeout(timeoutId); window.clearInterval(intervalId); };
+    return () => window.clearTimeout(timeoutId);
   }, []);
+  const filtersApplied = buildCasesQuery(appliedFilters, CASES_PAGE_SIZE, 1) !== buildCasesQuery(EMPTY_CASE_FILTERS, CASES_PAGE_SIZE, 1);
+  const { updatesAvailable, clearUpdates } = useLiveCases<any>({
+    rows: cases,
+    url: () => buildCasesQuery(appliedRef.current, CASES_PAGE_SIZE, 1),
+    priorityStatus: "submitted_to_client",
+    filtered: filtersApplied,
+    hasMore,
+    change: setCases,
+    reload: () => { void reloadQuietly(); },
+    refresh: () => { void refreshFirstPage(); },
+  });
+  useCaseChatBadges((caseId, change) => setCases((prev) => prev.map((c) => (c.id === caseId ? change(c) : c))));
 
   // Which individual services (category/sub-type) this client has enabled —
   // admin can disable one independently. null means "not fetched yet, don't filter".
@@ -1998,6 +2027,8 @@ export default function CasesPage() {
             </div>
           </CardContent>
         </Card>
+
+        <UpdatesAvailable show={updatesAvailable && filtersApplied} busy={isFetching} onRefresh={() => void runFetch(appliedFilters)} />
 
         {/* Table */}
         <Card className="shadow-card border-border/50">

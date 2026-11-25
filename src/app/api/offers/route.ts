@@ -1,3 +1,4 @@
+import { lightAllLabsBadge } from "@/src/lib/live/publish"
 import { NextRequest, NextResponse } from "next/server"
 import { desc, eq } from "drizzle-orm"
 import { db } from "@/src/db"
@@ -225,6 +226,7 @@ export async function POST(req: NextRequest) {
       })
       .returning()
 
+    if (inserted.active) await lightAllLabsBadge('offers')
     await notifyOfferCreated({
       actorUserId: userContext.user.id,
       offerId: inserted.id,

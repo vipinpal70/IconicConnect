@@ -6,10 +6,11 @@ import { files } from '@/src/db/schema/files'
 import { notifications } from '@/src/db/schema/notification'
 import type { Profile } from '@/src/db/schema/profile'
 import { logActivity } from '@/src/lib/activity-log'
-import { canAccessCaseChat, chatNotificationText } from '@/src/lib/chat'
+import { canAccessCaseChat, chatNotificationText, resolveCaseChatParticipantIds } from '@/src/lib/chat'
 import { CASE_ACTION_PREFIXES, CHAT_MODIFY_GRACE_MS, CHAT_MODIFY_WINDOW_MS, isCaseActionLine } from '@/src/lib/chat-rules'
 import { NotificationType } from '@/src/lib/notifications/notification-events'
-import { NotificationService } from '@/src/lib/notifications/notification-service'
+import { publishChat } from '@/src/lib/live/chat'
+import { notificationsChanged } from '@/src/lib/notifications/changed'
 import { isRemovableUploadKey, scheduleAttachmentCleanup } from '@/src/lib/queue/chat-jobs'
 
 /**
@@ -50,6 +51,16 @@ async function assertChatAccess(caseId: string, profile: Profile) {
   if (!caseRecord) throw new ChatModifyError(404, 'not_found', 'Case not found')
   if (!canAccessCaseChat(caseRecord, profile)) {
     throw new ChatModifyError(403, 'forbidden', 'You do not have access to this case chat')
+  }
+  return caseRecord
+}
+
+/** Open chats show the change at once. Never throws: the change is already saved. */
+async function announceChange(caseRecord: typeof cases.$inferSelect) {
+  try {
+    await publishChat(caseRecord, await resolveCaseChatParticipantIds(caseRecord), 'changed')
+  } catch (err) {
+    console.error('[chat-modify] could not announce the change:', (err as Error).message)
   }
 }
 
@@ -95,7 +106,7 @@ function audit(profile: Profile, action: 'chat.message_edited' | 'chat.message_d
 }
 
 export async function editChatMessage(profile: Profile, caseId: string, messageId: string, text: string) {
-  await assertChatAccess(caseId, profile)
+  const caseRecord = await assertChatAccess(caseId, profile)
   const { message, notified } = await db.transaction(async (tx) => {
     const [updated] = await tx
       .update(chatMessages)
@@ -110,13 +121,14 @@ export async function editChatMessage(profile: Profile, caseId: string, messageI
       .returning({ userId: notifications.userId })
     return { message: updated, notified: changed.map((n) => n.userId) }
   })
-  await NotificationService.invalidateUnreadCaches(notified)
+  await announceChange(caseRecord)
+  await notificationsChanged(notified)
   await audit(profile, 'chat.message_edited', caseId, messageId)
   return message
 }
 
 export async function deleteChatMessage(profile: Profile, caseId: string, messageId: string) {
-  await assertChatAccess(caseId, profile)
+  const caseRecord = await assertChatAccess(caseId, profile)
   const { keys, notified } = await db.transaction(async (tx) => {
     const [deleted] = await tx
       .update(chatMessages)
@@ -136,6 +148,7 @@ export async function deleteChatMessage(profile: Profile, caseId: string, messag
   })
   // After commit: the job re-checks that nothing else uses the file. Other keys are left to the orphan sweep.
   if (keys.length > 0) await scheduleAttachmentCleanup(messageId, keys)
-  await NotificationService.invalidateUnreadCaches(notified)
+  await announceChange(caseRecord)
+  await notificationsChanged(notified)
   await audit(profile, 'chat.message_deleted', caseId, messageId)
 }

@@ -28,7 +28,7 @@ export function SupportWidget() {
   const closeRef = useRef<HTMLButtonElement>(null)
 
   useSupportStream()
-  const summary = useSupportSummary()
+  const summary = useSupportSummary(open)
   const unread = summary.data?.unread ?? 0
 
   useEffect(() => {
@@ -47,7 +47,10 @@ export function SupportWidget() {
       {!open && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true)
+            if (Date.now() - summary.dataUpdatedAt > 30_000) void summary.refetch()
+          }}
           className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/30"
           aria-label={unread > 0 ? `Support, ${unread} unread` : 'Support'}
         >

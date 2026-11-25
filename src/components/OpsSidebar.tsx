@@ -62,7 +62,7 @@ export function OpsSidebar() {
     if (item?.badgeKey) {
       markSeen(item.badgeKey)
     }
-  }, [pathname, markSeen])
+  }, [pathname, markSeen, badges])
 
   const initials = profile?.fullName
     ? profile.fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()

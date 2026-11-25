@@ -1,3 +1,4 @@
+import { lightStaffBadge } from '@/src/lib/live/publish'
 import { logAuthEvent } from '@/src/lib/auth/audit'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/src/db'
@@ -97,6 +98,8 @@ export async function POST(req: NextRequest) {
     await deleteCachedData('clients:list:v2').catch((err) =>
       console.error('[sign-up deleteCachedData]', err)
     )
+
+    await lightStaffBadge('clients')
 
     // Record the submitted sign-up form data in the activity log
     await logActivity({

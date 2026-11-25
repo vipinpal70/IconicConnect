@@ -91,7 +91,7 @@ export async function POST(
       },
     });
 
-    await invalidateCasesCache(caseRecord.clientId);
+    await invalidateCasesCache(caseRecord.clientId, id);
 
     return NextResponse.json({ data: insertedFile[0] }, { status: 201 });
   } catch (error: unknown) {

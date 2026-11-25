@@ -13,7 +13,7 @@ import type {
   CustomerContext,
   SupportMetrics,
 } from '@/src/lib/support/types'
-import { pollInterval } from './live'
+import { usePollInterval } from './live'
 import type { SupportCategory, SupportCloseReason, SupportPriority } from '@/src/lib/support/constants'
 
 /**
@@ -72,7 +72,7 @@ export function useTicketList(params: ListParams) {
       return request<TicketListResponse>(`/api/support/tickets?${search}`)
     },
     getNextPageParam: (last) => last.nextCursor,
-    refetchInterval: pollInterval(POLL.list),
+    refetchInterval: usePollInterval(POLL.list),
   })
 }
 
@@ -81,16 +81,18 @@ export function useTicket(ticketId: string | null) {
     queryKey: supportKeys.ticket(ticketId ?? 'none'),
     queryFn: () => request<TicketDetail>(`/api/support/tickets/${ticketId}`),
     enabled: Boolean(ticketId),
-    refetchInterval: pollInterval(POLL.ticket),
+    refetchInterval: usePollInterval(POLL.ticket),
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
   })
 }
 
-export function useSupportSummary() {
+/** `showsPresence`: "We're online" is on screen. No event announces it, so it is asked for every minute. */
+export function useSupportSummary(showsPresence = false) {
+  const poll = usePollInterval(POLL.list)
   return useQuery({
     queryKey: supportKeys.summary,
     queryFn: () => request<SupportSummary>('/api/support/summary'),
-    refetchInterval: pollInterval(POLL.list),
+    refetchInterval: showsPresence ? Math.min(poll, 60_000) : poll,
   })
 }
 
@@ -154,7 +156,7 @@ export function useThreadMessages(ticketId: string | null) {
     queryKey: [...key, 'poll'],
     queryFn: fetchNewer,
     enabled: Boolean(ticketId) && thread.isSuccess,
-    refetchInterval: pollInterval(POLL.thread),
+    refetchInterval: usePollInterval(POLL.thread),
   })
 
   const loadOlder = useCallback(async () => {

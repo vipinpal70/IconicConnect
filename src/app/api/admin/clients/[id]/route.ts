@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/src/db'
 import { profiles } from '@/src/db/schema/profile'
 import { createClient } from '@/src/lib/auth/server'
-import { getCachedData, setCachedData, deleteCachedData } from '@/src/lib/redis-cache'
+import { getCachedData, setCachedData, deleteCachedData, invalidateCasesCache } from '@/src/lib/redis-cache'
 import { logActivity } from '@/src/lib/activity-log'
 import { deleteClientCompletely } from '@/src/lib/admin/delete-client'
 
@@ -177,6 +177,7 @@ export async function DELETE(
     }
 
     await invalidateClientCaches(id)
+    if (result.casesDeleted > 0) await invalidateCasesCache(id, result.caseIds)
 
     await logActivity({
       actor: auth.profile,

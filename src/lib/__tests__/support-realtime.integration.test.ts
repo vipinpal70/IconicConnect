@@ -24,13 +24,16 @@ describe.runIf(enabled)('support live events (database + Redis)', async () => {
   const { supTickets } = await import('@/src/db/schema/support')
   const service = await import('@/src/lib/support/service')
   const realtime = await import('@/src/lib/support/realtime')
+  const presence = await import('@/src/lib/live/presence')
+  const { listen } = await import('@/src/lib/live/bus')
 
   type Caller = Parameters<typeof service.createTicket>[0]
-  type Event = Awaited<Parameters<Parameters<typeof realtime.subscribe>[1]>[0]>
+  type Event = Parameters<typeof realtime.publish>[1]
   const ids: string[] = []
   const callers: Record<string, Caller> = {}
   const received: Record<'labA' | 'labB' | 'agents', Event[]> = { labA: [], labB: [], agents: [] }
   const unsubscribers: Array<() => void> = []
+  const subscribe = (channels: string[], on: (e: Event) => void) => listen(channels, (e) => on(e as unknown as Event)).stop
   const uuid = () => crypto.randomUUID()
   const settle = () => new Promise((r) => setTimeout(r, 300)) // pub/sub round trip through Redis
 
@@ -48,9 +51,9 @@ describe.runIf(enabled)('support live events (database + Redis)', async () => {
     await makeUser('labA', 'client', 'lab_portal')
     await makeUser('labB', 'client', 'lab_portal')
     await makeUser('agent', 'qc', 'admin_portal')
-    unsubscribers.push(realtime.subscribe([realtime.labChannel(callers.labA.actor.id)], (e) => received.labA.push(e)))
-    unsubscribers.push(realtime.subscribe([realtime.labChannel(callers.labB.actor.id)], (e) => received.labB.push(e)))
-    unsubscribers.push(realtime.subscribe([realtime.agentsChannel], (e) => received.agents.push(e)))
+    unsubscribers.push(subscribe([realtime.labChannel(callers.labA.actor.id)], (e) => received.labA.push(e)))
+    unsubscribers.push(subscribe([realtime.labChannel(callers.labB.actor.id)], (e) => received.labB.push(e)))
+    unsubscribers.push(subscribe([realtime.agentsChannel], (e) => received.agents.push(e)))
     await settle()
   })
 
@@ -118,13 +121,13 @@ describe.runIf(enabled)('support live events (database + Redis)', async () => {
   it('limits open streams per user and reports agents online', async () => {
     const user = uuid()
     const results = []
-    for (let i = 0; i < realtime.MAX_STREAMS_PER_USER + 1; i++) results.push(await realtime.openStream(user, `conn-${i}`, true))
-    expect(results.slice(0, realtime.MAX_STREAMS_PER_USER).every(Boolean)).toBe(true)
+    for (let i = 0; i < presence.MAX_STREAMS_PER_USER + 1; i++) results.push(await presence.openStream(user, `conn-${i}`, true))
+    expect(results.slice(0, presence.MAX_STREAMS_PER_USER).every(Boolean)).toBe(true)
     expect(results.at(-1)).toBe(false)
-    expect(await realtime.agentsOnline()).toBe(true)
-    await realtime.closeStream(user, 'conn-0')
-    expect(await realtime.openStream(user, 'conn-again', true)).toBe(true)
-    for (let i = 1; i < realtime.MAX_STREAMS_PER_USER; i++) await realtime.closeStream(user, `conn-${i}`)
-    await realtime.closeStream(user, 'conn-again')
+    expect(await presence.agentsOnline()).toBe(true)
+    await presence.closeStream(user, 'conn-0')
+    expect(await presence.openStream(user, 'conn-again', true)).toBe(true)
+    for (let i = 1; i < presence.MAX_STREAMS_PER_USER; i++) await presence.closeStream(user, `conn-${i}`)
+    await presence.closeStream(user, 'conn-again')
   })
 })
