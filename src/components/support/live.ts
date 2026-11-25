@@ -42,7 +42,7 @@ const invalidateTicket = (qc: QueryClient, ticketId: string) => {
   invalidateLive(qc, ['support', 'messages', ticketId, 'poll'])
   invalidateLive(qc, ['support', 'list'])
   invalidateLive(qc, ['support', 'summary'])
-  invalidateLive(qc, ['sidebar-badges'])
+  // The sidebar dot: useAppLive, on every page
 }
 
 function handle(qc: QueryClient, type: string, event: LiveData) {

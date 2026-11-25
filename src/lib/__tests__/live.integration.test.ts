@@ -22,7 +22,9 @@ describe.runIf(enabled)('live connection (Redis)', async () => {
   const live = await import('@/src/app/api/live/route')
   const presenceRoute = await import('@/src/app/api/live/presence/route')
   const support = await import('@/src/lib/support/realtime')
-  const { channelsFor, openStreamCount } = await import('@/src/lib/live/stream')
+  const { openStreamCount } = await import('@/src/lib/live/stream')
+  const { channelsFor } = await import('@/src/lib/live/channels')
+  const names = await import('@/src/lib/live/names')
   const presence = await import('@/src/lib/live/presence')
   const publish = await import('@/src/lib/live/publish')
 
@@ -96,7 +98,7 @@ describe.runIf(enabled)('live connection (Redis)', async () => {
   })
 
   it('every role is connected, each to its own channels only', () => {
-    const of = (role: string, clientId: string | null = null) => channelsFor({ userId: 'u', role, clientId }).channels
+    const of = (role: string, clientId: string | null = null) => channelsFor({ userId: 'u', role, clientId }).map((c) => c.channel)
     expect(of('client', 'A')).toEqual(['live:user:u', 'live:lab:A', 'live:labs', 'sup:lab:A'])
     expect(of('subuser', 'A')).toEqual(of('client', 'A'))
     for (const role of ['admin', 'qc', 'account_manager']) expect(of(role)).toEqual(['live:user:u', 'live:staff', 'sup:agents'])
@@ -138,7 +140,8 @@ describe.runIf(enabled)('live connection (Redis)', async () => {
 
     await support.publishToBoth(labA, { type: 'ticket', ticketId: uuid() })
     const again = await connect(sid)
-    expect(again.of('hello')[0].data.versions).toEqual({ support: start + 3 })
+    expect(again.of('hello')[0].data.versions).toMatchObject({ support: start + 3 })
+    expect(first.of('ticket')[0].data.a).toBe('support')
   })
 
   it('events sent by a process still on the previous release are understood', async () => {
@@ -177,7 +180,7 @@ describe.runIf(enabled)('live connection (Redis)', async () => {
   it('a browser cannot pretend: someone else\'s session check changes nothing', async () => {
     const a = await connect((await login('client', labA)).sid)
     await publish.publishSessionCheck(uuid())
-    await publish.publishLive(publish.userChannel(people.at(-1)!), { type: 'session' }) // own, but still signed in
+    await publish.publishSessionCheck(people.at(-1)!) // own, but still signed in
     await wait(300)
     expect(a.ended).toBe(false)
     expect(a.of('session')).toEqual([]) // internal, never forwarded

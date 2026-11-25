@@ -19,6 +19,7 @@ import { getCasePrefix, formatCaseNumber } from '@/src/lib/case-utils';
 import { logActivity } from '@/src/lib/activity-log';
 import { notifyCaseSubmitted } from '@/src/lib/notifications/notification-dispatcher';
 import { getCasesChatMetadata } from '@/src/lib/chat';
+import { lightStaffBadge } from '@/src/lib/live/publish';
 import { invalidateCasesCache, getCachedData, setCachedData } from '@/src/lib/redis-cache';
 import { getPriceListForClient, type PriceListEntryFull } from '@/src/lib/price-list';
 import { getRequiredServiceSelections } from '@/src/lib/case-hierarchy';
@@ -474,6 +475,7 @@ export async function POST(req: NextRequest) {
 
     if (clientId) {
       await invalidateCasesCache(clientId);
+      await lightStaffBadge('cases');
     }
 
     // `skipped` is always present but empty unless a 3Shape-import entry was

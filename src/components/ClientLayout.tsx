@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/src/lib/utils";
 import { useState } from "react";
 import { useSidebarBadges } from "@/src/hooks/useSidebarBadges";
-import { useLive } from "@/src/lib/live/client";
+import { useAppLive } from "@/src/hooks/useAppLive";
 import { SequentialPrefetcher, type PrefetchTask } from "@/src/components/SequentialPrefetcher";
 import { SupportWidget } from "@/src/components/support/SupportWidget";
 
@@ -28,7 +28,7 @@ function clientPrefetchTasks(): PrefetchTask[] {
 }
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
-  useLive(); // this browser's live connection
+  useAppLive(); // live bell and dots
   // Shares the sidebar's single /api/sidebar-badges poll instead of running a second one.
   const { badges } = useSidebarBadges();
   const hasUnread = Boolean(badges.notifications);

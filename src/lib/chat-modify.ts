@@ -9,7 +9,7 @@ import { logActivity } from '@/src/lib/activity-log'
 import { canAccessCaseChat, chatNotificationText } from '@/src/lib/chat'
 import { CASE_ACTION_PREFIXES, CHAT_MODIFY_GRACE_MS, CHAT_MODIFY_WINDOW_MS, isCaseActionLine } from '@/src/lib/chat-rules'
 import { NotificationType } from '@/src/lib/notifications/notification-events'
-import { NotificationService } from '@/src/lib/notifications/notification-service'
+import { notificationsChanged } from '@/src/lib/notifications/changed'
 import { isRemovableUploadKey, scheduleAttachmentCleanup } from '@/src/lib/queue/chat-jobs'
 
 /**
@@ -110,7 +110,7 @@ export async function editChatMessage(profile: Profile, caseId: string, messageI
       .returning({ userId: notifications.userId })
     return { message: updated, notified: changed.map((n) => n.userId) }
   })
-  await NotificationService.invalidateUnreadCaches(notified)
+  await notificationsChanged(notified)
   await audit(profile, 'chat.message_edited', caseId, messageId)
   return message
 }
@@ -136,6 +136,6 @@ export async function deleteChatMessage(profile: Profile, caseId: string, messag
   })
   // After commit: the job re-checks that nothing else uses the file. Other keys are left to the orphan sweep.
   if (keys.length > 0) await scheduleAttachmentCleanup(messageId, keys)
-  await NotificationService.invalidateUnreadCaches(notified)
+  await notificationsChanged(notified)
   await audit(profile, 'chat.message_deleted', caseId, messageId)
 }

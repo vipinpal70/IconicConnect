@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
 import { aliveSessions, type SessionData } from '@/src/lib/auth/session'
-import { isValidRoleForType, type UserRole } from '@/src/lib/auth/role'
 import { redis } from '@/src/lib/redis'
-import { isAgentRole, isCustomerRole } from '@/src/lib/support/constants'
-import { agentsChannel, labChannel as supportLabChannel, supportVersionKey } from '@/src/lib/support/channels'
+import { isAgentRole } from '@/src/lib/support/constants'
 import { listen, onBusReconnect, type LiveEvent } from './bus'
 import { closeStream, heartbeatStreams, openStream } from './presence'
-import { allLabsChannel, labChannel, staffChannel, userChannel } from './publish'
+import { channelsFor } from './channels'
+import { versionKey } from './names'
 
 /**
  * Server-sent events: one stream per browser (§7.1). Events are signals, never content.
@@ -42,25 +41,6 @@ interface Registry {
 }
 const g = globalThis as unknown as { __liveStreams?: Registry }
 const registry = (g.__liveStreams ??= { streams: new Set(), timer: null, beats: 0, shutdownHooked: false, offReconnect: null })
-
-/** What a person may hear about: decided by the session, never by the browser. */
-export function channelsFor(session: Pick<SessionData, 'userId' | 'role' | 'clientId'>): { channels: string[]; versions: Record<string, string> } {
-  const channels = [userChannel(session.userId)]
-  const versions: Record<string, string> = {}
-  if (isCustomerRole(session.role)) {
-    if (!session.clientId) return { channels, versions }
-    channels.push(labChannel(session.clientId), allLabsChannel, supportLabChannel(session.clientId))
-    versions.support = supportVersionKey(supportLabChannel(session.clientId))
-    return { channels, versions }
-  }
-  if (!isValidRoleForType('admin_portal', session.role as UserRole)) return { channels, versions }
-  channels.push(staffChannel)
-  if (isAgentRole(session.role)) {
-    channels.push(agentsChannel)
-    versions.support = supportVersionKey(agentsChannel)
-  }
-  return { channels, versions }
-}
 
 async function checkSessions(streams: Stream[]) {
   const alive = await aliveSessions(streams.map((s) => s.sid))
@@ -108,7 +88,8 @@ export async function liveStreamResponse(session: SessionData, sid: string, sign
   if (!(await openStream(session.userId, connectionId, isAgent))) {
     return NextResponse.json({ error: 'Open in too many windows', code: 'too_many_streams' }, { status: 429 })
   }
-  const { channels, versions } = channelsFor(session)
+  const channels = channelsFor(session)
+  const areaOf = new Map(channels.map((c) => [c.channel, c.area]))
   const encoder = new TextEncoder()
   let stop: () => void = () => {}
 
@@ -127,10 +108,9 @@ export async function liveStreamResponse(session: SessionData, sid: string, sign
         }
       }
       const hello = async () => {
-        const areas = Object.keys(versions)
-        const values = areas.length ? await redis.mget(areas.map((a) => versions[a])).catch(() => null) : []
+        const values = await redis.mget(channels.map((c) => versionKey(c.channel))).catch(() => null)
         // Unknown versions: let the browser assume that everything moved
-        const known = Object.fromEntries(areas.map((a, i) => [a, values ? Number(values[i] ?? 0) : null]))
+        const known = Object.fromEntries(channels.map((c, i) => [c.area, values ? Number(values[i] ?? 0) : null]))
         send(`event: hello\ndata: ${JSON.stringify({ versions: known })}\n\n`)
       }
       const stream: Stream = { userId: session.userId, connectionId, isAgent, sid, send, hello, close: () => close() }
@@ -154,9 +134,9 @@ export async function liveStreamResponse(session: SessionData, sid: string, sign
       signal.addEventListener('abort', close)
       // Spread out so that a restart doesn't bring everyone back in the same second
       send(`retry: ${3000 + Math.floor(Math.random() * 4000)}\n\n`)
-      const listening = listen(channels, (event: LiveEvent, version) => {
+      const listening = listen(channels.map((c) => c.channel), (event: LiveEvent, version, channel) => {
         if (event.type === 'session') return void checkSessions([stream])
-        send(`event: ${event.type}\ndata: ${JSON.stringify(version === null ? event : { ...event, v: version })}\n\n`)
+        send(`event: ${event.type}\ndata: ${JSON.stringify(version === null ? event : { ...event, a: areaOf.get(channel), v: version })}\n\n`)
       })
       stopListening = listening.stop
       // Only once Redis confirmed the subscription, so nothing can fall between these versions and the events

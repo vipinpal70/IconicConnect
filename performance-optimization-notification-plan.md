@@ -1,6 +1,6 @@
 # Performance Optimization in Notifications: Plan
 
-**Status:** approved with the recommendations (N1–N4). **Phases 0 and 1 implemented** (see §13); Phases 2–6 to do. N5 and N6 still need answers.
+**Status:** approved with the recommendations (N1–N4). **Phases 0 to 2 implemented** (see §13); Phases 3–6 to do. N5 and N6 still need answers.
 
 **Branch:** `perf/live-notifications`, from `no-supabase-rewrite`.
 
@@ -425,3 +425,16 @@ location ~ ^/api/(live|support/stream)$ {
 ```
 
 It also works without this (25 s heartbeat, unbuffered by header); the location makes it robust.
+
+### Phase 2: Notifications and badges (done)
+
+- **The bell:** `notificationsChanged()` is the one place to call after notifications were created, read, edited or removed. It clears the caches and sends `{notification, unread}` to each person, so their tabs set the bell without asking. An open notifications page refreshes itself.
+- **Dots a single event decides** (new case, client, invoice, offer, claim, tutorial) are set directly, with no request. Opening a page turns its dot off on the person's other devices too.
+- **A lab's Cases dot and the Support dot** depend on more, so those events mean "ask again": one small request per burst, after 1–2.5 s, only in visible tabs.
+- **P2** polls every 5 minutes while live (60 s otherwise) instead of every 30 s. A failed request keeps the dots shown so far instead of clearing them.
+- **The cached answer carries a version** made of the person's event counters, so it can never hide a change. It lasts 60 s instead of 15 s. The Support dot isn't cached.
+- Events now name their area, so each channel is caught up separately.
+
+**Tests:** `live-badges.integration.test.ts` (11, real routes, Postgres and Redis); 294 in total. Browser, two production processes: 15/15 (bell in another process and every tab at once, without a request; 95 s idle: 0 badge requests in 5 tabs, 3 per tab before), and the Phase 0, Phase 1 and chat checks again (15, 18 and 25).
+
+**Deploy:** no migration. Restart the worker and the schedulers too: they send notification events.

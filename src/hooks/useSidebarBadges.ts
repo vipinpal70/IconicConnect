@@ -2,10 +2,11 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
+import { pollInterval } from '@/src/lib/live/client'
 
 export type SidebarBadges = Record<string, boolean>
 
-const QUERY_KEY = ['sidebar-badges']
+export const BADGES_KEY = ['sidebar-badges']
 const NO_BADGES: SidebarBadges = {}
 
 /**
@@ -18,13 +19,14 @@ export function useSidebarBadges() {
   const queryClient = useQueryClient()
 
   const { data: badges = NO_BADGES } = useQuery<SidebarBadges>({
-    queryKey: QUERY_KEY,
+    queryKey: BADGES_KEY,
     queryFn: async () => {
       const res = await fetch('/api/sidebar-badges')
-      if (!res.ok) return {}
+      if (!res.ok) throw new Error('Failed to load badges') // keep the dots shown so far
       return res.json()
     },
-    refetchInterval: 30_000,
+    // Events keep the dots right; this is the safety net (and all there is while the connection is down)
+    refetchInterval: pollInterval(60_000, 5 * 60_000),
     staleTime: 20_000,
   })
 
@@ -32,10 +34,10 @@ export function useSidebarBadges() {
   const markSeen = useCallback(
     async (page: string) => {
       if (!SEEN_BY_VISITING.has(page)) return
-      if (!queryClient.getQueryData<SidebarBadges>(QUERY_KEY)?.[page]) return
+      if (!queryClient.getQueryData<SidebarBadges>(BADGES_KEY)?.[page]) return
       // Off at once, here; the other dots don't change, so there is nothing to reload
-      await queryClient.cancelQueries({ queryKey: QUERY_KEY })
-      queryClient.setQueryData<SidebarBadges>(QUERY_KEY, (old) => ({ ...old, [page]: false }))
+      await queryClient.cancelQueries({ queryKey: BADGES_KEY })
+      queryClient.setQueryData<SidebarBadges>(BADGES_KEY, (old) => ({ ...old, [page]: false }))
       await fetch('/api/sidebar-badges', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

@@ -1,3 +1,4 @@
+import { lightLabBadge, lightStaffBadge } from '@/src/lib/live/publish'
 import { getInvoiceCaseIds, findDuplicateBilling } from '@/src/lib/invoice-cases'
 import { getEmail, getEmails } from '@/src/lib/auth/auth-service'
 import { NextRequest, NextResponse } from 'next/server'
@@ -164,6 +165,7 @@ export async function POST(req: NextRequest) {
     })
 
     await invalidateInvoiceCache(clientId, saved.id)
+    await Promise.all([lightStaffBadge('billing'), lightLabBadge(clientId, 'billing')])
 
     await logActivity({
       actor: auth.profile,

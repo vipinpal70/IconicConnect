@@ -1,7 +1,7 @@
 import { listen } from '@/src/lib/live/bus'
 import { presentUsers } from '@/src/lib/live/presence'
 import { publishLive } from '@/src/lib/live/publish'
-import { agentsChannel, labChannel, supportVersionKey } from './channels'
+import { agentsChannel, labChannel } from './channels'
 import type { SupportSide } from './constants'
 
 /**
@@ -23,7 +23,7 @@ export { MAX_STREAMS_PER_USER, agentsOnline, closeStream, heartbeatStream, openS
 
 /** Typing is ephemeral: missing it needs no catching up, so it has no version. */
 export async function publish(channels: string[], event: SupportEvent): Promise<void> {
-  await Promise.all(channels.map((c) => publishLive(c, event, event.type === 'typing' ? undefined : supportVersionKey(c))))
+  await Promise.all(channels.map((c) => publishLive(c, event, { counted: event.type !== 'typing' })))
 }
 
 /** A change everyone involved should see (public message, status, assignment, read receipt). */

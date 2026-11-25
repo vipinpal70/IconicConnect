@@ -4,7 +4,7 @@ import { cases } from '@/src/db/schema/case'
 import { chatMessages, chatReadStates } from '@/src/db/schema/chat'
 import { profiles, type Profile } from '@/src/db/schema/profile'
 import { notifications } from '@/src/db/schema/notification'
-import { invalidateNotificationCache } from '@/src/lib/redis-cache'
+import { notificationsChanged } from '@/src/lib/notifications/changed'
 import { NotificationType, type NotificationEventPayload } from '@/src/lib/notifications/notification-events'
 
 type CaseAccessRecord = typeof cases.$inferSelect
@@ -174,6 +174,6 @@ export async function markChatNotificationsRead(caseId: string, userId: string, 
           and seen.id = ${messageId}::uuid and seen.case_id = ${caseId}::uuid and n.created_at <= seen.created_at))`,
     ))
     .returning({ id: notifications.id })
-  if (changed.length > 0) await invalidateNotificationCache(userId)
+  if (changed.length > 0) await notificationsChanged([userId])
   return changed.length
 }

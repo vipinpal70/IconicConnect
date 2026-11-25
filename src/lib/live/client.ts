@@ -25,7 +25,7 @@ type PeerMessage =
 const LOCK = 'iconic-live-leader'
 const CHANNEL = 'iconic-live'
 /** Events sent by the server under these names are handled here; everything else goes to the handlers. */
-const EVENT_TYPES = ['message', 'ticket', 'read', 'typing'] as const
+const EVENT_TYPES = ['notification', 'badge', 'message', 'ticket', 'read', 'typing'] as const
 const SILENT_MS = 60_000
 const PRESENCE_MS = 4 * 60_000
 /** Kept open briefly with nobody using it: moving between page layouts must not reconnect. */
@@ -90,8 +90,8 @@ function receive(type: string, data: LiveData) {
     setStatus('live')
     return
   }
-  if (typeof data.v === 'number') {
-    const area = 'support'
+  if (typeof data.v === 'number' && typeof data.a === 'string') {
+    const area = data.a
     // A number was skipped: an event got lost on the way
     if (known[area] !== undefined && data.v > known[area] + 1) scheduleResync(area, 2_000)
     if (known[area] === undefined || data.v > known[area]) known[area] = data.v

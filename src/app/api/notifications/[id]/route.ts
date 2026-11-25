@@ -3,7 +3,7 @@ import { db } from '@/src/db';
 import { notifications } from '@/src/db/schema/notification';
 import { createClient } from '@/src/lib/auth/server';
 import { eq, and } from 'drizzle-orm';
-import { invalidateNotificationCache } from '@/src/lib/redis-cache';
+import { notificationsChanged } from '@/src/lib/notifications/changed';
 
 export async function PATCH(
   req: NextRequest,
@@ -44,7 +44,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Notification not found' }, { status: 404 });
     }
 
-    await invalidateNotificationCache(user.id)
+    await notificationsChanged([user.id])
     return NextResponse.json({ data: updated });
   } catch (error: unknown) {
     console.error('Update notification error:', error);

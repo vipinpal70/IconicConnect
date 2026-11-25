@@ -8,7 +8,7 @@ export interface LiveEvent {
   type: string
   [field: string]: unknown
 }
-export type LiveListener = (event: LiveEvent, version: number | null) => void
+export type LiveListener = (event: LiveEvent, version: number | null, channel: string) => void
 
 interface Hub {
   connection: IORedis
@@ -47,7 +47,7 @@ function hub(): Hub {
     const set = created.listeners.get(channel)
     if (!set || set.size === 0) return
     const decoded = decode(message)
-    if (decoded) set.forEach((listener) => listener(decoded.event, decoded.version))
+    if (decoded) set.forEach((listener) => listener(decoded.event, decoded.version, channel))
   })
   let first = true
   connection.on('ready', () => {
