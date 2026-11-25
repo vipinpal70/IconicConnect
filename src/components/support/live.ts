@@ -11,7 +11,7 @@ import type { SupportSide } from '@/src/lib/support/constants'
  * through the normal API.
  */
 
-export { pollInterval, useLiveStatus, type LiveStatus } from '@/src/lib/live/client'
+export { usePollInterval, useLiveStatus, type LiveStatus } from '@/src/lib/live/client'
 
 interface TypingEntry {
   name: string

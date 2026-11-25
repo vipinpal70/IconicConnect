@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useVisibleInterval } from "@/src/hooks/useVisibleInterval"
-import { onLiveEvent, onLiveResync, useLiveStatus } from "@/src/lib/live/client"
+import { onLiveEvent, onLiveResync, SAFETY_REFRESH_MS, useLiveStatus } from "@/src/lib/live/client"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { uploadFileInChunks } from "@/src/lib/upload-utils"
@@ -38,7 +38,6 @@ interface ChatMessage {
 /** Without the live connection. */
 const POLL_MS = 15_000
 /** With it: a safety net only. */
-const LIVE_POLL_MS = 5 * 60_000
 
 /** Newest first; a changed message replaces the copy already shown. */
 function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
@@ -185,7 +184,7 @@ export function CaseChat({ caseId, clientId, className, heightClass = "h-[500px]
     }
   }, [caseId, forbidden, refresh])
 
-  useVisibleInterval(() => void refresh(), live ? LIVE_POLL_MS : POLL_MS, !forbidden)
+  useVisibleInterval(() => void refresh(), live ? SAFETY_REFRESH_MS : POLL_MS, !forbidden)
 
   const loadOlder = async () => {
     const oldest = messages?.[messages.length - 1]

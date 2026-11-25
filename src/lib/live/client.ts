@@ -28,6 +28,8 @@ const CHANNEL = 'iconic-live'
 const EVENT_TYPES = ['notification', 'badge', 'case', 'chat', 'chat-read', 'message', 'ticket', 'read', 'typing'] as const
 const SILENT_MS = 60_000
 const PRESENCE_MS = 4 * 60_000
+/** While the connection is up, everything is still refreshed this often, in case an event got lost. */
+export const SAFETY_REFRESH_MS = 5 * 60_000
 /** Kept open briefly with nobody using it: moving between page layouts must not reconnect. */
 const LINGER_MS = 5_000
 
@@ -334,7 +336,10 @@ export function useLiveStatus(): LiveStatus {
   )
 }
 
-/** Polling only matters while the live connection is down. */
-export function pollInterval(fallbackMs: number, liveMs = 60_000): () => number {
-  return () => (status === 'live' ? Math.max(fallbackMs, liveMs) : fallbackMs)
+/**
+ * For refetchInterval: polling only while the live connection is down, the safety refresh while it is up.
+ * A hook, so that a change takes effect at once: a timer that is already running isn't reconsidered by itself.
+ */
+export function usePollInterval(fallbackMs: number): number {
+  return useLiveStatus() === 'live' ? Math.max(fallbackMs, SAFETY_REFRESH_MS) : fallbackMs
 }

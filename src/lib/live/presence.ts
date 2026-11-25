@@ -60,9 +60,6 @@ export async function heartbeatStreams(streams: Array<{ userId: string; connecti
   }
 }
 
-export const heartbeatStream = (userId: string, connectionId: string, isAgent: boolean) =>
-  heartbeatStreams([{ userId, connectionId, isAgent }])
-
 /** The last stream closing means they left (a page reload opens the next one right away). */
 export async function closeStream(userId: string, connectionId: string) {
   try {

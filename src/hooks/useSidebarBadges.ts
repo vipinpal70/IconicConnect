@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
-import { pollInterval } from '@/src/lib/live/client'
+import { usePollInterval } from '@/src/lib/live/client'
 
 export type SidebarBadges = Record<string, boolean>
 
@@ -26,7 +26,7 @@ export function useSidebarBadges() {
       return res.json()
     },
     // Events keep the dots right; this is the safety net (and all there is while the connection is down)
-    refetchInterval: pollInterval(60_000, 5 * 60_000),
+    refetchInterval: usePollInterval(60_000),
     staleTime: 20_000,
   })
 

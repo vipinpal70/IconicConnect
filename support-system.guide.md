@@ -190,7 +190,7 @@ sequenceDiagram
 flowchart TB
     subgraph Browser
         UI["Support page & widget<br/>React + TanStack Query"]
-        ES["One EventSource per tab<br/>(live.ts)"]
+        ES["The app's live connection<br/>(one per browser)"]
     end
 
     subgraph Web["Next.js web process(es)"]
@@ -198,8 +198,8 @@ flowchart TB
         POL["policy.ts<br/>who may do what"]
         SVC["service.ts<br/>all writes, one locked transaction each"]
         QRY["queries.ts<br/>all reads, scoped by caller"]
-        RT["realtime.ts<br/>publish / subscribe"]
-        STREAM["/api/support/stream (SSE)"]
+        RT["realtime.ts<br/>publish"]
+        STREAM["/api/live (SSE)"]
     end
 
     subgraph Worker["Background worker (same app, BullMQ)"]
@@ -534,25 +534,27 @@ flowchart LR
     end
     CH{{"Redis channels<br/>sup:lab:#lt;clientId#gt;<br/>sup:agents"}}
     subgraph P2["Web process 2"]
-        SUB["1 subscriber connection<br/>per process"] --> S1["SSE stream (tab A)"]
-        SUB --> S2["SSE stream (tab B)"]
+        SUB["1 subscriber connection<br/>per process"] --> S1["SSE stream (browser A)"]
+        SUB --> S2["SSE stream (browser B)"]
     end
     CH -->|SUBSCRIBE| SUB
-    S1 -->|"event: message / ticket / read / typing"| TA["Browser tab A"]
-    S2 --> TB["Browser tab B"]
+    S1 -->|"event: message / ticket / read / typing"| TA["Browser A, all its tabs"]
+    S2 --> TB["Browser B"]
 ```
+
+Support uses the app-wide live connection. How that works: [live-updates.guide.md](live-updates.guide.md).
 
 | Topic | How it works |
 |---|---|
 | Channels | Labs listen on **their lab's** channel only; agents listen on `sup:agents`. Internal notes are published to agents only. |
 | Event types | `message`, `ticket`, `read`, `typing`. They carry **ids only, never text**. The browser refetches through the normal API. |
-| Connection | `GET /api/support/stream`. One `EventSource` per tab, shared by the page and the widget. |
-| Reconnects | Every (re)connect starts with `resync`, so the browser refreshes anything it missed. |
+| Connection | `GET /api/live`. One per **browser**: the tabs share it. |
+| Reconnects | Events are counted. On (re)connecting, the browser refreshes support only if something was missed. |
 | Keep-alive | Heartbeat every 25 s. `X-Accel-Buffering: no` for nginx. |
-| Limits | Max 5 open streams per person. The session is re-checked every 5 min; a `logout` event closes the stream. |
-| Presence | Agents with an open stream count as online ("We're online" for labs). Presence is also used to skip emails to people who have the app open. |
+| Limits | Max 10 open streams per person. Signing out or losing access closes them at once; the session is also re-checked every 5 min. |
+| Presence | An agent with a **visible** tab anywhere in the app in the last few minutes counts as online ("We're online" for labs). Presence is also used to skip emails to people who have the app open. |
 | Typing | `POST /tickets/:id/typing` is ephemeral (never stored) and rate-limited. Typing an internal note is shown to staff only. |
-| Fallback | While disconnected, the UI polls (thread 8 s, list 30 s). While connected, a 60 s safety poll runs. |
+| Fallback | While disconnected, the UI polls (thread 8 s, list 30 s). While connected, a safety refresh runs every 5 min. The open widget asks every minute whether support is online. |
 | Redis down | No data is lost (Postgres is the source of truth). The UI updates through the safety poll until Redis is back. |
 
 ---
@@ -688,7 +690,7 @@ flowchart TD
     R -- yes --> X["Skip"]
     R -- no --> T{"Emailed about this conversation<br/>in the last 10 min?"}
     T -- yes --> X
-    T -- no --> O{"App open right now?<br/>(live stream in Redis)"}
+    T -- no --> O{"App open right now?<br/>(a visible tab)"}
     O -- yes --> X2["Skip for now<br/>(retry next minute)"]
     O -- no --> P{"Email on and<br/>'conversation updates' on?"}
     P -- no --> X
@@ -748,7 +750,7 @@ flowchart LR
 | Message content | Plain text, escaped on render (no HTML or markdown). Links get `rel="noopener noreferrer"`. Digest emails escape everything. |
 | Linking | Same lab only; checked again when reading, so a link can never reveal another lab |
 | Cross-site requests | The app proxy blocks state-changing API calls from other origins |
-| Abuse | Rate limits on starting conversations, messages, uploads and typing. Max 5 streams per person. |
+| Abuse | Rate limits on starting conversations, messages, uploads and typing. Max 10 streams per person. |
 | Audit | Every change goes to `sup_events` and the activity log. Message bodies and secrets are never logged. |
 | Designers | No access at all (D10) |
 
@@ -803,7 +805,8 @@ src/lib/support/
 ├── service.ts        # WRITE side: create, post, read, actions, rating, SLA & auto-close sweeps
 ├── attachments.ts    # R2 multipart start/sign/complete/abort, binding, signed URLs, reaper
 ├── agent-tools.ts    # saved replies, lab context panel, team metrics (agents only)
-├── realtime.ts       # Redis pub/sub, SSE subscriber, stream limits, presence
+├── channels.ts       # the two support channels
+├── realtime.ts       # sends support's live events (the connection itself: src/lib/live)
 ├── notify.ts         # who hears about what (in-app + email through the notification service)
 └── digest.ts         # unread-message email job
 
@@ -826,7 +829,7 @@ src/components/support/
 ├── NewConversationDialog.tsx · CallbackDialog.tsx
 ├── SupportWidget.tsx        # floating chat on lab pages
 ├── Attachments.tsx · useUploads.ts   # upload chips, previews, video player, multipart uploader
-├── live.ts                  # one EventSource per tab, typing, live status
+├── live.ts                  # support's use of the live connection, typing
 ├── api.ts                   # TanStack Query hooks for every endpoint
 └── parts.tsx                # badges (status, waiting, priority, SLA), stars, time formatting
 
@@ -863,7 +866,6 @@ Every route needs a signed-in session with support access. Errors are JSON `{ er
 | POST | `/api/support/tickets/:id/rating` | Lab | `{score 1–5, comment?}`, once |
 | POST | `/api/support/uploads` | Both | Multipart upload steps: start, sign, complete, abort |
 | GET | `/api/support/attachments/:id?download=1` | Both | Access check, then redirect to a short-lived signed URL |
-| GET | `/api/support/stream` | Both | Server-sent events (live updates) |
 | GET | `/api/support/summary` | Both | Badge counts: unread; plus new, mine and overdue for agents; agents online |
 | GET | `/api/support/agents` | Agents | Active agents (assignment menu) |
 | GET/POST | `/api/support/canned-replies` | Agents | List / create saved replies |
@@ -901,7 +903,7 @@ Every route needs a signed-in session with support access. Errors are JSON `{ er
 | Digest | 2 min grace, 10 min throttle, 24 h lookback, 3 messages shown | constants at the top of `digest.ts` |
 | Attachments | 500 MB, 10 per message, 64 MB parts, 3-month retention | `upload-policy.ts` |
 | Rate limits | Start: 10/h · messages: 30/min · uploads: 20/h · typing: 30/min | `LIMITS` in `http.ts` |
-| Live stream | Heartbeat 25 s, session check 5 min, 5 streams per person | `stream/route.ts`, `realtime.ts` |
+| Live connection | Heartbeat 25 s, session check 5 min, 10 streams per person, safety refresh 5 min | `src/lib/live/stream.ts`, `presence.ts`, `client.ts` |
 | Message length | 10,000 characters; subject 200 | `constants.ts`, DB checks |
 | Email links | `NEXT_PUBLIC_APP_URL` | `.env` |
 | Email sending | `RESEND_API_KEY` | `.env`. Use a dummy value locally to avoid sending real emails. |
@@ -992,4 +994,4 @@ WHERE ticket_id = '<id>' ORDER BY created_at;
 | **Digest** | A throttled email summarising unread messages |
 | **CSAT** | Customer satisfaction rating (1–5) |
 | **Saved reply** | A reusable reply inserted with `/shortcut` |
-| **Live stream / SSE** | The server-sent events connection that pushes updates to the browser |
+| **Live connection / SSE** | The server-sent events connection that pushes updates to the browser |

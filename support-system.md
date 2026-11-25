@@ -235,7 +235,7 @@ One resource API for customers and agents; the policy decides what each caller m
 | `POST /api/support/tickets/:id/rating` | customer | CSAT once, after close |
 | `POST /api/support/uploads` | all | `init` / `sign` / `complete` / `abort` (multipart, §8) |
 | `GET /api/support/attachments/:id` | all | Ownership check → short-lived signed R2 URL (302) |
-| `GET /api/support/stream` | all | SSE (§11) |
+| ~~`GET /api/support/stream`~~ | all | SSE (§11). Replaced by the app-wide `/api/live`, see live-updates.guide.md |
 | `GET /api/support/summary` | all | Unread count, new count for badges/widget |
 | `GET/POST/PATCH/DELETE /api/support/canned-replies` | agent | Canned replies |
 | `GET/PUT /api/support/settings/sla` | admin | SLA policy |
@@ -598,6 +598,8 @@ The old tables and their Drizzle schema files remain until the drop migration.
   - Close, reopen, assign, triage: `ticket`.
   - Read: `read`.
   - Idempotent repeats publish nothing.
+
+> **Since then:** support runs on the app-wide connection `/api/live`, and `/api/support/stream` is gone. See [live-updates.guide.md](live-updates.guide.md).
 
 **Stream:** `GET /api/support/stream` (SSE)
 - Every (re)connect starts with `resync`.

@@ -5,7 +5,8 @@ import { StatusBadge } from "@/src/components/StatusBadge";
 import { CheckCircle2, ClipboardCheck, Timer, TrendingUp, Inbox } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardPoll, useLiveRefresh } from "@/src/hooks/useLiveRefresh";
+import { useLiveRefresh } from "@/src/hooks/useLiveRefresh";
+import { usePollInterval } from "@/src/lib/live/client";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -15,6 +16,7 @@ import { fetchProfileWithCache } from "@/src/lib/profile-cache";
 
 export default function ClientDashboard() {
   const router = useRouter();
+  const poll = usePollInterval(60_000);
 
   const { data: profile } = useQuery<{ fullName: string | null; labName: string | null }>({
     queryKey: ["my-profile"],
@@ -28,7 +30,7 @@ export default function ClientDashboard() {
       if (!res.ok) throw new Error("Failed to fetch client dashboard data");
       return res.json();
     },
-    refetchInterval: dashboardPoll,
+    refetchInterval: poll,
     staleTime: 20_000,
   });
 

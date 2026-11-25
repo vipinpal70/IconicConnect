@@ -8,7 +8,7 @@ import { escapeHtml } from '@/src/lib/security/html'
 import { safeEmailLink } from '@/src/lib/notifications/email-template'
 import { formatTicketNumber, isAgentRole, isCustomerRole, type SupportSide } from './constants'
 import { personName } from './queries'
-import { usersWithOpenStreams } from './realtime'
+import { presentUsers } from '@/src/lib/live/presence'
 
 /**
  * Unread-message emails (support-system.md §10). Single chat messages never email on their own; once a
@@ -182,7 +182,7 @@ export async function sendEmailDigests(now = new Date()): Promise<{ sent: number
   }
   if (due.length === 0) return { sent: 0 }
 
-  const [online, prefs] = await Promise.all([usersWithOpenStreams([...new Set(due.map((c) => c.userId))]), loadPreferences([...new Set(due.map((c) => c.userId))])])
+  const [online, prefs] = await Promise.all([presentUsers([...new Set(due.map((c) => c.userId))]), loadPreferences([...new Set(due.map((c) => c.userId))])])
 
   let sent = 0
   for (const c of due) {

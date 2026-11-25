@@ -1,6 +1,6 @@
 # Performance Optimization in Notifications: Plan
 
-**Status:** approved with the recommendations (N1–N4). **Phases 0 to 4 implemented** (see §13); Phases 5 and 6 to do. N5 and N6 still need answers.
+**Status:** approved with the recommendations (N1–N4). **Phases 0 to 5 implemented** (see §13); Phase 6 to do. N5 and N6 still need answers.
 
 **Branch:** `perf/live-notifications`, from `no-supabase-rewrite`.
 
@@ -408,7 +408,7 @@ Tests: `auth-revocation.integration.test.ts` (8, real Postgres and Redis; 7 of t
 **Deploy:** no migration. `deploy.sh` now has an nginx location for `/api/live` and raises `worker_connections` to 4096. If nginx was changed by hand (N6), add this to the `server` block:
 
 ```nginx
-location ~ ^/api/(live|support/stream)$ {
+location = /api/live {
     proxy_pass http://127.0.0.1:4000;
     proxy_http_version 1.1;
     proxy_set_header Connection '';
@@ -468,3 +468,15 @@ It also works without this (25 s heartbeat, unbuffered by header); the location 
 **Tests:** `live-cases.integration.test.ts` (13) and `case-rows.test.ts` (9); 323 in total. Browser, two production processes: 29/29 (a change reaches three roles' lists in 4–8 s with one request each; 30 changes cost 4 list requests per tab; 65 s idle: 0 requests, 2 per tab before; case page in 0.9 s; server restart; kill switch), and the Phase 1, 2, 3 and edit/delete checks again (18, 15, 17, 25).
 
 **Deploy:** no migration. Restart the worker and the auto-approve scheduler too: they send case events.
+
+### Phase 5: Clean-up (done)
+
+- **P9:** support's safety refresh is every 5 minutes while live (60 s before), like everything else (`SAFETY_REFRESH_MS`). "We're online" has no event, so the widget asks when it opens and every minute while open. The "overdue" count needs nothing: the SLA job already sends an event.
+- **Fixed on the way:** when the connection went down, a 5-minute timer that was already running kept running, instead of switching to the faster polling. `usePollInterval` (a hook) replaces `pollInterval`. It affected the dots and dashboards since Phases 2 and 4.
+- **Removed:** `/api/support/stream` and what only it used; `AppSidebar`, `SubSidebar`, `SubLayout` and `AppLayout` (the only user of `AppSidebar`).
+- **Old tabs:** a tab still open from before this release gets 404 from the old stream and polls (its own fallback) until it is reloaded. So keeping the old route for one more release isn't needed.
+- **Documents:** [live-updates.guide.md](live-updates.guide.md) is new; `support-system.guide.md` is updated.
+
+**Tests:** 323 in total (the support live tests now listen through `src/lib/live`). Browser, two production processes: 16/16 (support still live both ways; 130 s idle: no support, dot or dashboard requests; the widget asks about "online" on opening and once a minute; with live turned off, dots, dashboards and the open conversation poll within a minute; the old stream answers 404), and Phases 2, 3 and 4 again (15, 17, 29).
+
+**Deploy:** no migration. Run `deploy.sh` (or change the nginx location to `= /api/live`; the old pattern keeps working).

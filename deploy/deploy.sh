@@ -191,7 +191,7 @@ server {
     }
 
     # Live updates (server-sent events): never buffered, open for as long as the browser stays
-    location ~ ^/api/(live|support/stream)$ {
+    location = /api/live {
         proxy_pass http://127.0.0.1:$PORT;
         proxy_http_version 1.1;
         proxy_set_header Connection '';

@@ -1,5 +1,3 @@
-import { listen } from '@/src/lib/live/bus'
-import { presentUsers } from '@/src/lib/live/presence'
 import { publishLive } from '@/src/lib/live/publish'
 import { agentsChannel, labChannel } from './channels'
 import type { SupportSide } from './constants'
@@ -19,7 +17,6 @@ export type SupportEvent =
   | { type: 'typing'; ticketId: string; userId: string; name: string; side: SupportSide }
 
 export { agentsChannel, labChannel }
-export { MAX_STREAMS_PER_USER, agentsOnline, closeStream, heartbeatStream, openStream } from '@/src/lib/live/presence'
 
 /** Typing is ephemeral: missing it needs no catching up, so it has no version. */
 export async function publish(channels: string[], event: SupportEvent): Promise<void> {
@@ -30,11 +27,3 @@ export async function publish(channels: string[], event: SupportEvent): Promise<
 export const publishToBoth = (clientId: string, event: SupportEvent) => publish([labChannel(clientId), agentsChannel], event)
 /** Agent-only knowledge (internal notes, a note being typed). */
 export const publishToAgents = (event: SupportEvent) => publish([agentsChannel], event)
-
-/** Listen on channels; returns an unsubscribe function. */
-export function subscribe(channels: string[], listener: (event: SupportEvent) => void): () => void {
-  return listen(channels, (event) => listener(event as unknown as SupportEvent)).stop
-}
-
-/** Which of these people have the app open in front of them right now. */
-export const usersWithOpenStreams = presentUsers

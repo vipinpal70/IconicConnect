@@ -6,7 +6,8 @@ import { Inbox, ScanLine, Layers, ShieldCheck, ClipboardCheck, PauseCircle, MapP
 import { Badge } from "@/src/components/ui/badge";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardPoll, useLiveRefresh } from "@/src/hooks/useLiveRefresh";
+import { useLiveRefresh } from "@/src/hooks/useLiveRefresh";
+import { usePollInterval } from "@/src/lib/live/client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { StatusBadge } from "@/src/components/StatusBadge";
 
@@ -14,6 +15,7 @@ const CHART_MARGIN = { left: 5, right: 12, top: 0, bottom: 0 } as const;
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const poll = usePollInterval(60_000);
 
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ["admin-dashboard-data"],
@@ -22,7 +24,7 @@ export default function AdminDashboard() {
       if (!res.ok) throw new Error("Failed to fetch dashboard data");
       return res.json();
     },
-    refetchInterval: dashboardPoll,
+    refetchInterval: poll,
     staleTime: 20_000,
   });
 

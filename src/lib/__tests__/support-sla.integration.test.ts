@@ -31,7 +31,7 @@ describe.runIf(enabled)('support SLA, auto-close, ratings, digests (database)', 
   const queries = await import('@/src/lib/support/queries')
   const tools = await import('@/src/lib/support/agent-tools')
   const digest = await import('@/src/lib/support/digest')
-  const realtime = await import('@/src/lib/support/realtime')
+  const presence = await import('@/src/lib/live/presence')
   const notify = await import('@/src/lib/support/notify')
   const jobs = await import('@/src/lib/queue/jobs')
   const { setPreference } = await import('@/src/lib/notifications/preferences')
@@ -220,13 +220,13 @@ describe.runIf(enabled)('support SLA, auto-close, ratings, digests (database)', 
     // A newer reply: the member already read it, the owner has the app open, so neither is emailed
     const newer = await say(callers.agent, id, new Date(now.getTime() + 60_000))
     await service.markRead(callers.member, id, newer.message.seq)
-    await realtime.openStream(callers.lab.actor.id, 'test-conn', false)
+    await presence.openStream(callers.lab.actor.id, 'test-conn', false)
     try {
       await digest.sendEmailDigests(new Date(now.getTime() + 12 * 60_000))
       expect(emailsTo('member', 'Digest')).toHaveLength(1)
       expect(emailsTo('lab', 'Digest')).toHaveLength(1)
     } finally {
-      await realtime.closeStream(callers.lab.actor.id, 'test-conn')
+      await presence.closeStream(callers.lab.actor.id, 'test-conn')
     }
     // Away again: now the owner gets it
     await digest.sendEmailDigests(new Date(now.getTime() + 13 * 60_000))

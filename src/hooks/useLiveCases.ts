@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { onLiveEvent, onLiveResync, useLiveStatus } from "@/src/lib/live/client"
+import { onLiveEvent, onLiveResync, SAFETY_REFRESH_MS, useLiveStatus } from "@/src/lib/live/client"
 import { mergeCaseRows, type CaseRow } from "@/src/lib/live/case-rows"
 import { useVisibleInterval } from "@/src/hooks/useVisibleInterval"
 
@@ -122,7 +122,7 @@ export function useLiveCases<T extends CaseRow>(options: Options<T>) {
   }, [])
 
   // While live, a filtered list only changes in place; the notice offers the rest
-  useVisibleInterval(options.refresh, live ? 5 * 60_000 : 60_000, !(live && options.filtered))
+  useVisibleInterval(options.refresh, live ? SAFETY_REFRESH_MS : 60_000, !(live && options.filtered))
 
   /** Call when the list is loaded again. */
   const clearUpdates = useCallback(() => setUpdatesAvailable(false), [])
